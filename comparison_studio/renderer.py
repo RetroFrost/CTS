@@ -134,7 +134,7 @@ class AssetCache:
                     headers={
                         "User-Agent": (
                             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                            "Chrome/124.0 Safari/537.36 CTS/0.3.3"
+                            "Chrome/124.0 Safari/537.36 CTS/0.3.4"
                         ),
                         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
                     },
@@ -254,8 +254,6 @@ def _fit_text(
         line_height = draw.textbbox((0, 0), "Ag", font=font)[3]
         spacing = max(2, round(size * 0.10))
         total_height = len(lines) * line_height + (len(lines) - 1) * spacing
-        # Prefer shrinking over prematurely truncating a long compact-card value.
-        # Ellipsis remains the final safety net once the configured minimum is reached.
         truncated = bool(lines and lines[-1].endswith("…"))
         if total_height <= available_height and not truncated:
             return font, lines, size

@@ -1,10 +1,18 @@
 # Changelog
 
+## 0.3.4
+
+- Added a screen-aware startup size that fits inside the desktop's available geometry.
+- Added a compact layout for 1366×768 and other laptop-size displays.
+- Reduced the preview minimum from 640×360 to 480×270 while preserving the 16:9 picture.
+- Made the Models tab vertically scrollable so advanced controls never disappear below the screen.
+- Reduced margins and header height dynamically and shortened header actions on narrow windows.
+
 ## 0.3.3
 
 - Redesigned the workspace with a compact application bar, clearer panel headings, and grouped preview controls.
 - Made Classic Compact shrink, wrap, and safely ellipsize long titles, values, units, and unbroken strings.
-- Added **Paste image URL** to the direct image menu and normalized URLs copied with quotes, Markdown wrappers, protocol-relative prefixes, or `www.` prefixes.
+- Added **Paste image URL** to the direct image menu and normalized copied URLs.
 - Improved remote-image compatibility with browser-like request headers, query-string URLs, `file://` URLs, and readable size/error handling.
 
 ## 0.3.2

@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QSlider,
     QSpinBox,
     QSplitter,
+    QScrollArea,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -433,7 +434,9 @@ class PreviewWidget(QFrame):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("previewFrame")
-        self.setMinimumSize(640, 360)
+        # Keep the 16:9 picture usable on 1366×768 laptops without forcing the
+        # whole window beyond the desktop's available height.
+        self.setMinimumSize(480, 270)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._image: QImage | None = None
         self._empty_message = "Add a row to create the first styled card"
@@ -730,9 +733,23 @@ class MainWindow(QMainWindow):
         # constructed. Ignore those signals until every cross-tab dependency exists.
         self._ui_ready = False
         self._suspend_model_schema = False
+        self._compact_mode: bool | None = None
         self.setWindowTitle("CTS — Comparison Timeline Studio")
-        self.resize(1580, 940)
-        self.setMinimumSize(1160, 740)
+        self.setMinimumSize(900, 560)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            target_width = min(1580, max(900, round(available.width() * 0.96)))
+            target_height = min(940, max(560, round(available.height() * 0.94)))
+            target_width = min(target_width, available.width())
+            target_height = min(target_height, available.height())
+            self.resize(target_width, target_height)
+            self.move(
+                available.x() + (available.width() - target_width) // 2,
+                available.y() + (available.height() - target_height) // 2,
+            )
+        else:
+            self.resize(1280, 720)
         self.renderer = TimelineRenderer(AssetCache())
         self.position_seconds = 0.0
         self._play_started_at = 0.0
@@ -747,12 +764,13 @@ class MainWindow(QMainWindow):
         self.preview_debounce.timeout.connect(self.update_preview)
 
         central = QWidget()
-        root = QVBoxLayout(central)
-        root.setContentsMargins(18, 16, 18, 18)
-        root.setSpacing(14)
-        root.addWidget(self._build_header())
-        root.addWidget(self._build_content(), 1)
+        self.root_layout = QVBoxLayout(central)
+        self.root_layout.setContentsMargins(18, 16, 18, 18)
+        self.root_layout.setSpacing(14)
+        self.root_layout.addWidget(self._build_header())
+        self.root_layout.addWidget(self._build_content(), 1)
         self.setCentralWidget(central)
+        self._apply_responsive_layout()
         self._ui_ready = True
         # Useful empty fields make the first edit obvious. They are conveniences only:
         # every field can still be unmapped, renamed, or deleted.
@@ -776,43 +794,44 @@ class MainWindow(QMainWindow):
         row.addWidget(mark)
         title_box = QVBoxLayout()
         title_box.setSpacing(1)
-        title = QLabel("Comparison Timeline Studio")
-        title.setStyleSheet("font-size:20px; font-weight:850;")
-        subtitle = QLabel("Build, preview, and export data-driven comparison videos")
-        subtitle.setObjectName("muted")
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
+        self.title_label = QLabel("Comparison Timeline Studio")
+        self.title_label.setStyleSheet("font-size:20px; font-weight:850;")
+        self.subtitle_label = QLabel("Build, preview, and export data-driven comparison videos")
+        self.subtitle_label.setObjectName("muted")
+        title_box.addWidget(self.title_label)
+        title_box.addWidget(self.subtitle_label)
         row.addLayout(title_box)
         row.addStretch()
-        open_button = QPushButton("Open project")
-        save_button = QPushButton("Save project")
-        export_button = QPushButton("Export MP4")
-        open_button.setObjectName("toolbar")
-        save_button.setObjectName("toolbar")
-        export_button.setObjectName("primary")
-        open_button.clicked.connect(self.open_project)
-        save_button.clicked.connect(self.save_project)
-        export_button.clicked.connect(self.export_video)
-        row.addWidget(open_button)
-        row.addWidget(save_button)
-        row.addWidget(export_button)
+        self.open_button = QPushButton("Open project")
+        self.save_button = QPushButton("Save project")
+        self.export_button = QPushButton("Export MP4")
+        self.open_button.setObjectName("toolbar")
+        self.save_button.setObjectName("toolbar")
+        self.export_button.setObjectName("primary")
+        self.open_button.clicked.connect(self.open_project)
+        self.save_button.clicked.connect(self.save_project)
+        self.export_button.clicked.connect(self.export_video)
+        row.addWidget(self.open_button)
+        row.addWidget(self.save_button)
+        row.addWidget(self.export_button)
         return bar
 
     def _build_content(self) -> QSplitter:
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self._build_preview_panel())
-        splitter.addWidget(self._build_editor_panel())
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
-        splitter.setSizes([950, 600])
-        return splitter
+        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.content_splitter.addWidget(self._build_preview_panel())
+        self.content_splitter.addWidget(self._build_editor_panel())
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setStretchFactor(0, 3)
+        self.content_splitter.setStretchFactor(1, 2)
+        self.content_splitter.setSizes([760, 520])
+        return self.content_splitter
 
     def _build_preview_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("panel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        self.preview_layout = QVBoxLayout(panel)
+        self.preview_layout.setContentsMargins(12, 12, 12, 12)
+        self.preview_layout.setSpacing(10)
         preview_heading = QHBoxLayout()
         preview_title = QLabel("LIVE PREVIEW")
         preview_title.setObjectName("eyebrow")
@@ -821,12 +840,12 @@ class MainWindow(QMainWindow):
         preview_heading.addWidget(preview_title)
         preview_heading.addStretch()
         preview_heading.addWidget(preview_hint)
-        layout.addLayout(preview_heading)
+        self.preview_layout.addLayout(preview_heading)
         self.preview = PreviewWidget()
         self.preview.field_clicked.connect(self._preview_field_clicked)
         self.preview.inline_committed.connect(self._commit_direct_edit)
         self.preview.inline_canceled.connect(self.update_preview)
-        layout.addWidget(self.preview, 1)
+        self.preview_layout.addWidget(self.preview, 1)
         control_bar = QFrame()
         control_bar.setObjectName("controlBar")
         playback = QHBoxLayout(control_bar)
@@ -844,8 +863,7 @@ class MainWindow(QMainWindow):
         playback.addWidget(self.play_button)
         playback.addWidget(self.slider, 1)
         playback.addWidget(self.time_label)
-        layout.addWidget(control_bar)
-
+        self.preview_layout.addWidget(control_bar)
         settings_bar = QFrame()
         settings_bar.setObjectName("settingsBar")
         duration_row = QHBoxLayout(settings_bar)
@@ -876,14 +894,14 @@ class MainWindow(QMainWindow):
         self.hexagons_bounce.toggled.connect(self._data_changed)
         duration_row.addWidget(animation_label)
         duration_row.addWidget(self.hexagons_bounce)
-        layout.addWidget(settings_bar)
+        self.preview_layout.addWidget(settings_bar)
         return panel
 
     def _build_editor_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("panel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(10, 10, 10, 10)
+        self.editor_layout = QVBoxLayout(panel)
+        self.editor_layout.setContentsMargins(10, 10, 10, 10)
         editor_heading = QHBoxLayout()
         editor_title = QLabel("PROJECT WORKSPACE")
         editor_title.setObjectName("eyebrow")
@@ -892,12 +910,12 @@ class MainWindow(QMainWindow):
         editor_heading.addWidget(editor_title)
         editor_heading.addStretch()
         editor_heading.addWidget(editor_hint)
-        layout.addLayout(editor_heading)
+        self.editor_layout.addLayout(editor_heading)
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_spreadsheet_tab(), "Spreadsheet")
         self.tabs.addTab(self._build_models_tab(), "Models")
         self.tabs.addTab(self._build_soundtrack_tab(), "Soundtrack")
-        layout.addWidget(self.tabs)
+        self.editor_layout.addWidget(self.tabs)
         return panel
 
     def _build_spreadsheet_tab(self) -> QWidget:
@@ -1025,7 +1043,12 @@ class MainWindow(QMainWindow):
         self.model_fields.setText("Table fields: " + " · ".join(model_headers(MODEL_REFERENCE)))
         self.visible_cards.setValue(MODEL_DEFAULT_VISIBLE[MODEL_REFERENCE])
         self._update_mapping_visibility(MODEL_REFERENCE)
-        return page
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        return scroll
 
     def _build_soundtrack_tab(self) -> QWidget:
         page = QWidget()
@@ -1079,6 +1102,37 @@ class MainWindow(QMainWindow):
             soundtrack_master_volume=self.master_volume.value() / 100.0,
             hexagons_bounce=self.hexagons_bounce.isChecked(),
         )
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if hasattr(self, "root_layout"):
+            self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        """Keep all primary controls visible on common laptop displays."""
+        compact = self.width() < 1450 or self.height() < 850
+        if compact == self._compact_mode:
+            return
+        self._compact_mode = compact
+        if compact:
+            self.root_layout.setContentsMargins(10, 8, 10, 10)
+            self.root_layout.setSpacing(8)
+            self.preview_layout.setContentsMargins(8, 8, 8, 8)
+            self.preview_layout.setSpacing(6)
+            self.editor_layout.setContentsMargins(6, 6, 6, 6)
+            self.title_label.setStyleSheet("font-size:18px; font-weight:850;")
+        else:
+            self.root_layout.setContentsMargins(18, 16, 18, 18)
+            self.root_layout.setSpacing(14)
+            self.preview_layout.setContentsMargins(12, 12, 12, 12)
+            self.preview_layout.setSpacing(10)
+            self.editor_layout.setContentsMargins(10, 10, 10, 10)
+            self.title_label.setStyleSheet("font-size:20px; font-weight:850;")
+        show_subtitle = not compact or (self.width() >= 1250 and self.height() >= 700)
+        self.subtitle_label.setVisible(show_subtitle)
+        short_header = self.width() < 1120
+        self.open_button.setText("Open" if short_header else "Open project")
+        self.save_button.setText("Save" if short_header else "Save project")
 
     def _headers_changed(self) -> None:
         headers = self.table.headers()

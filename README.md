@@ -1,6 +1,6 @@
 # CTS — Comparison Timeline Studio
 
-![Version](https://img.shields.io/badge/version-0.3.3-6d55f7)
+![Version](https://img.shields.io/badge/version-0.3.4-6d55f7)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)
 ![Qt](https://img.shields.io/badge/UI-PySide6-41cd52)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
@@ -8,6 +8,10 @@
 CTS is a free desktop editor for creating continuously scrolling comparison videos.
 Edit cards directly on the rendered preview, fill hundreds of cards from a spreadsheet,
 add a soundtrack, and export a finished H.264/AAC MP4 through FFmpeg.
+
+The interface automatically uses a compact layout on 1366×768 laptops: the window fits
+the available desktop area, the preview scales down without losing its 16:9 canvas, and
+the Models panel scrolls when its advanced controls do not fit vertically.
 
 ![CTS visual models](docs/models-preview.png)
 
@@ -183,7 +187,8 @@ notes as they are added.
 ## Roadmap
 
 The 0.3.x series continues to refine the current editor. **CTS 4.0** is reserved for a
-full application rewrite.
+full application rewrite. Its visual system will preserve transparent card artwork and
+let users replace the Illustrated Cards beach scene with other built-in backgrounds.
 
 ## License
 
