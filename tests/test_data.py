@@ -94,6 +94,7 @@ class DataTests(unittest.TestCase):
             settings = ProjectSettings(
                 model_id=MODEL_ILLUSTRATED,
                 field_mapping={"title": "Whatever", "image": "Picture"},
+                hexagons_bounce=False,
             )
             tracks = [AudioTrack(path="song.mp3", volume=0.75, loop=True)]
             save_project_json(path, data, settings, tracks)
@@ -101,6 +102,7 @@ class DataTests(unittest.TestCase):
             self.assertEqual(document.data.headers, data.headers)
             self.assertEqual(document.settings.model_id, MODEL_ILLUSTRATED)
             self.assertEqual(document.settings.field_mapping["title"], "Whatever")
+            self.assertFalse(document.settings.hexagons_bounce)
             self.assertEqual(document.audio_tracks[0].volume, 0.75)
             self.assertTrue(document.audio_tracks[0].loop)
 

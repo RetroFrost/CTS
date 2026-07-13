@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1
+
+- Replaced the floating direct-edit input with a transparent, borderless caret positioned inside the exact rendered field.
+- Temporarily blanks only the active rendered value so in-place text never overlaps the old text.
+- Added normalized editor rectangles for badges, titles, descriptions, images, and partially scrolled cards.
+- Added the project-persistent **Hexagons bounce** checkbox in its own Animation row below the preview.
+- Kept badge motion separate from the visual-model selector so it cannot be mistaken for a model.
+- When bounce is disabled, badges keep a fixed scale during entrances and scrolling.
+- Expanded regression coverage for in-place editor geometry, scrolling, persistence, and both badge-motion modes.
+
 ## 0.3.0
 
 - Turned the rendered preview into a direct visual card editor.

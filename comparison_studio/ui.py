@@ -413,6 +413,7 @@ class SoundtrackTable(QTableWidget):
 class PreviewWidget(QFrame):
     field_clicked = Signal(float, float)
     inline_committed = Signal(int, str, str)
+    inline_canceled = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -428,16 +429,8 @@ class PreviewWidget(QFrame):
         self._editor_active = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip("Click a visible card field to edit it directly")
-        self._editor_label = QLabel(self)
-        self._editor_label.setStyleSheet(
-            "background:#6d55f7; color:white; border-radius:5px; padding:3px 7px; font-weight:700;"
-        )
-        self._editor_label.hide()
         self._editor = QLineEdit(self)
-        self._editor.setStyleSheet(
-            "background:#ffffff; color:#111827; border:2px solid #806cff; "
-            "border-radius:7px; padding:7px 9px; font-size:14px;"
-        )
+        self._editor.setFrame(False)
         self._editor.returnPressed.connect(self._commit_inline_edit)
         self._editor.editingFinished.connect(self._commit_inline_edit)
         self._editor.installEventFilter(self)
@@ -450,6 +443,10 @@ class PreviewWidget(QFrame):
     def set_empty_message(self, message: str) -> None:
         self._empty_message = message
         self.update()
+
+    @property
+    def is_inline_editing(self) -> bool:
+        return self._editor_active
 
     def paintEvent(self, event) -> None:  # noqa: N802
         super().paintEvent(event)
@@ -488,32 +485,63 @@ class PreviewWidget(QFrame):
             return
         super().mousePressEvent(event)
 
-    def begin_inline_edit(self, card_index: int, role: str, label: str, value: str) -> None:
-        point = self._last_click or self.rect().center()
-        editor_width = min(380, max(220, self.width() // 2))
-        editor_height = 42
-        x = max(10, min(self.width() - editor_width - 10, point.x() - editor_width // 2))
-        y = max(34, min(self.height() - editor_height - 10, point.y() + 12))
+    def begin_inline_edit(
+        self,
+        card_index: int,
+        role: str,
+        value: str,
+        normalized_region: tuple[float, float, float, float],
+    ) -> None:
+        if self._video_rect is None:
+            return
+        nx, ny, nw, nh = normalized_region
+        x = round(self._video_rect.x() + nx * self._video_rect.width())
+        y = round(self._video_rect.y() + ny * self._video_rect.height())
+        editor_width = max(12, round(nw * self._video_rect.width()))
+        editor_height = max(12, round(nh * self._video_rect.height()))
         self._editor_card = card_index
         self._editor_role = role
         self._editor_active = True
-        self._editor_label.setText(f"Card {card_index + 1} · {label}")
-        self._editor_label.adjustSize()
-        self._editor_label.move(x, max(6, y - self._editor_label.height() - 4))
-        self._editor_label.show()
         self._editor.setGeometry(x, y, editor_width, editor_height)
-        self._editor.setPlaceholderText(f"Type {label.lower()} and press Enter")
+        color = "#fffaf4" if role.startswith("badge_") or role == "description" else "#111113"
+        weight = 800 if role != "description" else 500
+        size_factor = {
+            "badge_primary": 0.46,
+            "badge_secondary": 0.34,
+            "title": 0.42,
+            "description": 0.30,
+            "image": 0.20,
+        }.get(role, 0.36)
+        font_size = max(10, min(40, round(editor_height * size_factor)))
+        self._editor.setStyleSheet(
+            "QLineEdit {"
+            "background:transparent; border:none; padding:0;"
+            f"color:{color}; font-size:{font_size}px; font-weight:{weight};"
+            "selection-background-color:#806cff; selection-color:white;"
+            "}"
+        )
+        alignment = (
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            if role == "description"
+            else Qt.AlignmentFlag.AlignCenter
+        )
+        self._editor.setAlignment(alignment)
+        self._editor.setPlaceholderText("")
         self._editor.setText(value)
         self._editor.show()
         self._editor.raise_()
-        self._editor_label.raise_()
         self._editor.setFocus(Qt.FocusReason.MouseFocusReason)
-        self._editor.selectAll()
+        self._editor.setCursorPosition(len(value))
 
     def cancel_inline_edit(self) -> None:
+        was_active = self._editor_active
         self._editor_active = False
         self._editor.hide()
-        self._editor_label.hide()
+        if was_active:
+            self.inline_canceled.emit()
+
+    def commit_inline_edit(self) -> None:
+        self._commit_inline_edit()
 
     def _commit_inline_edit(self) -> None:
         if not self._editor_active:
@@ -521,7 +549,6 @@ class PreviewWidget(QFrame):
         self._editor_active = False
         card_index, role, value = self._editor_card, self._editor_role, self._editor.text()
         self._editor.hide()
-        self._editor_label.hide()
         self.inline_committed.emit(card_index, role, value)
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802
@@ -763,6 +790,7 @@ class MainWindow(QMainWindow):
         self.preview = PreviewWidget()
         self.preview.field_clicked.connect(self._preview_field_clicked)
         self.preview.inline_committed.connect(self._commit_direct_edit)
+        self.preview.inline_canceled.connect(self.update_preview)
         layout.addWidget(self.preview, 1)
         playback = QHBoxLayout()
         add_card_button = QPushButton("＋ Add card")
@@ -797,6 +825,20 @@ class MainWindow(QMainWindow):
         duration_row.addWidget(self.custom_length)
         duration_row.addWidget(self.duration_info, 1)
         layout.addLayout(duration_row)
+
+        animation_row = QHBoxLayout()
+        animation_label = QLabel("Animation")
+        animation_label.setStyleSheet("font-weight:700;")
+        self.hexagons_bounce = QCheckBox("Hexagons bounce")
+        self.hexagons_bounce.setChecked(True)
+        self.hexagons_bounce.setToolTip(
+            "Animate the red value badges during entrances and horizontal scrolling."
+        )
+        self.hexagons_bounce.toggled.connect(self._data_changed)
+        animation_row.addWidget(animation_label)
+        animation_row.addWidget(self.hexagons_bounce)
+        animation_row.addStretch()
+        layout.addLayout(animation_row)
         return panel
 
     def _build_editor_panel(self) -> QWidget:
@@ -988,6 +1030,7 @@ class MainWindow(QMainWindow):
             visible_cards=0 if self.default_visible.isChecked() else self.visible_cards.value(),
             field_mapping=self.field_mapping(),
             soundtrack_master_volume=self.master_volume.value() / 100.0,
+            hexagons_bounce=self.hexagons_bounce.isChecked(),
         )
 
     def _headers_changed(self) -> None:
@@ -1170,6 +1213,8 @@ class MainWindow(QMainWindow):
         self.update_preview()
 
     def update_preview(self) -> None:
+        if hasattr(self, "preview") and self.preview.is_inline_editing:
+            return
         cards = self.cards()
         if not cards:
             self.preview._image = None
@@ -1214,6 +1259,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Added card {new_index + 1} · click its fields in the preview to edit", 5000)
 
     def _preview_field_clicked(self, normalized_x: float, normalized_y: float) -> None:
+        if self.preview.is_inline_editing:
+            self.preview.commit_inline_edit()
         self.pause_playback()
         try:
             settings = self.project_settings()
@@ -1239,8 +1286,15 @@ class MainWindow(QMainWindow):
             if role == "image":
                 self._show_direct_image_menu(card_index, column, header, value)
             else:
-                self.preview.begin_inline_edit(card_index, role, header, value)
-                self.statusBar().showMessage("Type directly over the preview · Enter applies · Esc cancels", 5000)
+                region = self.renderer.editor_region(
+                    self.cards(), self.position_seconds, settings, card_index, role
+                )
+                if region is None:
+                    return
+                self.preview_debounce.stop()
+                self._render_preview_without_field(card_index, role, settings)
+                self.preview.begin_inline_edit(card_index, role, value, region)
+                self.statusBar().showMessage("Type in place · Enter applies · Esc cancels", 5000)
         except FriendlyError as exc:
             show_error(self, exc.summary, exc.suggestion, exc.details)
 
@@ -1253,7 +1307,14 @@ class MainWindow(QMainWindow):
         if selected is choose:
             self._choose_image_for_row(card_index, column)
         elif selected is type_path:
-            self.preview.begin_inline_edit(card_index, "image", header, value)
+            settings = self.project_settings()
+            region = self.renderer.editor_region(
+                self.cards(), self.position_seconds, settings, card_index, "image"
+            )
+            if region is not None:
+                self.preview_debounce.stop()
+                self._render_preview_without_field(card_index, "image", settings)
+                self.preview.begin_inline_edit(card_index, "image", value, region)
         elif selected is clear:
             self._set_direct_value(card_index, column, "")
 
@@ -1264,6 +1325,32 @@ class MainWindow(QMainWindow):
         column = self.table.headers().index(header)
         self._set_direct_value(card_index, column, value)
         self.statusBar().showMessage(f"Updated card {card_index + 1} · {header}", 3500)
+
+    def _render_preview_without_field(
+        self,
+        card_index: int,
+        role: str,
+        settings: ProjectSettings,
+    ) -> None:
+        cards = [
+            CardData(card.uploaded, card.title, card.description, card.image, card.badge_label)
+            for card in self.cards()
+        ]
+        if not (0 <= card_index < len(cards)):
+            return
+        card = cards[card_index]
+        if role == "badge_primary":
+            card.uploaded = ""
+        elif role == "badge_secondary":
+            card.badge_label = ""
+        elif role == "title":
+            card.title = ""
+        elif role == "description":
+            card.description = ""
+        elif role == "image":
+            card.image = ""
+        image = self.renderer.render(cards, self.position_seconds, settings, size=(960, 540))
+        self.preview.set_pil_image(image)
 
     def _set_direct_value(self, card_index: int, column: int, value: str) -> None:
         if not (0 <= card_index < self.table.rowCount() and 0 <= column < self.table.columnCount()):
@@ -1578,6 +1665,7 @@ class MainWindow(QMainWindow):
                 self.auto_length.setChecked(False)
                 self.custom_length.setText(format_duration(document.settings.custom_duration))
             self.master_volume.setValue(round(document.settings.soundtrack_master_volume * 100))
+            self.hexagons_bounce.setChecked(document.settings.hexagons_bounce)
             self.soundtrack_table.set_tracks(document.audio_tracks)
             self._suspend_model_schema = False
             self._refresh_field_guide(document.settings.model_id)

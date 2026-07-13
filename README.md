@@ -1,6 +1,6 @@
 # CTS — Comparison Timeline Studio
 
-![Version](https://img.shields.io/badge/version-0.3.0-6d55f7)
+![Version](https://img.shields.io/badge/version-0.3.1-6d55f7)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)
 ![Qt](https://img.shields.io/badge/UI-PySide6-41cd52)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
@@ -41,7 +41,9 @@ fields. The in-app field guide explains exactly where every value appears.
 
 ## Direct editing
 
-The preview is the main editor:
+The preview is the main editor. Text editing is truly in-place: the rendered value is
+temporarily removed and a borderless caret appears inside that exact visual region—no
+floating input box.
 
 - Click the red badge to edit its large value or smaller label/unit.
 - Click the white strip to edit the title.
@@ -49,6 +51,10 @@ The preview is the main editor:
 - Click an image area to choose a file, type a local path/URL, or clear it.
 - Press **Enter** to apply an inline edit or **Esc** to cancel it.
 - Click **Add card** beside playback to create and reveal another card.
+
+The **Hexagons bounce** checkbox lives under the preview in the separate **Animation**
+row—it is a motion setting, not a visual model. Disable it to keep every red badge at a
+fixed scale during entrances and horizontal scrolling. The setting is saved per project.
 
 Hit-testing follows the real animated positions, including partially scrolled cards.
 Every visual edit updates the underlying spreadsheet table immediately.
@@ -146,9 +152,9 @@ python tools/export_soundtrack_smoke.py
 ```
 
 The current suite covers generic data import, model schemas, project migration, timing,
-all direct-edit hit regions, scrolling positions, image-strip detection, rendering, and
-soundtrack filter generation. Real FFmpeg smoke tests validate both silent and mixed
-H.264/AAC output.
+all direct-edit hit regions and editor rectangles, scrolling positions, fixed/bouncing
+hexagons, image-strip detection, rendering, and soundtrack filter generation. Real
+FFmpeg smoke tests validate both silent and mixed H.264/AAC output.
 
 ### Source layout
 

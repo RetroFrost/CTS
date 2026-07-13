@@ -146,6 +146,7 @@ class ProjectSettings:
     visible_cards: int = 0  # Zero means use the model's native layout.
     field_mapping: dict[str, str] = field(default_factory=dict)
     soundtrack_master_volume: float = 1.0
+    hexagons_bounce: bool = True
 
     def effective_visible_cards(self) -> int:
         if self.visible_cards:

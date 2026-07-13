@@ -90,6 +90,26 @@ class RendererTests(unittest.TestCase):
         settings = ProjectSettings()
         self.assertEqual(renderer.hit_test(cards, 8.0 + 10.0 / 3.0, settings, 0.125, 0.48), (1, "title"))
 
+    def test_in_place_editor_regions_follow_visible_cards(self) -> None:
+        cards = [CardData() for _ in range(5)]
+        renderer = TimelineRenderer()
+        settings = ProjectSettings()
+        title = renderer.editor_region(cards, 8.0, settings, 0, "title")
+        self.assertIsNotNone(title)
+        self.assertAlmostEqual(title[1], 0.445)
+        self.assertGreater(title[2], 0.20)
+        scrolled = renderer.editor_region(cards, 8.0 + 10.0 / 3.0, settings, 1, "title")
+        self.assertIsNotNone(scrolled)
+        self.assertLess(scrolled[0], 0.02)
+
+    def test_hexagon_bounce_can_be_disabled(self) -> None:
+        renderer = TimelineRenderer()
+        placements = renderer._placements(4, 8.0, 4, 640.0, False)
+        self.assertEqual(len(placements), 4)
+        self.assertTrue(all(scale == 1.0 for _index, _x, _alpha, scale in placements))
+        bouncing = renderer._placements(4, 8.0, 4, 640.0, True)
+        self.assertTrue(any(scale != 1.0 for _index, _x, _alpha, scale in bouncing))
+
 
 if __name__ == "__main__":
     unittest.main()

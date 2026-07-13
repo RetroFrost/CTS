@@ -272,7 +272,9 @@ class TimelineRenderer:
 
         visible_cards = settings.effective_visible_cards()
         card_width = width / visible_cards
-        placements = self._placements(len(cards), model_time, visible_cards, width)
+        placements = self._placements(
+            len(cards), model_time, visible_cards, width, settings.hexagons_bounce
+        )
 
         for index, x, alpha, badge_scale in placements:
             card_image = self._render_card(
@@ -311,7 +313,9 @@ class TimelineRenderer:
         visible_cards = settings.effective_visible_cards()
         card_width = virtual_width / visible_cards
         click_x = normalized_x * virtual_width
-        placements = self._placements(len(cards), model_time, visible_cards, virtual_width)
+        placements = self._placements(
+            len(cards), model_time, visible_cards, virtual_width, settings.hexagons_bounce
+        )
         for index, x, alpha, _badge_scale in reversed(placements):
             if alpha < 0.08 or not (x <= click_x < x + card_width):
                 continue
@@ -326,6 +330,7 @@ class TimelineRenderer:
         model_time: float,
         visible_cards: int,
         width: float,
+        hexagons_bounce: bool = True,
     ) -> list[tuple[int, float, float, float]]:
         card_width = width / visible_cards
         initial_count = min(card_count, visible_cards)
@@ -341,9 +346,13 @@ class TimelineRenderer:
                 progress = _smoothstep(local / 0.62)
                 x = index * card_width
                 center = x + card_width / 2
-                badge_scale = self._badge_scale(center, focus_center, card_width)
-                entrance_scale = min(1.0, _ease_out_back(local / 0.58))
-                placements.append((index, x, progress, badge_scale * entrance_scale))
+                if hexagons_bounce:
+                    badge_scale = self._badge_scale(center, focus_center, card_width)
+                    entrance_scale = min(1.0, _ease_out_back(local / 0.58))
+                    badge_scale *= entrance_scale
+                else:
+                    badge_scale = 1.0
+                placements.append((index, x, progress, badge_scale))
             return placements
 
         scroll_elapsed = max(0.0, model_time - intro_duration)
@@ -357,8 +366,68 @@ class TimelineRenderer:
             if x >= width or x + card_width <= 0:
                 continue
             center = x + card_width / 2
-            placements.append((index, x, 1.0, self._badge_scale(center, focus_center, card_width)))
+            badge_scale = self._badge_scale(center, focus_center, card_width) if hexagons_bounce else 1.0
+            placements.append((index, x, 1.0, badge_scale))
         return placements
+
+    def editor_region(
+        self,
+        cards: list[CardData],
+        output_time: float,
+        settings: ProjectSettings,
+        card_index: int,
+        role: str,
+    ) -> tuple[float, float, float, float] | None:
+        """Return a normalized preview rectangle for a field's in-place text caret."""
+        if not cards or not (0 <= card_index < len(cards)):
+            return None
+        model_time = settings.model_time(output_time, len(cards))
+        visible = settings.effective_visible_cards()
+        placements = self._placements(
+            len(cards), model_time, visible, 1.0, settings.hexagons_bounce
+        )
+        placement = next((item for item in placements if item[0] == card_index), None)
+        if placement is None:
+            return None
+        _index, card_x, alpha, _scale = placement
+        if alpha < 0.08:
+            return None
+        local = self._field_box(settings.model_id, role)
+        if local is None:
+            return None
+        local_x, local_y, local_width, local_height = local
+        card_width = 1.0 / visible
+        left = card_x + local_x * card_width
+        right = left + local_width * card_width
+        clipped_left = max(0.0, left)
+        clipped_right = min(1.0, right)
+        if clipped_right <= clipped_left:
+            return None
+        return (clipped_left, local_y, clipped_right - clipped_left, local_height)
+
+    @staticmethod
+    def _field_box(model_id: str, role: str) -> tuple[float, float, float, float] | None:
+        boxes = {
+            MODEL_REFERENCE: {
+                "badge_primary": (0.10, 0.10, 0.80, 0.28),
+                "title": (0.035, 0.445, 0.93, 0.087),
+                "description": (0.045, 0.55, 0.91, 0.11),
+                "image": (0.085, 0.67, 0.83, 0.32),
+            },
+            MODEL_ILLUSTRATED: {
+                "badge_primary": (0.15, 0.075, 0.70, 0.14),
+                "badge_secondary": (0.18, 0.215, 0.64, 0.09),
+                "title": (0.035, 0.885, 0.93, 0.105),
+                "image": (0.01, 0.01, 0.98, 0.87),
+            },
+            MODEL_CLASSIC: {
+                "badge_primary": (0.15, 0.095, 0.70, 0.15),
+                "badge_secondary": (0.18, 0.25, 0.64, 0.10),
+                "title": (0.035, 0.397, 0.93, 0.09),
+                "image": (0.01, 0.505, 0.98, 0.485),
+            },
+        }
+        return boxes.get(model_id, boxes[MODEL_REFERENCE]).get(role)
 
     @staticmethod
     def _field_at(model_id: str, local_x: float, local_y: float) -> str | None:
