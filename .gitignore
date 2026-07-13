@@ -1,0 +1,16 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.cts.json
+*_assets/
+*.part.mp4
+*.video-part.mp4
+qa/*.mp4
+qa/model-assets/

@@ -1,0 +1,51 @@
+# Changelog
+
+## 0.3.0
+
+- Turned the rendered preview into a direct visual card editor.
+- Added animation-aware hit-testing that resolves clicks to the correct card and semantic field.
+- Added inline text editing over the preview with Enter-to-apply and Escape-to-cancel.
+- Added a direct image menu for file selection, typed paths/URLs, and clearing artwork.
+- Added a prominent Add card button beside playback that creates and reveals a new card.
+- Changed the initial preview to a stable fully visible editing frame instead of the black first animation frame.
+- Kept all spreadsheet, XLSX, clipboard, mapping, strip-splitting, and soundtrack workflows synchronized.
+- Added hit-region and scrolled-card regression tests for all three visual models.
+
+## 0.2.2
+
+- Replaced the generic one-column startup grid with model-owned spreadsheet schemas.
+- Switching visual models now reshapes the table and migrates compatible mapped values.
+- Added an always-visible, model-specific plain-language field guide and header tooltips.
+- Reworked row controls into Add card, Duplicate, and Delete card.
+- Reworked column controls into Add field, Rename field, Delete field, and New blank table.
+- Added cell/header context menus for card actions, field actions, and direct visual-role mapping.
+- Protected active model fields from accidental renaming or deletion while allowing their cells to remain blank.
+- Preserved non-empty imported fields as advanced extras instead of discarding data.
+
+## 0.2.1
+
+- Fixed a startup crash caused by Models-tab signals firing before the Soundtrack tab
+  had finished constructing its master-volume control.
+- Added an explicit UI-ready boundary so other cross-tab initialization signals are
+  safely ignored until the complete editor exists.
+
+## 0.2.0
+
+- Removed required spreadsheet columns and the fixed four-field table.
+- Removed generated `UPLOADED`, `DATE`, and `Untitled` content from rendered cards.
+- Added arbitrary columns, column editing, generic XLSX/clipboard import, and optional
+  per-model field mapping.
+- Added Illustrated Cards and Classic Compact alongside Reference Detail.
+- Added native or custom 1–8-card viewport layouts.
+- Added multi-track soundtrack trimming, placement, looping, fades, volume, mixing,
+  AAC export, and soundtrack-stage progress.
+- Added version-2 project persistence with automatic version-1 migration.
+- Preserved divider-aware image-strip assignment and readable error boundaries.
+
+## 0.1.1
+
+- Improved 2-pixel divider detection to reject repeated uniform bands inside artwork.
+
+## 0.1.0
+
+- Initial reference-model editor, XLSX import, strip splitting, preview, and MP4 export.
