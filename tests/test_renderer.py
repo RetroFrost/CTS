@@ -1,11 +1,20 @@
+import io
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from comparison_studio.data import MODEL_CLASSIC, MODEL_ILLUSTRATED, CardData, ProjectSettings
-from comparison_studio.renderer import BACKGROUND, TimelineRenderer
+from comparison_studio.renderer import (
+    BACKGROUND,
+    AssetCache,
+    TimelineRenderer,
+    _fit_text,
+    normalize_image_source,
+)
 
 
 def _cards(tmp_path: Path, count: int = 6) -> list[CardData]:
@@ -25,6 +34,63 @@ def _cards(tmp_path: Path, count: int = 6) -> list[CardData]:
 
 
 class RendererTests(unittest.TestCase):
+    def test_browser_image_url_is_normalized_and_loaded(self) -> None:
+        payload = io.BytesIO()
+        Image.new("RGB", (12, 8), (21, 99, 177)).save(payload, "PNG")
+        image_bytes = payload.getvalue()
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(image_bytes)))
+                self.end_headers()
+                self.wfile.write(image_bytes)
+
+            def log_message(self, _format: str, *_args) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            pasted = f'  "http://127.0.0.1:{server.server_port}/picture?id=42"  '
+            loaded = AssetCache().load(pasted)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.size, (12, 8))
+            self.assertEqual(loaded.getpixel((0, 0)), (21, 99, 177))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(
+            normalize_image_source("www.example.com/image.png"),
+            "https://www.example.com/image.png",
+        )
+
+    def test_compact_long_text_shrinks_and_wraps_without_early_ellipsis(self) -> None:
+        draw = ImageDraw.Draw(Image.new("RGB", (320, 180)))
+        text = "A compact model title with several words that should remain readable"
+        font, lines, size = _fit_text(draw, text, (0, 0, 200, 100), 40, 8, 3, True)
+        self.assertLess(size, 40)
+        self.assertEqual(len(lines), 3)
+        self.assertFalse(lines[-1].endswith("…"))
+        self.assertTrue(all(draw.textbbox((0, 0), line, font=font)[2] <= 200 for line in lines))
+
+        card = CardData(
+            uploaded="1234567890123456789012345678901234567890",
+            badge_label="EXTREMELY LONG UNIT LABEL",
+            title=text,
+        )
+        frame = TimelineRenderer().render(
+            [card, card, card, card],
+            8.0,
+            ProjectSettings(model_id=MODEL_CLASSIC),
+            size=(640, 360),
+        )
+        self.assertEqual(frame.size, (640, 360))
+
     def test_first_frame_is_black(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp_path = Path(directory)

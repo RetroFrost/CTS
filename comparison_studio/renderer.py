@@ -5,8 +5,10 @@ import re
 import threading
 import urllib.request
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import unquote, urlparse
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
@@ -74,6 +76,27 @@ REGULAR_FONT = _find_font(False)
 BOLD_FONT = _find_font(True)
 
 
+def normalize_image_source(source: str) -> str:
+    """Clean an image path/URL copied from a browser, spreadsheet, or Markdown."""
+    value = str(source or "").strip()
+    markdown = re.fullmatch(r"!?\[[^\]]*\]\((.+?)\)", value)
+    if markdown:
+        value = markdown.group(1).strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1].strip()
+    if value.startswith("<") and value.endswith(">"):
+        value = value[1:-1].strip()
+    if value.startswith("//"):
+        value = "https:" + value
+    elif re.match(r"^www\.", value, flags=re.IGNORECASE):
+        value = "https://" + value
+    return value
+
+
+def is_remote_image_source(source: str) -> bool:
+    return bool(re.match(r"^https?://", normalize_image_source(source), flags=re.IGNORECASE))
+
+
 class AssetCache:
     def __init__(self) -> None:
         self._images: dict[str, Image.Image] = {}
@@ -84,8 +107,19 @@ class AssetCache:
     def errors(self) -> dict[str, str]:
         return dict(self._errors)
 
+    def invalidate(self, source: str | None = None) -> None:
+        """Allow a changed or previously failed asset to be loaded again."""
+        with self._lock:
+            if source is None:
+                self._images.clear()
+                self._errors.clear()
+                return
+            key = normalize_image_source(source)
+            self._images.pop(key, None)
+            self._errors.pop(key, None)
+
     def load(self, source: str) -> Image.Image | None:
-        source = source.strip()
+        source = normalize_image_source(source)
         if not source:
             return None
         with self._lock:
@@ -94,15 +128,25 @@ class AssetCache:
             if source in self._errors:
                 return None
         try:
-            if re.match(r"^https?://", source, flags=re.IGNORECASE):
+            if is_remote_image_source(source):
                 request = urllib.request.Request(
                     source,
-                    headers={"User-Agent": "ComparisonTimelineStudio/0.2"},
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                            "Chrome/124.0 Safari/537.36 CTS/0.3.2"
+                        ),
+                        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                    },
                 )
                 with urllib.request.urlopen(request, timeout=15) as response:
-                    from io import BytesIO
-
-                    image = Image.open(BytesIO(response.read())).convert("RGB")
+                    payload = response.read(40 * 1024 * 1024 + 1)
+                    if len(payload) > 40 * 1024 * 1024:
+                        raise ValueError("remote image is larger than 40 MiB")
+                    image = Image.open(BytesIO(payload)).convert("RGB")
+            elif source.lower().startswith("file://"):
+                parsed = urlparse(source)
+                image = Image.open(Path(unquote(parsed.path))).convert("RGB")
             else:
                 image = Image.open(Path(source).expanduser()).convert("RGB")
             image.load()
@@ -120,7 +164,7 @@ class AssetCache:
             if not card.image.strip():
                 continue
             if self.load(card.image) is None:
-                reason = self._errors.get(card.image, "unknown image error")
+                reason = self._errors.get(normalize_image_source(card.image), "unknown image error")
                 errors.append(f"Card {index} ({card.title or 'untitled'}): {reason}")
         return errors
 
@@ -139,26 +183,54 @@ def _wrap_lines(
     words = re.split(r"\s+", text.strip()) if text.strip() else []
     if not words:
         return []
-    lines: list[str] = []
+
+    def width(value: str) -> int:
+        bounds = draw.textbbox((0, 0), value, font=font)
+        return bounds[2] - bounds[0]
+
+    def split_token(token: str) -> list[str]:
+        if width(token) <= max_width:
+            return [token]
+        pieces: list[str] = []
+        remaining = token
+        while remaining:
+            low, high, best = 1, len(remaining), 1
+            while low <= high:
+                middle = (low + high) // 2
+                if width(remaining[:middle]) <= max_width:
+                    best = middle
+                    low = middle + 1
+                else:
+                    high = middle - 1
+            pieces.append(remaining[:best])
+            remaining = remaining[best:]
+        return pieces
+
+    all_lines: list[str] = []
     current = ""
     for word in words:
-        candidate = f"{current} {word}".strip()
-        if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width:
-            current = candidate
-            continue
-        if current:
-            lines.append(current)
-        current = word
-        if len(lines) >= max_lines:
-            break
-    if current and len(lines) < max_lines:
-        lines.append(current)
-    if len(lines) == max_lines and words:
-        joined = " ".join(lines)
-        if len(joined) < len(" ".join(words)):
-            while lines[-1] and draw.textbbox((0, 0), lines[-1] + "…", font=font)[2] > max_width:
-                lines[-1] = lines[-1][:-1]
-            lines[-1] = lines[-1].rstrip() + "…"
+        pieces = split_token(word)
+        for piece_index, piece in enumerate(pieces):
+            separator = " " if current and piece_index == 0 else ""
+            candidate = current + separator + piece
+            if current and width(candidate) > max_width:
+                all_lines.append(current)
+                current = piece
+            else:
+                current = candidate
+            if piece_index < len(pieces) - 1:
+                all_lines.append(current)
+                current = ""
+    if current:
+        all_lines.append(current)
+
+    if len(all_lines) <= max_lines:
+        return all_lines
+    lines = all_lines[:max_lines]
+    last = lines[-1].rstrip()
+    while last and width(last + "…") > max_width:
+        last = last[:-1].rstrip()
+    lines[-1] = (last + "…") if last else "…"
     return lines
 
 
@@ -182,7 +254,10 @@ def _fit_text(
         line_height = draw.textbbox((0, 0), "Ag", font=font)[3]
         spacing = max(2, round(size * 0.10))
         total_height = len(lines) * line_height + (len(lines) - 1) * spacing
-        if total_height <= available_height:
+        # Prefer shrinking over prematurely truncating a long compact-card value.
+        # Ellipsis remains the final safety net once the configured minimum is reached.
+        truncated = bool(lines and lines[-1].endswith("…"))
+        if total_height <= available_height and not truncated:
             return font, lines, size
     font = _font(minimum_size, bold)
     return font, _wrap_lines(draw, text, font, available_width, max_lines), minimum_size
@@ -581,8 +656,8 @@ class TimelineRenderer:
             (round(width * 0.035), title_top + 3, width - round(width * 0.035), image_top - 3),
             (15, 15, 15, 255),
             maximum_size=round(height * 0.047),
-            minimum_size=round(height * 0.022),
-            max_lines=2,
+            minimum_size=max(8, round(height * 0.016)),
+            max_lines=3,
             bold=True,
         )
         source = self.assets.load(card.image)
@@ -590,7 +665,16 @@ class TimelineRenderer:
             fitted = ImageOps.fit(source, (width - divider * 2, height - image_top - divider), Image.Resampling.LANCZOS)
             layer.paste(fitted, (divider, image_top + divider))
 
-        badge = self._render_badge(card.uploaded, card.badge_label, width, top_height, badge_scale * 0.97)
+        badge = self._render_badge(
+            card.uploaded,
+            card.badge_label,
+            width,
+            top_height,
+            badge_scale * 0.97,
+            primary_max_lines=3,
+            secondary_max_lines=3,
+            minimum_text_scale=0.07,
+        )
         layer.alpha_composite(badge, ((width - badge.width) // 2, max(2, round((top_height - badge.height) * 0.50))))
         return layer
 
@@ -674,6 +758,9 @@ class TimelineRenderer:
         card_width: int,
         top_height: int,
         scale: float,
+        primary_max_lines: int = 2,
+        secondary_max_lines: int = 2,
+        minimum_text_scale: float = 0.10,
     ) -> Image.Image:
         badge_width = max(20, round(card_width * 0.69 * scale))
         badge_height = max(24, round(top_height * 0.73 * scale))
@@ -728,8 +815,8 @@ class TimelineRenderer:
             (inner_left, main_top, inner_right, main_bottom),
             (255, 250, 244, 255),
             maximum_size=round(badge_height * 0.25),
-            minimum_size=max(9, round(badge_height * 0.10)),
-            max_lines=2,
+            minimum_size=max(7, round(badge_height * minimum_text_scale)),
+            max_lines=primary_max_lines,
             bold=True,
         )
         if secondary:
@@ -739,8 +826,8 @@ class TimelineRenderer:
                 (inner_left, y0 + round(badge_height * 0.67), inner_right, y0 + round(badge_height * 0.88)),
                 (255, 248, 240, 255),
                 maximum_size=round(badge_height * 0.13),
-                minimum_size=max(8, round(badge_height * 0.09)),
-                max_lines=2,
+                minimum_size=max(7, round(badge_height * min(0.09, minimum_text_scale))),
+                max_lines=secondary_max_lines,
                 bold=True,
             )
         return canvas

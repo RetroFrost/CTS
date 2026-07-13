@@ -68,7 +68,12 @@ from .data import (
     save_project_json,
 )
 from .exporter import ExportWorker
-from .renderer import AssetCache, TimelineRenderer
+from .renderer import (
+    AssetCache,
+    TimelineRenderer,
+    is_remote_image_source,
+    normalize_image_source,
+)
 from .strip_splitter import (
     SplitAnalysis,
     analyze_strip,
@@ -79,24 +84,32 @@ from .strip_splitter import (
 
 
 APP_STYLE = """
-QWidget { background:#0d1119; color:#eef2f7; font-family:"Inter","Noto Sans",sans-serif; font-size:13px; }
-QMainWindow { background:#090d14; }
-QFrame#panel { background:#121823; border:1px solid #222d3c; border-radius:12px; }
-QFrame#previewFrame { background:#05060f; border:1px solid #263244; border-radius:10px; }
-QPushButton { background:#1b2533; border:1px solid #304057; border-radius:7px; padding:8px 12px; font-weight:600; }
-QPushButton:hover { background:#243247; border-color:#4e6a91; }
+QWidget { background:#0b0f17; color:#eef2f7; font-family:"Inter","Noto Sans",sans-serif; font-size:13px; }
+QMainWindow { background:#080b12; }
+QFrame#topBar { background:#111824; border:1px solid #202b3b; border-radius:14px; }
+QLabel#appMark { background:#6d55f7; color:white; border-radius:10px; padding:8px 10px; font-size:15px; font-weight:900; }
+QLabel#eyebrow { color:#8e9aac; font-size:11px; font-weight:800; }
+QLabel#muted { color:#8995a6; }
+QFrame#panel { background:#111722; border:1px solid #202b3a; border-radius:14px; }
+QFrame#previewFrame { background:#05060f; border:1px solid #2a374a; border-radius:11px; }
+QFrame#controlBar,QFrame#settingsBar { background:#0c121c; border:1px solid #202b3b; border-radius:10px; }
+QPushButton { background:#192332; border:1px solid #2b3a50; border-radius:8px; padding:8px 12px; font-weight:650; }
+QPushButton:hover { background:#223148; border-color:#516b91; }
 QPushButton:pressed { background:#16202d; }
 QPushButton:disabled { color:#6f7a88; background:#151b24; border-color:#222a35; }
-QPushButton#primary { background:#6d55f7; border-color:#8d7bff; color:white; }
-QPushButton#primary:hover { background:#7b65ff; }
+QPushButton#toolbar { background:transparent; border-color:#2a3749; }
+QPushButton#primary { background:#6d55f7; border-color:#8d7bff; color:white; padding-left:16px; padding-right:16px; }
+QPushButton#primary:hover { background:#7b65ff; border-color:#a194ff; }
 QPushButton#danger { color:#ff9eaa; }
-QLineEdit,QTableWidget,QComboBox,QSpinBox,QDoubleSpinBox { background:#0b1018; border:1px solid #2b3748; border-radius:7px; selection-background-color:#5f4bd2; selection-color:white; }
+QLineEdit,QTableWidget,QComboBox,QSpinBox,QDoubleSpinBox { background:#090e16; border:1px solid #293648; border-radius:8px; selection-background-color:#5f4bd2; selection-color:white; }
 QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox { padding:6px 8px; }
 QTableWidget { gridline-color:#202a38; }
 QHeaderView::section { background:#192231; color:#dce5ef; border:0; border-right:1px solid #2a3749; border-bottom:1px solid #2a3749; padding:8px; font-weight:700; }
 QTabWidget::pane { border:0; }
-QTabBar::tab { background:#111824; color:#9eabba; padding:10px 15px; border:1px solid #222e3e; border-bottom:0; }
-QTabBar::tab:selected { background:#1b2533; color:#fff; }
+QTabBar::tab { background:#0d131d; color:#96a3b4; padding:11px 18px; border:1px solid #222e3e; border-bottom:0; }
+QTabBar::tab:first { border-top-left-radius:8px; }
+QTabBar::tab:last { border-top-right-radius:8px; }
+QTabBar::tab:selected { background:#202a3a; color:#fff; border-top:2px solid #806cff; }
 QGroupBox { border:1px solid #273447; border-radius:8px; margin-top:12px; padding-top:12px; font-weight:700; }
 QSlider::groove:horizontal { height:5px; background:#263244; border-radius:2px; }
 QSlider::handle:horizontal { background:#806cff; width:16px; margin:-6px 0; border-radius:8px; }
@@ -105,7 +118,8 @@ QProgressBar { background:#151d29; border:1px solid #2d3a4d; border-radius:7px; 
 QProgressBar::chunk { background:#6d55f7; border-radius:6px; }
 QCheckBox { spacing:8px; }
 QCheckBox::indicator { width:18px; height:18px; }
-QSplitter::handle { background:transparent; width:8px; }
+QSplitter::handle { background:#151e2b; width:6px; margin:8px 2px; border-radius:3px; }
+QStatusBar { background:#0c111a; color:#93a0b2; border-top:1px solid #1d2735; }
 """
 
 
@@ -716,7 +730,7 @@ class MainWindow(QMainWindow):
         # constructed. Ignore those signals until every cross-tab dependency exists.
         self._ui_ready = False
         self._suspend_model_schema = False
-        self.setWindowTitle("Comparison Timeline Studio")
+        self.setWindowTitle("CTS — Comparison Timeline Studio")
         self.resize(1580, 940)
         self.setMinimumSize(1160, 740)
         self.renderer = TimelineRenderer(AssetCache())
@@ -736,7 +750,7 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout(central)
         root.setContentsMargins(18, 16, 18, 18)
         root.setSpacing(14)
-        root.addLayout(self._build_header())
+        root.addWidget(self._build_header())
         root.addWidget(self._build_content(), 1)
         self.setCentralWidget(central)
         self._ui_ready = True
@@ -750,13 +764,22 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Ready · Reference Detail fields are prepared")
         self.update_preview()
 
-    def _build_header(self) -> QHBoxLayout:
-        row = QHBoxLayout()
+    def _build_header(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("topBar")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(14, 11, 14, 11)
+        row.setSpacing(10)
+        mark = QLabel("CTS")
+        mark.setObjectName("appMark")
+        mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        row.addWidget(mark)
         title_box = QVBoxLayout()
+        title_box.setSpacing(1)
         title = QLabel("Comparison Timeline Studio")
-        title.setStyleSheet("font-size:24px; font-weight:800;")
-        subtitle = QLabel("Model-based comparison videos · arbitrary data · multi-track soundtrack")
-        subtitle.setStyleSheet("color:#8f9bad;")
+        title.setStyleSheet("font-size:20px; font-weight:850;")
+        subtitle = QLabel("Build, preview, and export data-driven comparison videos")
+        subtitle.setObjectName("muted")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         row.addLayout(title_box)
@@ -764,6 +787,8 @@ class MainWindow(QMainWindow):
         open_button = QPushButton("Open project")
         save_button = QPushButton("Save project")
         export_button = QPushButton("Export MP4")
+        open_button.setObjectName("toolbar")
+        save_button.setObjectName("toolbar")
         export_button.setObjectName("primary")
         open_button.clicked.connect(self.open_project)
         save_button.clicked.connect(self.save_project)
@@ -771,7 +796,7 @@ class MainWindow(QMainWindow):
         row.addWidget(open_button)
         row.addWidget(save_button)
         row.addWidget(export_button)
-        return row
+        return bar
 
     def _build_content(self) -> QSplitter:
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -788,12 +813,24 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
+        preview_heading = QHBoxLayout()
+        preview_title = QLabel("LIVE PREVIEW")
+        preview_title.setObjectName("eyebrow")
+        preview_hint = QLabel("Click any visible field to edit it in place")
+        preview_hint.setObjectName("muted")
+        preview_heading.addWidget(preview_title)
+        preview_heading.addStretch()
+        preview_heading.addWidget(preview_hint)
+        layout.addLayout(preview_heading)
         self.preview = PreviewWidget()
         self.preview.field_clicked.connect(self._preview_field_clicked)
         self.preview.inline_committed.connect(self._commit_direct_edit)
         self.preview.inline_canceled.connect(self.update_preview)
         layout.addWidget(self.preview, 1)
-        playback = QHBoxLayout()
+        control_bar = QFrame()
+        control_bar.setObjectName("controlBar")
+        playback = QHBoxLayout(control_bar)
+        playback.setContentsMargins(8, 7, 8, 7)
         add_card_button = QPushButton("＋ Add card")
         add_card_button.clicked.connect(self._add_card_from_preview)
         self.play_button = QPushButton("▶ Play")
@@ -807,8 +844,12 @@ class MainWindow(QMainWindow):
         playback.addWidget(self.play_button)
         playback.addWidget(self.slider, 1)
         playback.addWidget(self.time_label)
-        layout.addLayout(playback)
-        duration_row = QHBoxLayout()
+        layout.addWidget(control_bar)
+
+        settings_bar = QFrame()
+        settings_bar.setObjectName("settingsBar")
+        duration_row = QHBoxLayout(settings_bar)
+        duration_row.setContentsMargins(10, 7, 10, 7)
         label = QLabel("Video length")
         label.setStyleSheet("font-weight:700;")
         self.auto_length = QCheckBox("Automatic")
@@ -825,9 +866,6 @@ class MainWindow(QMainWindow):
         duration_row.addWidget(self.auto_length)
         duration_row.addWidget(self.custom_length)
         duration_row.addWidget(self.duration_info, 1)
-        layout.addLayout(duration_row)
-
-        animation_row = QHBoxLayout()
         animation_label = QLabel("Animation")
         animation_label.setStyleSheet("font-weight:700;")
         self.hexagons_bounce = QCheckBox("Hexagons bounce")
@@ -836,10 +874,9 @@ class MainWindow(QMainWindow):
             "Animate the red value badges during entrances and horizontal scrolling."
         )
         self.hexagons_bounce.toggled.connect(self._data_changed)
-        animation_row.addWidget(animation_label)
-        animation_row.addWidget(self.hexagons_bounce)
-        animation_row.addStretch()
-        layout.addLayout(animation_row)
+        duration_row.addWidget(animation_label)
+        duration_row.addWidget(self.hexagons_bounce)
+        layout.addWidget(settings_bar)
         return panel
 
     def _build_editor_panel(self) -> QWidget:
@@ -847,6 +884,15 @@ class MainWindow(QMainWindow):
         panel.setObjectName("panel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(10, 10, 10, 10)
+        editor_heading = QHBoxLayout()
+        editor_title = QLabel("PROJECT WORKSPACE")
+        editor_title.setObjectName("eyebrow")
+        editor_hint = QLabel("Data · Models · Soundtrack")
+        editor_hint.setObjectName("muted")
+        editor_heading.addWidget(editor_title)
+        editor_heading.addStretch()
+        editor_heading.addWidget(editor_hint)
+        layout.addLayout(editor_heading)
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_spreadsheet_tab(), "Spreadsheet")
         self.tabs.addTab(self._build_models_tab(), "Models")
@@ -1302,11 +1348,25 @@ class MainWindow(QMainWindow):
     def _show_direct_image_menu(self, card_index: int, column: int, header: str, value: str) -> None:
         menu = QMenu(self)
         choose = menu.addAction("Choose image file…")
+        paste_url = menu.addAction("Paste image URL")
         type_path = menu.addAction("Type image path or URL…")
+        menu.addSeparator()
         clear = menu.addAction("Clear image")
         selected = menu.exec(QCursor.pos())
         if selected is choose:
             self._choose_image_for_row(card_index, column)
+        elif selected is paste_url:
+            source = normalize_image_source(QApplication.clipboard().text())
+            if not is_remote_image_source(source):
+                show_error(
+                    self,
+                    "The clipboard does not contain an HTTP(S) image URL.",
+                    "Copy the image address from your browser, then choose Paste image URL again.",
+                )
+                return
+            self.renderer.assets.invalidate(source)
+            self._set_direct_value(card_index, column, source)
+            self.statusBar().showMessage(f"Pasted image URL into card {card_index + 1}", 4500)
         elif selected is type_path:
             settings = self.project_settings()
             region = self.renderer.editor_region(
@@ -1324,6 +1384,8 @@ class MainWindow(QMainWindow):
         if not header or header not in self.table.headers():
             return
         column = self.table.headers().index(header)
+        if role == "image":
+            value = normalize_image_source(value)
         self._set_direct_value(card_index, column, value)
         self.statusBar().showMessage(f"Updated card {card_index + 1} · {header}", 3500)
 
@@ -1360,6 +1422,8 @@ class MainWindow(QMainWindow):
         if item is None:
             item = QTableWidgetItem()
             self.table.setItem(card_index, column, item)
+        self.renderer.assets.invalidate(item.text())
+        self.renderer.assets.invalidate(value)
         item.setText(value)
         self.table.setCurrentCell(card_index, column)
         self.update_preview()

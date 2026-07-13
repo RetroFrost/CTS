@@ -17,6 +17,7 @@ Comparison videos are visually repetitive but surprisingly annoying to build by 
 CTS keeps the design consistent while making the content fast to edit:
 
 - Click a badge, title, description, image, or artwork directly in the preview.
+- Paste a copied image URL straight into a card from its image menu.
 - Import arbitrary `.xlsx` tables or paste spreadsheet cells with Ctrl+V.
 - Switch between three built-in visual models without rebuilding the project.
 - Split one large image strip into card artwork using divider detection.
@@ -38,6 +39,8 @@ CTS never invents card content.
 
 Switching models migrates compatible values and preserves non-empty extra spreadsheet
 fields. The in-app field guide explains exactly where every value appears.
+Classic Compact automatically shrinks and wraps long values, units, and titles—including
+continuous strings without spaces—so text remains inside the card.
 
 ## Direct editing
 
@@ -48,7 +51,7 @@ floating input box.
 - Click the red badge to edit its large value or smaller label/unit.
 - Click the white strip to edit the title.
 - Click the muted panel in Reference Detail to edit the description.
-- Click an image area to choose a file, type a local path/URL, or clear it.
+- Click an image area to choose a file, paste an image URL, type a local path/URL, or clear it.
 - Press **Enter** to apply an inline edit or **Esc** to cancel it.
 - Click **Add card** beside playback to create and reveal another card.
 
