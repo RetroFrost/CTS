@@ -1,6 +1,6 @@
 # CTS — Comparison Timeline Studio
 
-![Version](https://img.shields.io/badge/version-0.3.2-6d55f7)
+![Version](https://img.shields.io/badge/version-0.3.3-6d55f7)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)
 ![Qt](https://img.shields.io/badge/UI-PySide6-41cd52)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
@@ -179,6 +179,11 @@ tools/                Visual and FFmpeg QA scripts
 The project wiki is being built at the [CTS Wiki](https://github.com/RetroFrost/CTS/wiki).
 Use it for longer tutorials, model-specific examples, spreadsheet templates, and release
 notes as they are added.
+
+## Roadmap
+
+The 0.3.x series continues to refine the current editor. **CTS 4.0** is reserved for a
+full application rewrite.
 
 ## License
 

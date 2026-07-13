@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comparison-timeline-studio"
-version = "0.3.2"
+version = "0.3.3"
 description = "Model-based spreadsheet comparison video editor with soundtrack mixing"
 readme = "README.md"
 requires-python = ">=3.10"

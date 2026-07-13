@@ -1,13 +1,16 @@
 # Changelog
 
-## 0.3.2
+## 0.3.3
 
-- Fixed the in-place preview editor crash caused by `CardData` not being imported in the UI module.
-- Restored direct editing for badge, title, description, and typed image-path fields.
 - Redesigned the workspace with a compact application bar, clearer panel headings, and grouped preview controls.
 - Made Classic Compact shrink, wrap, and safely ellipsize long titles, values, units, and unbroken strings.
 - Added **Paste image URL** to the direct image menu and normalized URLs copied with quotes, Markdown wrappers, protocol-relative prefixes, or `www.` prefixes.
 - Improved remote-image compatibility with browser-like request headers, query-string URLs, `file://` URLs, and readable size/error handling.
+
+## 0.3.2
+
+- Fixed the in-place preview editor crash caused by `CardData` not being imported in the UI module.
+- Restored direct editing for badge, title, description, and typed image-path fields.
 
 ## 0.3.1
 

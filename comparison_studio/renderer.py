@@ -134,7 +134,7 @@ class AssetCache:
                     headers={
                         "User-Agent": (
                             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                            "Chrome/124.0 Safari/537.36 CTS/0.3.2"
+                            "Chrome/124.0 Safari/537.36 CTS/0.3.3"
                         ),
                         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
                     },
