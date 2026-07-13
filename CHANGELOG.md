@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- Fixed the in-place preview editor crash caused by `CardData` not being imported in the UI module.
+- Restored direct editing for badge, title, description, and typed image-path fields.
+
 ## 0.3.1
 
 - Replaced the floating direct-edit input with a transparent, borderless caret positioned inside the exact rendered field.

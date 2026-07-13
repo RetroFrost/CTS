@@ -54,6 +54,7 @@ from .data import (
     REFERENCE_REVEAL_SECONDS,
     REFERENCE_SCROLL_SECONDS,
     AudioTrack,
+    CardData,
     FriendlyError,
     ProjectSettings,
     SpreadsheetData,
