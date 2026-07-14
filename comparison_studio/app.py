@@ -6,7 +6,7 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
-from .interaction_runtime import InteractionMainWindow
+from .live_transform import LiveTransformMainWindow
 from .premiere_ui import PREMIERE_STYLE
 
 
@@ -32,6 +32,6 @@ def main() -> int:
     app.setStyle("Fusion")
     app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
-    window = InteractionMainWindow()
+    window = LiveTransformMainWindow()
     window.show()
     return app.exec()
