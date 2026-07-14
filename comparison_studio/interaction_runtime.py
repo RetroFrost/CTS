@@ -118,6 +118,7 @@ class InteractionMainWindow(TransformLayoutFixedMainWindow):
             save_project_json(project_path, data, self.project_settings(), self.soundtrack_table.tracks())
             payload = json.loads(project_path.read_text(encoding="utf-8"))
             payload["transform_overrides"] = self._encoded_transforms(self.transform_overrides)
+            payload["transform_space"] = getattr(self, "transform_space", "screen")
             project_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
             self.table.set_data(data)
             self.statusBar().showMessage(f"Saved {project_path.name} with direct-layout transforms", 5000)
@@ -132,6 +133,7 @@ class InteractionMainWindow(TransformLayoutFixedMainWindow):
             return
         try:
             payload = json.loads(Path(path).read_text(encoding="utf-8"))
+            self._loaded_transform_space = str(payload.get("transform_space", "screen"))
             document, extras = _load_studio_document(path)
             self._suspend_model_schema = True
             self.table.set_data(document.data)
