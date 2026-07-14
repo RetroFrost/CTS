@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QFormLayout, QLabel, QSizePolicy, QWidget
 
 from .iteration_fixes import IteratedStudioMainWindow
@@ -10,6 +11,7 @@ class FinalStudioMainWindow(IteratedStudioMainWindow):
 
     def _build_models_tab(self) -> QWidget:
         scroll = super()._build_models_tab()
+        scroll.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         page = scroll.widget()
         if page is None:
             return scroll
@@ -36,5 +38,8 @@ class FinalStudioMainWindow(IteratedStudioMainWindow):
             combo.setMaximumWidth(16777215)
             combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        scroll.horizontalScrollBar().setValue(0)
+        bar = scroll.horizontalScrollBar()
+        bar.setValue(0)
+        bar.rangeChanged.connect(lambda _minimum, _maximum, target=bar: target.setValue(0))
+        bar.valueChanged.connect(lambda value, target=bar: target.setValue(0) if value else None)
         return scroll
