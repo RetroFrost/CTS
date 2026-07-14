@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.5
+
+- Made the in-place text indicator sample the rendered field beneath it.
+- Added automatic high-contrast cyan or violet editor text, caret, selection, and underline colors.
+- Kept the editor transparent and embedded directly in the card without restoring a popup box.
+
 ## 0.3.4
 
 - Added a screen-aware startup size that fits inside the desktop's available geometry.

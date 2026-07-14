@@ -521,7 +521,7 @@ class PreviewWidget(QFrame):
         self._editor_role = role
         self._editor_active = True
         self._editor.setGeometry(x, y, editor_width, editor_height)
-        color = "#fffaf4" if role.startswith("badge_") or role == "description" else "#111113"
+        color, selected_color = self._inline_indicator_colors(normalized_region)
         weight = 800 if role != "description" else 500
         size_factor = {
             "badge_primary": 0.46,
@@ -533,9 +533,10 @@ class PreviewWidget(QFrame):
         font_size = max(10, min(40, round(editor_height * size_factor)))
         self._editor.setStyleSheet(
             "QLineEdit {"
-            "background:transparent; border:none; padding:0;"
+            "background:transparent; border:none;"
+            f"border-bottom:2px solid {color}; padding:0 2px;"
             f"color:{color}; font-size:{font_size}px; font-weight:{weight};"
-            "selection-background-color:#806cff; selection-color:white;"
+            f"selection-background-color:{color}; selection-color:{selected_color};"
             "}"
         )
         alignment = (
@@ -550,6 +551,31 @@ class PreviewWidget(QFrame):
         self._editor.raise_()
         self._editor.setFocus(Qt.FocusReason.MouseFocusReason)
         self._editor.setCursorPosition(len(value))
+
+    def _inline_indicator_colors(
+        self,
+        normalized_region: tuple[float, float, float, float],
+    ) -> tuple[str, str]:
+        """Choose a vivid caret/text color from the rendered field beneath it."""
+        if self._image is None or self._image.isNull():
+            return "#00efff", "#071015"
+        nx, ny, nw, nh = normalized_region
+        luminances: list[float] = []
+        for row in range(1, 5):
+            for column in range(1, 6):
+                sample_x = nx + nw * column / 6
+                sample_y = ny + nh * row / 5
+                x = max(0, min(self._image.width() - 1, round(sample_x * self._image.width())))
+                y = max(0, min(self._image.height() - 1, round(sample_y * self._image.height())))
+                pixel = self._image.pixelColor(x, y)
+                luminances.append(
+                    0.2126 * pixel.red() + 0.7152 * pixel.green() + 0.0722 * pixel.blue()
+                )
+        luminances.sort()
+        median = luminances[len(luminances) // 2]
+        if median >= 145:
+            return "#5521b5", "#ffffff"
+        return "#00efff", "#071015"
 
     def cancel_inline_edit(self) -> None:
         was_active = self._editor_active

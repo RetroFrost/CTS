@@ -1,6 +1,6 @@
 # CTS — Comparison Timeline Studio
 
-![Version](https://img.shields.io/badge/version-0.3.4-6d55f7)
+![Version](https://img.shields.io/badge/version-0.3.5-6d55f7)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)
 ![Qt](https://img.shields.io/badge/UI-PySide6-41cd52)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
@@ -50,7 +50,8 @@ continuous strings without spaces—so text remains inside the card.
 
 The preview is the main editor. Text editing is truly in-place: the rendered value is
 temporarily removed and a borderless caret appears inside that exact visual region—no
-floating input box.
+floating input box. The active text and underline automatically switch between vivid
+cyan and deep violet so the typing indicator remains visible over dark or light fields.
 
 - Click the red badge to edit its large value or smaller label/unit.
 - Click the white strip to edit the title.
