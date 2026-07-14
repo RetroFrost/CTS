@@ -6,8 +6,15 @@
 - Moved project data, visual models, and soundtrack controls into a compact Project panel beside a larger Program Monitor.
 - Made **Click to Insert Data** the primary action without changing the existing clipboard-table parser or spreadsheet workflow.
 - Restyled playback, sequence length, animation controls, tables, tabs, dialogs, menus, and export actions with an original dark editing-suite design.
+- Added five new Illustrated Cards backgrounds alongside Beach: Sunset, Forest, Lavender, Night, and Blueprint Grid.
+- Added a project-wide system font picker used by preview and export.
+- Added manual image scaling from 50% to 200% for Reference Detail, Illustrated Cards, and Classic Compact.
+- Added manual Illustrated Cards hexagon scaling from 60% to 160%.
+- Added optional text-aware Illustrated sizing that gives longer values more hexagon room and slightly adjusts artwork scale.
+- Preserved transparent image alpha so selected Illustrated backgrounds can remain visible behind artwork.
+- Saved and restored the new visual controls in CTS project files while keeping older 0.3.5 projects compatible.
 - Kept the layout responsive and practical on 1366×768 displays.
-- Left rendering, direct editing, model migration, image handling, soundtrack mixing, project files, and MP4 export on the proven 0.3.5 implementation.
+- Left the 0.3.5 data workflow, direct editing, model migration, soundtrack mixing, timing, and MP4 export behavior intact.
 
 ## 0.3.5
 
