@@ -29,6 +29,10 @@ CTS keeps the design consistent while making the content fast to edit:
 - Paste a copied image URL straight into a card from its image menu.
 - Import arbitrary `.xlsx` tables or paste spreadsheet cells with Ctrl+V.
 - Switch between three built-in visual models without rebuilding the project.
+- Choose a project-wide output font from the fonts installed on the system.
+- Resize images manually in every visual model.
+- Choose Beach or five additional built-in Illustrated Cards backgrounds.
+- Resize Illustrated hexagons manually or let typed text adjust artwork and badge sizing automatically.
 - Split one large image strip into card artwork using divider detection.
 - Layer, trim, delay, loop, fade, and mix multiple soundtrack files.
 - Preview the exact deterministic renderer used for export.
@@ -50,6 +54,24 @@ Switching models migrates compatible values and preserves non-empty extra spread
 fields. The in-app field guide explains exactly where every value appears.
 Classic Compact automatically shrinks and wraps long values, units, and titles—including
 continuous strings without spaces—so text remains inside the card.
+
+## 0.4.0 visual controls
+
+The Models panel includes visual settings that affect both the Program Monitor and MP4
+export:
+
+- **Font** selects from the fonts installed on the computer, with CTS Default as the safe fallback.
+- **Illustrated background** offers Beach, Sunset, Forest, Lavender, Night, and Blueprint Grid.
+- **Image scale** manually zooms artwork from 50% to 200% in every model.
+- **Illustrated hexagon** manually scales the red badge from 60% to 160%.
+- **Auto-size artwork and hexagon from typed value** gives longer badge text more room and makes a small compensating artwork adjustment.
+
+Transparent PNG/WebP artwork keeps its alpha in 0.4.0, so a selected Illustrated
+background can remain visible behind the character or object. Opaque full-card artwork
+still covers the background at 100% scale, matching previous behavior.
+
+These visual settings are saved in `.cts.json` project files. Older 0.3.5 projects open
+with the safe defaults: CTS Default font, Beach background, and 100% image/hexagon scale.
 
 ## Direct editing
 
@@ -176,9 +198,10 @@ FFmpeg smoke tests validate both silent and mixed H.264/AAC output.
 comparison_studio/
   app.py             Application entry point
   premiere_ui.py     0.4.0 editing-workspace shell and styling
+  studio_ui.py       0.4.0 backgrounds, fonts, scaling, and enhanced renderer
   ui.py              Proven 0.3.5 widgets, behavior, and direct editing
   data.py            Tables, models, projects, and XLSX import
-  renderer.py        Deterministic frame renderer and hit-testing
+  renderer.py        Deterministic 0.3.5 renderer and hit-testing
   exporter.py        Progress-aware FFmpeg export worker
   soundtrack.py      Audio probing and filter graph construction
   strip_splitter.py  Divider detection and image extraction
@@ -195,9 +218,9 @@ notes as they are added.
 ## Roadmap
 
 CTS 0.4.0 deliberately keeps the 0.3.5 engine instead of replacing proven behavior. The
-release focuses on the editing-workspace redesign and keeps the fast automated data-first
-workflow at the center. A future larger rewrite can still add transparent artwork and
-selectable built-in Illustrated Cards backgrounds without making basic generation harder.
+release focuses on the editing-workspace redesign, visual customization, and the fast
+automated data-first workflow. More editor controls can be added as optional layers
+without making basic comparison generation harder.
 
 ## License
 
