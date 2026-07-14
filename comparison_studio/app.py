@@ -6,7 +6,7 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
-from .iteration_fixes import IteratedStudioMainWindow
+from .layout_hotfix import FinalStudioMainWindow
 from .premiere_ui import PREMIERE_STYLE
 
 
@@ -32,6 +32,6 @@ def main() -> int:
     app.setStyle("Fusion")
     app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
-    window = IteratedStudioMainWindow()
+    window = FinalStudioMainWindow()
     window.show()
     return app.exec()
