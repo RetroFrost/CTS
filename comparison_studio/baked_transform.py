@@ -17,6 +17,7 @@ from .interaction_runtime import RuntimeTransformRenderer
 from .optional_hexagons import OptionalHexagonRenderer
 from .reselect_fix import ReselectAwareRenderer, ReselectFixedMainWindow
 from .studio_ui import StudioAssetCache
+from .ui import show_error
 
 
 class BakedTransformRenderer(ReselectAwareRenderer):
@@ -67,6 +68,7 @@ class BakedTransformRenderer(ReselectAwareRenderer):
         normalized_y: float,
     ):
         del output_time
+        self._studio_settings = settings
         for (card_index, role), raw_box in reversed(list(self.transforms.items())):
             if not (0 <= card_index < len(cards)):
                 continue
@@ -87,6 +89,7 @@ class BakedTransformRenderer(ReselectAwareRenderer):
         card_index: int,
         role: str,
     ):
+        self._studio_settings = settings
         key = (card_index, role)
         transformed = self.transforms.get(key)
         if transformed is not None and self._valid_baked_path(key) is not None:
@@ -132,6 +135,7 @@ class BakedTransformRenderer(ReselectAwareRenderer):
         canvas.alpha_composite(layer.crop(crop), (visible_left, visible_top))
 
     def render(self, cards, output_time: float, settings, size=None):
+        self._studio_settings = settings
         active: list[tuple[int, str, TransformBox, Path]] = []
         for (card_index, role), target in self.transforms.items():
             if not (0 <= card_index < len(cards)):
@@ -244,6 +248,7 @@ class BakedTransformMainWindow(ReselectFixedMainWindow):
         card_index: int,
         role: str,
     ) -> tuple[float, TransformBox] | None:
+        renderer._studio_settings = settings
         duration = max(0.0, float(settings.duration(len(cards))))
         current = max(0.0, min(duration, float(self.position_seconds)))
         first_partial: tuple[float, TransformBox] | None = None
@@ -283,6 +288,7 @@ class BakedTransformMainWindow(ReselectFixedMainWindow):
 
         settings = self.project_settings()
         renderer = OptionalHexagonRenderer(StudioAssetCache(), {})
+        renderer._studio_settings = settings
         located = self._find_source_time(renderer, cards, settings, card_index, role)
         if located is None:
             return None
@@ -382,6 +388,12 @@ class BakedTransformMainWindow(ReselectFixedMainWindow):
         self._baked_source_layers.clear()
         failed: list[TransformKey] = []
         for key, box in list(self.transform_overrides.items()):
+            old_path = self.baked_transform_files.pop(key, "")
+            if old_path:
+                try:
+                    Path(old_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
             if not self._bake_transform(key, box):
                 failed.append(key)
 
@@ -412,6 +424,25 @@ class BakedTransformMainWindow(ReselectFixedMainWindow):
         ]
         if missing:
             self._rebake_all_transforms()
+
+        still_missing = [
+            key
+            for key in self.transform_overrides
+            if not self.baked_transform_files.get(key)
+            or not Path(self.baked_transform_files[key]).is_file()
+        ]
+        if still_missing:
+            details = "\n".join(
+                f"Card {card_index + 1}: {role.replace('_', ' ')}"
+                for card_index, role in still_missing
+            )
+            show_error(
+                self,
+                "Could not prepare transformed objects for export.",
+                "Move, resize, or reset the listed objects, then export again.",
+                details,
+            )
+            return
         super().export_video()
 
     def _cleanup_transform_cache(self) -> None:
