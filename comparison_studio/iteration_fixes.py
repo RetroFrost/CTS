@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
@@ -25,7 +25,7 @@ from .studio_ui import (
 
 
 class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
-    """Studio renderer with text-measured Illustrated badge auto-sizing."""
+    """Studio renderer with a text-fitted Illustrated hexagon."""
 
     @staticmethod
     def _balanced_line_width(draw: ImageDraw.ImageDraw, text: str, font, lines: int) -> float:
@@ -42,37 +42,178 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
         widest_word = max(draw.textbbox((0, 0), word, font=font)[2] for word in words)
         return max(widest_word, (total + spaces) / max(1, lines))
 
-    def _required_illustrated_badge_scale(self, card, width: int, top_height: int) -> float:
-        """Return a minimum badge scale that keeps typed values visibly readable.
+    @classmethod
+    def _choose_line_count(
+        cls,
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        font,
+        maximum_lines: int,
+        maximum_inner_width: float,
+    ) -> tuple[int, float]:
+        """Choose the fewest lines that fit without shrinking the intended font."""
+        text = text.strip()
+        if not text:
+            return 1, 0.0
+        for lines in range(1, maximum_lines + 1):
+            width = cls._balanced_line_width(draw, text, font, lines)
+            if width <= maximum_inner_width:
+                return lines, width
+        return maximum_lines, cls._balanced_line_width(draw, text, font, maximum_lines)
 
-        Unlike the first implementation, this is a minimum final scale. It is not
-        multiplied by the focus/bounce scale, so a long value cannot become tiny merely
-        because its card is away from the current animation focus.
+    def _adaptive_badge_geometry(
+        self,
+        card,
+        card_width: int,
+        top_height: int,
+        animated_scale: float,
+        manual_scale: float,
+    ) -> tuple[int, int, int, int, int, int]:
+        """Measure text and return independent badge width/height plus text settings.
+
+        Auto sizing is deliberately non-uniform: long values primarily widen the
+        hexagon. Height grows only when the chosen line count actually needs it.
         """
-        primary = card.uploaded.strip()
-        secondary = card.badge_label.strip()
-        if not primary and not secondary:
-            return 0.0
+        # Keep a readable baseline while still allowing focused badges to grow.
+        motion_scale = max(0.87, animated_scale)
+        base_scale = motion_scale * manual_scale
+        base_width = max(20, round(card_width * 0.69 * base_scale))
+        base_height = max(24, round(top_height * 0.73 * base_scale))
 
         probe = Image.new("RGB", (4, 4))
         draw = ImageDraw.Draw(probe)
-        primary_font = renderer_module._font(max(10, round(top_height * 0.25)), True)
-        secondary_font = renderer_module._font(max(8, round(top_height * 0.13)), True)
+        primary_size = max(11, round(base_height * 0.25))
+        secondary_size = max(8, round(base_height * 0.13))
+        primary_font = renderer_module._font(primary_size, True)
+        secondary_font = renderer_module._font(secondary_size, True)
 
-        primary_lines = 1 if len(primary) <= 8 else 2 if len(primary) <= 24 else 3
-        secondary_lines = 1 if len(secondary) <= 15 else 2
-        primary_width = self._balanced_line_width(draw, primary, primary_font, primary_lines)
-        secondary_width = self._balanced_line_width(draw, secondary, secondary_font, secondary_lines)
+        # The badge renderer reserves about 86% of the polygon width for text.
+        maximum_body_width = max(base_width, round(card_width * 0.93 * max(1.0, manual_scale)))
+        maximum_inner_width = maximum_body_width * 0.86
+        primary_lines, primary_width = self._choose_line_count(
+            draw,
+            card.uploaded,
+            primary_font,
+            3,
+            maximum_inner_width,
+        )
+        secondary_lines, secondary_width = self._choose_line_count(
+            draw,
+            card.badge_label,
+            secondary_font,
+            2,
+            maximum_inner_width,
+        )
 
-        # _render_badge reserves roughly 86% of the polygon width for text.
-        base_inner_width = max(1.0, width * 0.69 * 0.86)
-        measured = max(primary_width, secondary_width) / base_inner_width
+        required_inner_width = max(primary_width, secondary_width)
+        required_body_width = round(required_inner_width / 0.82) if required_inner_width else base_width
+        badge_width = max(base_width, min(maximum_body_width, required_body_width))
 
-        # Character count supplements font measurement for very long wrapped phrases.
-        length_floor = 0.94 + max(0, len(primary) - 5) * 0.018
+        # Two lines need a little more vertical room, but nowhere near a full
+        # uniform zoom. This is what keeps a long value from producing a giant badge.
+        height_factor = 1.0 + 0.14 * max(0, primary_lines - 1)
+        height_factor += 0.07 * max(0, secondary_lines - 1)
+        maximum_body_height = max(base_height, round(top_height * 0.94 * max(1.0, manual_scale)))
+        badge_height = min(maximum_body_height, max(base_height, round(base_height * height_factor)))
+
+        return (
+            badge_width,
+            badge_height,
+            primary_lines,
+            secondary_lines,
+            primary_size,
+            secondary_size,
+        )
+
+    @staticmethod
+    def _render_adaptive_badge(
+        primary: str,
+        secondary: str,
+        badge_width: int,
+        badge_height: int,
+        primary_lines: int,
+        secondary_lines: int,
+        primary_size: int,
+        secondary_size: int,
+    ) -> Image.Image:
+        """Render the familiar badge with independent body width and height."""
+        padding = max(8, round(badge_width * 0.08))
+        canvas = Image.new(
+            "RGBA",
+            (badge_width + padding * 2, badge_height + padding * 2),
+            (0, 0, 0, 0),
+        )
+        mask = Image.new("L", canvas.size, 0)
+        mask_draw = ImageDraw.Draw(mask)
+        x0, y0 = padding, padding
+        x1, y1 = padding + badge_width, padding + badge_height
+        points = [
+            ((x0 + x1) // 2, y0),
+            (x1, y0 + round(badge_height * 0.20)),
+            (x1, y0 + round(badge_height * 0.78)),
+            ((x0 + x1) // 2, y1),
+            (x0, y0 + round(badge_height * 0.78)),
+            (x0, y0 + round(badge_height * 0.20)),
+        ]
+        mask_draw.polygon(points, fill=255)
+
+        shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        shadow_mask = mask.filter(ImageFilter.GaussianBlur(max(3, round(padding * 0.55))))
+        shadow.putalpha(shadow_mask.point(lambda value: round(value * 0.72)))
+        canvas.alpha_composite(shadow, (max(1, padding // 6), max(2, padding // 3)))
+
+        gradient = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        gradient_draw = ImageDraw.Draw(gradient)
+        for y in range(y0, y1 + 1):
+            position = (y - y0) / max(1, badge_height)
+            center_light = 1.0 - abs(position - 0.38) * 1.3
+            red = round(205 + 43 * _clamp(center_light))
+            green = round(2 + 12 * _clamp(center_light))
+            blue = round(8 + 7 * _clamp(center_light))
+            gradient_draw.line((x0, y, x1, y), fill=(red, green, blue, 255))
+        gradient.putalpha(mask)
+        canvas.alpha_composite(gradient)
+
+        border = ImageDraw.Draw(canvas)
+        border.line(
+            points + [points[0]],
+            fill=(125, 0, 6, 235),
+            width=max(1, round(badge_width * 0.012)),
+            joint="curve",
+        )
+
+        text_draw = ImageDraw.Draw(canvas)
+        inner_left = x0 + round(badge_width * 0.07)
+        inner_right = x1 - round(badge_width * 0.07)
+        main_top = y0 + round(badge_height * (0.18 if secondary else 0.14))
+        main_bottom = y0 + round(badge_height * (0.69 if secondary else 0.86))
+        _draw_text_box(
+            text_draw,
+            primary,
+            (inner_left, main_top, inner_right, main_bottom),
+            (255, 250, 244, 255),
+            maximum_size=primary_size,
+            minimum_size=max(8, round(primary_size * 0.86)),
+            max_lines=primary_lines,
+            bold=True,
+        )
         if secondary:
-            length_floor += max(0, len(secondary) - 10) * 0.007
-        return _clamp(max(0.96, measured * 1.06, length_floor), 0.96, 1.48)
+            _draw_text_box(
+                text_draw,
+                secondary,
+                (
+                    inner_left,
+                    y0 + round(badge_height * 0.68),
+                    inner_right,
+                    y0 + round(badge_height * 0.90),
+                ),
+                (255, 248, 240, 255),
+                maximum_size=secondary_size,
+                minimum_size=max(7, round(secondary_size * 0.86)),
+                max_lines=secondary_lines,
+                bold=True,
+            )
+        return canvas
 
     def _render_illustrated_card(self, card, width: int, height: int, badge_scale: float) -> Image.Image:
         layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
@@ -92,20 +233,44 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
         )
         auto_enabled = bool(getattr(self._studio_settings, "illustrated_auto_size", False))
         top_height = round(height * 0.37)
-        required_scale = (
-            self._required_illustrated_badge_scale(card, width, top_height)
-            if auto_enabled
-            else 0.0
-        )
-
         animated_scale = badge_scale * 0.87
-        final_badge_scale = max(animated_scale, required_scale) * manual_badge_scale
 
-        # Give a large auto-sized badge a little more breathing room without making
-        # artwork disappear. Manual image scale remains fully respected.
         image_auto_factor = 1.0
-        if auto_enabled and required_scale > 1.0:
-            image_auto_factor = _clamp(1.0 - (required_scale - 1.0) * 0.18, 0.91, 1.0)
+        if auto_enabled:
+            (
+                adaptive_width,
+                adaptive_height,
+                primary_lines,
+                secondary_lines,
+                primary_size,
+                secondary_size,
+            ) = self._adaptive_badge_geometry(
+                card,
+                width,
+                top_height,
+                animated_scale,
+                manual_badge_scale,
+            )
+            badge = self._render_adaptive_badge(
+                card.uploaded,
+                card.badge_label,
+                adaptive_width,
+                adaptive_height,
+                primary_lines,
+                secondary_lines,
+                primary_size,
+                secondary_size,
+            )
+            width_growth = adaptive_width / max(1.0, width * 0.69 * manual_badge_scale)
+            image_auto_factor = _clamp(1.0 - max(0.0, width_growth - 1.0) * 0.07, 0.93, 1.0)
+        else:
+            badge = self._render_badge(
+                card.uploaded,
+                card.badge_label,
+                width,
+                top_height,
+                animated_scale * manual_badge_scale,
+            )
 
         source = self.assets.load(card.image)
         if source is not None:
@@ -128,16 +293,6 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
             bold=True,
         )
 
-        badge = self._render_badge(
-            card.uploaded,
-            card.badge_label,
-            width,
-            top_height,
-            final_badge_scale,
-            primary_max_lines=3 if auto_enabled else 2,
-            secondary_max_lines=2,
-            minimum_text_scale=0.115 if auto_enabled else 0.10,
-        )
         badge_x = (width - badge.width) // 2
         badge_y = max(3, round(height * 0.025))
         layer.alpha_composite(badge, (badge_x, badge_y))
@@ -149,12 +304,17 @@ exporter_module.TimelineRenderer = ResponsiveStudioTimelineRenderer
 
 
 class IteratedStudioMainWindow(EnhancedPremiereMainWindow):
-    """0.4.0 test window with a width-safe Models panel and fixed auto-sizing."""
+    """0.4.0 test window with a width-safe Models panel and fitted badges."""
 
     def __init__(self) -> None:
         super().__init__()
         self.renderer = ResponsiveStudioTimelineRenderer(StudioAssetCache())
-        self.statusBar().showMessage("Ready · badge auto-size fixed · laptop layout widened")
+        if hasattr(self, "illustrated_auto_size"):
+            self.illustrated_auto_size.setText("Fit hexagon shape to typed value")
+            self.illustrated_auto_size.setToolTip(
+                "Stretches the Illustrated hexagon to fit the typed value while keeping text readable."
+            )
+        self.statusBar().showMessage("Ready · text-fitted hexagons · laptop layout widened")
         self.update_preview()
 
     def _build_models_tab(self) -> QWidget:
