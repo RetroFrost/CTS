@@ -6,7 +6,7 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
-from .optional_hexagons import OptionalHexagonMainWindow
+from .deselect_fix import DeselectFixedMainWindow
 from .premiere_ui import PREMIERE_STYLE
 
 
@@ -32,6 +32,6 @@ def main() -> int:
     app.setStyle("Fusion")
     app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
-    window = OptionalHexagonMainWindow()
+    window = DeselectFixedMainWindow()
     window.show()
     return app.exec()
