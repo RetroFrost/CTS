@@ -6,8 +6,8 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
-from .illustrated_shadow_polish import ShadowPolishedMainWindow
 from .premiere_ui import PREMIERE_STYLE
+from .word_safe_fit import WordSafeMainWindow
 
 
 def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
@@ -32,6 +32,6 @@ def main() -> int:
     app.setStyle("Fusion")
     app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
-    window = ShadowPolishedMainWindow()
+    window = WordSafeMainWindow()
     window.show()
     return app.exec()
