@@ -3,11 +3,17 @@ from __future__ import annotations
 import sys
 import traceback
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
 from .premiere_ui import PREMIERE_STYLE
-from .reselect_fix import ReselectFixedMainWindow
+from . import update_system as update_system_module
+
+# Keep the update dialog's text-format enum available without adding another
+# permanent UI dependency or duplicating the updater implementation.
+update_system_module.Qt = Qt
+UpdateAwareMainWindow = update_system_module.UpdateAwareMainWindow
 
 
 def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
@@ -32,6 +38,6 @@ def main() -> int:
     app.setStyle("Fusion")
     app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
-    window = ReselectFixedMainWindow()
+    window = UpdateAwareMainWindow()
     window.show()
     return app.exec()
