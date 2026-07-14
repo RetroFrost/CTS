@@ -9,9 +9,9 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QProcess, QSettings, QThread, QTimer, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 
 from . import __version__
 from .card_relative_transform import CardRelativeTransformMainWindow
@@ -97,7 +97,7 @@ class SourceUpdateWorker(QThread):
 
 
 class UpdateAwareMainWindow(CardRelativeTransformMainWindow):
-    """CTS window with non-intrusive release checking and safe source updates."""
+    """CTS window with visible release checking and safe source updates."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -113,10 +113,19 @@ class UpdateAwareMainWindow(CardRelativeTransformMainWindow):
         about_action = help_menu.addAction(f"About CTS {__version__}")
         about_action.triggered.connect(self._show_about)
 
+        self.check_updates_button = QPushButton("Check updates")
+        self.check_updates_button.setToolTip("Check GitHub Releases for a newer CTS version")
+        self.check_updates_button.clicked.connect(lambda: self.check_for_updates(manual=True))
+        self.statusBar().addPermanentWidget(self.check_updates_button)
+
         QTimer.singleShot(2600, self._automatic_update_check)
         self.statusBar().showMessage(
-            "Ready · transforms stay attached to cards · Help → Check for updates"
+            "Ready · Check updates is available in the bottom-right corner and the Help menu"
         )
+
+    def _set_update_controls_enabled(self, enabled: bool) -> None:
+        self.check_updates_action.setEnabled(enabled)
+        self.check_updates_button.setEnabled(enabled)
 
     def _show_about(self) -> None:
         QMessageBox.information(
@@ -140,7 +149,7 @@ class UpdateAwareMainWindow(CardRelativeTransformMainWindow):
                 self.statusBar().showMessage("CTS is already checking for updates…", 3000)
             return
         self._manual_update_check = manual
-        self.check_updates_action.setEnabled(False)
+        self._set_update_controls_enabled(False)
         if manual:
             self.statusBar().showMessage("Checking GitHub Releases for a newer CTS build…")
         worker = UpdateCheckWorker(self)
@@ -151,7 +160,7 @@ class UpdateAwareMainWindow(CardRelativeTransformMainWindow):
         worker.start()
 
     def _update_worker_finished(self) -> None:
-        self.check_updates_action.setEnabled(True)
+        self._set_update_controls_enabled(True)
         QSettings("Ethan Woods", "Comparison Timeline Studio").setValue(
             "updates/last_check",
             int(time.time()),
@@ -252,7 +261,7 @@ class UpdateAwareMainWindow(CardRelativeTransformMainWindow):
             self._start_source_update(root)
         elif clicked is copy_command:
             command = (
-                f"git -C {root} pull --ff-only"
+                f'git -C "{root}" pull --ff-only'
                 if root is not None
                 else self._package_update_command()
             )
@@ -264,11 +273,11 @@ class UpdateAwareMainWindow(CardRelativeTransformMainWindow):
     def _start_source_update(self, root: Path) -> None:
         if self._source_updater is not None and self._source_updater.isRunning():
             return
-        self.check_updates_action.setEnabled(False)
+        self._set_update_controls_enabled(False)
         self.statusBar().showMessage("Updating CTS source with git pull --ff-only…")
         worker = SourceUpdateWorker(root, self)
         worker.completed.connect(lambda success, details: self._source_update_finished(root, success, details))
-        worker.finished.connect(lambda: self.check_updates_action.setEnabled(True))
+        worker.finished.connect(lambda: self._set_update_controls_enabled(True))
         self._source_updater = worker
         worker.start()
 
@@ -293,7 +302,5 @@ class UpdateAwareMainWindow(CardRelativeTransformMainWindow):
         if box.clickedButton() is restart:
             run_script = root / "run.py"
             if run_script.is_file():
-                from PySide6.QtCore import QProcess
-
                 QProcess.startDetached(sys.executable, [str(run_script)], str(root))
                 QApplication.quit()
