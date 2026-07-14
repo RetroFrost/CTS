@@ -10,8 +10,9 @@ from .data import REFERENCE_FADE_SECONDS
 from .direct_transform import TransformBox, _clamp_box
 from .final_runtime import FinalMainWindow, TimelineStableTransformRenderer
 from .interaction_runtime import RuntimeTransformRenderer
+from .optional_hexagons import OptionalHexagonRenderer
 from .renderer import _smoothstep
-from .studio_ui import OptionalHexagonRenderer, StudioAssetCache
+from .studio_ui import StudioAssetCache
 
 
 class ScreenLockedTransformRenderer(TimelineStableTransformRenderer):
