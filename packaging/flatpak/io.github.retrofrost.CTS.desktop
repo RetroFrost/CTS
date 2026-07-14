@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CTS
+GenericName=Comparison Video Editor
+Comment=Create continuously scrolling comparison videos
+Exec=comparison-timeline-studio
+Icon=io.github.retrofrost.CTS
+Terminal=false
+Categories=AudioVideo;Video;Graphics;
+Keywords=comparison;timeline;video;cards;spreadsheet;
+StartupNotify=true
