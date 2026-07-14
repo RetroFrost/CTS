@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
 from .premiere_ui import PREMIERE_STYLE
-from .safe_transform_menu import SafeTransformMainWindow
+from .screen_locked_transform import ScreenLockedMainWindow
 
 
 def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
@@ -32,7 +32,7 @@ def main() -> int:
     app.setStyle("Fusion")
     app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
-    window = SafeTransformMainWindow()
+    window = ScreenLockedMainWindow()
     window.setWindowTitle(f"CTS {__version__} — Comparison Timeline Studio")
     window.show()
     return app.exec()
