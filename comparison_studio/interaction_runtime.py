@@ -155,6 +155,9 @@ class InteractionMainWindow(TransformLayoutFixedMainWindow):
             self.image_scale_slider.setValue(round(float(extras["image_scale"]) * 100))
             self.badge_scale_slider.setValue(round(float(extras["illustrated_badge_scale"]) * 100))
             self.illustrated_auto_size.setChecked(bool(extras["illustrated_auto_size"]))
+            if hasattr(self, "show_hexagons"):
+                stored_settings = payload.get("settings", {})
+                self.show_hexagons.setChecked(bool(stored_settings.get("show_hexagons", True)))
             self.transform_overrides.clear()
             self.transform_overrides.update(self._decoded_transforms(payload.get("transform_overrides", {})))
             RuntimeTransformRenderer.ACTIVE_TRANSFORMS = self.transform_overrides
