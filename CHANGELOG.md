@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.5 — 2026-07-14
+
+- Promoted the redesigned editing workspace to the CTS 0.4.5 release line.
+- Replaced the separate XLSX action with one **Import file** action for UTF-8 CSV and XLSX data.
+- Added CSV quoted-field support and kept automatic field mapping, direct spreadsheet editing, and image workflows intact.
+- Added right-click transformation for text and images with four-corner resize handles and drag-to-move behavior.
+- Added live visual feedback while moving and resizing transformed objects.
+- Added reliable deselection through Escape, click-away behavior, monitor-margin clicks, and an explicit object-menu action.
+- Made moved text and images selectable again at their transformed on-screen positions.
+- Saved per-card transform overrides in CTS project files and applied the same transformed layout during MP4 export.
+- Added a global **Show hexagons** checkbox for every visual model.
+- Added model-specific no-hexagon reflow so titles, descriptions, and artwork expand into the released badge space instead of leaving a hole.
+- Added subtle shadows to Illustrated hexagons and white title bars.
+- Improved badge text fitting so ordinary words stay intact whenever possible while still supporting extreme unbroken strings.
+- Kept transparent PNG/WebP artwork alpha, project-wide font selection, Illustrated backgrounds, image scaling, and automatic/manual hexagon sizing.
+- Preserved the 0.3.5 data workflow, model migration, soundtrack export mixing, deterministic preview/export rendering, timing, and FFmpeg progress reporting.
+
 ## 0.4.0
 
 - Rebuilt the application shell as a dense, professional editing workspace while preserving the complete CTS 0.3.5 workflow and behavior.
@@ -58,7 +75,7 @@
 - Added animation-aware hit-testing that resolves clicks to the correct card and semantic field.
 - Added inline text editing over the preview with Enter-to-apply and Escape-to-cancel.
 - Added a direct image menu for file selection, typed paths/URLs, and clearing artwork.
-- Added a prominent Add card button beside playback that creates and reveals a new card.
+- Added a prominent Add card button beside playback that creates and reveals another card.
 - Changed the initial preview to a stable fully visible editing frame instead of the black first animation frame.
 - Kept all spreadsheet, XLSX, clipboard, mapping, strip-splitting, and soundtrack workflows synchronized.
 - Added hit-region and scrolled-card regression tests for all three visual models.
