@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Rebuilt the application shell as a dense, professional editing workspace while preserving the complete CTS 0.3.5 workflow and behavior.
+- Moved project data, visual models, and soundtrack controls into a compact Project panel beside a larger Program Monitor.
+- Made **Click to Insert Data** the primary action without changing the existing clipboard-table parser or spreadsheet workflow.
+- Restyled playback, sequence length, animation controls, tables, tabs, dialogs, menus, and export actions with an original dark editing-suite design.
+- Kept the layout responsive and practical on 1366×768 displays.
+- Left rendering, direct editing, model migration, image handling, soundtrack mixing, project files, and MP4 export on the proven 0.3.5 implementation.
+
 ## 0.3.5
 
 - Made the in-place text indicator sample the rendered field beneath it.
