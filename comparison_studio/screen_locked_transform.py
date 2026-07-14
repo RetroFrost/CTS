@@ -24,6 +24,10 @@ class ScreenLockedTransformRenderer(TimelineStableTransformRenderer):
     object's position or size.
     """
 
+    def __init__(self, asset_cache=None, transforms=None) -> None:
+        super().__init__(asset_cache or StudioAssetCache(), transforms)
+        self._isolated_layer_cache: dict[tuple[object, ...], Image.Image] = {}
+
     def local_to_screen(self, cards, output_time: float, settings, card_index: int, box: TransformBox):
         del cards, output_time, settings, card_index
         return _clamp_box(box)
@@ -97,17 +101,24 @@ class ScreenLockedTransformRenderer(TimelineStableTransformRenderer):
 
     def _isolated_role_layer(self, card, role: str, settings, size: tuple[int, int]) -> Image.Image | None:
         """Extract a complete role without depending on its animated screen position."""
+        source_settings = deepcopy(settings)
+        source_settings.custom_duration = None
+        cache_key = (repr(card), role, repr(source_settings), size)
+        cached = self._isolated_layer_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         stable_time = 1.0
-        pristine = self._base_render([card], stable_time, settings, size).convert("RGBA")
+        pristine = self._base_render([card], stable_time, source_settings, size).convert("RGBA")
         blank_card = deepcopy(card)
         self._blank_role(blank_card, role)
-        blank = self._base_render([blank_card], stable_time, settings, size).convert("RGBA")
+        blank = self._base_render([blank_card], stable_time, source_settings, size).convert("RGBA")
 
-        local = self._field_box(settings.model_id, role)
+        local = self._field_box(source_settings.model_id, role)
         if local is None:
             return None
         local_x, local_y, local_width, local_height = local
-        card_width = 1.0 / settings.effective_visible_cards()
+        card_width = 1.0 / source_settings.effective_visible_cards()
         source_region = (
             local_x * card_width,
             local_y,
@@ -127,6 +138,7 @@ class ScreenLockedTransformRenderer(TimelineStableTransformRenderer):
             ImageFilter.GaussianBlur(0.55)
         )
         foreground.putalpha(alpha)
+        self._isolated_layer_cache[cache_key] = foreground
         return foreground
 
     @staticmethod
