@@ -9,8 +9,9 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from . import exporter as exporter_module
 from .data import FriendlyError, SpreadsheetData, load_xlsx_table, save_project_json
-from .direct_transform import DirectTransformMainWindow, TransformTimelineRenderer
+from .direct_transform import TransformTimelineRenderer
 from .studio_ui import StudioAssetCache, _load_studio_document
+from .transform_layout_hotfix import TransformLayoutFixedMainWindow
 from .ui import show_error
 
 
@@ -24,7 +25,7 @@ class RuntimeTransformRenderer(TransformTimelineRenderer):
 exporter_module.TimelineRenderer = RuntimeTransformRenderer
 
 
-class InteractionMainWindow(DirectTransformMainWindow):
+class InteractionMainWindow(TransformLayoutFixedMainWindow):
     def __init__(self) -> None:
         super().__init__()
         RuntimeTransformRenderer.ACTIVE_TRANSFORMS = self.transform_overrides
