@@ -1,6 +1,6 @@
 # CTS — Comparison Timeline Studio
 
-![Version](https://img.shields.io/badge/version-0.3.5-6d55f7)
+![Version](https://img.shields.io/badge/version-0.4.0-6d55f7)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)
 ![Qt](https://img.shields.io/badge/UI-PySide6-41cd52)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
@@ -8,6 +8,10 @@
 CTS is a free desktop editor for creating continuously scrolling comparison videos.
 Edit cards directly on the rendered preview, fill hundreds of cards from a spreadsheet,
 add a soundtrack, and export a finished H.264/AAC MP4 through FFmpeg.
+
+CTS 0.4.0 keeps the complete 0.3.5 editing engine and workflow, but presents it inside
+an original professional editing-suite workspace: project data and tools stay together in
+a compact Project panel, while the rendered result gets a larger Program Monitor.
 
 The interface automatically uses a compact layout on 1366×768 laptops: the window fits
 the available desktop area, the preview scales down without losing its 16:9 canvas, and
@@ -20,6 +24,7 @@ the Models panel scrolls when its advanced controls do not fit vertically.
 Comparison videos are visually repetitive but surprisingly annoying to build by hand.
 CTS keeps the design consistent while making the content fast to edit:
 
+- Use the prominent **Click to Insert Data** action to paste a complete comparison table.
 - Click a badge, title, description, image, or artwork directly in the preview.
 - Paste a copied image URL straight into a card from its image menu.
 - Import arbitrary `.xlsx` tables or paste spreadsheet cells with Ctrl+V.
@@ -48,10 +53,11 @@ continuous strings without spaces—so text remains inside the card.
 
 ## Direct editing
 
-The preview is the main editor. Text editing is truly in-place: the rendered value is
-temporarily removed and a borderless caret appears inside that exact visual region—no
-floating input box. The active text and underline automatically switch between vivid
-cyan and deep violet so the typing indicator remains visible over dark or light fields.
+The Program Monitor is the main visual editor. Text editing is truly in-place: the
+rendered value is temporarily removed and a borderless caret appears inside that exact
+visual region—no floating input box. The active text and underline automatically switch
+between vivid cyan and deep violet so the typing indicator remains visible over dark or
+light fields.
 
 - Click the red badge to edit its large value or smaller label/unit.
 - Click the white strip to edit the title.
@@ -60,19 +66,19 @@ cyan and deep violet so the typing indicator remains visible over dark or light 
 - Press **Enter** to apply an inline edit or **Esc** to cancel it.
 - Click **Add card** beside playback to create and reveal another card.
 
-The **Hexagons bounce** checkbox lives under the preview in the separate **Animation**
-row—it is a motion setting, not a visual model. Disable it to keep every red badge at a
-fixed scale during entrances and horizontal scrolling. The setting is saved per project.
+The **Badge bounce** checkbox lives in the Program Monitor's **Sequence** row. Disable it
+to keep every red badge at a fixed scale during entrances and horizontal scrolling. The
+setting is saved per project.
 
 Hit-testing follows the real animated positions, including partially scrolled cards.
 Every visual edit updates the underlying spreadsheet table immediately.
 
 ## Spreadsheet and image-strip workflow
 
-One table row is one card. You can type into the grid, paste cells, paste a complete
-table, or import the active sheet from an XLSX workbook. Recognizable fields are mapped
-automatically; unusual headers can be assigned from **Models → Advanced mapping** or by
-right-clicking a field.
+One table row is one card. Use **Click to Insert Data** to paste a complete table, type
+into the grid, paste individual cells, or import the active sheet from an XLSX workbook.
+Recognizable fields are mapped automatically; unusual headers can be assigned from
+**Models → Advanced mapping** or by right-clicking a field.
 
 Images may be:
 
@@ -87,7 +93,7 @@ cut, rejects silent count mismatches, and also offers equal slicing.
 
 ## Soundtrack
 
-Each Soundtrack row is an independent layer with:
+Each Audio row is an independent layer with:
 
 - timeline start time;
 - Trim In and optional Trim Out;
@@ -169,7 +175,8 @@ FFmpeg smoke tests validate both silent and mixed H.264/AAC output.
 ```text
 comparison_studio/
   app.py             Application entry point
-  ui.py              Qt Widgets interface and direct editing
+  premiere_ui.py     0.4.0 editing-workspace shell and styling
+  ui.py              Proven 0.3.5 widgets, behavior, and direct editing
   data.py            Tables, models, projects, and XLSX import
   renderer.py        Deterministic frame renderer and hit-testing
   exporter.py        Progress-aware FFmpeg export worker
@@ -187,9 +194,10 @@ notes as they are added.
 
 ## Roadmap
 
-The 0.3.x series continues to refine the current editor. **CTS 4.0** is reserved for a
-full application rewrite. Its visual system will preserve transparent card artwork and
-let users replace the Illustrated Cards beach scene with other built-in backgrounds.
+CTS 0.4.0 deliberately keeps the 0.3.5 engine instead of replacing proven behavior. The
+release focuses on the editing-workspace redesign and keeps the fast automated data-first
+workflow at the center. A future larger rewrite can still add transparent artwork and
+selectable built-in Illustrated Cards backgrounds without making basic generation harder.
 
 ## License
 
