@@ -33,5 +33,6 @@ def main() -> int:
     app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
     window = ScreenLockedMainWindow()
+    window.setWindowTitle(f"CTS {__version__} — Comparison Timeline Studio")
     window.show()
     return app.exec()
