@@ -94,9 +94,27 @@ jobs:
           preview_path.write_text(preview)
 
           renderer_path = Path("android/app/src/main/java/io/github/retrofrost/cts/android/export/CtsCanvasSceneRenderer.kt")
-          renderer = renderer_path.read_text().replace(
+          renderer = renderer_path.read_text()
+          renderer = renderer.replace(
+              "import android.graphics.RectF",
+              "import android.graphics.Rect\nimport android.graphics.RectF",
+              1,
+          )
+          renderer = renderer.replace(
               "stream?.use(BitmapFactory::decodeStream)",
               "stream?.use { BitmapFactory.decodeStream(it) }",
+          )
+          renderer = renderer.replace(
+              "        val source = RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())",
+              "        val source = Rect(0, 0, bitmap.width, bitmap.height)",
+          )
+          renderer = renderer.replace(
+              "                source.left = (bitmap.width - wantedWidth) / 2f\n                source.right = source.left + wantedWidth",
+              "                source.left = ((bitmap.width - wantedWidth) / 2f).toInt()\n                source.right = (source.left + wantedWidth).toInt()",
+          )
+          renderer = renderer.replace(
+              "                source.top = (bitmap.height - wantedHeight) / 2f\n                source.bottom = source.top + wantedHeight",
+              "                source.top = ((bitmap.height - wantedHeight) / 2f).toInt()\n                source.bottom = (source.top + wantedHeight).toInt()",
           )
           renderer_path.write_text(renderer)
 
