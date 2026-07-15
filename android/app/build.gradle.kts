@@ -12,10 +12,10 @@ android {
 
     defaultConfig {
         applicationId = "io.github.retrofrost.cts.android"
-        minSdk = 26
-        targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-alpha1"
+        minSdk = 23
+        targetSdk = 35
+        versionCode = 2
+        versionName = "0.1.0-alpha2-compat"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
