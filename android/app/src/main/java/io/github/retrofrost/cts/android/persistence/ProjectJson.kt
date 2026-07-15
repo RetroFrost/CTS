@@ -2,6 +2,7 @@ package io.github.retrofrost.cts.android.persistence
 
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.CtsSoundtrack
 import io.github.retrofrost.cts.android.model.ImageSubcard
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.VisualModel
@@ -40,10 +41,36 @@ object ProjectJson {
             )
         }
 
+        val audioTracks = JSONArray().apply {
+            normalized.soundtrack?.let { soundtrack ->
+                put(
+                    JSONObject()
+                        .put("source", soundtrack.source)
+                        .put("path", soundtrack.source)
+                        .put("name", soundtrack.displayName)
+                        .put("start_time", 0.0)
+                        .put("volume", soundtrack.volume)
+                        .put("loop", soundtrack.loop),
+                )
+            }
+        }
+
         val android = JSONObject()
             .put("project_name", normalized.name)
             .put("card_ids", JSONArray(normalized.cards.map { it.id }))
             .put("image_subcard_ids", JSONArray(normalized.cards.map { it.imageSubcard.id }))
+            .apply {
+                normalized.soundtrack?.let { soundtrack ->
+                    put(
+                        "soundtrack",
+                        JSONObject()
+                            .put("source", soundtrack.source)
+                            .put("display_name", soundtrack.displayName)
+                            .put("volume", soundtrack.volume)
+                            .put("loop", soundtrack.loop),
+                    )
+                }
+            }
 
         val settings = JSONObject()
             .put("width", 1920)
@@ -59,7 +86,7 @@ object ProjectJson {
                 put("description", "Description")
                 put("image", "Image")
             })
-            .put("soundtrack_master_volume", 1.0)
+            .put("soundtrack_master_volume", normalized.soundtrack?.volume ?: 1.0)
             .put("hexagons_bounce", true)
             .put("show_hexagons", normalized.showHexagons)
 
@@ -72,7 +99,7 @@ object ProjectJson {
                     .put("rows", rows),
             )
             .put("settings", settings)
-            .put("audio_tracks", JSONArray())
+            .put("audio_tracks", audioTracks)
             .put("transform_space", "per_card_image_frame_v3")
             .put("transform_overrides", transforms)
             .put("android", android)
@@ -126,8 +153,9 @@ object ProjectJson {
             setOf("image", "artwork", "picture", "photo", "image path", "image url"),
         )
 
-        val ids = root.optJSONObject("android")?.optJSONArray("card_ids")
-        val subcardIds = root.optJSONObject("android")?.optJSONArray("image_subcard_ids")
+        val android = root.optJSONObject("android")
+        val ids = android?.optJSONArray("card_ids")
+        val subcardIds = android?.optJSONArray("image_subcard_ids")
         val transforms = root.optJSONObject("transform_overrides") ?: JSONObject()
 
         fun cell(row: JSONArray, column: Int): String =
@@ -171,7 +199,6 @@ object ProjectJson {
                 .takeIf { !it.isNaN() }
                 ?.toFloat()
         }
-        val android = root.optJSONObject("android")
 
         return CtsProject(
             name = android?.optString("project_name")?.takeIf { it.isNotBlank() }
@@ -180,6 +207,7 @@ object ProjectJson {
             cards = cards,
             showHexagons = settings.optBoolean("show_hexagons", true),
             customDurationSeconds = customDuration,
+            soundtrack = decodeSoundtrack(root, android, settings),
         )
     }
 
@@ -235,6 +263,7 @@ object ProjectJson {
             }
         }
 
+        val android = root.optJSONObject("android")
         return CtsProject(
             name = root.optString("name", "Imported comparison"),
             model = VisualModel.fromId(
@@ -249,7 +278,41 @@ object ProjectJson {
                 .optDouble("custom_duration", Double.NaN)
                 .takeIf { !it.isNaN() }
                 ?.toFloat(),
+            soundtrack = decodeSoundtrack(root, android, settings),
         )
+    }
+
+    private fun decodeSoundtrack(
+        root: JSONObject,
+        android: JSONObject?,
+        settings: JSONObject,
+    ): CtsSoundtrack? {
+        val androidTrack = android?.optJSONObject("soundtrack")
+        if (androidTrack != null) {
+            val source = androidTrack.optString("source").takeIf { it.isNotBlank() }
+                ?: return null
+            return CtsSoundtrack(
+                source = source,
+                displayName = androidTrack.optString("display_name", "Soundtrack"),
+                volume = androidTrack.optDouble("volume", 1.0).toFloat(),
+                loop = androidTrack.optBoolean("loop", true),
+            ).normalized()
+        }
+
+        val firstTrack = root.optJSONArray("audio_tracks")?.optJSONObject(0) ?: return null
+        val source = firstTrack.optString("source").takeIf { it.isNotBlank() }
+            ?: firstTrack.optString("path").takeIf { it.isNotBlank() }
+            ?: firstTrack.optString("file").takeIf { it.isNotBlank() }
+            ?: return null
+        return CtsSoundtrack(
+            source = source,
+            displayName = firstTrack.optString("name", "Soundtrack"),
+            volume = firstTrack.optDouble(
+                "volume",
+                settings.optDouble("soundtrack_master_volume", 1.0),
+            ).toFloat(),
+            loop = firstTrack.optBoolean("loop", true),
+        ).normalized()
     }
 
     private fun JSONArray.toRect(): NormalizedRect? {
