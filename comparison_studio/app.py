@@ -6,8 +6,8 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
+from .card_relative_transform import CardRelativeMainWindow
 from .premiere_ui import PREMIERE_STYLE
-from .reselect_fix import ReselectFixedMainWindow
 
 
 def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
@@ -32,6 +32,6 @@ def main() -> int:
     app.setStyle("Fusion")
     app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
-    window = ReselectFixedMainWindow()
+    window = CardRelativeMainWindow()
     window.show()
     return app.exec()
