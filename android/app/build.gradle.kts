@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.retrofrost.cts.android"
         minSdk = 23
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.1.0-alpha4-audio"
+        versionCode = 5
+        versionName = "0.1.0-alpha5-illustrated"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
