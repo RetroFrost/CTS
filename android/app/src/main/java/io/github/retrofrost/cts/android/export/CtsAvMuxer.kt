@@ -6,7 +6,6 @@ import android.media.MediaFormat
 import android.media.MediaMuxer
 import java.io.File
 import java.nio.ByteBuffer
-import kotlin.math.max
 
 internal object CtsAvMuxer {
     fun combine(
@@ -65,13 +64,7 @@ internal object CtsAvMuxer {
         outputTrack: Int,
         stopAtUs: Long,
     ) {
-        val format = extractor.getTrackFormat(extractor.sampleTrackIndex)
-        val requestedSize = if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
-            format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)
-        } else {
-            0
-        }
-        val buffer = ByteBuffer.allocateDirect(max(1_048_576, requestedSize))
+        val buffer = ByteBuffer.allocateDirect(2 * 1024 * 1024)
         val info = MediaCodec.BufferInfo()
 
         while (true) {
