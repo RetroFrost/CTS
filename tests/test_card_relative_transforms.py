@@ -91,6 +91,35 @@ class CardRelativeTransformTests(unittest.TestCase):
         renderer.render(self.cards, 8.0, self.settings, size=(640, 360))
         self.assertEqual(renderer.group_calls, 1)
 
+    def test_transform_coordinates_are_clamped_to_one_owning_card(self) -> None:
+        renderer = CardRelativeRenderer(
+            transforms={(1, "image"): (-0.60, 0.10, 2.40, 0.40)}
+        )
+        # Card 2 occupies monitor x=0.25..0.50 at the fully revealed four-card view.
+        region = renderer.editor_region(
+            self.cards,
+            8.0,
+            self.settings,
+            1,
+            "image",
+        )
+        self.assertIsNotNone(region)
+        self.assertAlmostEqual(region[0], 0.25, places=5)
+        self.assertAlmostEqual(region[2], 0.25, places=5)
+        self.assertGreaterEqual(region[1], 0.0)
+        self.assertLessEqual(region[1] + region[3], 1.0)
+
+    def test_global_drag_is_stored_relative_to_only_its_card(self) -> None:
+        renderer = CardRelativeRenderer()
+        local = renderer.global_to_local(
+            self.cards,
+            8.0,
+            self.settings,
+            2,
+            (0.0, -0.25, 1.0, 1.5),
+        )
+        self.assertEqual(local, (0.0, 0.0, 1.0, 1.0))
+
 
 if __name__ == "__main__":
     unittest.main()
