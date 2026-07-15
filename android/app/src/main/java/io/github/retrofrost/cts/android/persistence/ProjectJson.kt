@@ -65,9 +65,12 @@ object ProjectJson {
 
         return JSONObject()
             .put("version", 3)
-            .put("spreadsheet", JSONObject()
-                .put("headers", JSONArray(headers))
-                .put("rows", rows))
+            .put(
+                "spreadsheet",
+                JSONObject()
+                    .put("headers", JSONArray(headers))
+                    .put("rows", rows),
+            )
             .put("settings", settings)
             .put("audio_tracks", JSONArray())
             .put("transform_space", "per_card_image_frame_v3")
@@ -81,7 +84,9 @@ object ProjectJson {
         return when {
             root.has("spreadsheet") -> decodeSpreadsheetProject(root)
             root.has("cards") -> decodeCardProject(root)
-            else -> throw IllegalArgumentException("This file does not contain CTS cards or a CTS spreadsheet.")
+            else -> throw IllegalArgumentException(
+                "This file does not contain CTS cards or a CTS spreadsheet.",
+            )
         }.normalized()
     }
 
@@ -103,11 +108,23 @@ object ProjectJson {
             return headerList.indexOfFirst { header -> header.trim().lowercase() in aliases }
         }
 
-        val badgePrimaryColumn = columnFor("badge_primary", setOf("value", "date", "uploaded", "badge value", "year"))
-        val badgeSecondaryColumn = columnFor("badge_secondary", setOf("label", "unit", "badge label"))
+        val badgePrimaryColumn = columnFor(
+            "badge_primary",
+            setOf("value", "date", "uploaded", "badge value", "year"),
+        )
+        val badgeSecondaryColumn = columnFor(
+            "badge_secondary",
+            setOf("label", "unit", "badge label"),
+        )
         val titleColumn = columnFor("title", setOf("title", "name", "heading", "item"))
-        val descriptionColumn = columnFor("description", setOf("description", "details", "summary", "caption"))
-        val imageColumn = columnFor("image", setOf("image", "artwork", "picture", "photo", "image path", "image url"))
+        val descriptionColumn = columnFor(
+            "description",
+            setOf("description", "details", "summary", "caption"),
+        )
+        val imageColumn = columnFor(
+            "image",
+            setOf("image", "artwork", "picture", "photo", "image path", "image url"),
+        )
 
         val ids = root.optJSONObject("android")?.optJSONArray("card_ids")
         val subcardIds = root.optJSONObject("android")?.optJSONArray("image_subcard_ids")
@@ -126,7 +143,8 @@ object ProjectJson {
                     ?: UUID.randomUUID().toString()
                 val subcardId = subcardIds?.optString(index)?.takeIf { it.isNotBlank() }
                     ?: UUID.randomUUID().toString()
-                val transform = transforms.optJSONArray("$index:image")?.toRect() ?: NormalizedRect.Full
+                val transform = transforms.optJSONArray("$index:image")?.toRect()
+                    ?: NormalizedRect.Full
 
                 add(
                     CtsCard(
@@ -138,7 +156,7 @@ object ProjectJson {
                         imageSubcard = ImageSubcard(
                             id = subcardId,
                             parentCardId = cardId,
-                            source = cell(row, imageColumn).ifBlank { null },
+                            source = cell(row, imageColumn).takeIf { it.isNotBlank() },
                             transform = transform.clamped(),
                         ),
                     ),
@@ -146,8 +164,12 @@ object ProjectJson {
             }
         }
 
-        val customDuration = if (settings.isNull("custom_duration")) null else {
-            settings.optDouble("custom_duration").takeIf { !it.isNaN() }?.toFloat()
+        val customDuration = if (settings.isNull("custom_duration")) {
+            null
+        } else {
+            settings.optDouble("custom_duration")
+                .takeIf { !it.isNaN() }
+                ?.toFloat()
         }
         val android = root.optJSONObject("android")
 
@@ -181,19 +203,31 @@ object ProjectJson {
                     NormalizedRect.Full
                 }
 
+                val imageSource = imageObject
+                    ?.optString("source")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: entry.optString("image").takeIf { it.isNotBlank() }
+
                 add(
                     CtsCard(
                         id = cardId,
-                        badgePrimary = entry.optString("badge_primary", entry.optString("uploaded")),
-                        badgeSecondary = entry.optString("badge_secondary", entry.optString("badge_label")),
+                        badgePrimary = entry.optString(
+                            "badge_primary",
+                            entry.optString("uploaded"),
+                        ),
+                        badgeSecondary = entry.optString(
+                            "badge_secondary",
+                            entry.optString("badge_label"),
+                        ),
                         title = entry.optString("title"),
                         description = entry.optString("description"),
                         imageSubcard = ImageSubcard(
-                            id = imageObject?.optString("id")?.ifBlank { null }
+                            id = imageObject
+                                ?.optString("id")
+                                ?.takeIf { it.isNotBlank() }
                                 ?: UUID.randomUUID().toString(),
                             parentCardId = cardId,
-                            source = imageObject?.optString("source")?.ifBlank { null }
-                                ?: entry.optString("image").ifBlank { null },
+                            source = imageSource,
                             transform = transform,
                         ),
                     ),
@@ -203,10 +237,16 @@ object ProjectJson {
 
         return CtsProject(
             name = root.optString("name", "Imported comparison"),
-            model = VisualModel.fromId(settings.optString("model_id", root.optString("model"))),
+            model = VisualModel.fromId(
+                settings.optString("model_id", root.optString("model")),
+            ),
             cards = cards,
-            showHexagons = settings.optBoolean("show_hexagons", root.optBoolean("show_hexagons", true)),
-            customDurationSeconds = settings.optDouble("custom_duration", Double.NaN)
+            showHexagons = settings.optBoolean(
+                "show_hexagons",
+                root.optBoolean("show_hexagons", true),
+            ),
+            customDurationSeconds = settings
+                .optDouble("custom_duration", Double.NaN)
                 .takeIf { !it.isNaN() }
                 ?.toFloat(),
         )
