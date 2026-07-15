@@ -1,57 +1,76 @@
 package io.github.retrofrost.cts.android.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
-val CtsPurple = Color(0xFF7D67EE)
-val CtsPurpleSoft = Color(0xFFB9ACFF)
-val CtsCanvas = Color(0xFF090B0F)
-val CtsPanel = Color(0xFF11151C)
-val CtsPanelRaised = Color(0xFF181D27)
-val CtsLine = Color(0xFF2A3140)
+val CtsPurple = Color(0xFF6750A4)
+val CtsPurpleSoft = Color(0xFFD0BCFF)
+val CtsCanvas = Color(0xFF101014)
+val CtsPanel = Color(0xFF1B1B1F)
+val CtsPanelRaised = Color(0xFF25242A)
+val CtsLine = Color(0xFF49454F)
 
 private val DarkColors = darkColorScheme(
-    primary = CtsPurpleSoft,
-    onPrimary = Color(0xFF21165E),
-    primaryContainer = Color(0xFF3C2D8C),
-    onPrimaryContainer = Color(0xFFE8E2FF),
-    secondary = Color(0xFFB9C4D8),
-    background = CtsCanvas,
-    onBackground = Color(0xFFF2F4F8),
-    surface = CtsPanel,
-    onSurface = Color(0xFFF2F4F8),
-    surfaceVariant = CtsPanelRaised,
-    onSurfaceVariant = Color(0xFFC1C8D4),
-    outline = CtsLine,
+    primary = Color(0xFFD0BCFF),
+    onPrimary = Color(0xFF381E72),
+    primaryContainer = Color(0xFF4F378B),
+    onPrimaryContainer = Color(0xFFEADDFF),
+    secondary = Color(0xFFCCC2DC),
+    onSecondary = Color(0xFF332D41),
+    secondaryContainer = Color(0xFF4A4458),
+    onSecondaryContainer = Color(0xFFE8DEF8),
+    background = Color(0xFF101014),
+    onBackground = Color(0xFFE6E1E5),
+    surface = Color(0xFF101014),
+    onSurface = Color(0xFFE6E1E5),
+    surfaceVariant = Color(0xFF49454F),
+    onSurfaceVariant = Color(0xFFCAC4D0),
+    outline = Color(0xFF938F99),
 )
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF5C45C7),
+    primary = Color(0xFF6750A4),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE7E0FF),
-    onPrimaryContainer = Color(0xFF1B085E),
-    secondary = Color(0xFF596274),
-    background = Color(0xFFF5F6FA),
-    onBackground = Color(0xFF16181D),
-    surface = Color.White,
-    onSurface = Color(0xFF16181D),
-    surfaceVariant = Color(0xFFE7E9F0),
-    onSurfaceVariant = Color(0xFF444A55),
-    outline = Color(0xFFC4C8D2),
+    primaryContainer = Color(0xFFEADDFF),
+    onPrimaryContainer = Color(0xFF21005D),
+    secondary = Color(0xFF625B71),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE8DEF8),
+    onSecondaryContainer = Color(0xFF1D192B),
+    background = Color(0xFFFFFBFE),
+    onBackground = Color(0xFF1C1B1F),
+    surface = Color(0xFFFFFBFE),
+    onSurface = Color(0xFF1C1B1F),
+    surfaceVariant = Color(0xFFE7E0EC),
+    onSurfaceVariant = Color(0xFF49454F),
+    outline = Color(0xFF79747E),
 )
 
 @Composable
 fun CtsTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
+    val colors = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> DarkColors
+        else -> LightColors
+    }
+
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = MaterialTheme.typography,
+        colorScheme = colors,
         content = content,
     )
 }
