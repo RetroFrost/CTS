@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -63,8 +64,7 @@ fun VideoSpeedControl(
                     modifier = Modifier.padding(top = 9.dp, end = 4.dp),
                 )
             }
-            items(CtsVideoSpeeds.size) { index ->
-                val speed = CtsVideoSpeeds[index]
+            items(CtsVideoSpeeds) { speed ->
                 FilterChip(
                     selected = abs(activeSpeed - speed) < 0.03f,
                     onClick = { onProjectChanged(projectWithVideoSpeed(project, speed)) },
