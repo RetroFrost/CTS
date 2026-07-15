@@ -8,11 +8,38 @@ import threading
 import time
 from pathlib import Path
 
+from PIL import Image
 from PySide6.QtCore import QThread, Signal
 
 from .data import AudioTrack, CardData, FriendlyError, ProjectSettings
 from .renderer import AssetCache, TimelineRenderer
 from .soundtrack import build_soundtrack_command, probe_audio_duration
+
+
+def _rgb24_frame_bytes(image: Image.Image, width: int, height: int) -> bytes:
+    """Return one exact RGB24 frame for FFmpeg's rawvideo pipe.
+
+    Pillow images may carry an alpha channel depending on the renderer path. Writing
+    RGBA bytes to a pipe declared as rgb24 shifts every later frame boundary and
+    produces the vertical RGB scan-line corruption seen in exported videos.
+    """
+    if image.size != (width, height):
+        raise FriendlyError(
+            "The renderer returned a frame with an unexpected size.",
+            "Try the export again with a standard resolution.",
+            f"Expected {width} × {height}, received {image.width} × {image.height}.",
+        )
+
+    rgb_image = image if image.mode == "RGB" else image.convert("RGB")
+    payload = rgb_image.tobytes("raw", "RGB")
+    expected_size = width * height * 3
+    if len(payload) != expected_size:
+        raise FriendlyError(
+            "The renderer returned an invalid video frame.",
+            "Try the export again. If the problem continues, report the project file.",
+            f"Expected {expected_size:,} RGB24 bytes, received {len(payload):,}.",
+        )
+    return payload
 
 
 class ExportWorker(QThread):
@@ -142,7 +169,7 @@ class ExportWorker(QThread):
                 frame_time = frame_index / fps
                 image = renderer.render(self.cards, frame_time, self.settings)
                 try:
-                    self._process.stdin.write(image.tobytes())
+                    self._process.stdin.write(_rgb24_frame_bytes(image, width, height))
                 except BrokenPipeError as exc:
                     error_text = self._read_ffmpeg_error()
                     raise FriendlyError(
