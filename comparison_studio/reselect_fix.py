@@ -115,9 +115,10 @@ class ReselectAwareRenderer(OptionalHexagonRenderer):
         placement = self._card_placement(cards, output_time, settings, card_index)
         if placement is None:
             return None
-        card_x, card_width, _alpha = placement
+        card_x, card_width, alpha = placement
         x, y, width, height = local_box
-        return card_x + x * card_width, y, width * card_width, height
+        y_offset = (1.0 - alpha) * 0.018
+        return card_x + x * card_width, y_offset + y, width * card_width, height
 
     def global_to_local(
         self,
@@ -130,11 +131,12 @@ class ReselectAwareRenderer(OptionalHexagonRenderer):
         placement = self._card_placement(cards, output_time, settings, card_index)
         if placement is None:
             return None
-        card_x, card_width, _alpha = placement
+        card_x, card_width, alpha = placement
         x, y, width, height = _clamp_box(global_box)
+        y_offset = (1.0 - alpha) * 0.018
         return (
             (x - card_x) / max(0.000001, card_width),
-            y,
+            y - y_offset,
             width / max(0.000001, card_width),
             height,
         )
@@ -397,6 +399,8 @@ class ReselectFixedMainWindow(DeselectFixedMainWindow):
         transform = menu.addAction("Transform image" if role == "image" else "Transform text box")
         edit = menu.addAction("Replace image…" if role == "image" else "Edit text")
         reset = menu.addAction("Reset position and size")
+        menu.addSeparator()
+        deselect = menu.addAction("Deselect object")
         selected = menu.exec(QCursor.pos())
         if selected is transform:
             self.preview.begin_transform(card_index, role, current)
@@ -413,6 +417,8 @@ class ReselectFixedMainWindow(DeselectFixedMainWindow):
                 self._preview_field_clicked(normalized_x, normalized_y)
         elif selected is reset:
             self._transform_reset(card_index, role)
+        elif selected is deselect:
+            self._clear_transform_selection()
 
     def _transform_changed(self, card_index: int, role: str, box: object) -> None:
         if not (isinstance(box, tuple) and len(box) == 4):
