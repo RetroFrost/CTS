@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.retrofrost.cts.android"
         minSdk = 23
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.1.0-alpha6-artwork"
+        versionCode = 7
+        versionName = "0.1.0-alpha7-smart-paste"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
