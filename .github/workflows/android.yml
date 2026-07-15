@@ -35,6 +35,9 @@ jobs:
         with:
           gradle-version: "8.13"
 
+      - name: Apply Compose compatibility fix
+        run: sed -i '/import androidx.compose.foundation.layout.weight/d' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsApp.kt
+
       - name: Run unit tests
         shell: bash
         run: |
