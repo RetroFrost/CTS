@@ -14,29 +14,65 @@ from .studio_ui import StudioAssetCache
 
 
 class CardRelativeRenderer(ReselectAwareRenderer):
-    """Render every transformed field inside its card before timeline placement.
+    """Render transformed fields inside the owning card before timeline placement.
 
-    A transformed object is not a Program Monitor overlay. It belongs to the card.
-    The renderer therefore builds one complete card-local group, applies the card's
-    reveal opacity to the whole group, and only then places that group at the card's
-    animated timeline position.
+    Transform coordinates are normalized against one card, not the Program Monitor
+    and not the complete card strip.  A transformed object is therefore clipped to,
+    revealed with, and moved with only the card whose row owns that transform.
     """
 
     ACTIVE_TRANSFORMS: dict[TransformKey, TransformBox] = {}
 
     @staticmethod
-    def _group_bounds(active: list[tuple[str, TransformBox]]) -> tuple[float, float, float, float]:
-        """Return card-local bounds large enough to preserve transformed overflow."""
-        minimum_x = 0.0
-        minimum_y = 0.0
-        maximum_x = 1.0
-        maximum_y = 1.0
-        for _role, (x, y, width, height) in active:
-            minimum_x = min(minimum_x, x)
-            minimum_y = min(minimum_y, y)
-            maximum_x = max(maximum_x, x + width)
-            maximum_y = max(maximum_y, y + height)
-        return minimum_x, minimum_y, maximum_x, maximum_y
+    def _clamp_card_box(box: TransformBox) -> TransformBox:
+        """Clamp a transform to the normalized 0..1 rectangle of one card."""
+        x, y, width, height = (float(value) for value in box)
+        width = max(0.025, min(1.0, width))
+        height = max(0.025, min(1.0, height))
+        x = max(0.0, min(1.0 - width, x))
+        y = max(0.0, min(1.0 - height, y))
+        return x, y, width, height
+
+    def local_to_global(
+        self,
+        cards,
+        output_time: float,
+        settings,
+        card_index: int,
+        local_box: TransformBox,
+    ) -> TransformBox | None:
+        """Map one card-local box to the card's current animated monitor position."""
+        placement = self._card_placement(cards, output_time, settings, card_index)
+        if placement is None:
+            return None
+        card_x, card_width, alpha = placement
+        x, y, width, height = self._clamp_card_box(local_box)
+        y_offset = (1.0 - alpha) * 0.018
+        return card_x + x * card_width, y_offset + y, width * card_width, height
+
+    def global_to_local(
+        self,
+        cards,
+        output_time: float,
+        settings,
+        card_index: int,
+        global_box: TransformBox,
+    ) -> TransformBox | None:
+        """Store a dragged monitor box relative to its one owning card."""
+        placement = self._card_placement(cards, output_time, settings, card_index)
+        if placement is None:
+            return None
+        card_x, card_width, alpha = placement
+        x, y, width, height = (float(value) for value in global_box)
+        y_offset = (1.0 - alpha) * 0.018
+        return self._clamp_card_box(
+            (
+                (x - card_x) / max(0.000001, card_width),
+                y - y_offset,
+                width / max(0.000001, card_width),
+                height,
+            )
+        )
 
     def _render_transformed_card_group(
         self,
@@ -47,8 +83,8 @@ class CardRelativeRenderer(ReselectAwareRenderer):
         badge_scale: float,
         alpha: float,
         model_id: str,
-    ) -> tuple[Image.Image, int, int]:
-        """Build the card and its transformed fields as one animated RGBA group."""
+    ) -> Image.Image:
+        """Build one complete card-sized group, including all of its transforms."""
         pristine = super()._render_card(
             card,
             card_width,
@@ -61,7 +97,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
         blank_card = deepcopy(card)
         for role, _target in active:
             self._blank_role(blank_card, role)
-        blank = super()._render_card(
+        group = super()._render_card(
             blank_card,
             card_width,
             card_height,
@@ -70,22 +106,14 @@ class CardRelativeRenderer(ReselectAwareRenderer):
             model_id,
         ).convert("RGBA")
 
-        minimum_x, minimum_y, maximum_x, maximum_y = self._group_bounds(active)
-        group_width = max(1, round((maximum_x - minimum_x) * card_width))
-        group_height = max(1, round((maximum_y - minimum_y) * card_height))
-        card_left = round(-minimum_x * card_width)
-        card_top = round(-minimum_y * card_height)
-        group = Image.new("RGBA", (group_width, group_height), (0, 0, 0, 0))
-        self._composite_clipped(group, blank, card_left, card_top)
-
-        for role, local_target in active:
+        for role, raw_target in active:
             source_region = self._field_box(model_id, role)
             if source_region is None:
                 continue
 
             source_box = self._local_pixel_box(source_region, pristine.size)
             foreground = pristine.crop(source_box)
-            background = blank.crop(source_box)
+            background = group.crop(source_box)
             difference = ImageChops.difference(foreground, background).convert("L")
             mask = difference.point(lambda value: 255 if value > 8 else 0).filter(
                 ImageFilter.GaussianBlur(0.55)
@@ -94,23 +122,25 @@ class CardRelativeRenderer(ReselectAwareRenderer):
                 continue
             foreground.putalpha(mask)
 
-            local_x, local_y, local_width, local_height = local_target
+            local_x, local_y, local_width, local_height = self._clamp_card_box(raw_target)
             target_size = (
                 max(1, round(local_width * card_width)),
                 max(1, round(local_height * card_height)),
             )
             foreground = foreground.resize(target_size, Image.Resampling.LANCZOS)
-            target_left = round((local_x - minimum_x) * card_width)
-            target_top = round((local_y - minimum_y) * card_height)
-            self._composite_clipped(group, foreground, target_left, target_top)
+            self._composite_clipped(
+                group,
+                foreground,
+                round(local_x * card_width),
+                round(local_y * card_height),
+            )
 
-        # Reveal the card and every transformed field together. Nothing in the group
-        # can appear before the card or remain behind as an independent monitor layer.
+        # The reveal animation is applied once to the complete owning card.  A
+        # transformed image can never appear before or move separately from it.
         if alpha < 0.999:
             channel = group.getchannel("A").point(lambda value: round(value * alpha))
             group.putalpha(channel)
-
-        return group, round(minimum_x * card_width), round(minimum_y * card_height)
+        return group
 
     def render(self, cards, output_time: float, settings, size=None):
         self._studio_settings = settings
@@ -133,7 +163,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
 
         for card_index, card_x, alpha, badge_scale in placements:
             active = [
-                (role, box)
+                (role, self._clamp_card_box(box))
                 for (index, role), box in self.transforms.items()
                 if index == card_index
                 and (self._show_hexagons or role not in {"badge_primary", "badge_secondary"})
@@ -142,7 +172,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
             y_offset = round((1.0 - alpha) * height * 0.018)
 
             if active:
-                card_group, local_left, local_top = self._render_transformed_card_group(
+                card_group = self._render_transformed_card_group(
                     cards[card_index],
                     active,
                     card_width,
@@ -154,8 +184,8 @@ class CardRelativeRenderer(ReselectAwareRenderer):
                 self._composite_clipped(
                     frame,
                     card_group,
-                    round(card_x) + local_left,
-                    y_offset + local_top,
+                    round(card_x),
+                    y_offset,
                 )
             else:
                 card_layer = super()._render_card(
@@ -176,13 +206,14 @@ class CardRelativeRenderer(ReselectAwareRenderer):
         return result
 
 
-# Export workers resolve this module global when export begins, so preview and MP4
-# both use the exact same card-local renderer.
+# Preview and MP4 export resolve the same strictly card-owned renderer.
 exporter_module.TimelineRenderer = CardRelativeRenderer
 
 
 class CardRelativeMainWindow(ReselectFixedMainWindow):
-    """CTS window whose transformed objects are inseparable from their cards."""
+    """CTS window whose transforms are owned and bounded by one specific card."""
+
+    transform_space = "card_relative_card_bounds_v2"
 
     def _new_renderer(self) -> CardRelativeRenderer:
         RuntimeTransformRenderer.ACTIVE_TRANSFORMS = self.transform_overrides
@@ -190,10 +221,22 @@ class CardRelativeMainWindow(ReselectFixedMainWindow):
         CardRelativeRenderer.ACTIVE_TRANSFORMS = self.transform_overrides
         return CardRelativeRenderer(StudioAssetCache(), self.transform_overrides)
 
+    def _normalize_loaded_transforms(self, transforms, transform_space: str):
+        # card_relative_v1 already used per-card coordinates but allowed overflow.
+        # Keep those coordinates and simply constrain them to their owning card.
+        if transform_space in {"card_relative_v1", self.transform_space}:
+            converted = transforms
+        else:
+            converted = super()._normalize_loaded_transforms(transforms, transform_space)
+        return {
+            key: CardRelativeRenderer._clamp_card_box(box)
+            for key, box in converted.items()
+        }
+
     def __init__(self) -> None:
         super().__init__()
         self.renderer = self._new_renderer()
         self.statusBar().showMessage(
-            "Ready · transformed objects are rendered inside their cards and reveal with them"
+            "Ready · every transformed object is positioned inside and moves with its own card"
         )
         self.update_preview()
