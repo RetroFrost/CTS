@@ -69,6 +69,20 @@ jobs:
                     )''',
               1,
           )
+          shell = shell.replace(
+              "        if (selectedCard != null) {",
+              '''        item {
+              BatchArtworkCard(
+                  project = project,
+                  selectedCardId = selectedCardId,
+                  onProjectChanged = onProjectChanged,
+                  onSelectCard = onSelectCard,
+              )
+          }
+
+          if (selectedCard != null) {''',
+              1,
+          )
           export_start = shell.index("@Composable\nprivate fun GoogleExportEditor(")
           export_end = shell.index("\n@Composable\nprivate fun GoogleEmptyState(", export_start)
           export_panel = '''@Composable
