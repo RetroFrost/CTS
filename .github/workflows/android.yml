@@ -41,15 +41,35 @@ jobs:
           sed -i '/import androidx.compose.foundation.layout.weight/d' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsApp.kt
           python3 - <<'PY'
           from pathlib import Path
-          path = Path("android/app/src/main/java/io/github/retrofrost/cts/android/ui/GoogleCtsApp.kt")
-          text = path.read_text()
-          text = text.replace("ProgramMonitor(\n", "ProductionProgramMonitor(\n", 1)
-          text = text.replace(
+
+          shell_path = Path("android/app/src/main/java/io/github/retrofrost/cts/android/ui/GoogleCtsApp.kt")
+          shell = shell_path.read_text()
+          shell = shell.replace("ProgramMonitor(\n", "ProductionProgramMonitor(\n", 1)
+          shell = shell.replace(
               "                selectedCardId = selectedCardId,\n                onSelectCard = onSelectCard,",
               "                selectedCardId = selectedCardId,\n                showEditorGuides = !isPlaying,\n                onSelectCard = onSelectCard,",
               1,
           )
-          path.write_text(text)
+          shell_path.write_text(shell)
+
+          preview_path = Path("android/app/src/main/java/io/github/retrofrost/cts/android/ui/ProductionProgramMonitor.kt")
+          preview = preview_path.read_text()
+          preview = preview.replace(
+              "private fun BoxWithConstraintsScope.ProductionBadge(",
+              "private fun BoxScope.ProductionBadge(",
+              1,
+          )
+          preview = preview.replace(
+              "    val badgeWidth = maxWidth * 0.66f\n    val badgeHeight = maxHeight * 0.54f\n\n",
+              "",
+              1,
+          )
+          preview = preview.replace(
+              "            .width(badgeWidth)\n            .height(badgeHeight)",
+              "            .fillMaxSize(0.62f)",
+              1,
+          )
+          preview_path.write_text(preview)
           PY
 
       - name: Run unit tests
