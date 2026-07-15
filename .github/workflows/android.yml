@@ -50,6 +50,20 @@ jobs:
               "                selectedCardId = selectedCardId,\n                showEditorGuides = !isPlaying,\n                onSelectCard = onSelectCard,",
               1,
           )
+          export_start = shell.index("@Composable\nprivate fun GoogleExportEditor(")
+          export_end = shell.index("\n@Composable\nprivate fun GoogleEmptyState(", export_start)
+          export_panel = '''@Composable
+          private fun GoogleExportEditor(
+              project: CtsProject,
+              onSave: () -> Unit,
+          ) {
+              Mp4ExportPanel(
+                  project = project,
+                  onSaveProject = onSave,
+              )
+          }
+          '''
+          shell = shell[:export_start] + export_panel + shell[export_end:]
           shell_path.write_text(shell)
 
           preview_path = Path("android/app/src/main/java/io/github/retrofrost/cts/android/ui/ProductionProgramMonitor.kt")
@@ -69,7 +83,33 @@ jobs:
               "            .fillMaxSize(0.62f)",
               1,
           )
+          preview = preview.replace(
+              "listOf(Color(0xFF8A70F2), Color(0xFF6D55D8))",
+              "listOf(Color(0xFFFF4B55), Color(0xFFD71920))",
+          )
+          preview = preview.replace(
+              "Color(0xFFE4DEFF), ProductionHexagon",
+              "Color(0xFFFFDEE0), ProductionHexagon",
+          )
           preview_path.write_text(preview)
+
+          renderer_path = Path("android/app/src/main/java/io/github/retrofrost/cts/android/export/CtsCanvasSceneRenderer.kt")
+          renderer = renderer_path.read_text().replace(
+              "stream?.use(BitmapFactory::decodeStream)",
+              "stream?.use { BitmapFactory.decodeStream(it) }",
+          )
+          renderer_path.write_text(renderer)
+
+          exporter_path = Path("android/app/src/main/java/io/github/retrofrost/cts/android/export/CtsMp4Exporter.kt")
+          exporter = exporter_path.read_text()
+          exporter = exporter.replace("trackIndex = muxer.addTrack(codec.outputFormat)", "trackIndex = requireNotNull(muxer).addTrack(codec.outputFormat)")
+          exporter = exporter.replace("muxer.start()", "requireNotNull(muxer).start()")
+          exporter = exporter.replace("muxer.writeSampleData(trackIndex, encodedData, bufferInfo)", "requireNotNull(muxer).writeSampleData(trackIndex, encodedData, bufferInfo)")
+          exporter = exporter.replace("inputSurface.makeCurrent()", "requireNotNull(inputSurface).makeCurrent()")
+          exporter = exporter.replace("inputSurface.draw(bitmap, preset.width, preset.height)", "requireNotNull(inputSurface).draw(bitmap, preset.width, preset.height)")
+          exporter = exporter.replace("inputSurface.setPresentationTime(", "requireNotNull(inputSurface).setPresentationTime(")
+          exporter = exporter.replace("check(inputSurface.swapBuffers())", "check(requireNotNull(inputSurface).swapBuffers())")
+          exporter_path.write_text(exporter)
           PY
 
       - name: Run unit tests
