@@ -9,15 +9,15 @@ from PySide6.QtWidgets import QApplication, QMenu
 
 from . import exporter as exporter_module
 from .data import REFERENCE_FADE_SECONDS
-from .deselect_fix import DeselectFixedMainWindow
-from .direct_transform import TransformBox, TransformKey, TransformPreviewWidget, _clamp_box
+from .deselect_fix import DeselectablePreviewWidget, DeselectFixedMainWindow
+from .direct_transform import TransformBox, TransformKey, _clamp_box
 from .interaction_runtime import RuntimeTransformRenderer
 from .optional_hexagons import OptionalHexagonRenderer
 from .renderer import BACKGROUND, _smoothstep
 from .studio_ui import StudioAssetCache
 
 
-class ClickableTransformPreviewWidget(TransformPreviewWidget):
+class ClickableTransformPreviewWidget(DeselectablePreviewWidget):
     """Keep drag-to-move, but treat a plain click as an edit/replace request."""
 
     def __init__(self, parent=None) -> None:
@@ -350,6 +350,7 @@ class ReselectFixedMainWindow(DeselectFixedMainWindow):
         replacement.inline_canceled.connect(self.update_preview)
         replacement.transform_requested.connect(self._transform_requested)
         replacement.transform_changed.connect(self._transform_changed)
+        replacement.selection_cleared.connect(self._selection_was_cleared)
         index = self.preview_layout.indexOf(old)
         self.preview_layout.replaceWidget(old, replacement)
         old.setParent(None)
