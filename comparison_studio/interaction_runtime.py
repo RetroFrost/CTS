@@ -26,6 +26,8 @@ exporter_module.TimelineRenderer = RuntimeTransformRenderer
 
 
 class InteractionMainWindow(TransformLayoutFixedMainWindow):
+    transform_space = "screen_absolute_v1"
+
     def __init__(self) -> None:
         super().__init__()
         RuntimeTransformRenderer.ACTIVE_TRANSFORMS = self.transform_overrides
@@ -118,6 +120,7 @@ class InteractionMainWindow(TransformLayoutFixedMainWindow):
             save_project_json(project_path, data, self.project_settings(), self.soundtrack_table.tracks())
             payload = json.loads(project_path.read_text(encoding="utf-8"))
             payload["transform_overrides"] = self._encoded_transforms(self.transform_overrides)
+            payload["transform_space"] = str(getattr(self, "transform_space", "screen_absolute_v1"))
             project_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
             self.table.set_data(data)
             self.statusBar().showMessage(f"Saved {project_path.name} with direct-layout transforms", 5000)
@@ -158,8 +161,12 @@ class InteractionMainWindow(TransformLayoutFixedMainWindow):
             if hasattr(self, "show_hexagons"):
                 stored_settings = payload.get("settings", {})
                 self.show_hexagons.setChecked(bool(stored_settings.get("show_hexagons", True)))
+            decoded = self._decoded_transforms(payload.get("transform_overrides", {}))
+            normalizer = getattr(self, "_normalize_loaded_transforms", None)
+            if callable(normalizer):
+                decoded = normalizer(decoded, str(payload.get("transform_space", "screen_absolute_v1")))
             self.transform_overrides.clear()
-            self.transform_overrides.update(self._decoded_transforms(payload.get("transform_overrides", {})))
+            self.transform_overrides.update(decoded)
             RuntimeTransformRenderer.ACTIVE_TRANSFORMS = self.transform_overrides
             self.renderer = self._new_renderer()
             self._suspend_model_schema = False
