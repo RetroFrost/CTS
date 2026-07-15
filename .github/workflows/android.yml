@@ -50,6 +50,25 @@ jobs:
               "                selectedCardId = selectedCardId,\n                showEditorGuides = !isPlaying,\n                onSelectCard = onSelectCard,",
               1,
           )
+          shell = shell.replace(
+              "    val durationSeconds = TimelineEngine.duration(project)\n",
+              "    val durationSeconds = TimelineEngine.duration(project)\n\n    SoundtrackPlaybackEffect(\n        soundtrack = project.soundtrack,\n        isPlaying = isPlaying,\n        positionSeconds = positionSeconds,\n    )\n",
+              1,
+          )
+          shell = shell.replace(
+              '''                    GoogleEditorDestination.Audio -> GoogleEmptyState(
+                        icon = Icons.Filled.MusicNote,
+                        title = "Add a soundtrack",
+                        body = "Audio mixing comes after the Android renderer and export pipeline.",
+                    )''',
+              '''                    GoogleEditorDestination.Audio -> SoundtrackPanel(
+                        project = project,
+                        onProjectChanged = { updated ->
+                            project = updated.normalized()
+                        },
+                    )''',
+              1,
+          )
           export_start = shell.index("@Composable\nprivate fun GoogleExportEditor(")
           export_end = shell.index("\n@Composable\nprivate fun GoogleEmptyState(", export_start)
           export_panel = '''@Composable
@@ -117,17 +136,6 @@ jobs:
               "                source.top = ((bitmap.height - wantedHeight) / 2f).toInt()\n                source.bottom = (source.top + wantedHeight).toInt()",
           )
           renderer_path.write_text(renderer)
-
-          exporter_path = Path("android/app/src/main/java/io/github/retrofrost/cts/android/export/CtsMp4Exporter.kt")
-          exporter = exporter_path.read_text()
-          exporter = exporter.replace("trackIndex = muxer.addTrack(codec.outputFormat)", "trackIndex = requireNotNull(muxer).addTrack(codec.outputFormat)")
-          exporter = exporter.replace("muxer.start()", "requireNotNull(muxer).start()")
-          exporter = exporter.replace("muxer.writeSampleData(trackIndex, encodedData, bufferInfo)", "requireNotNull(muxer).writeSampleData(trackIndex, encodedData, bufferInfo)")
-          exporter = exporter.replace("inputSurface.makeCurrent()", "requireNotNull(inputSurface).makeCurrent()")
-          exporter = exporter.replace("inputSurface.draw(bitmap, preset.width, preset.height)", "requireNotNull(inputSurface).draw(bitmap, preset.width, preset.height)")
-          exporter = exporter.replace("inputSurface.setPresentationTime(", "requireNotNull(inputSurface).setPresentationTime(")
-          exporter = exporter.replace("check(inputSurface.swapBuffers())", "check(requireNotNull(inputSurface).swapBuffers())")
-          exporter_path.write_text(exporter)
           PY
 
       - name: Run unit tests
