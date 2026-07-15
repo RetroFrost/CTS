@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -59,7 +60,11 @@ fun Mp4ExportPanel(
         val snapshot = project.normalized()
         exporting = true
         progress = 0f
-        status = "Preparing ${preset.label} video…"
+        status = if (snapshot.soundtrack == null) {
+            "Preparing ${preset.label} video…"
+        } else {
+            "Preparing ${preset.label} video with soundtrack…"
+        }
         scope.launch {
             runCatching {
                 CtsMp4Exporter.export(
@@ -69,14 +74,16 @@ fun Mp4ExportPanel(
                     preset = preset,
                     onProgress = { value ->
                         progress = value
-                        status = "Rendering frame ${(value * 100f).toInt()}%"
+                        status = "Exporting ${(value * 100f).toInt()}%"
                     },
                 )
             }.onSuccess { result ->
                 val megabytes = result.bytes / 1_048_576f
-                status = "MP4 saved · %.1f MB · %d frames".format(
+                val audioLabel = if (result.hasAudio) " · soundtrack included" else " · silent"
+                status = "MP4 saved · %.1f MB · %d frames%s".format(
                     megabytes,
                     result.frameCount,
+                    audioLabel,
                 )
             }.onFailure { error ->
                 status = "Export failed: ${error.message ?: error.javaClass.simpleName}"
@@ -125,9 +132,35 @@ fun Mp4ExportPanel(
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                     Text(
-                        text = "H.264 video using the CTS timeline, parent cards, image transforms, and reveal animation. Editor handles are never included.",
+                        text = "H.264 video using the CTS timeline, parent cards, image transforms, reveal animation, and the selected soundtrack. Editor handles are never included.",
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Icon(Icons.Filled.MusicNote, contentDescription = null)
+                            Column {
+                                Text(
+                                    text = project.soundtrack?.displayName ?: "No soundtrack",
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = if (project.soundtrack == null) {
+                                        "This export will be silent"
+                                    } else {
+                                        "Included at ${(project.soundtrack.volume * 100f).toInt()}% volume"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CtsExportPreset.entries.forEach { option ->
@@ -199,14 +232,6 @@ fun Mp4ExportPanel(
                     }
                 }
             }
-        }
-
-        item {
-            Text(
-                text = "This alpha exports video only. Soundtrack mixing will be enabled when the Audio tab is implemented.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
