@@ -1,8 +1,10 @@
 import os
+import tempfile
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PIL import Image
 from PySide6.QtWidgets import QApplication
 
 from comparison_studio.rewrite.mobile_convenience import ConvenientPremiereWindow
@@ -35,12 +37,12 @@ class RewriteWindowTests(unittest.TestCase):
             self.assertEqual(window.table.item(0, 2).text(), "Fast desktop editing")
             self.assertEqual(window.project.cards[0].title, "Fast desktop editing")
 
-            QApplication.clipboard().setText("https://example.com/artwork.png")
-            window.paste_selected_artwork()
-            self.assertEqual(
-                window.table.item(0, 4).text(),
-                "https://example.com/artwork.png",
-            )
+            with tempfile.TemporaryDirectory() as directory:
+                artwork = os.path.join(directory, "artwork.png")
+                Image.new("RGB", (32, 32), (20, 90, 180)).save(artwork)
+                QApplication.clipboard().setText(artwork)
+                window.paste_selected_artwork()
+                self.assertEqual(window.table.item(0, 4).text(), artwork)
         finally:
             window.project.dirty = False
             window.close()
