@@ -6,7 +6,7 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
-from .window import MainWindow, STYLE
+from .premiere_workspace import PREMIERE_STYLE, PremiereWorkspaceWindow
 
 
 def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
@@ -26,8 +26,8 @@ def main() -> int:
     app.setApplicationVersion(__version__)
     app.setOrganizationName("RetroFrost")
     app.setStyle("Fusion")
-    app.setStyleSheet(STYLE)
+    app.setStyleSheet(PREMIERE_STYLE)
     sys.excepthook = _exception_hook
-    window = MainWindow()
+    window = PremiereWorkspaceWindow()
     window.show()
     return app.exec()
