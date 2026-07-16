@@ -40,6 +40,19 @@ class RewriteTimingTests(unittest.TestCase):
         self.assertEqual([item.index for item in placements], [0, 1, 2, 3])
         self.assertEqual([round(item.x) for item in placements], [0, 160, 320, 480])
 
+    def test_octagons_never_shrink_during_reveals(self) -> None:
+        project = Project(cards=self.cards, model_id=MODEL_ILLUSTRATED, badge_bounce=True)
+        timeline = Timeline(project, len(self.cards))
+        for sample in (0.0, 0.2, 0.5, 1.0, 2.1, 4.5, 7.5):
+            for placement in timeline.placements(sample, 640.0):
+                self.assertGreaterEqual(placement.badge_scale, 1.0)
+
+    def test_octagons_stay_full_size_during_scrolling(self) -> None:
+        project = Project(cards=self.cards, model_id=MODEL_ILLUSTRATED, badge_bounce=True)
+        placements = Timeline(project, len(self.cards)).placements(20.0, 640.0)
+        self.assertTrue(placements)
+        self.assertTrue(all(item.badge_scale == 1.0 for item in placements))
+
 
 if __name__ == "__main__":
     unittest.main()
