@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 from PySide6.QtWidgets import QApplication
 
-from comparison_studio.rewrite.mobile_convenience import ConvenientPremiereWindow
+from comparison_studio.rewrite.practical_workspace import PracticalWorkspaceWindow
 
 
 class RewriteWindowTests(unittest.TestCase):
@@ -15,21 +15,21 @@ class RewriteWindowTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_premiere_workspace_keeps_mobile_quick_workflow(self) -> None:
-        window = ConvenientPremiereWindow()
+    def test_practical_workspace_keeps_mobile_quick_workflow(self) -> None:
+        window = PracticalWorkspaceWindow()
         try:
             self.assertIn("1.0.0-alpha1", window.windowTitle())
             self.assertEqual(window.table.columnCount(), 5)
             self.assertEqual(window.table.rowCount(), 4)
             self.assertEqual(window.model_combo.count(), 3)
             self.assertFalse(window.preview._pixmap.isNull())
-            self.assertEqual(window.project_tabs.tabText(0), "Project: CTS")
             self.assertEqual(window.tabs.tabText(0), "Edit")
-            self.assertEqual(window.tabs.tabText(1), "Style")
-            self.assertEqual(window.tabs.tabText(2), "Audio")
-            self.assertEqual(window.tabs.tabText(3), "Export")
+            self.assertEqual(window.tabs.tabText(1), "Data")
+            self.assertEqual(window.tabs.tabText(2), "Style")
+            self.assertEqual(window.tabs.tabText(3), "Audio")
+            self.assertEqual(window.tabs.tabText(4), "Export")
             self.assertEqual(len(window._card_buttons), 4)
-            self.assertGreaterEqual(window.sequence_view.minimumHeight(), 150)
+            self.assertFalse(hasattr(window, "sequence_view"))
 
             window.table.selectRow(0)
             window.quick_title.setText("Fast desktop editing")
