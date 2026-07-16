@@ -1,38 +1,10 @@
-from __future__ import annotations
+"""CTS desktop entry point.
 
-import sys
-import traceback
+The rewrite branch intentionally launches the clean application package directly. Legacy
+window and renderer modules remain in the repository only for project migration and visual
+comparison while the rewrite is validated.
+"""
 
-from PySide6.QtWidgets import QApplication, QMessageBox
+from .rewrite.main import main
 
-from . import __version__
-from .premiere_ui import PREMIERE_STYLE
-from .reference_illustrated import ReferenceIllustratedMainWindow
-
-
-def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
-    details = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-    box = QMessageBox()
-    box.setIcon(QMessageBox.Icon.Critical)
-    box.setWindowTitle("Comparison Timeline Studio")
-    box.setText("Something unexpected went wrong.")
-    box.setInformativeText(
-        "Your spreadsheet data has not been intentionally changed. "
-        "You can copy the technical details below when reporting the problem."
-    )
-    box.setDetailedText(details)
-    box.exec()
-
-
-def main() -> int:
-    app = QApplication(sys.argv)
-    app.setApplicationName("Comparison Timeline Studio")
-    app.setApplicationVersion(__version__)
-    app.setOrganizationName("Ethan Woods")
-    app.setStyle("Fusion")
-    app.setStyleSheet(PREMIERE_STYLE)
-    sys.excepthook = _exception_hook
-    window = ReferenceIllustratedMainWindow()
-    window.setWindowTitle(f"CTS {__version__} — Comparison Timeline Studio")
-    window.show()
-    return app.exec()
+__all__ = ["main"]
