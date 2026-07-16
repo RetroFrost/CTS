@@ -6,7 +6,46 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
-from .premiere_workspace import PREMIERE_STYLE, PremiereWorkspaceWindow
+from .mobile_convenience import ConvenientPremiereWindow
+from .premiere_workspace import PREMIERE_STYLE
+
+
+CONVENIENCE_STYLE = PREMIERE_STYLE + """
+QPushButton#quickAction {
+    background: #303030;
+    border-color: #555555;
+    font-weight: 700;
+    padding-left: 11px;
+    padding-right: 11px;
+}
+QPushButton#quickAction:hover { background: #3b3b3b; border-color: #6b9dca; }
+QFrame#cardStrip {
+    background: #1b1b1b;
+    border-bottom: 1px solid #080808;
+}
+QPushButton#cardChip, QPushButton#cardChipActive {
+    min-width: 92px;
+    max-width: 150px;
+    padding: 5px 9px;
+    text-align: left;
+}
+QPushButton#cardChip {
+    background: #252525;
+    color: #b8b8b8;
+    border-color: #3b3b3b;
+}
+QPushButton#cardChipActive {
+    background: #315f89;
+    color: white;
+    border-color: #6b9dca;
+}
+QTextEdit {
+    background: #171717;
+    border: 1px solid #414141;
+    color: #dedede;
+    selection-background-color: #315f89;
+}
+"""
 
 
 def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
@@ -26,8 +65,8 @@ def main() -> int:
     app.setApplicationVersion(__version__)
     app.setOrganizationName("RetroFrost")
     app.setStyle("Fusion")
-    app.setStyleSheet(PREMIERE_STYLE)
+    app.setStyleSheet(CONVENIENCE_STYLE)
     sys.excepthook = _exception_hook
-    window = PremiereWorkspaceWindow()
+    window = ConvenientPremiereWindow()
     window.show()
     return app.exec()
