@@ -8,6 +8,7 @@ const val REVEAL_SECONDS = 2f
 const val SCROLL_SECONDS = 10f / 3f
 const val END_HOLD_SECONDS = 2f
 const val FADE_SECONDS = 0.8f
+private const val MINIMUM_SCROLL_WINDOW_SECONDS = 1f
 
 data class CardPlacement(
     val cardIndex: Int,
@@ -17,43 +18,57 @@ data class CardPlacement(
 )
 
 object TimelineEngine {
-    /** Time at which all normal reveal and scrolling animation has completed. */
-    fun motionDuration(project: CtsProject): Float {
-        val cardCount = project.cards.size
-        if (cardCount <= 0) return 0f
-        val visible = project.model.visibleCards
-        val reveal = min(cardCount, visible) * REVEAL_SECONDS
-        val scroll = max(0, cardCount - visible) * SCROLL_SECONDS
-        return reveal + scroll
+    fun revealDuration(project: CtsProject): Float {
+        if (project.cards.isEmpty()) return 0f
+        return min(project.cards.size, project.model.visibleCards) * REVEAL_SECONDS
     }
+
+    private fun maximumShift(project: CtsProject): Int =
+        max(0, project.cards.size - project.model.visibleCards)
+
+    fun automaticScrollDuration(project: CtsProject): Float =
+        maximumShift(project) * SCROLL_SECONDS
 
     fun automaticDuration(project: CtsProject): Float {
         if (project.cards.isEmpty()) return 0f
-        return motionDuration(project) + END_HOLD_SECONDS + FADE_SECONDS
+        return revealDuration(project) + automaticScrollDuration(project) +
+            END_HOLD_SECONDS + FADE_SECONDS
     }
 
-    /**
-     * Output length only. Changing this value never retimes card motion.
-     *
-     * A longer duration holds the completed strip before the final fade. A shorter duration
-     * simply ends at that timestamp; the reveal and scrolling rates remain unchanged.
-     */
-    fun duration(project: CtsProject): Float =
-        project.customDurationSeconds?.coerceAtLeast(1f) ?: automaticDuration(project)
+    /** Smallest duration that can still preserve reveals, a scroll window, hold and fade. */
+    fun minimumDuration(project: CtsProject): Float {
+        if (project.cards.isEmpty()) return 1f
+        val scrollWindow = if (maximumShift(project) > 0) MINIMUM_SCROLL_WINDOW_SECONDS else 0f
+        return revealDuration(project) + scrollWindow + END_HOLD_SECONDS + FADE_SECONDS
+    }
 
-    /** Animation clock stays one real second per timeline second. */
+    /** Exact output length; it never changes card reveal animation timing. */
+    fun duration(project: CtsProject): Float =
+        project.customDurationSeconds
+            ?.coerceAtLeast(minimumDuration(project))
+            ?: automaticDuration(project)
+
+    /**
+     * Time available for horizontal movement after fixed reveals and before fixed hold/fade.
+     * A longer chosen video therefore scrolls more slowly; a shorter one scrolls faster.
+     */
+    fun scrollDuration(project: CtsProject): Float {
+        if (maximumShift(project) <= 0) return 0f
+        return (duration(project) - revealDuration(project) - END_HOLD_SECONDS - FADE_SECONDS)
+            .coerceAtLeast(MINIMUM_SCROLL_WINDOW_SECONDS)
+    }
+
     fun modelTime(project: CtsProject, outputTimeSeconds: Float): Float =
         outputTimeSeconds.coerceAtLeast(0f)
 
     fun placements(project: CtsProject, outputTimeSeconds: Float): List<CardPlacement> {
         val cardCount = project.cards.size
-        if (cardCount <= 0) return emptyList()
-        if (outputTimeSeconds >= duration(project)) return emptyList()
+        if (cardCount <= 0 || outputTimeSeconds >= duration(project)) return emptyList()
 
         val modelTime = modelTime(project, outputTimeSeconds)
         val visibleCards = project.model.visibleCards
         val initialCount = min(cardCount, visibleCards)
-        val introDuration = initialCount * REVEAL_SECONDS
+        val introDuration = revealDuration(project)
 
         if (modelTime < introDuration) {
             return buildList {
@@ -71,9 +86,15 @@ object TimelineEngine {
             }
         }
 
+        val maximumShift = maximumShift(project).toFloat()
+        val scrollWindow = scrollDuration(project)
         val scrollElapsed = (modelTime - introDuration).coerceAtLeast(0f)
-        val maximumShift = max(0, cardCount - visibleCards).toFloat()
-        val shift = min(maximumShift, scrollElapsed / SCROLL_SECONDS)
+        val progress = if (maximumShift <= 0f || scrollWindow <= 0f) {
+            1f
+        } else {
+            (scrollElapsed / scrollWindow).coerceIn(0f, 1f)
+        }
+        val shift = maximumShift * progress
 
         return buildList {
             for (index in 0 until cardCount) {
@@ -86,23 +107,24 @@ object TimelineEngine {
 
     fun fadeAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
         val chosenDuration = duration(project)
-        val fadeLength = min(FADE_SECONDS, chosenDuration)
-        val fadeStart = chosenDuration - fadeLength
+        val fadeStart = chosenDuration - FADE_SECONDS
         if (outputTimeSeconds <= fadeStart) return 1f
-        return 1f - smoothStep((outputTimeSeconds - fadeStart) / fadeLength.coerceAtLeast(0.001f))
+        return 1f - smoothStep(
+            (outputTimeSeconds - fadeStart) / FADE_SECONDS.coerceAtLeast(0.001f),
+        )
     }
 
     fun editingTimeForCard(project: CtsProject, cardIndex: Int): Float {
         if (project.cards.isEmpty()) return 0f
         val safeIndex = cardIndex.coerceIn(0, project.cards.lastIndex)
         val visible = project.model.visibleCards
-        val introTime = min(project.cards.size, visible) * REVEAL_SECONDS
-        val normalTime = if (safeIndex < visible) {
-            introTime
-        } else {
-            introTime + (safeIndex - visible + 1) * SCROLL_SECONDS
-        }
-        return min(duration(project), normalTime)
+        val introTime = revealDuration(project)
+        if (safeIndex < visible) return min(duration(project), introTime)
+
+        val shifts = maximumShift(project).coerceAtLeast(1)
+        val cardShift = (safeIndex - visible + 1).coerceIn(0, shifts)
+        val scrollTimePerCard = scrollDuration(project) / shifts
+        return min(duration(project), introTime + cardShift * scrollTimePerCard)
     }
 
     fun formatTime(seconds: Float): String {
