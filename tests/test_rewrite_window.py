@@ -5,10 +5,11 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit
 
+from comparison_studio.rewrite.image_transform import parse_image_reference
 from comparison_studio.rewrite.practical_workspace import PracticalWorkspaceWindow
 
 
@@ -135,6 +136,50 @@ class RewriteWindowTests(unittest.TestCase):
             self.assertEqual(window.preview.selected_field, "label")
             self.assertEqual(editor.placeholderText(), "Label (optional)")
             self.assertTrue(rect.intersects(editor.geometry()))
+        finally:
+            window.project.dirty = False
+            window.close()
+
+    def test_dragging_side_handle_resizes_width_without_resizing_height(self) -> None:
+        window = PracticalWorkspaceWindow()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                artwork = os.path.join(directory, "artwork.png")
+                Image.new("RGBA", (120, 80), (30, 160, 220, 255)).save(artwork)
+                window.resize(1200, 720)
+                window.table.item(0, 4).setText(artwork)
+                window._sync_project_from_table()
+                window.current_time = 8.0
+                window._refresh_all()
+                window.show()
+                self.app.processEvents()
+                window.preview.repaint()
+                self.app.processEvents()
+
+                window.preview.select_image(0)
+                self.app.processEvents()
+                handle = window.preview.resize_handle_rect("e")
+                self.assertIsNotNone(handle)
+                assert handle is not None
+                start = handle.center()
+                finish = start + QPoint(55, 0)
+                QTest.mousePress(
+                    window.preview,
+                    Qt.MouseButton.LeftButton,
+                    pos=start,
+                )
+                QTest.mouseMove(window.preview, finish, delay=10)
+                QTest.mouseRelease(
+                    window.preview,
+                    Qt.MouseButton.LeftButton,
+                    pos=finish,
+                )
+                self.app.processEvents()
+
+                _source, transform = parse_image_reference(window.table.item(0, 4).text())
+                self.assertGreater(transform.width_scale, 1.15)
+                self.assertAlmostEqual(transform.height_scale, 1.0, places=2)
+                self.assertIn("×", window.image_zoom_label.text())
         finally:
             window.project.dirty = False
             window.close()
