@@ -103,7 +103,7 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         self._refresh_all()
         self._load_transform_controls()
         self.statusBar().showMessage(
-            "Ready — click text to type; drag artwork to move; wheel to zoom"
+            "Ready — click text to type; drag artwork to move; drag handles to resize"
         )
 
     def _build_ui(self) -> None:
@@ -209,7 +209,9 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         heading_layout.setContentsMargins(8, 3, 8, 3)
         heading_layout.addWidget(QLabel("PROGRAM MONITOR"))
         heading_layout.addStretch()
-        self.monitor_hint = QLabel("Click text to type · drag artwork to move · wheel to zoom")
+        self.monitor_hint = QLabel(
+            "Click text to type · drag artwork to move · drag blue handles to resize"
+        )
         self.monitor_hint.setObjectName("muted")
         heading_layout.addWidget(self.monitor_hint)
         layout.addWidget(heading)
@@ -277,8 +279,9 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         self.image_zoom_slider.setMinimumWidth(130)
         self.image_zoom_slider.valueChanged.connect(self._zoom_slider_changed)
         transform_row.addWidget(self.image_zoom_slider, 1)
-        self.image_zoom_label = QLabel("100%")
-        self.image_zoom_label.setMinimumWidth(44)
+        self.image_zoom_label = QLabel("100% · 100×100")
+        self.image_zoom_label.setMinimumWidth(112)
+        self.image_zoom_label.setToolTip("Zoom · free width × free height")
         transform_row.addWidget(self.image_zoom_label)
         layout.addWidget(transform_bar)
 
@@ -376,7 +379,9 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         self._load_quick_editor()
         self._refresh_card_strip()
         self._refresh_all()
-        self.monitor_hint.setText("Click text to type · drag artwork to move · wheel to zoom")
+        self.monitor_hint.setText(
+            "Click text to type · drag artwork to move · drag blue handles to resize"
+        )
         self.statusBar().showMessage(f"Updated {field} on card {index + 1}", 2500)
 
     def _preview_image_selected(self, index: int) -> None:
@@ -384,7 +389,7 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
             self.table.selectRow(index)
             self._load_transform_controls()
             self.monitor_hint.setText(
-                f"Transforming artwork on card {index + 1} · drag to move · wheel to zoom"
+                f"Transforming artwork on card {index + 1} · inside moves · handles resize"
             )
 
     def _preview_image_transform_changed(self, index: int, encoded: str) -> None:
@@ -429,7 +434,10 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
             widget.setEnabled(enabled)
         with QSignalBlocker(self.image_zoom_slider):
             self.image_zoom_slider.setValue(round(transform.scale * 100))
-        self.image_zoom_label.setText(f"{round(transform.scale * 100)}%")
+        self.image_zoom_label.setText(
+            f"{round(transform.scale * 100)}% · "
+            f"{round(transform.width_scale * 100)}×{round(transform.height_scale * 100)}"
+        )
         self.image_fit_button.setObjectName(
             "transformModeActive" if transform.mode == "fit" else ""
         )
@@ -443,11 +451,21 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
 
     def _zoom_slider_changed(self, value: int) -> None:
         row, source, transform = self._current_image()
-        self.image_zoom_label.setText(f"{value}%")
+        self.image_zoom_label.setText(
+            f"{value}% · "
+            f"{round(transform.width_scale * 100)}×{round(transform.height_scale * 100)}"
+        )
         if row < 0 or not source:
             return
         self._write_image_transform(
-            ImageTransform(value / 100.0, transform.x, transform.y, transform.mode)
+            ImageTransform(
+                scale=value / 100.0,
+                x=transform.x,
+                y=transform.y,
+                mode=transform.mode,
+                width_scale=transform.width_scale,
+                height_scale=transform.height_scale,
+            )
         )
 
     def _set_image_mode(self, mode: str) -> None:
@@ -455,7 +473,14 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         if row < 0 or not source:
             return
         self._write_image_transform(
-            ImageTransform(transform.scale, transform.x, transform.y, mode)
+            ImageTransform(
+                scale=transform.scale,
+                x=transform.x,
+                y=transform.y,
+                mode=mode,
+                width_scale=transform.width_scale,
+                height_scale=transform.height_scale,
+            )
         )
         self.preview.select_image(row)
 
