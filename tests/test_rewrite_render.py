@@ -25,6 +25,11 @@ class RewriteRendererTests(unittest.TestCase):
         self.assertGreater(badge.getpixel((badge.width // 2, badge.height // 2))[3], 0)
         self.assertEqual(badge.getpixel((badge.width // 2, 0))[3], 0)
 
+    def test_badge_size_is_independent_of_text_length(self) -> None:
+        short = render_badge("1", "A", 400, 1000, 1.0)
+        long = render_badge("10.0/10", "FOUR HEMISPHERES", 400, 1000, 1.0)
+        self.assertEqual(short.size, long.size)
+
     def test_transparent_lineal_artwork_is_contained(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "icon.png"
