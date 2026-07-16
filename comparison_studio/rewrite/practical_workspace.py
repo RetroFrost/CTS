@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QFrame,
     QHBoxLayout,
@@ -25,6 +26,24 @@ PRACTICAL_STYLE = PREMIERE_STYLE + """
 QFrame#workflowPanel {
     background: #202020;
     border-right: 1px solid #080808;
+}
+QFrame#dataEntryBar {
+    background: #202020;
+    border-bottom: 1px solid #090909;
+}
+QPushButton#insertData {
+    background: #315f89;
+    border: 1px solid #5c8eb9;
+    color: #ffffff;
+    min-height: 37px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 850;
+    letter-spacing: 0.4px;
+}
+QPushButton#insertData:hover {
+    background: #3b709f;
+    border-color: #79a9d2;
 }
 QFrame#cardStrip {
     background: #1b1b1b;
@@ -95,6 +114,20 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        entry = QFrame()
+        entry.setObjectName("dataEntryBar")
+        entry_layout = QVBoxLayout(entry)
+        entry_layout.setContentsMargins(7, 7, 7, 7)
+        entry_layout.setSpacing(0)
+        self.insert_data_button = QPushButton("＋  CLICK TO INSERT DATA")
+        self.insert_data_button.setObjectName("insertData")
+        self.insert_data_button.setToolTip(
+            "Paste copied TSV/CSV data. With an empty clipboard, open the table for typing."
+        )
+        self.insert_data_button.clicked.connect(self._insert_data_clicked)
+        entry_layout.addWidget(self.insert_data_button)
+        layout.addWidget(entry)
+
         strip = QFrame()
         strip.setObjectName("cardStrip")
         strip_layout = QVBoxLayout(strip)
@@ -126,6 +159,25 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         self.project_tabs = self.tabs
         layout.addWidget(self.tabs, 1)
         return self._wrap_panel("CTS CONTROLS", content)
+
+    def _insert_data_clicked(self) -> None:
+        """Keep the original one-click data entry workflow on the default screen."""
+        if QApplication.clipboard().text().strip():
+            self.paste_data()
+            self.tabs.setCurrentIndex(0)
+            self._load_quick_editor()
+            self._refresh_card_strip()
+            return
+
+        self.tabs.setCurrentIndex(1)
+        if self.table.rowCount() == 0:
+            self.add_card()
+        self.table.setCurrentCell(0, 0)
+        self.table.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        item = self.table.item(0, 0)
+        if item is not None:
+            self.table.editItem(item)
+        self.statusBar().showMessage("Paste a table or type directly into the Data grid", 4000)
 
     def _build_practical_program_panel(self) -> QWidget:
         content = QWidget()
