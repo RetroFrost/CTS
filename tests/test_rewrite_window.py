@@ -30,6 +30,8 @@ class RewriteWindowTests(unittest.TestCase):
             self.assertEqual(window.tabs.tabText(4), "Export")
             self.assertEqual(len(window._card_buttons), 4)
             self.assertFalse(hasattr(window, "sequence_view"))
+            self.assertEqual(window.insert_data_button.text(), "＋  CLICK TO INSERT DATA")
+            self.assertTrue(window.insert_data_button.isVisibleTo(window))
 
             window.table.selectRow(0)
             window.quick_title.setText("Fast desktop editing")
@@ -44,6 +46,26 @@ class RewriteWindowTests(unittest.TestCase):
                 window.paste_selected_artwork()
                 self.assertEqual(window.table.item(0, 4).text(), artwork)
         finally:
+            window.project.dirty = False
+            window.close()
+
+    def test_click_to_insert_data_pastes_table_from_default_screen(self) -> None:
+        window = PracticalWorkspaceWindow()
+        try:
+            QApplication.clipboard().setText(
+                "Value\tLabel\tTitle\tDescription\tImage\n"
+                "1\tONE\tFirst\tFirst description\t\n"
+                "2\tTWO\tSecond\tSecond description\t"
+            )
+            window.insert_data_button.click()
+
+            self.assertEqual(window.table.rowCount(), 2)
+            self.assertEqual(window.table.item(0, 2).text(), "First")
+            self.assertEqual(window.table.item(1, 2).text(), "Second")
+            self.assertEqual(window.tabs.currentIndex(), 0)
+            self.assertEqual(len(window._card_buttons), 2)
+        finally:
+            QApplication.clipboard().clear()
             window.project.dirty = False
             window.close()
 
