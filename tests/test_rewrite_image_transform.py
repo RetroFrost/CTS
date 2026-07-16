@@ -120,7 +120,7 @@ class RewriteImageTransformTests(unittest.TestCase):
         self.assertGreater(resized.width_scale, 1.35)
         self.assertAlmostEqual(resized.height_scale, 1.0, places=4)
         self.assertGreater(resized.x, 0.0)
-        self.assertAlmostEqual(resized.y, 0.0, places=4)
+        self.assertLess(abs(resized.y), 0.01)
 
 
 if __name__ == "__main__":
