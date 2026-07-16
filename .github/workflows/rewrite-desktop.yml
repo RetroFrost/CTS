@@ -1,0 +1,56 @@
+name: CTS Desktop Rewrite
+
+on:
+  push:
+    branches:
+      - "rewrite/**"
+    paths:
+      - "comparison_studio/rewrite/**"
+      - "comparison_studio/app.py"
+      - "tests/test_rewrite_*.py"
+      - "requirements.txt"
+      - ".github/workflows/rewrite-desktop.yml"
+  pull_request:
+    paths:
+      - "comparison_studio/rewrite/**"
+      - "comparison_studio/app.py"
+      - "tests/test_rewrite_*.py"
+      - "requirements.txt"
+      - ".github/workflows/rewrite-desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test clean desktop rewrite
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Linux graphics runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile rewrite
+        run: python -m compileall -q comparison_studio/rewrite comparison_studio/app.py tests/test_rewrite_*.py
+
+      - name: Run rewrite tests
+        run: python -m unittest discover -s tests -p "test_rewrite_*.py" -v
