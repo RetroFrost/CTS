@@ -32,7 +32,7 @@ class RewriteImageTransformTests(unittest.TestCase):
             artwork = Image.new("RGBA", (80, 80), (0, 0, 0, 0))
             for x in range(10, 30):
                 for y in range(20, 60):
-                    artwork.putpixel((x, y), (255, 0, 0, 255))
+                    artwork.putpixel((x, y), (255, 0, 255, 255))
             artwork.save(path)
 
             renderer = TransformRenderer()
@@ -46,16 +46,17 @@ class RewriteImageTransformTests(unittest.TestCase):
             centered_frame = renderer._render_illustrated(centered, 400, 1000, 1.0)
             moved_frame = renderer._render_illustrated(moved, 400, 1000, 1.0)
 
-            def red_center(image: Image.Image) -> float:
+            def marker_center(image: Image.Image) -> float:
                 xs = []
                 for y in range(0, 730):
                     for x in range(0, 400):
                         red, green, blue, alpha = image.getpixel((x, y))
-                        if red > 220 and green < 60 and blue < 60 and alpha > 0:
+                        if red > 220 and green < 40 and blue > 220 and alpha > 0:
                             xs.append(x)
+                self.assertTrue(xs)
                 return sum(xs) / len(xs)
 
-            self.assertGreater(red_center(moved_frame), red_center(centered_frame) + 40)
+            self.assertGreater(marker_center(moved_frame), marker_center(centered_frame) + 40)
 
 
 if __name__ == "__main__":
