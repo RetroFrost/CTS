@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPen
 from PySide6.QtWidgets import QLineEdit, QTextEdit, QWidget
 
-from .model import MODEL_COMPACT, MODEL_ILLUSTRATED, MODEL_REFERENCE, Project
+from .model import MODEL_COMPACT, MODEL_ILLUSTRATED, Project
 from .timing import Timeline
 from .window import PreviewCanvas
 
@@ -90,8 +90,12 @@ class InlinePreviewCanvas(PreviewCanvas):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setToolTip("Click value, label, title, or description text to edit it directly")
+        self.setToolTip(
+            "Hover to identify fields. Click value, label, title, or description to edit it directly."
+        )
         self._active_hit: FieldHit | None = None
+        self._selected_hit: FieldHit | None = None
+        self._hover_hit: FieldHit | None = None
         self._original_text = ""
         self._committing = False
 
@@ -116,6 +120,36 @@ class InlinePreviewCanvas(PreviewCanvas):
     def editing_field(self) -> str | None:
         return self._active_hit.field if self._active_hit is not None else None
 
+    @property
+    def selected_field(self) -> str | None:
+        return self._selected_hit.field if self._selected_hit is not None else None
+
+    @property
+    def selected_field_rect(self) -> QRect | None:
+        if self._selected_hit is None:
+            return None
+        return self.field_rect(self._selected_hit.card_index, self._selected_hit.field)
+
+    def clear_field_selection(self) -> None:
+        self._selected_hit = None
+        self._hover_hit = None
+        self.update()
+
+    def set_frame(self, project: Project, output_time: float, pixmap) -> None:
+        super().set_frame(project, output_time, pixmap)
+        if self._active_hit is not None:
+            rect = self.field_rect(self._active_hit.card_index, self._active_hit.field)
+            if rect is not None:
+                self._active_hit = FieldHit(
+                    self._active_hit.card_index,
+                    self._active_hit.field,
+                    rect,
+                )
+                editor = self.active_editor
+                if editor is not None:
+                    editor.setGeometry(self._editor_geometry(self._active_hit))
+        self.update()
+
     def field_rect(self, card_index: int, field: str) -> QRect | None:
         """Return the current widget rectangle for a visible field."""
         if self._project is None or self._video_rect is None:
@@ -139,24 +173,15 @@ class InlinePreviewCanvas(PreviewCanvas):
                 )
         return None
 
-    def mousePressEvent(self, event) -> None:  # noqa: N802
-        if event.button() != Qt.MouseButton.LeftButton:
-            super().mousePressEvent(event)
-            return
+    def _widget_hit_at(self, point: QPoint) -> FieldHit | None:
         if self._project is None or self._video_rect is None:
-            super().mousePressEvent(event)
-            return
-
+            return None
         video_x, video_y, video_width, video_height = self._video_rect
-        point = event.position()
         if not (
             video_x <= point.x() <= video_x + video_width
             and video_y <= point.y() <= video_y + video_height
         ):
-            self._commit_active_editor()
-            super().mousePressEvent(event)
-            return
-
+            return None
         hit = hit_test_field(
             self._project,
             self._time,
@@ -166,17 +191,79 @@ class InlinePreviewCanvas(PreviewCanvas):
             point.y() - video_y,
         )
         if hit is None:
-            self._commit_active_editor()
-            super().mousePressEvent(event)
-            return
-
-        widget_hit = FieldHit(
+            return None
+        return FieldHit(
             hit.card_index,
             hit.field,
             hit.rect.translated(video_x, video_y),
         )
-        self.card_clicked.emit(widget_hit.card_index)
-        self._begin_edit(widget_hit)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        super().paintEvent(event)
+        hit = self._active_hit or self._selected_hit or self._hover_hit
+        if hit is None:
+            return
+        rect = self.field_rect(hit.card_index, hit.field)
+        if rect is None:
+            return
+
+        painter = QPainter(self)
+        active = self._active_hit is not None or self._selected_hit is not None
+        color = QColor("#67a8e4" if active else "#b8c8d6")
+        pen = QPen(color, 2 if active else 1)
+        pen.setStyle(Qt.PenStyle.SolidLine if active else Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(rect.adjusted(1, 1, -2, -2))
+
+        label = f"{hit.field.upper()}  ·  CARD {hit.card_index + 1}"
+        metrics = painter.fontMetrics()
+        tag_width = min(rect.width(), metrics.horizontalAdvance(label) + 14)
+        tag_height = max(18, metrics.height() + 4)
+        tag_y = rect.top() - tag_height
+        if tag_y < 0:
+            tag_y = rect.top()
+        tag = QRect(rect.left(), tag_y, max(70, tag_width), tag_height)
+        painter.fillRect(tag, QColor(20, 28, 36, 235))
+        painter.setPen(color)
+        painter.drawRect(tag.adjusted(0, 0, -1, -1))
+        painter.drawText(
+            tag.adjusted(6, 0, -4, 0),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            label,
+        )
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._active_hit is None:
+            hit = self._widget_hit_at(event.position().toPoint())
+            if hit != self._hover_hit:
+                self._hover_hit = hit
+                self.update()
+            self.setCursor(
+                Qt.CursorShape.IBeamCursor if hit is not None else Qt.CursorShape.ArrowCursor
+            )
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        if self._active_hit is None:
+            self._hover_hit = None
+            self.update()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+
+        hit = self._widget_hit_at(event.position().toPoint())
+        if hit is None:
+            self._commit_active_editor()
+            self.clear_field_selection()
+            super().mousePressEvent(event)
+            return
+
+        self.card_clicked.emit(hit.card_index)
+        self._begin_edit(hit)
         event.accept()
 
     def _begin_edit(self, hit: FieldHit) -> None:
@@ -189,6 +276,8 @@ class InlinePreviewCanvas(PreviewCanvas):
             return
         value = str(getattr(cards[hit.card_index], hit.field, ""))
         self._active_hit = hit
+        self._selected_hit = hit
+        self._hover_hit = None
         self._original_text = value
         self.field_edit_started.emit(hit.card_index, hit.field)
 
@@ -196,19 +285,26 @@ class InlinePreviewCanvas(PreviewCanvas):
         if hit.field == "description":
             editor = self._text_editor
             editor.setPlainText(value)
+            editor.setPlaceholderText("Description")
         else:
             editor = self._line_editor
             editor.setText(value)
+            editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            editor.setPlaceholderText(
+                {
+                    "value": "Value",
+                    "label": "Label (optional)",
+                    "title": "Title",
+                }.get(hit.field, hit.field.title())
+            )
 
         editor.setGeometry(self._editor_geometry(hit))
         editor.setStyleSheet(self._editor_style(hit.field))
         editor.show()
         editor.raise_()
         editor.setFocus(Qt.FocusReason.MouseFocusReason)
-        if isinstance(editor, QLineEdit):
-            editor.selectAll()
-        else:
-            editor.selectAll()
+        editor.selectAll()
+        self.update()
 
     def _editor_geometry(self, hit: FieldHit) -> QRect:
         rect = hit.rect.adjusted(2, 2, -2, -2)
@@ -223,17 +319,17 @@ class InlinePreviewCanvas(PreviewCanvas):
     def _editor_style(field: str) -> str:
         if field == "title":
             return (
-                "QLineEdit { background: rgba(248,247,243,245); color:#151515; "
+                "QLineEdit { background: rgba(248,247,243,248); color:#151515; "
                 "border:2px solid #67a8e4; padding:2px 5px; font-weight:700; }"
             )
         if field == "description":
             return (
-                "QTextEdit { background: rgba(20,20,20,245); color:#f0f0f0; "
+                "QTextEdit { background: rgba(20,20,20,248); color:#f0f0f0; "
                 "border:2px solid #67a8e4; padding:3px; }"
             )
         return (
-            "QLineEdit { background: rgba(214,30,43,245); color:white; "
-            "border:2px solid #ffd0d3; padding:2px 5px; font-weight:800; "
+            "QLineEdit { background: rgba(214,30,43,248); color:white; "
+            "border:2px solid #67a8e4; padding:2px 5px; font-weight:800; "
             "selection-background-color:#315f89; }"
         )
 
@@ -277,14 +373,19 @@ class InlinePreviewCanvas(PreviewCanvas):
             value = self._editor_text()
             self._hide_editors()
             self._active_hit = None
+            self._selected_hit = hit
             if value != self._original_text:
                 self.field_committed.emit(hit.card_index, hit.field, value)
+            self.update()
         finally:
             self._committing = False
 
     def _cancel_active_editor(self) -> None:
+        hit = self._active_hit
         self._hide_editors()
         self._active_hit = None
+        self._selected_hit = hit
+        self.update()
 
     def _hide_editors(self) -> None:
         self._line_editor.hide()
