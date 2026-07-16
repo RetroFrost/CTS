@@ -37,7 +37,9 @@ jobs:
 
       - name: Apply Android source patches
         shell: bash
-        run: python3 android/apply_ci_patches.py
+        run: |
+          python3 android/apply_ci_patches.py
+          python3 android/apply_alpha8_patches.py
 
       - name: Run unit tests
         shell: bash
