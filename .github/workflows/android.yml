@@ -41,6 +41,7 @@ jobs:
           python3 android/apply_ci_patches.py
           python3 android/apply_alpha8_patches.py
           python3 android/apply_alpha9_patches.py
+          python3 android/apply_alpha9_timing_fix.py
 
       - name: Run unit tests
         shell: bash
