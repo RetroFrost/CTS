@@ -20,6 +20,10 @@ from comparison_studio.data import (
     resolve_cards,
     save_project_json,
 )
+from comparison_studio.illustrated_video_profile import install_illustrated_video_profile
+
+
+install_illustrated_video_profile()
 
 
 class DataTests(unittest.TestCase):
@@ -49,11 +53,13 @@ class DataTests(unittest.TestCase):
         self.assertEqual(parse_duration("01:30"), 90)
         self.assertEqual(parse_duration("01:01:30"), 3690)
 
-    def test_custom_duration_changes_speed(self) -> None:
+    def test_custom_duration_changes_only_scroll_speed(self) -> None:
         settings = ProjectSettings()
         automatic = settings.auto_duration(10)
         custom = ProjectSettings(custom_duration=automatic / 2)
-        self.assertEqual(custom.speed_multiplier(10), 2)
+
+        self.assertEqual(custom.model_time(4.25, 10), 4.25)
+        self.assertGreater(custom.speed_multiplier(10), 1)
         self.assertLess(custom.seconds_per_card(10), settings.seconds_per_card(10))
 
     def test_arbitrary_columns_have_no_required_schema(self) -> None:
@@ -73,7 +79,7 @@ class DataTests(unittest.TestCase):
 
     def test_model_native_visible_count(self) -> None:
         settings = ProjectSettings(model_id=MODEL_ILLUSTRATED)
-        self.assertEqual(settings.effective_visible_cards(), 3)
+        self.assertEqual(settings.effective_visible_cards(), 4)
         settings.visible_cards = 6
         self.assertEqual(settings.effective_visible_cards(), 6)
 
@@ -82,7 +88,7 @@ class DataTests(unittest.TestCase):
         illustrated = {role: header for header, role in MODEL_SCHEMAS[MODEL_ILLUSTRATED]}
         classic = {role: header for header, role in MODEL_SCHEMAS[MODEL_CLASSIC]}
         self.assertEqual(reference["description"], "Description")
-        self.assertNotIn("description", illustrated)
+        self.assertEqual(illustrated["description"], "Description")
         self.assertNotIn("description", classic)
         self.assertEqual(illustrated["image"], "Artwork")
         self.assertEqual(classic["badge_secondary"], "Unit")
