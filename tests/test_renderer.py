@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from comparison_studio.data import MODEL_CLASSIC, MODEL_ILLUSTRATED, CardData, ProjectSettings
+from comparison_studio.illustrated_video_profile import install_illustrated_video_profile
 from comparison_studio.renderer import (
     BACKGROUND,
     AssetCache,
@@ -15,6 +16,9 @@ from comparison_studio.renderer import (
     _fit_text,
     normalize_image_source,
 )
+
+
+install_illustrated_video_profile()
 
 
 def _cards(tmp_path: Path, count: int = 6) -> list[CardData]:
@@ -107,7 +111,7 @@ class RendererTests(unittest.TestCase):
             self.assertNotEqual(image.getpixel((80, 330)), BACKGROUND)
             self.assertNotEqual(image.getpixel((560, 330)), BACKGROUND)
 
-    def test_custom_duration_maps_to_same_model_frame(self) -> None:
+    def test_custom_duration_preserves_reveals_and_only_changes_scroll(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp_path = Path(directory)
             cards = _cards(tmp_path)
@@ -115,9 +119,14 @@ class RendererTests(unittest.TestCase):
             auto_duration = automatic.duration(len(cards))
             custom = ProjectSettings(custom_duration=auto_duration * 2)
             renderer = TimelineRenderer()
-            normal_frame = renderer.render(cards, 5.0, automatic, size=(320, 180))
-            slow_frame = renderer.render(cards, 10.0, custom, size=(320, 180))
-            self.assertEqual(normal_frame.tobytes(), slow_frame.tobytes())
+
+            normal_reveal = renderer.render(cards, 4.0, automatic, size=(320, 180))
+            custom_reveal = renderer.render(cards, 4.0, custom, size=(320, 180))
+            self.assertEqual(normal_reveal.tobytes(), custom_reveal.tobytes())
+
+            normal_scroll = renderer.render(cards, 10.0, automatic, size=(320, 180))
+            slower_scroll = renderer.render(cards, 10.0, custom, size=(320, 180))
+            self.assertNotEqual(normal_scroll.tobytes(), slower_scroll.tobytes())
 
     def test_all_models_render_without_any_mapped_data(self) -> None:
         renderer = TimelineRenderer()
