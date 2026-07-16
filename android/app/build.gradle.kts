@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.retrofrost.cts.android"
         minSdk = 23
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.1.0-alpha8-length"
+        versionCode = 9
+        versionName = "0.1.0-alpha9-video-clone"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
