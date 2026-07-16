@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 
 from .model import MODEL_ILLUSTRATED, Project
@@ -25,7 +24,8 @@ class Timeline:
     """Pure timeline math shared by preview and export.
 
     Reveals, final hold, and fade always run at their authored speed. A custom total length
-    stretches or compresses only the horizontal scrolling window.
+    stretches or compresses only the horizontal scrolling window. Badge geometry is stable:
+    an optional entrance bounce may briefly grow above 100%, but badges never shrink.
     """
 
     def __init__(self, project: Project, card_count: int) -> None:
@@ -124,19 +124,15 @@ class Timeline:
         placements: list[Placement] = []
 
         if model_time < self.reveal_duration:
-            latest = max(0, min(self.initial_count - 1, int(model_time // REVEAL_SECONDS)))
-            focus = (latest + 0.5) * card_width
             for index in range(self.initial_count):
                 local = model_time - index * REVEAL_SECONDS
                 if local < 0:
                     continue
                 alpha = smoothstep(local / 0.62)
-                center = (index + 0.5) * card_width
-                scale = self._badge_scale(center, focus, card_width)
+                scale = 1.0
                 if self.project.badge_bounce:
-                    scale *= min(1.0, ease_out_back(local / 0.58))
-                else:
-                    scale = 1.0
+                    overshoot = max(0.0, ease_out_back(local / 0.58) - 1.0)
+                    scale += overshoot
                 placements.append(Placement(index, index * card_width, alpha, scale))
             return placements
 
@@ -146,24 +142,12 @@ class Timeline:
             scroll_elapsed / max(0.001, self.scroll_seconds),
         )
         shift = shift_cards * card_width
-        focus = (self.visible_cards - 0.5) * card_width
         for index in range(self.card_count):
             x = index * card_width - shift
             if x >= viewport_width or x + card_width <= 0:
                 continue
-            center = x + card_width / 2
-            scale = (
-                self._badge_scale(center, focus, card_width)
-                if self.project.badge_bounce
-                else 1.0
-            )
-            placements.append(Placement(index, x, 1.0, scale))
+            placements.append(Placement(index, x, 1.0, 1.0))
         return placements
-
-    @staticmethod
-    def _badge_scale(center: float, focus: float, card_width: float) -> float:
-        distance = (center - focus) / max(1.0, card_width * 0.60)
-        return 0.82 + 0.25 * math.exp(-0.5 * distance * distance)
 
 
 def clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
