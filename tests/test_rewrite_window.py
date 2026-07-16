@@ -5,7 +5,9 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QLineEdit
 
 from comparison_studio.rewrite.practical_workspace import PracticalWorkspaceWindow
 
@@ -66,6 +68,40 @@ class RewriteWindowTests(unittest.TestCase):
             self.assertEqual(len(window._card_buttons), 2)
         finally:
             QApplication.clipboard().clear()
+            window.project.dirty = False
+            window.close()
+
+    def test_click_rendered_title_and_type_directly_on_object(self) -> None:
+        window = PracticalWorkspaceWindow()
+        try:
+            window.resize(1200, 720)
+            window.table.item(0, 2).setText("Old title")
+            window._sync_project_from_table()
+            window.current_time = 8.0
+            window._refresh_all()
+            window.show()
+            self.app.processEvents()
+            window.preview.repaint()
+            self.app.processEvents()
+
+            rect = window.preview.field_rect(0, "title")
+            self.assertIsNotNone(rect)
+            assert rect is not None
+            QTest.mouseClick(window.preview, Qt.MouseButton.LeftButton, pos=rect.center())
+            self.app.processEvents()
+
+            editor = window.preview.active_editor
+            self.assertIsInstance(editor, QLineEdit)
+            assert isinstance(editor, QLineEdit)
+            self.assertEqual(window.preview.editing_field, "title")
+            editor.setText("Typed on the preview")
+            QTest.keyClick(editor, Qt.Key.Key_Return)
+            self.app.processEvents()
+
+            self.assertEqual(window.table.item(0, 2).text(), "Typed on the preview")
+            self.assertEqual(window.project.cards[0].title, "Typed on the preview")
+            self.assertIsNone(window.preview.active_editor)
+        finally:
             window.project.dirty = False
             window.close()
 
