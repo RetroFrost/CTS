@@ -94,6 +94,11 @@ class RewriteWindowTests(unittest.TestCase):
             self.assertIsInstance(editor, QLineEdit)
             assert isinstance(editor, QLineEdit)
             self.assertEqual(window.preview.editing_field, "title")
+            self.assertEqual(window.preview.selected_field, "title")
+            self.assertEqual(window.preview.selected_field_rect, rect)
+            self.assertTrue(rect.intersects(editor.geometry()))
+            self.assertEqual(editor.placeholderText(), "Title")
+
             editor.setText("Typed on the preview")
             QTest.keyClick(editor, Qt.Key.Key_Return)
             self.app.processEvents()
@@ -101,6 +106,35 @@ class RewriteWindowTests(unittest.TestCase):
             self.assertEqual(window.table.item(0, 2).text(), "Typed on the preview")
             self.assertEqual(window.project.cards[0].title, "Typed on the preview")
             self.assertIsNone(window.preview.active_editor)
+            self.assertEqual(window.preview.selected_field, "title")
+            self.assertEqual(window.preview.selected_field_rect, rect)
+        finally:
+            window.project.dirty = False
+            window.close()
+
+    def test_blank_label_identifies_itself_as_optional_in_place(self) -> None:
+        window = PracticalWorkspaceWindow()
+        try:
+            window.resize(1200, 720)
+            window.current_time = 8.0
+            window._refresh_all()
+            window.show()
+            self.app.processEvents()
+            window.preview.repaint()
+            self.app.processEvents()
+
+            rect = window.preview.field_rect(0, "label")
+            self.assertIsNotNone(rect)
+            assert rect is not None
+            QTest.mouseClick(window.preview, Qt.MouseButton.LeftButton, pos=rect.center())
+            self.app.processEvents()
+
+            editor = window.preview.active_editor
+            self.assertIsInstance(editor, QLineEdit)
+            assert isinstance(editor, QLineEdit)
+            self.assertEqual(window.preview.selected_field, "label")
+            self.assertEqual(editor.placeholderText(), "Label (optional)")
+            self.assertTrue(rect.intersects(editor.geometry()))
         finally:
             window.project.dirty = False
             window.close()
