@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -17,9 +17,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .inline_preview import InlinePreviewCanvas
 from .mobile_convenience import ConvenientPremiereWindow
 from .premiere_workspace import PREMIERE_STYLE
-from .window import PreviewCanvas
 
 
 PRACTICAL_STYLE = PREMIERE_STYLE + """
@@ -191,7 +191,7 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         heading_layout.setContentsMargins(8, 3, 8, 3)
         heading_layout.addWidget(QLabel("PROGRAM MONITOR"))
         heading_layout.addStretch()
-        self.monitor_hint = QLabel("Click a visible card to edit it")
+        self.monitor_hint = QLabel("Click text in the preview to type directly on it")
         self.monitor_hint.setObjectName("muted")
         heading_layout.addWidget(self.monitor_hint)
         layout.addWidget(heading)
@@ -200,8 +200,10 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
         well.setObjectName("monitorWell")
         well_layout = QVBoxLayout(well)
         well_layout.setContentsMargins(8, 8, 8, 8)
-        self.preview = PreviewCanvas()
+        self.preview = InlinePreviewCanvas()
         self.preview.card_clicked.connect(self._preview_card_clicked)
+        self.preview.field_edit_started.connect(self._preview_field_edit_started)
+        self.preview.field_committed.connect(self._preview_field_committed)
         well_layout.addWidget(self.preview, 1)
         layout.addWidget(well, 1)
 
@@ -261,6 +263,32 @@ class PracticalWorkspaceWindow(ConvenientPremiereWindow):
             self.tabs.setCurrentIndex(0)
             self._load_quick_editor()
             self._refresh_card_strip()
+
+    def _preview_field_edit_started(self, index: int, field: str) -> None:
+        if self.playback_timer.isActive():
+            self.playback_timer.stop()
+            self.play_button.setText("▶ Play")
+        self.monitor_hint.setText(
+            f"Editing {field} on card {index + 1} · Enter saves · Escape cancels"
+        )
+
+    def _preview_field_committed(self, index: int, field: str, value: str) -> None:
+        columns = {"value": 0, "label": 1, "title": 2, "description": 3}
+        column = columns.get(field)
+        if column is None or not (0 <= index < self.table.rowCount()):
+            return
+        with QSignalBlocker(self.table):
+            self._set_table_value(index, column, value)
+        self.table.selectRow(index)
+        self._sync_project_from_table()
+        self.project.dirty = True
+        self.renderer.assets.clear()
+        self.tabs.setCurrentIndex(0)
+        self._load_quick_editor()
+        self._refresh_card_strip()
+        self._refresh_all()
+        self.monitor_hint.setText("Click text in the preview to type directly on it")
+        self.statusBar().showMessage(f"Updated {field} on card {index + 1}", 2500)
 
     def _step_time(self, delta: float) -> None:
         from .timing import Timeline
