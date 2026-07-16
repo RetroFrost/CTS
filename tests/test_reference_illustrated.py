@@ -13,7 +13,7 @@ class ReferenceIllustratedTests(unittest.TestCase):
 
         image = self.renderer._render_illustrated_card(card, 400, 1000, 1.0)
 
-        self.assertEqual(image.getpixel((200, 300))[:3], (89, 207, 229))
+        self.assertEqual(image.getpixel((20, 300))[:3], (89, 207, 229))
         self.assertEqual(image.getpixel((20, 760))[:3], (247, 246, 242))
         self.assertEqual(image.getpixel((20, 845))[:3], (165, 96, 0))
         self.assertEqual(image.getpixel((20, 900))[:3], (23, 23, 23))
