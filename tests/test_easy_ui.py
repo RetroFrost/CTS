@@ -21,17 +21,17 @@ class EasyWindowTests(unittest.TestCase):
         try:
             self.assertEqual(window.model_combo.currentData(), MODEL_ILLUSTRATED)
             self.assertIn("INSERT DATA", window.insert_data_button.text())
-            self.assertFalse(window.fix_panel.isVisible())
+            self.assertTrue(window.fix_panel.isHidden())
             self.assertEqual(window.table.rowCount(), 0)
             self.assertEqual(window.soundtrack_table.rowCount(), 0)
             self.assertIs(window.export_button, window.easy_export_button)
             self.assertIsInstance(window.project_settings(), EasyTimingMixin)
 
             window.fix_button.setChecked(True)
-            self.assertTrue(window.fix_panel.isVisible())
+            self.assertFalse(window.fix_panel.isHidden())
             self.assertEqual(window.subtitle_label.text(), "FIX")
             window.fix_button.setChecked(False)
-            self.assertFalse(window.fix_panel.isVisible())
+            self.assertTrue(window.fix_panel.isHidden())
             self.assertEqual(window.subtitle_label.text(), "CREATE")
         finally:
             window.close()
