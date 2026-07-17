@@ -11,17 +11,15 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QVBoxLayout,
-    QWidget,
 )
 
 from .data import (
     MODEL_ILLUSTRATED,
     REFERENCE_REVEAL_SECONDS,
     AudioTrack,
-    ProjectSettings,
     format_duration,
 )
-from .easy_timing import timeline_parts
+from .easy_timing import timeline_parts, with_easy_timing
 from .premiere_ui import PREMIERE_STYLE
 from .reference_illustrated import ReferenceIllustratedMainWindow
 
@@ -194,6 +192,9 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self.duration_info.setVisible(False)
         self.field_guide.setVisible(False)
         self.hexagons_bounce.setVisible(False)
+        old_sequence_bar = self.findChild(QFrame, "settingsBar")
+        if old_sequence_bar is not None:
+            old_sequence_bar.setVisible(False)
         self.tabs.setCurrentIndex(0)
         self.tabs.setTabVisible(1, False)
         self.tabs.setTabVisible(2, False)
@@ -248,7 +249,7 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self.statusBar().showMessage("Soundtrack removed", 3500)
         self._update_easy_summary()
 
-    def _update_easy_summary(self) -> None:
+    def _update_easy_summary(self, *_args) -> None:
         if not hasattr(self, "easy_project_summary"):
             return
         card_count = len(self.cards())
@@ -265,6 +266,10 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             self.easy_music_button.setText("Choose music…")
         self.easy_clear_music.setEnabled(track_count > 0)
         self._refresh_duration_labels()
+
+    def project_settings(self):
+        """Keep all current visual settings, but use CTS Easy's segment-only timing."""
+        return with_easy_timing(super().project_settings())
 
     def _refresh_duration_labels(self) -> None:
         if not hasattr(self, "table"):
