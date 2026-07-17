@@ -172,7 +172,14 @@ class InteractionMainWindow(TransformLayoutFixedMainWindow):
             self._suspend_model_schema = False
             self._refresh_field_guide(document.settings.model_id)
             self._update_visual_control_state()
-            self.position_seconds = 0.0
+            cards = self.cards()
+            if cards:
+                visible = self.project_settings().effective_visible_cards()
+                self.position_seconds = self._editing_time_for_card(
+                    min(len(cards), visible) - 1
+                )
+            else:
+                self.position_seconds = 0.0
             self.preview.clear_transform()
             self.update_preview()
             self.statusBar().showMessage(f"Opened {Path(path).name}", 5000)
