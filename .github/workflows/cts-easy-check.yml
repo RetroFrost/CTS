@@ -26,31 +26,31 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install --upgrade pip --quiet
+          python -m pip install -r requirements.txt --quiet
 
       - name: Compile Python sources
         run: python -m compileall -q comparison_studio run.py
 
-      - name: Check normal-speed intro
+      - name: Run CTS Easy timing tests
+        id: easy-tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m unittest discover -s tests -p "test_easy_timing.py" -k custom_target -v
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p "test_easy_timing.py" -v > cts-easy-test.log 2>&1
+          status=$?
+          cat cts-easy-test.log
+          exit "$status"
 
-      - name: Check scroll-only retiming
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python -m unittest discover -s tests -p "test_easy_timing.py" -k only_scroll -v
-
-      - name: Check no-scroll projects
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python -m unittest discover -s tests -p "test_easy_timing.py" -k target_is_ignored -v
-
-      - name: Check visual settings wrapper
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python -m unittest discover -s tests -p "test_easy_timing.py" -k visual_settings -v
+      - name: Upload CTS Easy test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cts-easy-test-log
+          path: cts-easy-test.log
+          if-no-files-found: error
 
       - name: Run complete unit suite
         env:
