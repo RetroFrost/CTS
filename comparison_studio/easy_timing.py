@@ -7,6 +7,9 @@ the final hold, and the fade keep their normal durations, so a shorter video fee
 without looking like the entire animation was time-stretched.
 """
 
+from dataclasses import asdict
+from typing import Any, TypeVar
+
 from .data import (
     REFERENCE_END_HOLD_SECONDS,
     REFERENCE_FADE_SECONDS,
@@ -16,6 +19,8 @@ from .data import (
 )
 
 MIN_SCROLL_STEP_SECONDS = 0.12
+SettingsT = TypeVar("SettingsT", bound=ProjectSettings)
+_EASY_SETTINGS_TYPES: dict[type, type] = {}
 
 
 def timeline_parts(settings: ProjectSettings, card_count: int) -> tuple[float, int, float, float]:
@@ -36,77 +41,90 @@ def minimum_duration(settings: ProjectSettings, card_count: int) -> float:
     return intro + scroll_steps * MIN_SCROLL_STEP_SECONDS + fixed_tail
 
 
-def _duration(self: ProjectSettings, card_count: int) -> float:
-    automatic = self.auto_duration(card_count)
-    if self.custom_duration is None or card_count <= 0:
-        return automatic
+class EasyTimingMixin:
+    """Override timing only on settings returned by the CTS Easy window."""
 
-    _intro, scroll_steps, _automatic_scroll, _fixed_tail = timeline_parts(self, card_count)
-    # With no off-screen cards there is no horizontal scrolling to retime.
-    if scroll_steps <= 0:
-        return automatic
-    return max(minimum_duration(self, card_count), float(self.custom_duration))
+    def duration(self, card_count: int) -> float:
+        automatic = self.auto_duration(card_count)
+        if self.custom_duration is None or card_count <= 0:
+            return automatic
+
+        _intro, scroll_steps, _automatic_scroll, _fixed_tail = timeline_parts(self, card_count)
+        # With no off-screen cards there is no horizontal scrolling to retime.
+        if scroll_steps <= 0:
+            return automatic
+        return max(minimum_duration(self, card_count), float(self.custom_duration))
+
+    def speed_multiplier(self, card_count: int) -> float:
+        """Compatibility value: only the horizontal scroll segment uses this factor."""
+        if self.custom_duration is None:
+            return 1.0
+        intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(self, card_count)
+        if scroll_steps <= 0 or automatic_scroll <= 0:
+            return 1.0
+        chosen_scroll = max(
+            scroll_steps * MIN_SCROLL_STEP_SECONDS,
+            self.duration(card_count) - intro - fixed_tail,
+        )
+        return automatic_scroll / max(0.001, chosen_scroll)
+
+    def model_time(self, output_time: float, card_count: int) -> float:
+        """Map output time into the original model timeline without scaling entrances/tail."""
+        output_time = max(0.0, float(output_time))
+        if self.custom_duration is None:
+            return output_time
+
+        intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(self, card_count)
+        if scroll_steps <= 0 or automatic_scroll <= 0:
+            return output_time
+        if output_time <= intro:
+            return output_time
+
+        chosen_scroll = max(
+            scroll_steps * MIN_SCROLL_STEP_SECONDS,
+            self.duration(card_count) - intro - fixed_tail,
+        )
+        if output_time < intro + chosen_scroll:
+            scroll_progress = (output_time - intro) / max(0.001, chosen_scroll)
+            return intro + scroll_progress * automatic_scroll
+
+        # Once scrolling finishes, the normal hold and fade proceed at real-time speed.
+        return intro + automatic_scroll + (output_time - intro - chosen_scroll)
+
+    def seconds_per_card(self, card_count: int) -> float:
+        intro, scroll_steps, _automatic_scroll, fixed_tail = timeline_parts(self, card_count)
+        if scroll_steps <= 0:
+            return 0.0
+        if self.custom_duration is None:
+            return REFERENCE_SCROLL_SECONDS
+        chosen_scroll = max(
+            scroll_steps * MIN_SCROLL_STEP_SECONDS,
+            self.duration(card_count) - intro - fixed_tail,
+        )
+        return chosen_scroll / scroll_steps
 
 
-def _speed_multiplier(self: ProjectSettings, card_count: int) -> float:
-    if self.custom_duration is None:
-        return 1.0
-    intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(self, card_count)
-    if scroll_steps <= 0 or automatic_scroll <= 0:
-        return 1.0
-    chosen_scroll = max(
-        scroll_steps * MIN_SCROLL_STEP_SECONDS,
-        self.duration(card_count) - intro - fixed_tail,
+def _easy_settings_type(base_type: type) -> type:
+    cached = _EASY_SETTINGS_TYPES.get(base_type)
+    if cached is not None:
+        return cached
+    easy_type = type(
+        f"Easy{base_type.__name__}",
+        (EasyTimingMixin, base_type),
+        {"__slots__": (), "__module__": __name__},
     )
-    return automatic_scroll / max(0.001, chosen_scroll)
+    _EASY_SETTINGS_TYPES[base_type] = easy_type
+    return easy_type
 
 
-def _model_time(self: ProjectSettings, output_time: float, card_count: int) -> float:
-    """Map output time into the original model timeline without scaling entrances/tail."""
-    output_time = max(0.0, float(output_time))
-    if self.custom_duration is None:
-        return output_time
+def with_easy_timing(settings: SettingsT) -> SettingsT:
+    """Copy any CTS settings dataclass into an equivalent Easy-timed runtime type.
 
-    intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(self, card_count)
-    if scroll_steps <= 0 or automatic_scroll <= 0:
-        return output_time
-    if output_time <= intro:
-        return output_time
-
-    chosen_scroll = max(
-        scroll_steps * MIN_SCROLL_STEP_SECONDS,
-        self.duration(card_count) - intro - fixed_tail,
-    )
-    if output_time < intro + chosen_scroll:
-        scroll_progress = (output_time - intro) / max(0.001, chosen_scroll)
-        return intro + scroll_progress * automatic_scroll
-
-    # Once scrolling finishes, the normal hold and fade proceed at real-time speed.
-    return intro + automatic_scroll + (output_time - intro - chosen_scroll)
-
-
-def _seconds_per_card(self: ProjectSettings, card_count: int) -> float:
-    intro, scroll_steps, _automatic_scroll, fixed_tail = timeline_parts(self, card_count)
-    if scroll_steps <= 0:
-        return 0.0
-    if self.custom_duration is None:
-        return REFERENCE_SCROLL_SECONDS
-    chosen_scroll = max(
-        scroll_steps * MIN_SCROLL_STEP_SECONDS,
-        self.duration(card_count) - intro - fixed_tail,
-    )
-    return chosen_scroll / scroll_steps
-
-
-def install_easy_timing() -> None:
-    """Install the CTS Easy timing methods once for the desktop runtime."""
-    if getattr(ProjectSettings, "_cts_easy_timing", False):
-        return
-    ProjectSettings.duration = _duration  # type: ignore[method-assign]
-    ProjectSettings.speed_multiplier = _speed_multiplier  # type: ignore[method-assign]
-    ProjectSettings.model_time = _model_time  # type: ignore[method-assign]
-    ProjectSettings.seconds_per_card = _seconds_per_card  # type: ignore[method-assign]
-    ProjectSettings._cts_easy_timing = True  # type: ignore[attr-defined]
-
-
-install_easy_timing()
+    This preserves later visual/transform settings subclasses and, unlike a global
+    monkeypatch, leaves the established renderer and timing unit tests untouched.
+    """
+    if isinstance(settings, EasyTimingMixin):
+        return settings
+    easy_type = _easy_settings_type(type(settings))
+    values: dict[str, Any] = asdict(settings)
+    return easy_type(**values)
