@@ -5,6 +5,7 @@ import io
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -98,6 +100,10 @@ QPushButton#fixAction:checked {
     background:#704f2f;
     border-color:#a8794a;
     color:white;
+}
+QPushButton#fixAction {
+    min-height:40px;
+    font-weight:800;
 }
 QDialog#androidDialog {
     background:#202024;
@@ -364,9 +370,16 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         old_sequence_bar = self.monitor_panel.findChild(QFrame, "settingsBar")
         if old_sequence_bar is not None:
             old_sequence_bar.setVisible(False)
+        monitor_header = self.monitor_panel.findChild(QFrame, "panelHeader")
+        self.monitor_hint = (
+            monitor_header.findChild(QLabel, "muted") if monitor_header is not None else None
+        )
+        if self.monitor_hint is not None:
+            self.monitor_hint.setText("Preview · open Fix Something to edit")
 
         layout.addWidget(self.monitor_panel, 1)
-        layout.addWidget(self._build_android_sheet())
+        self.android_sheet = self._build_android_sheet()
+        layout.addWidget(self.android_sheet)
         layout.addWidget(self.fix_panel)
         return shell
 
@@ -410,13 +423,13 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         layout.setContentsMargins(7, 7, 7, 7)
         layout.setSpacing(6)
 
-        helper = QLabel(
+        self.cards_helper = QLabel(
             "Use Click to Insert Data for paste, CSV, or XLSX. This sheet is only for fixing "
             "individual cards after CTS has created them."
         )
-        helper.setWordWrap(True)
-        helper.setObjectName("muted")
-        layout.addWidget(helper)
+        self.cards_helper.setWordWrap(True)
+        self.cards_helper.setObjectName("muted")
+        layout.addWidget(self.cards_helper)
 
         self.field_guide = QLabel()
         self.field_guide.setWordWrap(True)
@@ -490,6 +503,9 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
 
         self.easy_music_button = QPushButton("Music")
         self.easy_music_button.setObjectName("androidAction")
+        music_policy = self.easy_music_button.sizePolicy()
+        music_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.easy_music_button.setSizePolicy(music_policy)
         self.easy_music_button.clicked.connect(self._choose_easy_music)
 
         self.easy_timing_button = QPushButton("Video length")
@@ -542,8 +558,15 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
     def _set_fix_visible(self, visible: bool) -> None:
         self._fix_visible = visible
         self.fix_panel.setVisible(visible)
+        self.android_sheet.setVisible(not visible)
         self.fix_button.setText("Done Fixing" if visible else "Fix Something")
         self.subtitle_label.setText("FIX" if visible else "CREATE")
+        if self.monitor_hint is not None:
+            self.monitor_hint.setText(
+                "Click a field in the preview to edit it"
+                if visible
+                else "Preview · open Fix Something to edit"
+            )
         if visible:
             self.statusBar().showMessage(
                 "Fix mode · edit cards in the table or click fields in the Program Monitor",
@@ -633,15 +656,39 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         if track_count:
             item = self.soundtrack_table.item(0, 0)
             name = Path(item.text()).name if item and item.text().strip() else "Music ready"
-            self.easy_music_button.setText(name)
+            self._music_display_name = name
             self.easy_music_button.setToolTip(name)
         else:
-            self.easy_music_button.setText("Music")
+            self._music_display_name = ""
             self.easy_music_button.setToolTip("Choose a soundtrack")
+        self._refresh_music_button_text()
         self._refresh_duration_labels()
+
+    def _refresh_music_button_text(self) -> None:
+        if not hasattr(self, "easy_music_button"):
+            return
+        name = getattr(self, "_music_display_name", "")
+        if not name:
+            self.easy_music_button.setText("Music")
+            return
+        available = max(52, self.easy_music_button.contentsRect().width() - 14)
+        self.easy_music_button.setText(
+            QFontMetrics(self.easy_music_button.font()).elidedText(
+                name,
+                Qt.TextElideMode.ElideMiddle,
+                available,
+            )
+        )
 
     def project_settings(self):
         return with_easy_timing(super().project_settings())
+
+    def update_preview(self) -> None:
+        super().update_preview()
+        if hasattr(self, "preview") and hasattr(self, "table") and not self.cards():
+            self.preview.set_empty_message(
+                "Click Insert Data to create your first comparison"
+            )
 
     def _refresh_duration_labels(self) -> None:
         if not hasattr(self, "table"):
@@ -701,6 +748,7 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         if not hasattr(self, "root_layout"):
             return
         compact = self.width() < 1120 or self.height() < 760
+        fix_only = self._fix_visible and self.height() < 680
         self._compact_mode = compact
         self.root_layout.setContentsMargins(5, 5, 5, 5)
         self.root_layout.setSpacing(5)
@@ -711,16 +759,28 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self.subtitle_label.setVisible(self.width() >= 900)
         self.open_button.setText("Open" if compact else "Open project")
         self.save_button.setText("Save" if compact else "Save project")
-        self.fix_panel.setMaximumHeight(270 if compact else 360)
+        self.monitor_panel.setVisible(not fix_only)
+        show_card_guidance = not (self._fix_visible and compact)
+        self.cards_helper.setVisible(show_card_guidance)
+        self.field_guide.setVisible(show_card_guidance)
+        if self._fix_visible:
+            self.preview.setMinimumSize(320, 180)
+        else:
+            self.preview.setMinimumSize(480, 270)
+        if fix_only:
+            self.fix_panel.setMaximumHeight(16777215)
+        elif self._fix_visible:
+            self.fix_panel.setMaximumHeight(320 if compact else 360)
+        else:
+            self.fix_panel.setMaximumHeight(270 if compact else 360)
 
         if hasattr(self, "insert_data_button"):
             self.insert_data_button.setText(
                 "＋  INSERT DATA" if compact else "＋  CLICK TO INSERT DATA"
             )
-            if not self.soundtrack_table.rowCount():
-                self.easy_music_button.setText("Music")
             if self.auto_length.isChecked():
                 self.easy_timing_button.setText("Length" if compact else "Video length")
             self.easy_export_button.setText("Export" if compact else "EXPORT VIDEO")
             if not self._fix_visible:
                 self.fix_button.setText("Fix" if compact else "Fix Something")
+            self._refresh_music_button_text()

@@ -346,15 +346,23 @@ class ReselectFixedMainWindow(DeselectFixedMainWindow):
 
     def _replace_preview_widget(self) -> None:
         old = self.preview
-        replacement = ClickableTransformPreviewWidget()
+        parent = old.parentWidget()
+        layout = parent.layout() if parent is not None else None
+        if layout is None:
+            raise RuntimeError("Program Monitor preview has no parent layout")
+        index = layout.indexOf(old)
+        if index < 0:
+            raise RuntimeError("Program Monitor preview is missing from its parent layout")
+
+        replacement = ClickableTransformPreviewWidget(parent)
         replacement.field_clicked.connect(self._preview_field_clicked)
         replacement.inline_committed.connect(self._commit_direct_edit)
         replacement.inline_canceled.connect(self.update_preview)
         replacement.transform_requested.connect(self._transform_requested)
         replacement.transform_changed.connect(self._transform_changed)
         replacement.selection_cleared.connect(self._selection_was_cleared)
-        index = self.preview_layout.indexOf(old)
-        self.preview_layout.replaceWidget(old, replacement)
+        layout.replaceWidget(old, replacement)
+        old.hide()
         old.setParent(None)
         old.deleteLater()
         self.preview = replacement
