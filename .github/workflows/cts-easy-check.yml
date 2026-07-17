@@ -32,10 +32,25 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q comparison_studio run.py
 
-      - name: Run CTS Easy timing tests
+      - name: Check normal-speed intro
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m unittest discover -s tests -p "test_easy_timing.py" -v
+        run: python -m unittest discover -s tests -p "test_easy_timing.py" -k custom_target -v
+
+      - name: Check scroll-only retiming
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -p "test_easy_timing.py" -k only_scroll -v
+
+      - name: Check no-scroll projects
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -p "test_easy_timing.py" -k target_is_ignored -v
+
+      - name: Check visual settings wrapper
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -p "test_easy_timing.py" -k visual_settings -v
 
       - name: Run complete unit suite
         env:
