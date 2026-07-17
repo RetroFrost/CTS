@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -66,10 +67,27 @@ QFrame#styleChoice {
     border:1px solid #45454d;
     border-radius:7px;
 }
+QFrame#wizardStepPage {
+    background:#202024;
+    border:1px solid #3d3d45;
+    border-radius:7px;
+}
 QLabel#androidTitle {
     color:#f5f5f7;
     font-size:13px;
     font-weight:900;
+}
+QLabel#wizardHeading {
+    color:#f5f5f7;
+    font-size:14px;
+    font-weight:900;
+}
+QLabel#wizardTrail {
+    color:#90909a;
+    background:#202024;
+    border:1px solid #393940;
+    border-radius:5px;
+    padding:5px 8px;
 }
 QLabel#androidSummary {
     color:#a8a8b2;
@@ -442,18 +460,20 @@ class StyleDialog(QDialog):
 
 
 class EasyMainWindow(ReferenceIllustratedMainWindow):
-    """Desktop CTS using the Android app's monitor-first, bottom-sheet workflow."""
+    """Desktop CTS using a monitor-first, step-by-step setup workflow."""
 
     def __init__(self) -> None:
         self._fix_visible = False
+        self._wizard_step = 0
         super().__init__()
         self.setWindowTitle("CTS — Comparison Timeline Studio")
         self.subtitle_label.setText("CREATE")
         self._prepare_android_defaults()
         self._connect_android_status()
         self._update_android_summary()
+        self._set_wizard_step(0)
         self.statusBar().showMessage(
-            "Ready · Select spreadsheet · Choose style · Pick music and length · Export"
+            "Video setup · Step 1 of 5 · Select a spreadsheet"
         )
 
     def _build_header(self) -> QWidget:
@@ -620,10 +640,10 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         sheet.setObjectName("androidSheet")
         layout = QVBoxLayout(sheet)
         layout.setContentsMargins(10, 8, 10, 9)
-        layout.setSpacing(7)
+        layout.setSpacing(6)
 
         top = QHBoxLayout()
-        title = QLabel("CREATE VIDEO")
+        title = QLabel("CREATE VIDEO SETUP")
         title.setObjectName("androidTitle")
         self.android_summary = QLabel("No cards · No music")
         self.android_summary.setObjectName("androidSummary")
@@ -635,37 +655,54 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         top.addWidget(self.android_summary)
         layout.addLayout(top)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(7)
+        self.wizard_trail = QLabel()
+        self.wizard_trail.setObjectName("wizardTrail")
+        self.wizard_trail.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(self.wizard_trail)
 
-        self.insert_data_button = QPushButton("1 · SELECT SPREADSHEET")
+        introduction = QHBoxLayout()
+        introduction.setSpacing(10)
+        self.wizard_heading = QLabel()
+        self.wizard_heading.setObjectName("wizardHeading")
+        self.wizard_detail = QLabel()
+        self.wizard_detail.setObjectName("androidSummary")
+        self.wizard_detail.setWordWrap(True)
+        self.wizard_detail.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        introduction.addWidget(self.wizard_heading)
+        introduction.addStretch()
+        introduction.addWidget(self.wizard_detail, 2)
+        layout.addLayout(introduction)
+
+        self.insert_data_button = QPushButton("SELECT SPREADSHEET")
         self.insert_data_button.setObjectName("androidPrimary")
         self.insert_data_button.setToolTip("Choose CSV, TSV, TXT, or XLSX comparison data")
         self.insert_data_button.clicked.connect(self._choose_spreadsheet_file)
 
-        self.easy_style_button = QPushButton("2 · STYLE")
-        self.easy_style_button.setObjectName("androidAction")
+        self.easy_style_button = QPushButton("CHOOSE STYLE")
+        self.easy_style_button.setObjectName("androidPrimary")
         style_policy = self.easy_style_button.sizePolicy()
         style_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
         self.easy_style_button.setSizePolicy(style_policy)
         self.easy_style_button.clicked.connect(self._open_style_sheet)
 
-        self.easy_music_button = QPushButton("3 · MUSIC")
-        self.easy_music_button.setObjectName("androidAction")
+        self.easy_music_button = QPushButton("CHOOSE MUSIC (OPTIONAL)")
+        self.easy_music_button.setObjectName("androidPrimary")
         self.easy_music_button.setToolTip("Optional · add one soundtrack that loops automatically")
         music_policy = self.easy_music_button.sizePolicy()
         music_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
         self.easy_music_button.setSizePolicy(music_policy)
         self.easy_music_button.clicked.connect(self._choose_easy_music)
 
-        self.easy_timing_button = QPushButton("4 · LENGTH")
-        self.easy_timing_button.setObjectName("androidAction")
+        self.easy_timing_button = QPushButton("SET VIDEO LENGTH")
+        self.easy_timing_button.setObjectName("androidPrimary")
         self.easy_timing_button.setToolTip(
             "Optional · automatic timing is already selected"
         )
         self.easy_timing_button.clicked.connect(self._open_timing_sheet)
 
-        self.easy_export_button = QPushButton("5 · EXPORT")
+        self.easy_export_button = QPushButton("EXPORT MP4")
         self.easy_export_button.setObjectName("androidExport")
         self.easy_export_button.setToolTip("Select a spreadsheet first")
         self.easy_export_button.clicked.connect(self.export_video)
@@ -676,18 +713,121 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self.fix_button.setCheckable(True)
         self.fix_button.toggled.connect(self._set_fix_visible)
 
-        actions.addWidget(self.insert_data_button, 2)
-        actions.addWidget(self.easy_style_button, 1)
-        actions.addWidget(self.easy_music_button, 1)
-        actions.addWidget(self.easy_timing_button, 1)
-        actions.addWidget(self.easy_export_button, 1)
-        actions.addWidget(self.fix_button, 1)
-        layout.addLayout(actions)
+        self.wizard_stack = QStackedWidget()
+        for buttons in (
+            (self.insert_data_button,),
+            (self.easy_style_button,),
+            (self.easy_music_button,),
+            (self.easy_timing_button,),
+            (self.easy_export_button, self.fix_button),
+        ):
+            page = QFrame()
+            page.setObjectName("wizardStepPage")
+            row = QHBoxLayout(page)
+            row.setContentsMargins(8, 5, 8, 5)
+            row.setSpacing(7)
+            row.addStretch()
+            for button in buttons:
+                row.addWidget(button, 1)
+            row.addStretch()
+            self.wizard_stack.addWidget(page)
+        layout.addWidget(self.wizard_stack)
 
+        navigation = QHBoxLayout()
+        navigation.setSpacing(7)
         self.android_duration = QLabel()
         self.android_duration.setObjectName("androidSummary")
-        layout.addWidget(self.android_duration)
+        self.android_duration.setWordWrap(True)
+        navigation.addWidget(self.android_duration, 1)
+        self.wizard_progress = QLabel("STEP 1 OF 5")
+        self.wizard_progress.setObjectName("androidSummary")
+        navigation.addWidget(self.wizard_progress)
+        self.wizard_back = QPushButton("‹ Back")
+        self.wizard_back.setObjectName("androidAction")
+        self.wizard_back.clicked.connect(self._wizard_previous)
+        navigation.addWidget(self.wizard_back)
+        self.wizard_next = QPushButton("Next ›")
+        self.wizard_next.setObjectName("androidAction")
+        self.wizard_next.clicked.connect(self._wizard_next_step)
+        navigation.addWidget(self.wizard_next)
+        layout.addLayout(navigation)
         return sheet
+
+    def _wizard_previous(self) -> None:
+        self._set_wizard_step(self._wizard_step - 1)
+
+    def _wizard_next_step(self) -> None:
+        if self._wizard_step == 0 and not self.cards():
+            return
+        self._set_wizard_step(self._wizard_step + 1)
+
+    def _set_wizard_step(self, step: int, *, focus: bool = True) -> None:
+        if not hasattr(self, "wizard_stack"):
+            return
+        if step > 0 and not self.cards():
+            step = 0
+        step = max(0, min(step, self.wizard_stack.count() - 1))
+        self._wizard_step = step
+        self.wizard_stack.setCurrentIndex(step)
+
+        steps = (
+            ("Spreadsheet", "Select your spreadsheet file to create the cards."),
+            ("Style", "Choose the visual style used for every card."),
+            ("Music", "Choose a soundtrack, or continue without music."),
+            ("Video length", "Use automatic timing or enter a target duration."),
+            ("Ready to export", "Export now, or open Manual editor for further changes."),
+        )
+        self.wizard_heading.setText(steps[step][0])
+        self.wizard_detail.setText(steps[step][1])
+        self.wizard_progress.setText(f"STEP {step + 1} OF {len(steps)}")
+
+        trail: list[str] = []
+        for index, (label, _detail) in enumerate(steps):
+            if index < step:
+                marker, color, weight = "✓", "#8ed39c", "700"
+            elif index == step:
+                marker, color, weight = str(index + 1), "#ffffff", "900"
+            else:
+                marker, color, weight = str(index + 1), "#777780", "600"
+            trail.append(
+                f'<span style="color:{color}; font-weight:{weight};">{marker} {label}</span>'
+            )
+        self.wizard_trail.setText("&nbsp;&nbsp; › &nbsp;&nbsp;".join(trail))
+
+        self.wizard_back.setEnabled(step > 0)
+        self.wizard_next.setVisible(step < len(steps) - 1)
+        self.wizard_next.setEnabled(step > 0 or bool(self.cards()))
+        if step == 2 and not self.soundtrack_table.rowCount():
+            self.wizard_next.setText("Skip ›")
+        elif step == 3:
+            self.wizard_next.setText("Review ›")
+        else:
+            self.wizard_next.setText("Next ›")
+
+        if self.monitor_hint is not None and not self._fix_visible:
+            self.monitor_hint.setText(
+                "Preview · choose Export or Manual editor"
+                if step == len(steps) - 1
+                else f"Preview · video setup step {step + 1} of {len(steps)}"
+            )
+        if focus:
+            current_actions = (
+                self.insert_data_button,
+                self.easy_style_button,
+                self.easy_music_button,
+                self.easy_timing_button,
+                self.easy_export_button,
+            )
+            current_actions[step].setFocus(Qt.FocusReason.OtherFocusReason)
+            if step == len(steps) - 1:
+                self.statusBar().showMessage(
+                    "Video setup complete · Export MP4 or open Manual editor", 5000
+                )
+            else:
+                self.statusBar().showMessage(
+                    f"Video setup · Step {step + 1} of {len(steps)} · {steps[step][0]}",
+                    4000,
+                )
 
     def _prepare_android_defaults(self) -> None:
         illustrated = self.model_combo.findData(MODEL_ILLUSTRATED)
@@ -695,7 +835,7 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             self.model_combo.setCurrentIndex(illustrated)
         self.default_visible.setChecked(True)
 
-        # Android starts with an empty project and lets the flagship action create the cards.
+        # Setup starts empty and keeps every later step behind spreadsheet selection.
         headers = [header for header, _role in MODEL_SCHEMAS[MODEL_ILLUSTRATED]]
         self.table.set_data(SpreadsheetData(headers, []))
         self._auto_map_fields()
@@ -730,7 +870,10 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             )
         else:
             self.tabs.setCurrentIndex(0)
-            self.statusBar().showMessage("Guided workflow · ready for the next step", 3500)
+            self.statusBar().showMessage(
+                f"Video setup · returned to step {self._wizard_step + 1}", 3500
+            )
+            self._set_wizard_step(self._wizard_step, focus=False)
         self._apply_responsive_layout()
 
     def _preview_field_clicked(self, normalized_x: float, normalized_y: float) -> None:
@@ -770,12 +913,14 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         dialog = InsertDataDialog(initial_text, self, existing=existing)
         if dialog.exec() != QDialog.DialogCode.Accepted or dialog.selected_data is None:
             return
-        self._apply_inserted_data(dialog.selected_data, dialog.warnings)
+        self._apply_inserted_data(dialog.selected_data, dialog.warnings, advance=False)
 
     def _apply_inserted_data(
         self,
         data: SpreadsheetData,
         warnings: list[str] | None = None,
+        *,
+        advance: bool = True,
     ) -> None:
         try:
             self.table.set_data(data)
@@ -791,10 +936,16 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
                 self.position_seconds = 0.0
             self.update_preview()
             self._update_android_summary()
-            self.statusBar().showMessage(
-                f"Imported {data.row_count} cards · next: choose a style",
-                6000,
-            )
+            if advance:
+                self._set_wizard_step(1)
+                self.statusBar().showMessage(
+                    f"Imported {data.row_count} cards · setup step 2: choose a style",
+                    6000,
+                )
+            else:
+                self.statusBar().showMessage(
+                    f"Updated {data.row_count} cards in Manual editor", 5000
+                )
             if warnings:
                 box = QMessageBox(self)
                 box.setIcon(QMessageBox.Icon.Warning)
@@ -829,8 +980,9 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             )
         self.update_preview()
         self._update_android_summary()
+        self._set_wizard_step(2)
         self.statusBar().showMessage(
-            f"Style selected · {MODEL_INFO[model_id][0]} · next: pick music or length",
+            f"Style selected · {MODEL_INFO[model_id][0]} · setup step 3: choose music or skip",
             5000,
         )
 
@@ -847,9 +999,11 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             [AudioTrack(path=str(Path(path).resolve()), loop=True, fade_out=0.8)]
         )
         self.statusBar().showMessage(
-            f"Music selected · {Path(path).name} · loops to the video length", 5000
+            f"Music selected · {Path(path).name} · setup step 4: set video length",
+            5000,
         )
         self._update_android_summary()
+        self._set_wizard_step(3)
 
     def _open_timing_sheet(self) -> None:
         current = self.custom_length.text().strip()
@@ -863,6 +1017,13 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             self.custom_length.setText(dialog.target.text().strip())
         self._custom_duration_changed()
         self._update_android_summary()
+        self._set_wizard_step(4)
+
+    def open_project(self) -> None:
+        super().open_project()
+        self._update_android_summary()
+        if self.cards():
+            self._set_wizard_step(4)
 
     def _update_android_summary(self, *_args) -> None:
         if not hasattr(self, "android_summary") or not hasattr(self, "table"):
@@ -894,6 +1055,7 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self._refresh_style_button_text()
         self._refresh_music_button_text()
         self._refresh_duration_labels()
+        self._set_wizard_step(self._wizard_step, focus=False)
 
     def _refresh_style_button_text(self) -> None:
         if not hasattr(self, "easy_style_button"):
@@ -901,7 +1063,9 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         model_id = self.model_combo.currentData() or MODEL_ILLUSTRATED
         name, description = MODEL_INFO[model_id]
         compact = getattr(self, "_compact_mode", False)
-        self.easy_style_button.setText("2 · STYLE" if compact else f"2 · {name.upper()}")
+        self.easy_style_button.setText(
+            "CHOOSE STYLE" if compact else f"CHOOSE STYLE · {name.upper()}"
+        )
         self.easy_style_button.setToolTip(description)
 
     def _refresh_music_button_text(self) -> None:
@@ -911,13 +1075,13 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         if not name:
             compact = getattr(self, "_compact_mode", False)
             self.easy_music_button.setText(
-                "3 · MUSIC" if compact else "3 · MUSIC (OPTIONAL)"
+                "CHOOSE MUSIC" if compact else "CHOOSE MUSIC (OPTIONAL)"
             )
             return
         available = max(52, self.easy_music_button.contentsRect().width() - 14)
         self.easy_music_button.setText(
             QFontMetrics(self.easy_music_button.font()).elidedText(
-                f"3 · {name}",
+                name,
                 Qt.TextElideMode.ElideMiddle,
                 available,
             )
@@ -944,9 +1108,9 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
                 self.android_duration.setText(detail)
             if hasattr(self, "easy_timing_button"):
                 self.easy_timing_button.setText(
-                    "4 · LENGTH"
+                    "SET LENGTH"
                     if getattr(self, "_compact_mode", False)
-                    else "4 · AUTO LENGTH"
+                    else "SET LENGTH · AUTOMATIC"
                 )
             self.time_label.setText("00:00 / 00:00")
             return
@@ -960,21 +1124,21 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             if self.auto_length.isChecked():
                 detail = f"Ready to export · Automatic length · {format_duration(duration)}"
                 button = (
-                    "4 · LENGTH"
+                    "SET LENGTH"
                     if getattr(self, "_compact_mode", False)
-                    else "4 · AUTO LENGTH"
+                    else "SET LENGTH · AUTOMATIC"
                 )
             elif scroll_steps:
                 detail = (
                     f"Target {format_duration(duration)} · cards scroll every {per_card:.2f}s · "
                     "entrances stay normal"
                 )
-                button = f"4 · {format_duration(duration)}"
+                button = f"SET LENGTH · {format_duration(duration)}"
             else:
                 detail = (
                     f"{format_duration(duration)} · all cards fit, so no horizontal scroll needs retiming"
                 )
-                button = f"4 · {format_duration(duration)}"
+                button = f"SET LENGTH · {format_duration(duration)}"
             self.duration_info.setText(detail)
             if hasattr(self, "android_duration"):
                 self.android_duration.setText(detail)
@@ -1036,11 +1200,12 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
 
         if hasattr(self, "insert_data_button"):
             self.insert_data_button.setText(
-                "1 · SPREADSHEET" if compact else "1 · SELECT SPREADSHEET"
+                "SPREADSHEET" if compact else "SELECT SPREADSHEET"
             )
-            self.easy_export_button.setText("5 · EXPORT")
+            self.easy_export_button.setText("EXPORT MP4")
             if not self._fix_visible:
                 self.fix_button.setText("Manual editor")
             self._refresh_style_button_text()
             self._refresh_music_button_text()
             self._refresh_duration_labels()
+            self._set_wizard_step(self._wizard_step, focus=False)
