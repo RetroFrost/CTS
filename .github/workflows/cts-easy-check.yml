@@ -32,7 +32,12 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q comparison_studio run.py
 
-      - name: Run unit tests
+      - name: Run CTS Easy timing tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -p "test_easy_timing.py" -v
+
+      - name: Run complete unit suite
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m unittest discover -s tests -v
