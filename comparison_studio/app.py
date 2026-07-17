@@ -6,8 +6,7 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
-from .premiere_ui import PREMIERE_STYLE
-from .reference_illustrated import ReferenceIllustratedMainWindow
+from .easy_ui import EASY_STYLE, EasyMainWindow
 
 
 def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
@@ -30,9 +29,9 @@ def main() -> int:
     app.setApplicationVersion(__version__)
     app.setOrganizationName("Ethan Woods")
     app.setStyle("Fusion")
-    app.setStyleSheet(PREMIERE_STYLE)
+    app.setStyleSheet(EASY_STYLE)
     sys.excepthook = _exception_hook
-    window = ReferenceIllustratedMainWindow()
-    window.setWindowTitle(f"CTS {__version__} — Comparison Timeline Studio")
+    window = EasyMainWindow()
+    window.setWindowTitle(f"CTS Easy {__version__} — Comparison Timeline Studio")
     window.show()
     return app.exec()
