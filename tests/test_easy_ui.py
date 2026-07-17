@@ -42,12 +42,20 @@ class EasyWindowTests(unittest.TestCase):
             self.app.processEvents()
 
             self.assertEqual(window.model_combo.currentData(), MODEL_ILLUSTRATED)
-            self.assertEqual(window.insert_data_button.text(), "1 · SELECT SPREADSHEET")
-            self.assertTrue(window.easy_style_button.text().startswith("2 ·"))
-            self.assertTrue(window.easy_music_button.text().startswith("3 ·"))
-            self.assertTrue(window.easy_timing_button.text().startswith("4 ·"))
-            self.assertEqual(window.easy_export_button.text(), "5 · EXPORT")
+            self.assertEqual(window._wizard_step, 0)
+            self.assertEqual(window.wizard_stack.currentIndex(), 0)
+            self.assertEqual(window.wizard_heading.text(), "Spreadsheet")
+            self.assertEqual(window.wizard_progress.text(), "STEP 1 OF 5")
+            self.assertEqual(window.insert_data_button.text(), "SELECT SPREADSHEET")
+            self.assertTrue(window.insert_data_button.isVisible())
+            self.assertFalse(window.easy_style_button.isVisible())
+            self.assertFalse(window.easy_music_button.isVisible())
+            self.assertFalse(window.easy_timing_button.isVisible())
+            self.assertFalse(window.easy_export_button.isVisible())
+            self.assertFalse(window.fix_button.isVisible())
             self.assertEqual(window.fix_button.text(), "Manual editor")
+            self.assertFalse(window.wizard_back.isEnabled())
+            self.assertFalse(window.wizard_next.isEnabled())
             self.assertTrue(window.fix_panel.isHidden())
             self.assertEqual(window.table.rowCount(), 0)
             self.assertEqual(window.soundtrack_table.rowCount(), 0)
@@ -72,9 +80,20 @@ class EasyWindowTests(unittest.TestCase):
                 window.preview._empty_message,
                 "Select a spreadsheet to create your first comparison",
             )
-            self.assertIn("open Manual editor", window.monitor_hint.text())
-            self.assertEqual(window.fix_button.height(), window.easy_music_button.height())
-
+            self.assertIn("video setup step 1 of 5", window.monitor_hint.text())
+            window._set_wizard_step(4)
+            self.assertEqual(window._wizard_step, 0)
+            window._apply_inserted_data(
+                SpreadsheetData(
+                    ["Badge Value", "Badge Label", "Title", "Artwork"],
+                    [["84", "PERCENT", "Example", ""]],
+                )
+            )
+            window._set_wizard_step(4)
+            self.app.processEvents()
+            self.assertEqual(window.wizard_heading.text(), "Ready to export")
+            self.assertTrue(window.easy_export_button.isVisible())
+            self.assertTrue(window.fix_button.isVisible())
             window.fix_button.setChecked(True)
             self.assertFalse(window.fix_panel.isHidden())
             self.assertTrue(window.android_sheet.isHidden())
@@ -151,7 +170,9 @@ class EasyWindowTests(unittest.TestCase):
             self.assertTrue(window.easy_export_button.isEnabled())
             self.assertTrue(window.easy_timing_button.isEnabled())
             self.assertIn("Ready to export", window.android_duration.text())
-            self.assertEqual(window.easy_timing_button.text(), "4 · AUTO LENGTH")
+            self.assertEqual(window.easy_timing_button.text(), "SET LENGTH · AUTOMATIC")
+            self.assertEqual(window._wizard_step, 1)
+            self.assertEqual(window.wizard_heading.text(), "Style")
         finally:
             window.close()
 
@@ -178,7 +199,8 @@ class EasyWindowTests(unittest.TestCase):
                 self.assertGreater(window.position_seconds, 0.0)
                 self.assertIsNotNone(window.preview._image)
                 self.assertTrue(window.easy_export_button.isEnabled())
-                self.assertIn("next: choose a style", window.statusBar().currentMessage())
+                self.assertEqual(window._wizard_step, 1)
+                self.assertIn("setup step 2", window.statusBar().currentMessage())
             finally:
                 window.close()
 
@@ -198,6 +220,8 @@ class EasyWindowTests(unittest.TestCase):
 
             self.assertEqual(window.model_combo.currentData(), MODEL_CLASSIC)
             self.assertIn("CLASSIC COMPACT", window.easy_style_button.text())
+            self.assertEqual(window._wizard_step, 2)
+            self.assertEqual(window.wizard_heading.text(), "Music")
             self.assertGreater(window.position_seconds, 0.0)
             self.assertIsNotNone(window.preview._image)
             self.assertIn("Style selected", window.statusBar().currentMessage())
@@ -242,14 +266,52 @@ class EasyWindowTests(unittest.TestCase):
                 self.assertEqual(window.table.rowCount(), 1)
                 self.assertGreater(window.position_seconds, 0.0)
                 self.assertIsNotNone(window.preview._image)
+                self.assertEqual(window._wizard_step, 4)
+                self.assertEqual(window.wizard_heading.text(), "Ready to export")
             finally:
                 window.close()
+
+    def test_setup_wizard_moves_one_step_at_a_time_and_supports_back(self) -> None:
+        window = EasyMainWindow()
+        try:
+            window.resize(1366, 768)
+            window.show()
+            window._apply_inserted_data(
+                SpreadsheetData(
+                    ["Badge Value", "Badge Label", "Title", "Artwork"],
+                    [["84", "PERCENT", "Example", ""]],
+                )
+            )
+            self.assertEqual(window._wizard_step, 1)
+
+            window.wizard_next.click()
+            self.assertEqual(window._wizard_step, 2)
+            self.assertEqual(window.wizard_next.text(), "Skip ›")
+            window.wizard_next.click()
+            self.assertEqual(window._wizard_step, 3)
+            self.assertEqual(window.wizard_next.text(), "Review ›")
+            window.wizard_next.click()
+            self.assertEqual(window._wizard_step, 4)
+            self.assertFalse(window.wizard_next.isVisible())
+
+            window.wizard_back.click()
+            self.assertEqual(window._wizard_step, 3)
+            self.assertEqual(window.wizard_heading.text(), "Video length")
+        finally:
+            window.close()
 
     def test_fix_mode_uses_the_editor_instead_of_overlapping_on_short_windows(self) -> None:
         window = EasyMainWindow()
         try:
             window.resize(900, 560)
             window.show()
+            window._apply_inserted_data(
+                SpreadsheetData(
+                    ["Badge Value", "Badge Label", "Title", "Artwork"],
+                    [["84", "PERCENT", "Example", ""]],
+                )
+            )
+            window._set_wizard_step(4)
             window.fix_button.setChecked(True)
             self.app.processEvents()
 
@@ -271,6 +333,13 @@ class EasyWindowTests(unittest.TestCase):
         try:
             window.resize(900, 560)
             window.show()
+            window._apply_inserted_data(
+                SpreadsheetData(
+                    ["Badge Value", "Badge Label", "Title", "Artwork"],
+                    [["84", "PERCENT", "Example", ""]],
+                )
+            )
+            window._set_wizard_step(2)
             long_name = "very_long_soundtrack_name_" * 12 + ".mp3"
             window.soundtrack_table.set_tracks([AudioTrack(path=f"/tmp/{long_name}")])
             self.app.processEvents()
@@ -278,8 +347,8 @@ class EasyWindowTests(unittest.TestCase):
             self.assertLess(window.minimumSizeHint().width(), 900)
             self.assertLess(len(window.easy_music_button.text()), len(long_name))
             self.assertEqual(window.easy_music_button.toolTip(), long_name)
-            self.assertGreaterEqual(window.easy_export_button.width(), 80)
-            self.assertGreaterEqual(window.fix_button.width(), 80)
+            self.assertEqual(window.wizard_stack.currentIndex(), 2)
+            self.assertGreaterEqual(window.wizard_next.width(), 55)
         finally:
             window.close()
 

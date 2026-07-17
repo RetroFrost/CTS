@@ -1,16 +1,16 @@
 # CTS Easy
 
-The desktop app now follows the Android app's workflow instead of placing a simplified panel on top of the old editing workspace.
+The desktop app uses a guided program-setup workflow instead of placing a simplified panel on top of the old editing workspace.
 
 ## Normal workflow
 
-The main window is organized in the same order as Android:
+The main window keeps the preview visible while setup advances:
 
 1. **Program Monitor**
 2. **Playback timeline**
-3. **Bottom action sheet**
+3. **Video setup wizard**
 
-The action sheet presents one numbered path from left to right:
+The setup wizard reveals one step at a time:
 
 1. **Select spreadsheet**
 2. **Style**
@@ -18,16 +18,21 @@ The action sheet presents one numbered path from left to right:
 4. **Length**
 5. **Export**
 
-**Manual editor** is an unnumbered escape hatch for detailed changes, not another step in
-the normal path.
+Each screen contains one primary choice plus familiar **Back** and **Next** controls. A
+progress trail shows the completed, current, and remaining setup steps. Music can be
+skipped, and automatic timing can be accepted with **Review**.
+
+The final screen presents **Export MP4** and **Manual editor** side by side. Manual editor
+is an escape hatch for further changes, not another setup step.
 
 Illustrated Cards is the default template. New projects start empty, so CTS does not show several meaningless blank cards before data is inserted.
 
 ## Select spreadsheet
 
 The primary action opens the system file picker directly and accepts CSV, TSV, TXT, or XLSX.
-After loading, CTS detects the fields and card count, maps the table to the active style, and
-jumps the Program Monitor to a fully revealed card frame instead of the black opening frame.
+After loading, CTS detects the fields and card count, maps the table to the active style,
+jumps the Program Monitor to a fully revealed card frame instead of the black opening frame,
+and advances to the Style screen.
 
 The Manual editor includes a separate **Paste / edit table** action where the user can:
 
@@ -46,16 +51,17 @@ the Manual editor.
 
 ## Style
 
-The second action opens a focused chooser for Illustrated Cards, Reference Detail, and
+The Style screen opens a focused chooser for Illustrated Cards, Reference Detail, and
 Classic Compact. Selecting a style remaps compatible spreadsheet fields and refreshes the
-preview automatically. Illustrated Cards remains the recommended default.
+preview automatically, then advances to Music. Illustrated Cards remains the recommended
+default and can be accepted with **Next**.
 
 ## Ready-to-export defaults
 
 Music and custom timing are explicitly optional. CTS starts with automatic timing, keeps
 Export disabled only until a card exists, and marks the project **Ready to export** as soon
-as data has been created. The numbered actions still make each choice easy to review before
-exporting.
+as data has been created. The wizard still walks through every decision before showing the
+final Export and Manual editor screen.
 
 ## Manual editor
 
