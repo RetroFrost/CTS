@@ -5,6 +5,7 @@ import io
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -18,13 +19,16 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from .data import (
+    MODEL_CLASSIC,
     MODEL_ILLUSTRATED,
+    MODEL_REFERENCE,
     MODEL_SCHEMAS,
     REFERENCE_REVEAL_SECONDS,
     AudioTrack,
@@ -38,7 +42,7 @@ from .data import (
 from .easy_timing import timeline_parts, with_easy_timing
 from .premiere_ui import PREMIERE_STYLE
 from .reference_illustrated import ReferenceIllustratedMainWindow
-from .ui import SpreadsheetTable, show_error
+from .ui import MODEL_INFO, SpreadsheetTable, show_error
 
 
 EASY_STYLE = PREMIERE_STYLE + """
@@ -56,6 +60,11 @@ QFrame#fixSheet {
     background:#202024;
     border:1px solid #3f3f47;
     border-radius:8px;
+}
+QFrame#styleChoice {
+    background:#27272d;
+    border:1px solid #45454d;
+    border-radius:7px;
 }
 QLabel#androidTitle {
     color:#f5f5f7;
@@ -94,10 +103,19 @@ QPushButton#androidExport:hover {
     background:#3a6d9e;
     border-color:#75a9d5;
 }
+QPushButton#androidExport:disabled {
+    background:#252529;
+    border-color:#37373d;
+    color:#777780;
+}
 QPushButton#fixAction:checked {
     background:#704f2f;
     border-color:#a8794a;
     color:white;
+}
+QPushButton#fixAction {
+    min-height:40px;
+    font-weight:800;
 }
 QDialog#androidDialog {
     background:#202024;
@@ -128,6 +146,15 @@ def _parse_text_table(text: str) -> SpreadsheetData:
     return table_from_matrix(rows, first_row_is_header=True)
 
 
+def _table_as_text(data: SpreadsheetData) -> str:
+    normalized = data.normalized()
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter="\t", lineterminator="\n")
+    writer.writerow(normalized.headers)
+    writer.writerows(normalized.rows)
+    return output.getvalue()
+
+
 def load_table_file(path: str | Path) -> tuple[SpreadsheetData, list[str]]:
     """Load the single Android-style Import file action's supported formats."""
     target = Path(path)
@@ -156,7 +183,13 @@ def load_table_file(path: str | Path) -> tuple[SpreadsheetData, list[str]]:
 class InsertDataDialog(QDialog):
     """The same single data sheet used by the Android workflow."""
 
-    def __init__(self, clipboard_text: str = "", parent=None) -> None:
+    def __init__(
+        self,
+        clipboard_text: str = "",
+        parent=None,
+        *,
+        existing: bool = False,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("androidDialog")
         self.setWindowTitle("Insert data")
@@ -164,18 +197,19 @@ class InsertDataDialog(QDialog):
         self.resize(720, 470)
         self.selected_data: SpreadsheetData | None = None
         self.warnings: list[str] = []
+        self._action_verb = "Update" if existing else "Create"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(10)
 
-        title = QLabel("CLICK TO INSERT DATA")
-        title.setObjectName("androidTitle")
-        layout.addWidget(title)
+        self.heading = QLabel("EDIT ALL DATA" if existing else "CLICK TO INSERT DATA")
+        self.heading.setObjectName("androidTitle")
+        layout.addWidget(self.heading)
 
         description = QLabel(
-            "Paste rows below, or use the one Import file action for CSV and XLSX. "
-            "The first row becomes the field names and one remaining row becomes one card."
+            "Paste a table below, or import CSV/XLSX. CTS detects the fields and card count "
+            "as you type. The first row contains field names; each remaining row becomes a card."
         )
         description.setWordWrap(True)
         description.setObjectName("androidSummary")
@@ -186,12 +220,15 @@ class InsertDataDialog(QDialog):
             "Badge Value\tBadge Label\tTitle\tArtwork\n"
             "84\tPERCENT\tExample card\thttps://example.com/image.png"
         )
-        if clipboard_text.strip() and ("\n" in clipboard_text or "\t" in clipboard_text):
+        if clipboard_text.strip() and any(
+            delimiter in clipboard_text for delimiter in ("\n", "\t", ",", ";")
+        ):
             self.editor.setPlainText(clipboard_text)
         layout.addWidget(self.editor, 1)
 
         self.status = QLabel("Paste spreadsheet cells or import a file.")
         self.status.setObjectName("androidSummary")
+        self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
         buttons = QHBoxLayout()
@@ -203,12 +240,60 @@ class InsertDataDialog(QDialog):
 
         dialog_buttons = QDialogButtonBox()
         cancel = dialog_buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
-        use_data = dialog_buttons.addButton("Use data", QDialogButtonBox.ButtonRole.AcceptRole)
-        use_data.setObjectName("androidPrimary")
+        self.use_data = dialog_buttons.addButton(
+            "Create cards", QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        self.use_data.setObjectName("androidPrimary")
+        self.use_data.setDefault(True)
         cancel.clicked.connect(self.reject)
-        use_data.clicked.connect(self._accept_pasted)
+        self.use_data.clicked.connect(self._accept_pasted)
         buttons.addWidget(dialog_buttons)
         layout.addLayout(buttons)
+
+        self._detected_data = SpreadsheetData()
+        self.editor.textChanged.connect(self._refresh_detection)
+        self._accept_shortcuts = [
+            QShortcut(QKeySequence("Ctrl+Return"), self),
+            QShortcut(QKeySequence("Ctrl+Enter"), self),
+        ]
+        for shortcut in self._accept_shortcuts:
+            shortcut.activated.connect(self._accept_pasted)
+        self._refresh_detection()
+
+    def _refresh_detection(self) -> None:
+        try:
+            data = _parse_text_table(self.editor.toPlainText())
+        except (csv.Error, ValueError):
+            data = SpreadsheetData()
+            self.status.setText("Could not read those rows · check separators and quotes")
+            self.status.setStyleSheet("color:#ff9ca8;")
+        else:
+            if data.headers and data.row_count:
+                card_word = "card" if data.row_count == 1 else "cards"
+                field_word = "field" if len(data.headers) == 1 else "fields"
+                self.status.setText(
+                    f"Ready · {data.row_count} {card_word} · "
+                    f"{len(data.headers)} {field_word} detected automatically"
+                )
+                self.status.setStyleSheet("color:#8ed39c;")
+            elif data.headers:
+                self.status.setText(
+                    "Field names detected · add at least one card row underneath"
+                )
+                self.status.setStyleSheet("color:#e7bf72;")
+            else:
+                self.status.setText("Paste spreadsheet cells or import a file.")
+                self.status.setStyleSheet("")
+        self._detected_data = data
+        ready = bool(data.headers and data.row_count)
+        self.use_data.setEnabled(ready)
+        if ready:
+            card_word = "card" if data.row_count == 1 else "cards"
+            self.use_data.setText(
+                f"{self._action_verb} {data.row_count} {card_word}"
+            )
+        else:
+            self.use_data.setText(f"{self._action_verb} cards")
 
     def _import_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -236,15 +321,10 @@ class InsertDataDialog(QDialog):
             )
 
     def _accept_pasted(self) -> None:
-        data = _parse_text_table(self.editor.toPlainText())
-        if not data.headers:
-            show_error(
-                self,
-                "No table was found.",
-                "Paste copied spreadsheet cells, CSV rows, or import a CSV/XLSX file.",
-            )
+        self._refresh_detection()
+        if not (self._detected_data.headers and self._detected_data.row_count):
             return
-        self.selected_data = data
+        self.selected_data = self._detected_data
         self.accept()
 
 
@@ -301,6 +381,66 @@ class TimingDialog(QDialog):
         self.accept()
 
 
+class StyleDialog(QDialog):
+    """One-click visual model chooser for the normal creation workflow."""
+
+    def __init__(self, current_model: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("androidDialog")
+        self.setWindowTitle("Choose style")
+        self.setModal(True)
+        self.setMinimumWidth(520)
+        self.selected_model = current_model
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+
+        title = QLabel("CHOOSE A VIDEO STYLE")
+        title.setObjectName("androidTitle")
+        layout.addWidget(title)
+        detail = QLabel(
+            "Pick one style. CTS remaps the spreadsheet and refreshes the preview automatically."
+        )
+        detail.setWordWrap(True)
+        detail.setObjectName("androidSummary")
+        layout.addWidget(detail)
+
+        order = (MODEL_ILLUSTRATED, MODEL_REFERENCE, MODEL_CLASSIC)
+        for model_id in order:
+            name, description = MODEL_INFO[model_id]
+            card = QFrame()
+            card.setObjectName("styleChoice")
+            row = QHBoxLayout(card)
+            row.setContentsMargins(9, 8, 9, 8)
+            copy = QVBoxLayout()
+            heading = QLabel(name)
+            heading.setObjectName("androidTitle")
+            if model_id == MODEL_ILLUSTRATED:
+                heading.setText(f"{name} · Recommended")
+            summary = QLabel(description)
+            summary.setObjectName("androidSummary")
+            summary.setWordWrap(True)
+            copy.addWidget(heading)
+            copy.addWidget(summary)
+            choose = QPushButton("Current" if model_id == current_model else "Use style")
+            choose.setObjectName("androidPrimary" if model_id == current_model else "androidAction")
+            choose.clicked.connect(
+                lambda _checked=False, selected=model_id: self._choose(selected)
+            )
+            row.addLayout(copy, 1)
+            row.addWidget(choose)
+            layout.addWidget(card)
+
+        cancel = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        cancel.rejected.connect(self.reject)
+        layout.addWidget(cancel)
+
+    def _choose(self, model_id: str) -> None:
+        self.selected_model = model_id
+        self.accept()
+
+
 class EasyMainWindow(ReferenceIllustratedMainWindow):
     """Desktop CTS using the Android app's monitor-first, bottom-sheet workflow."""
 
@@ -313,7 +453,7 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self._connect_android_status()
         self._update_android_summary()
         self.statusBar().showMessage(
-            "Ready · Insert data · Add music · Set length · Export"
+            "Ready · Select spreadsheet · Choose style · Pick music and length · Export"
         )
 
     def _build_header(self) -> QWidget:
@@ -361,12 +501,23 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self.fix_panel.setVisible(False)
 
         self.monitor_panel = self._build_preview_panel()
+        # Card creation belongs to the spreadsheet step; keep the playback bar focused.
+        for button in self.monitor_panel.findChildren(QPushButton):
+            if button.text().endswith("Add card"):
+                button.setVisible(False)
         old_sequence_bar = self.monitor_panel.findChild(QFrame, "settingsBar")
         if old_sequence_bar is not None:
             old_sequence_bar.setVisible(False)
+        monitor_header = self.monitor_panel.findChild(QFrame, "panelHeader")
+        self.monitor_hint = (
+            monitor_header.findChild(QLabel, "muted") if monitor_header is not None else None
+        )
+        if self.monitor_hint is not None:
+            self.monitor_hint.setText("Preview · open Manual editor for detailed changes")
 
         layout.addWidget(self.monitor_panel, 1)
-        layout.addWidget(self._build_android_sheet())
+        self.android_sheet = self._build_android_sheet()
+        layout.addWidget(self.android_sheet)
         layout.addWidget(self.fix_panel)
         return shell
 
@@ -380,7 +531,7 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         header.setObjectName("panelHeader")
         header_row = QHBoxLayout(header)
         header_row.setContentsMargins(10, 6, 8, 6)
-        title = QLabel("FIX SOMETHING")
+        title = QLabel("MANUAL EDITOR")
         title.setObjectName("panelTitle")
         hint = QLabel("Data · design · detailed audio")
         hint.setObjectName("muted")
@@ -410,13 +561,13 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         layout.setContentsMargins(7, 7, 7, 7)
         layout.setSpacing(6)
 
-        helper = QLabel(
-            "Use Click to Insert Data for paste, CSV, or XLSX. This sheet is only for fixing "
-            "individual cards after CTS has created them."
+        self.cards_helper = QLabel(
+            "Edit individual cards here, or use Paste / edit table for a faster bulk change. "
+            "The normal workflow starts with Select spreadsheet."
         )
-        helper.setWordWrap(True)
-        helper.setObjectName("muted")
-        layout.addWidget(helper)
+        self.cards_helper.setWordWrap(True)
+        self.cards_helper.setObjectName("muted")
+        layout.addWidget(self.cards_helper)
 
         self.field_guide = QLabel()
         self.field_guide.setWordWrap(True)
@@ -442,16 +593,19 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         layout.addWidget(self.table_status)
 
         row = QHBoxLayout()
+        paste_table = QPushButton("Paste / edit table")
         add_card = QPushButton("＋ Card")
         duplicate = QPushButton("Duplicate")
         delete = QPushButton("Delete")
         choose_image = QPushButton("Card image")
         image_strip = QPushButton("Image strip")
+        paste_table.clicked.connect(self._open_insert_data_sheet)
         add_card.clicked.connect(lambda: self.table.append_row())
         duplicate.clicked.connect(self._duplicate_rows)
         delete.clicked.connect(self.table.remove_selected_rows)
         choose_image.clicked.connect(self.choose_row_image)
         image_strip.clicked.connect(self.import_image_strip)
+        row.addWidget(paste_table)
         row.addWidget(add_card)
         row.addWidget(duplicate)
         row.addWidget(delete)
@@ -484,29 +638,46 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         actions = QHBoxLayout()
         actions.setSpacing(7)
 
-        self.insert_data_button = QPushButton("＋  CLICK TO INSERT DATA")
+        self.insert_data_button = QPushButton("1 · SELECT SPREADSHEET")
         self.insert_data_button.setObjectName("androidPrimary")
-        self.insert_data_button.clicked.connect(self._open_insert_data_sheet)
+        self.insert_data_button.setToolTip("Choose CSV, TSV, TXT, or XLSX comparison data")
+        self.insert_data_button.clicked.connect(self._choose_spreadsheet_file)
 
-        self.easy_music_button = QPushButton("Music")
+        self.easy_style_button = QPushButton("2 · STYLE")
+        self.easy_style_button.setObjectName("androidAction")
+        style_policy = self.easy_style_button.sizePolicy()
+        style_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.easy_style_button.setSizePolicy(style_policy)
+        self.easy_style_button.clicked.connect(self._open_style_sheet)
+
+        self.easy_music_button = QPushButton("3 · MUSIC")
         self.easy_music_button.setObjectName("androidAction")
+        self.easy_music_button.setToolTip("Optional · add one soundtrack that loops automatically")
+        music_policy = self.easy_music_button.sizePolicy()
+        music_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.easy_music_button.setSizePolicy(music_policy)
         self.easy_music_button.clicked.connect(self._choose_easy_music)
 
-        self.easy_timing_button = QPushButton("Video length")
+        self.easy_timing_button = QPushButton("4 · LENGTH")
         self.easy_timing_button.setObjectName("androidAction")
+        self.easy_timing_button.setToolTip(
+            "Optional · automatic timing is already selected"
+        )
         self.easy_timing_button.clicked.connect(self._open_timing_sheet)
 
-        self.easy_export_button = QPushButton("EXPORT VIDEO")
+        self.easy_export_button = QPushButton("5 · EXPORT")
         self.easy_export_button.setObjectName("androidExport")
+        self.easy_export_button.setToolTip("Select a spreadsheet first")
         self.easy_export_button.clicked.connect(self.export_video)
         self.export_button = self.easy_export_button
 
-        self.fix_button = QPushButton("Fix Something")
+        self.fix_button = QPushButton("Manual editor")
         self.fix_button.setObjectName("fixAction")
         self.fix_button.setCheckable(True)
         self.fix_button.toggled.connect(self._set_fix_visible)
 
         actions.addWidget(self.insert_data_button, 2)
+        actions.addWidget(self.easy_style_button, 1)
         actions.addWidget(self.easy_music_button, 1)
         actions.addWidget(self.easy_timing_button, 1)
         actions.addWidget(self.easy_export_button, 1)
@@ -538,58 +709,130 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self.master_volume.valueChanged.connect(self._update_android_summary)
         self.auto_length.toggled.connect(self._update_android_summary)
         self.custom_length.editingFinished.connect(self._update_android_summary)
+        self.model_combo.currentIndexChanged.connect(self._update_android_summary)
 
     def _set_fix_visible(self, visible: bool) -> None:
         self._fix_visible = visible
         self.fix_panel.setVisible(visible)
-        self.fix_button.setText("Done Fixing" if visible else "Fix Something")
-        self.subtitle_label.setText("FIX" if visible else "CREATE")
+        self.android_sheet.setVisible(not visible)
+        self.fix_button.setText("Close editor" if visible else "Manual editor")
+        self.subtitle_label.setText("MANUAL" if visible else "CREATE")
+        if self.monitor_hint is not None:
+            self.monitor_hint.setText(
+                "Click a field in the preview to edit it"
+                if visible
+                else "Preview · open Manual editor for detailed changes"
+            )
         if visible:
             self.statusBar().showMessage(
-                "Fix mode · edit cards in the table or click fields in the Program Monitor",
+                "Manual editor · edit cards in the table or click fields in the Program Monitor",
                 5000,
             )
         else:
             self.tabs.setCurrentIndex(0)
-            self.statusBar().showMessage("Create mode · the editor is out of the way", 3500)
+            self.statusBar().showMessage("Guided workflow · ready for the next step", 3500)
         self._apply_responsive_layout()
 
     def _preview_field_clicked(self, normalized_x: float, normalized_y: float) -> None:
         if not self._fix_visible:
             self.statusBar().showMessage(
-                "Open Fix Something to edit fields directly in the Program Monitor.", 4000
+                "Open Manual editor to edit fields directly in the Program Monitor.", 4000
             )
             return
         super()._preview_field_clicked(normalized_x, normalized_y)
 
-    def _open_insert_data_sheet(self) -> None:
-        dialog = InsertDataDialog(QApplication.clipboard().text(), self)
-        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.selected_data is None:
+    def _choose_spreadsheet_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select comparison spreadsheet",
+            "",
+            "Spreadsheet data (*.csv *.tsv *.txt *.xlsx)",
+        )
+        if not path:
             return
         try:
-            self.table.set_data(dialog.selected_data)
+            data, warnings = load_table_file(path)
+            self._apply_inserted_data(data, warnings)
+        except FriendlyError as exc:
+            show_error(self, exc.summary, exc.suggestion, exc.details)
+        except Exception as exc:
+            show_error(
+                self,
+                "Could not open that spreadsheet.",
+                "Check that the file is readable and try again.",
+                str(exc),
+            )
+
+    def _open_insert_data_sheet(self) -> None:
+        current = self.spreadsheet_data()
+        existing = current.row_count > 0
+        initial_text = _table_as_text(current) if existing else QApplication.clipboard().text()
+        dialog = InsertDataDialog(initial_text, self, existing=existing)
+        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.selected_data is None:
+            return
+        self._apply_inserted_data(dialog.selected_data, dialog.warnings)
+
+    def _apply_inserted_data(
+        self,
+        data: SpreadsheetData,
+        warnings: list[str] | None = None,
+    ) -> None:
+        try:
+            self.table.set_data(data)
             self._auto_map_fields()
             self._apply_model_schema(self.model_combo.currentData() or MODEL_ILLUSTRATED)
-            self.position_seconds = 0.0
+            cards = self.cards()
+            if cards:
+                visible = self.project_settings().effective_visible_cards()
+                self.position_seconds = self._editing_time_for_card(
+                    min(len(cards), visible) - 1
+                )
+            else:
+                self.position_seconds = 0.0
             self.update_preview()
             self._update_android_summary()
             self.statusBar().showMessage(
-                f"Inserted {dialog.selected_data.row_count} cards · ready for music and export",
+                f"Imported {data.row_count} cards · next: choose a style",
                 6000,
             )
-            if dialog.warnings:
+            if warnings:
                 box = QMessageBox(self)
                 box.setIcon(QMessageBox.Icon.Warning)
                 box.setWindowTitle("Data imported with warnings")
                 box.setText("The cards were imported, with readable warnings.")
-                box.setDetailedText("\n".join(dialog.warnings))
+                box.setDetailedText("\n".join(warnings))
                 box.exec()
         except FriendlyError as exc:
             show_error(self, exc.summary, exc.suggestion, exc.details)
 
     def import_xlsx(self) -> None:
         """Compatibility entry point; desktop and Android now share one file picker."""
-        self._open_insert_data_sheet()
+        self._choose_spreadsheet_file()
+
+    def _open_style_sheet(self) -> None:
+        current = self.model_combo.currentData() or MODEL_ILLUSTRATED
+        dialog = StyleDialog(current, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._apply_style(dialog.selected_model)
+
+    def _apply_style(self, model_id: str) -> None:
+        index = self.model_combo.findData(model_id)
+        if index < 0:
+            return
+        self.model_combo.setCurrentIndex(index)
+        cards = self.cards()
+        if cards:
+            visible = self.project_settings().effective_visible_cards()
+            self.position_seconds = self._editing_time_for_card(
+                min(len(cards), visible) - 1
+            )
+        self.update_preview()
+        self._update_android_summary()
+        self.statusBar().showMessage(
+            f"Style selected · {MODEL_INFO[model_id][0]} · next: pick music or length",
+            5000,
+        )
 
     def _choose_easy_music(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -624,29 +867,89 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
     def _update_android_summary(self, *_args) -> None:
         if not hasattr(self, "android_summary") or not hasattr(self, "table"):
             return
-        card_count = len([card for card in self.cards() if not card.is_blank()])
+        cards = self.cards()
+        card_count = len(cards)
         track_count = self.soundtrack_table.rowCount()
         card_text = f"{card_count} card" if card_count == 1 else f"{card_count} cards"
+        style_text = MODEL_INFO[self.model_combo.currentData() or MODEL_ILLUSTRATED][0]
         music_text = "No music" if track_count == 0 else "Music ready"
-        self.android_summary.setText(f"{card_text} · {music_text}")
+        self.android_summary.setText(f"{card_text} · {style_text} · {music_text}")
 
         if track_count:
             item = self.soundtrack_table.item(0, 0)
             name = Path(item.text()).name if item and item.text().strip() else "Music ready"
-            self.easy_music_button.setText(name)
+            self._music_display_name = name
             self.easy_music_button.setToolTip(name)
         else:
-            self.easy_music_button.setText("Music")
-            self.easy_music_button.setToolTip("Choose a soundtrack")
+            self._music_display_name = ""
+            self.easy_music_button.setToolTip(
+                "Optional · add one soundtrack that loops automatically"
+            )
+        ready = card_count > 0
+        self.easy_export_button.setEnabled(ready)
+        self.easy_export_button.setToolTip(
+            "Export the finished MP4" if ready else "Select a spreadsheet first"
+        )
+        self.easy_timing_button.setEnabled(ready)
+        self._refresh_style_button_text()
+        self._refresh_music_button_text()
         self._refresh_duration_labels()
+
+    def _refresh_style_button_text(self) -> None:
+        if not hasattr(self, "easy_style_button"):
+            return
+        model_id = self.model_combo.currentData() or MODEL_ILLUSTRATED
+        name, description = MODEL_INFO[model_id]
+        compact = getattr(self, "_compact_mode", False)
+        self.easy_style_button.setText("2 · STYLE" if compact else f"2 · {name.upper()}")
+        self.easy_style_button.setToolTip(description)
+
+    def _refresh_music_button_text(self) -> None:
+        if not hasattr(self, "easy_music_button"):
+            return
+        name = getattr(self, "_music_display_name", "")
+        if not name:
+            compact = getattr(self, "_compact_mode", False)
+            self.easy_music_button.setText(
+                "3 · MUSIC" if compact else "3 · MUSIC (OPTIONAL)"
+            )
+            return
+        available = max(52, self.easy_music_button.contentsRect().width() - 14)
+        self.easy_music_button.setText(
+            QFontMetrics(self.easy_music_button.font()).elidedText(
+                f"3 · {name}",
+                Qt.TextElideMode.ElideMiddle,
+                available,
+            )
+        )
 
     def project_settings(self):
         return with_easy_timing(super().project_settings())
+
+    def update_preview(self) -> None:
+        super().update_preview()
+        if hasattr(self, "preview") and hasattr(self, "table") and not self.cards():
+            self.preview.set_empty_message(
+                "Select a spreadsheet to create your first comparison"
+            )
 
     def _refresh_duration_labels(self) -> None:
         if not hasattr(self, "table"):
             return
         cards = self.cards()
+        if not cards:
+            detail = "Select a spreadsheet to begin · music and custom length are optional"
+            self.duration_info.setText(detail)
+            if hasattr(self, "android_duration"):
+                self.android_duration.setText(detail)
+            if hasattr(self, "easy_timing_button"):
+                self.easy_timing_button.setText(
+                    "4 · LENGTH"
+                    if getattr(self, "_compact_mode", False)
+                    else "4 · AUTO LENGTH"
+                )
+            self.time_label.setText("00:00 / 00:00")
+            return
         try:
             settings = self.project_settings()
             duration = settings.duration(len(cards))
@@ -655,19 +958,23 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             )
             per_card = settings.seconds_per_card(len(cards))
             if self.auto_length.isChecked():
-                detail = f"Automatic · {format_duration(duration)}"
-                button = "Video length"
+                detail = f"Ready to export · Automatic length · {format_duration(duration)}"
+                button = (
+                    "4 · LENGTH"
+                    if getattr(self, "_compact_mode", False)
+                    else "4 · AUTO LENGTH"
+                )
             elif scroll_steps:
                 detail = (
                     f"Target {format_duration(duration)} · cards scroll every {per_card:.2f}s · "
                     "entrances stay normal"
                 )
-                button = format_duration(duration)
+                button = f"4 · {format_duration(duration)}"
             else:
                 detail = (
                     f"{format_duration(duration)} · all cards fit, so no horizontal scroll needs retiming"
                 )
-                button = format_duration(duration)
+                button = f"4 · {format_duration(duration)}"
             self.duration_info.setText(detail)
             if hasattr(self, "android_duration"):
                 self.android_duration.setText(detail)
@@ -701,6 +1008,7 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         if not hasattr(self, "root_layout"):
             return
         compact = self.width() < 1120 or self.height() < 760
+        fix_only = self._fix_visible and self.height() < 680
         self._compact_mode = compact
         self.root_layout.setContentsMargins(5, 5, 5, 5)
         self.root_layout.setSpacing(5)
@@ -711,16 +1019,28 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
         self.subtitle_label.setVisible(self.width() >= 900)
         self.open_button.setText("Open" if compact else "Open project")
         self.save_button.setText("Save" if compact else "Save project")
-        self.fix_panel.setMaximumHeight(270 if compact else 360)
+        self.monitor_panel.setVisible(not fix_only)
+        show_card_guidance = not (self._fix_visible and compact)
+        self.cards_helper.setVisible(show_card_guidance)
+        self.field_guide.setVisible(show_card_guidance)
+        if self._fix_visible:
+            self.preview.setMinimumSize(320, 180)
+        else:
+            self.preview.setMinimumSize(480, 270)
+        if fix_only:
+            self.fix_panel.setMaximumHeight(16777215)
+        elif self._fix_visible:
+            self.fix_panel.setMaximumHeight(320 if compact else 360)
+        else:
+            self.fix_panel.setMaximumHeight(270 if compact else 360)
 
         if hasattr(self, "insert_data_button"):
             self.insert_data_button.setText(
-                "＋  INSERT DATA" if compact else "＋  CLICK TO INSERT DATA"
+                "1 · SPREADSHEET" if compact else "1 · SELECT SPREADSHEET"
             )
-            if not self.soundtrack_table.rowCount():
-                self.easy_music_button.setText("Music")
-            if self.auto_length.isChecked():
-                self.easy_timing_button.setText("Length" if compact else "Video length")
-            self.easy_export_button.setText("Export" if compact else "EXPORT VIDEO")
+            self.easy_export_button.setText("5 · EXPORT")
             if not self._fix_visible:
-                self.fix_button.setText("Fix" if compact else "Fix Something")
+                self.fix_button.setText("Manual editor")
+            self._refresh_style_button_text()
+            self._refresh_music_button_text()
+            self._refresh_duration_labels()
