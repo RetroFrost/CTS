@@ -6,6 +6,7 @@ from . import exporter as exporter_module
 from .card_relative_transform import CardRelativeMainWindow, CardRelativeRenderer
 from .data import MODEL_ILLUSTRATED
 from .interaction_runtime import RuntimeTransformRenderer
+from .renderer import CARD_BODY, DIVIDER, TITLE_BACKGROUND, _draw_text_box, date_lines
 from .reselect_fix import ReselectAwareRenderer
 from .studio_ui import StudioAssetCache
 
@@ -105,6 +106,80 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
         )
         return result
 
+    def _render_reference_card(
+        self,
+        card,
+        width: int,
+        height: int,
+        badge_scale: float,
+    ) -> Image.Image:
+        """Collapse Reference Detail's empty description gap into a larger image area."""
+        if card.description.strip():
+            return super()._render_reference_card(card, width, height, badge_scale)
+
+        layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
+        top_height = round(height * 0.44)
+        title_height = round(height * 0.098)
+        title_top = top_height
+        body_top = title_top + title_height
+        divider_width = max(2, round(width * 0.008))
+
+        draw.rectangle((0, title_top, width, title_top + title_height), fill=TITLE_BACKGROUND + (255,))
+        draw.rectangle((0, body_top, width, height), fill=CARD_BODY + (255,))
+        draw.rectangle((0, title_top, divider_width, height), fill=DIVIDER + (255,))
+        draw.rectangle((width - divider_width, title_top, width, height), fill=DIVIDER + (255,))
+        draw.rectangle(
+            (0, title_top, width, title_top + max(2, divider_width // 2)),
+            fill=DIVIDER + (255,),
+        )
+        draw.rectangle(
+            (0, body_top, width, body_top + max(2, divider_width // 2)),
+            fill=DIVIDER + (255,),
+        )
+
+        title_padding = round(width * 0.045)
+        _draw_text_box(
+            draw,
+            card.title,
+            (title_padding, title_top + 5, width - title_padding, body_top - 5),
+            (15, 15, 17, 255),
+            maximum_size=round(height * 0.047),
+            minimum_size=round(height * 0.025),
+            max_lines=2,
+            bold=True,
+        )
+
+        image_margin = round(width * 0.085)
+        image_top = body_top + max(6, round((height - body_top) * 0.025))
+        image_box = (
+            image_margin,
+            image_top,
+            width - image_margin,
+            height - max(5, divider_width),
+        )
+        source_image = self.assets.load(card.image)
+        if source_image is not None:
+            fitted = self._fit_artwork(
+                source_image,
+                (image_box[2] - image_box[0], image_box[3] - image_box[1]),
+            )
+            layer.alpha_composite(fitted, (image_box[0], image_box[1]))
+            draw.rectangle(
+                image_box,
+                outline=(24, 25, 23, 255),
+                width=max(2, divider_width // 2),
+            )
+
+        primary, secondary = card.uploaded, card.badge_label
+        if primary and not secondary:
+            primary, secondary = date_lines(primary)
+        badge = self._render_badge(primary, secondary, width, top_height, badge_scale)
+        badge_x = (width - badge.width) // 2
+        badge_y = max(4, round((top_height - badge.height) * 0.52))
+        layer.alpha_composite(badge, (badge_x, badge_y))
+        return layer
+
     def _render_illustrated_card(
         self,
         card,
@@ -116,15 +191,24 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
         draw = ImageDraw.Draw(layer)
 
         divider = max(2, round(width * 0.008))
-        title_top = round(height * 0.628)
-        title_bottom = round(height * 0.728)
-        description_top = title_bottom
+        has_description = bool(card.description.strip())
+        if has_description:
+            title_top = round(height * 0.628)
+            title_bottom = round(height * 0.728)
+            description_top = title_bottom
+            artwork_bottom = round(height * 0.88)
+        else:
+            # No empty dark panel: artwork uses the former description area and the
+            # title becomes the card's bottom band.
+            title_top = round(height * 0.88)
+            title_bottom = height
+            description_top = height
+            artwork_bottom = title_top
 
         # Always paint the selected Illustrated background first. Transparent line-art
         # icons are then contained and centered over it; opaque full-card artwork keeps
         # the established edge-to-edge cover behavior.
         source = self.assets.load(card.image)
-        artwork_bottom = round(height * 0.88)
         background_id = getattr(self._studio_settings, "illustrated_background", "beach")
         self._draw_background(
             draw,
@@ -138,7 +222,7 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             )
             layer.alpha_composite(fitted, (divider, 0))
 
-        # Soft separation shadow where the artwork meets the white title strip.
+        # Soft separation shadow where the artwork meets the title strip.
         shadow_height = max(8, round(height * 0.018))
         shadow = Image.new("RGBA", layer.size, (0, 0, 0, 0))
         shadow_draw = ImageDraw.Draw(shadow)
@@ -149,25 +233,24 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
         shadow = shadow.filter(ImageFilter.GaussianBlur(max(2, round(height * 0.006))))
         layer.alpha_composite(shadow)
 
-        # Reference title and description bands.
         draw = ImageDraw.Draw(layer)
         draw.rectangle((0, title_top, width, title_bottom), fill=(247, 246, 242, 255))
-        draw.rectangle((0, description_top, width, height), fill=(22, 22, 22, 255))
         accent_height = max(2, round(height * 0.007))
-        draw.rectangle(
-            (0, title_bottom - accent_height, width, title_bottom),
-            fill=(188, 99, 0, 255),
-        )
+        if has_description:
+            draw.rectangle((0, description_top, width, height), fill=(22, 22, 22, 255))
+            draw.rectangle(
+                (0, title_bottom - accent_height, width, title_bottom),
+                fill=(188, 99, 0, 255),
+            )
         draw.rectangle((0, 0, divider, height), fill=(18, 18, 18, 255))
         draw.rectangle((width - divider, 0, width, height), fill=(18, 18, 18, 255))
 
         title_padding = round(width * 0.028)
-        from .renderer import _draw_text_box
-
+        title_text_bottom = title_bottom - (accent_height if has_description else 0) - 3
         _draw_text_box(
             draw,
             card.title,
-            (title_padding, title_top + 3, width - title_padding, title_bottom - accent_height - 3),
+            (title_padding, title_top + 3, width - title_padding, title_text_bottom),
             (20, 20, 20, 255),
             maximum_size=round(height * 0.049),
             minimum_size=max(8, round(height * 0.021)),
@@ -175,9 +258,7 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             bold=True,
         )
 
-        # Description is intentionally optional: an empty value draws no text and never
-        # blocks card creation/import, while the reference composition remains stable.
-        if card.description.strip():
+        if has_description:
             description_padding = round(width * 0.055)
             _draw_text_box(
                 draw,
