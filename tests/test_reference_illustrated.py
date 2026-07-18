@@ -18,13 +18,28 @@ class ReferenceIllustratedTests(unittest.TestCase):
         self.assertEqual(image.getpixel((20, 650))[:3], (247, 246, 242))
         self.assertEqual(image.getpixel((20, 900))[:3], (22, 22, 22))
 
-    def test_description_is_not_required(self) -> None:
+    def test_empty_description_collapses_illustrated_description_band(self) -> None:
         card = CardData("1 in 5", "School Crush", "", "", "People")
 
         image = self.renderer._render_illustrated_card(card, 400, 1000, 1.0)
 
         self.assertEqual(image.size, (400, 1000))
-        self.assertEqual(image.getpixel((20, 900))[:3], (22, 22, 22))
+        # The former dark description area becomes artwork until the bottom title strip.
+        self.assertEqual(image.getpixel((20, 850))[:3], (242, 198, 111))
+        self.assertEqual(image.getpixel((20, 900))[:3], (247, 246, 242))
+        self.assertNotEqual(image.getpixel((20, 900))[:3], (22, 22, 22))
+
+    def test_empty_description_keeps_reference_detail_image_area_open(self) -> None:
+        card = CardData("1 in 5", "School Crush", "", "", "People")
+
+        image = self.renderer._render_reference_card(card, 400, 1000, 1.0)
+
+        self.assertEqual(image.size, (400, 1000))
+        # No reserved description gap is drawn between the title and image region.
+        self.assertEqual(image.getpixel((200, 560))[:3], tuple(CARD_BODY_FOR_TEST))
+
+
+CARD_BODY_FOR_TEST = (116, 121, 111)
 
 
 if __name__ == "__main__":
