@@ -2,6 +2,7 @@ import unittest
 
 from comparison_studio.data import CardData
 from comparison_studio.reference_illustrated import ReferenceIllustratedRenderer
+from comparison_studio.renderer import CARD_BODY
 
 
 class ReferenceIllustratedTests(unittest.TestCase):
@@ -35,11 +36,8 @@ class ReferenceIllustratedTests(unittest.TestCase):
         image = self.renderer._render_reference_card(card, 400, 1000, 1.0)
 
         self.assertEqual(image.size, (400, 1000))
-        # No reserved description gap is drawn between the title and image region.
-        self.assertEqual(image.getpixel((200, 560))[:3], tuple(CARD_BODY_FOR_TEST))
-
-
-CARD_BODY_FOR_TEST = (116, 121, 111)
+        # No reserved description gap remains between the title and image region.
+        self.assertEqual(image.getpixel((200, 560))[:3], CARD_BODY)
 
 
 if __name__ == "__main__":
