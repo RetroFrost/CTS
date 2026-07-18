@@ -188,7 +188,7 @@ class ReselectAwareRenderer(OptionalHexagonRenderer):
             len(cards), model_time, visible_cards, width, settings.hexagons_bounce
         )
 
-        for card_index, card_x, alpha, badge_scale in placements:
+        for card_index, card_x, alpha, badge_opacity in placements:
             active = [
                 (role, box)
                 for (index, role), box in self.transforms.items()
@@ -203,7 +203,7 @@ class ReselectAwareRenderer(OptionalHexagonRenderer):
                     cards[card_index],
                     rendered_card_width,
                     height,
-                    badge_scale,
+                    badge_opacity,
                     alpha,
                     settings.model_id,
                 )
@@ -214,7 +214,7 @@ class ReselectAwareRenderer(OptionalHexagonRenderer):
                 cards[card_index],
                 rendered_card_width,
                 height,
-                badge_scale,
+                badge_opacity,
                 1.0,
                 settings.model_id,
             ).convert("RGBA")
@@ -225,7 +225,7 @@ class ReselectAwareRenderer(OptionalHexagonRenderer):
                 blank_card,
                 rendered_card_width,
                 height,
-                badge_scale,
+                badge_opacity,
                 1.0,
                 settings.model_id,
             ).convert("RGBA")

@@ -104,9 +104,10 @@ light fields.
 Transform overrides are stored per card in CTS project files and used by both Program
 Monitor rendering and MP4 export.
 
-The **Badge bounce** checkbox lives in the Program Monitor's **Sequence** row. Disable it
-to keep every red badge at a fixed scale during entrances and horizontal scrolling. The
-setting is saved per project.
+The **Badge reveal** checkbox lives in the Program Monitor's **Sequence** row. With it
+enabled, each new red badge fades in after its card slides into the right-most slot, like
+the reference video. Badge geometry stays fixed while the strip moves. Disable it to show
+badges immediately. The setting is saved per project.
 
 Hit-testing follows the real animated positions, including partially scrolled cards and
 objects moved away from their original model regions. Every visual edit updates the

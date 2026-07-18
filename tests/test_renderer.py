@@ -7,7 +7,13 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from comparison_studio.data import MODEL_CLASSIC, MODEL_ILLUSTRATED, CardData, ProjectSettings
+from comparison_studio.data import (
+    MODEL_CLASSIC,
+    MODEL_ILLUSTRATED,
+    REFERENCE_SCROLL_SECONDS,
+    CardData,
+    ProjectSettings,
+)
 from comparison_studio.renderer import (
     BACKGROUND,
     AssetCache,
@@ -168,13 +174,40 @@ class RendererTests(unittest.TestCase):
         self.assertIsNotNone(scrolled)
         self.assertLess(scrolled[0], 0.02)
 
-    def test_hexagon_bounce_can_be_disabled(self) -> None:
+    def test_reference_badge_reveal_can_be_disabled(self) -> None:
         renderer = TimelineRenderer()
-        placements = renderer._placements(4, 8.0, 4, 640.0, False)
-        self.assertEqual(len(placements), 4)
-        self.assertTrue(all(scale == 1.0 for _index, _x, _alpha, scale in placements))
-        bouncing = renderer._placements(4, 8.0, 4, 640.0, True)
-        self.assertTrue(any(scale != 1.0 for _index, _x, _alpha, scale in bouncing))
+        # Halfway through the first scroll, card five has entered the frame but its
+        # reference-style badge waits until the card settles.
+        model_time = 8.0 + REFERENCE_SCROLL_SECONDS * 0.50
+        animated = renderer._placements(5, model_time, 4, 640.0, True)
+        immediate = renderer._placements(5, model_time, 4, 640.0, False)
+        self.assertEqual(next(item[3] for item in animated if item[0] == 4), 0.0)
+        self.assertEqual(next(item[3] for item in immediate if item[0] == 4), 1.0)
+
+    def test_badges_hold_a_fixed_scale_while_cards_scroll(self) -> None:
+        renderer = TimelineRenderer()
+        settled = renderer._placements(6, 8.0, 4, 640.0, True)
+        self.assertTrue(all(opacity == 1.0 for _index, _x, _alpha, opacity in settled))
+
+        # Near the end of the first cycle, the strip has stopped and only the newly
+        # arrived badge is fading in.
+        model_time = 8.0 + REFERENCE_SCROLL_SECONDS * 0.89
+        revealing = renderer._placements(5, model_time, 4, 640.0, True)
+        old_badges = [item[3] for item in revealing if item[0] < 4]
+        new_badge = next(item[3] for item in revealing if item[0] == 4)
+        self.assertTrue(all(opacity == 1.0 for opacity in old_badges))
+        self.assertGreater(new_badge, 0.0)
+        self.assertLess(new_badge, 1.0)
+
+    def test_badge_opacity_does_not_resize_its_geometry(self) -> None:
+        renderer = TimelineRenderer()
+        renderer._active_badge_opacity = 0.0
+        hidden = renderer._render_badge("45", "Minutes", 240, 140, 0.97)
+        renderer._active_badge_opacity = 1.0
+        visible = renderer._render_badge("45", "Minutes", 240, 140, 0.97)
+        self.assertEqual(hidden.size, visible.size)
+        self.assertEqual(hidden.getchannel("A").getextrema(), (0, 0))
+        self.assertGreater(visible.getchannel("A").getextrema()[1], 0)
 
 
 if __name__ == "__main__":

@@ -180,7 +180,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
         active: list[tuple[str, TransformBox]],
         card_width: int,
         card_height: int,
-        badge_scale: float,
+        badge_opacity: float,
         alpha: float,
         model_id: str,
     ) -> Image.Image:
@@ -189,7 +189,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
             card,
             card_width,
             card_height,
-            badge_scale,
+            badge_opacity,
             1.0,
             model_id,
         ).convert("RGBA")
@@ -201,7 +201,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
             blank_card,
             card_width,
             card_height,
-            badge_scale,
+            badge_opacity,
             1.0,
             model_id,
         ).convert("RGBA")
@@ -266,7 +266,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
             len(cards), model_time, visible_cards, width, settings.hexagons_bounce
         )
 
-        for card_index, card_x, alpha, badge_scale in placements:
+        for card_index, card_x, alpha, badge_opacity in placements:
             active = [
                 (role, self._clamp_unit_box(box))
                 for (index, role), box in self.transforms.items()
@@ -282,7 +282,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
                     active,
                     card_width,
                     height,
-                    badge_scale,
+                    badge_opacity,
                     alpha,
                     settings.model_id,
                 )
@@ -297,7 +297,7 @@ class CardRelativeRenderer(ReselectAwareRenderer):
                     cards[card_index],
                     card_width,
                     height,
-                    badge_scale,
+                    badge_opacity,
                     alpha,
                     settings.model_id,
                 )
