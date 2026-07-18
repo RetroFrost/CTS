@@ -55,6 +55,19 @@ data class ImageSubcard(
     val transform: NormalizedRect = NormalizedRect.Full,
 )
 
+/** One global soundtrack synchronized to the comparison timeline. */
+data class CtsSoundtrack(
+    val source: String,
+    val displayName: String = "Soundtrack",
+    val volume: Float = 1f,
+    val loop: Boolean = true,
+) {
+    fun normalized(): CtsSoundtrack = copy(
+        displayName = displayName.ifBlank { "Soundtrack" },
+        volume = volume.coerceIn(0f, 1f),
+    )
+}
+
 data class CtsCard(
     val id: String = UUID.randomUUID().toString(),
     val badgePrimary: String = "",
@@ -74,8 +87,12 @@ data class CtsProject(
     val cards: List<CtsCard> = sampleCards(),
     val showHexagons: Boolean = true,
     val customDurationSeconds: Float? = null,
+    val soundtrack: CtsSoundtrack? = null,
 ) {
-    fun normalized(): CtsProject = copy(cards = cards.map { it.withOwnedImageSubcard() })
+    fun normalized(): CtsProject = copy(
+        cards = cards.map { it.withOwnedImageSubcard() },
+        soundtrack = soundtrack?.normalized(),
+    )
 
     fun updateCard(cardId: String, update: (CtsCard) -> CtsCard): CtsProject = copy(
         cards = cards.map { card ->
