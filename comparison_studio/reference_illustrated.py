@@ -43,6 +43,37 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             return "image"
         return CardRelativeRenderer._field_at(model_id, local_x, local_y)
 
+    @staticmethod
+    def _fit_artwork(source: Image.Image, size: tuple[int, int]) -> Image.Image:
+        """Contain transparent icons while keeping opaque artwork in cover mode."""
+        target_width = max(1, int(size[0]))
+        target_height = max(1, int(size[1]))
+        rgba = source.convert("RGBA")
+        alpha_min, _alpha_max = rgba.getchannel("A").getextrema()
+
+        if alpha_min >= 250:
+            return ImageOps.fit(
+                rgba,
+                (target_width, target_height),
+                Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+
+        contained = ImageOps.contain(
+            rgba,
+            (target_width, target_height),
+            Image.Resampling.LANCZOS,
+        )
+        canvas = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
+        canvas.alpha_composite(
+            contained,
+            (
+                (target_width - contained.width) // 2,
+                (target_height - contained.height) // 2,
+            ),
+        )
+        return canvas
+
     def _gold_outline_badge(self, badge: Image.Image) -> Image.Image:
         """Add the warm reference-video edge while retaining CTS's badge shadow."""
         result = badge.copy()
@@ -89,30 +120,23 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
         title_bottom = round(height * 0.728)
         description_top = title_bottom
 
-        # Artwork fills the same owner frame used by image transforms. The title and
-        # optional description are then painted over it, just like the reference video.
+        # Always paint the selected Illustrated background first. Transparent line-art
+        # icons are then contained and centered over it; opaque full-card artwork keeps
+        # the established edge-to-edge cover behavior.
         source = self.assets.load(card.image)
         artwork_bottom = round(height * 0.88)
+        background_id = getattr(self._studio_settings, "illustrated_background", "beach")
+        self._draw_background(
+            draw,
+            (divider, 0, width - divider, artwork_bottom),
+            background_id,
+        )
         if source is not None:
-            fitted = ImageOps.fit(
+            fitted = self._fit_artwork(
                 source,
                 (max(1, width - divider * 2), max(1, artwork_bottom)),
-                Image.Resampling.LANCZOS,
-                centering=(0.5, 0.5),
             )
-            layer.paste(fitted, (divider, 0))
-        else:
-            horizon = round(artwork_bottom * 0.64)
-            draw.rectangle((divider, 0, width - divider, horizon), fill=(70, 204, 226, 255))
-            draw.rectangle(
-                (divider, horizon, width - divider, artwork_bottom),
-                fill=(242, 198, 111, 255),
-            )
-            draw.line(
-                (divider, horizon, width - divider, horizon),
-                fill=(43, 122, 143, 255),
-                width=max(2, divider),
-            )
+            layer.alpha_composite(fitted, (divider, 0))
 
         # Soft separation shadow where the artwork meets the white title strip.
         shadow_height = max(8, round(height * 0.018))
