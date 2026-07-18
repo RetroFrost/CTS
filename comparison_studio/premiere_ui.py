@@ -500,10 +500,10 @@ class PremiereMainWindow(MainWindow):
         duration_row.addWidget(self.custom_length)
         duration_row.addWidget(self.duration_info, 1)
 
-        self.hexagons_bounce = QCheckBox("Badge bounce")
+        self.hexagons_bounce = QCheckBox("Badge reveal")
         self.hexagons_bounce.setChecked(True)
         self.hexagons_bounce.setToolTip(
-            "Animate the red value badges during entrances and horizontal scrolling."
+            "Fade each red value badge in after its card slides into place, like the reference video."
         )
         self.hexagons_bounce.toggled.connect(self._data_changed)
         duration_row.addWidget(self.hexagons_bounce)

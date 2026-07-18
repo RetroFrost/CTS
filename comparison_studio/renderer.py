@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import re
 import threading
 import urllib.request
@@ -39,13 +38,6 @@ def _clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
 def _smoothstep(value: float) -> float:
     value = _clamp(value)
     return value * value * (3.0 - 2.0 * value)
-
-
-def _ease_out_back(value: float) -> float:
-    value = _clamp(value)
-    c1 = 1.70158
-    c3 = c1 + 1
-    return 1 + c3 * (value - 1) ** 3 + c1 * (value - 1) ** 2
 
 
 def _find_font(bold: bool = False) -> str:
@@ -349,12 +341,12 @@ class TimelineRenderer:
             len(cards), model_time, visible_cards, width, settings.hexagons_bounce
         )
 
-        for index, x, alpha, badge_scale in placements:
+        for index, x, alpha, badge_opacity in placements:
             card_image = self._render_card(
                 cards[index],
                 max(1, round(card_width)),
                 height,
-                badge_scale,
+                badge_opacity,
                 alpha,
                 settings.model_id,
             )
@@ -389,7 +381,7 @@ class TimelineRenderer:
         placements = self._placements(
             len(cards), model_time, visible_cards, virtual_width, settings.hexagons_bounce
         )
-        for index, x, alpha, _badge_scale in reversed(placements):
+        for index, x, alpha, _badge_opacity in reversed(placements):
             if alpha < 0.08 or not (x <= click_x < x + card_width):
                 continue
             local_x = (click_x - x) / card_width
@@ -405,42 +397,59 @@ class TimelineRenderer:
         width: float,
         hexagons_bounce: bool = True,
     ) -> list[tuple[int, float, float, float]]:
+        """Place cards and return each badge's reference-style reveal opacity.
+
+        The supplied reference does not continuously resize badges according to their
+        screen position.  A new card slides into the right-most slot first, then its
+        badge fades in while the strip briefly holds.  Keep the legacy
+        ``hexagons_bounce`` project key for file compatibility, but use it to enable
+        that reveal instead of the old focus-based scale pulse.
+        """
         card_width = width / visible_cards
         initial_count = min(card_count, visible_cards)
         intro_duration = initial_count * REFERENCE_REVEAL_SECONDS
         placements: list[tuple[int, float, float, float]] = []
         if model_time < intro_duration:
-            latest_visible = max(0, min(initial_count - 1, int(model_time // REFERENCE_REVEAL_SECONDS)))
-            focus_center = (latest_visible + 0.5) * card_width
             for index in range(initial_count):
                 local = model_time - index * REFERENCE_REVEAL_SECONDS
                 if local < 0:
                     continue
                 progress = _smoothstep(local / 0.62)
                 x = index * card_width
-                center = x + card_width / 2
-                if hexagons_bounce:
-                    badge_scale = self._badge_scale(center, focus_center, card_width)
-                    entrance_scale = min(1.0, _ease_out_back(local / 0.58))
-                    badge_scale *= entrance_scale
-                else:
-                    badge_scale = 1.0
-                placements.append((index, x, progress, badge_scale))
+                # The whole card already fades during the opening sequence.  Keeping
+                # its badge at full size avoids the double animation CTS used to add.
+                placements.append((index, x, progress, 1.0))
             return placements
 
         scroll_elapsed = max(0.0, model_time - intro_duration)
-        shift = min(
-            max(0, card_count - visible_cards),
-            scroll_elapsed / REFERENCE_SCROLL_SECONDS,
-        ) * card_width
-        focus_center = (visible_cards - 0.5) * card_width
+        maximum_shift = max(0, card_count - visible_cards)
+        raw_cycle = min(float(maximum_shift), scroll_elapsed / REFERENCE_SCROLL_SECONDS)
+        completed_cycles = min(maximum_shift, int(raw_cycle))
+        cycle_progress = raw_cycle - completed_cycles
+
+        # Spend most of a cycle sliding the strip, then hold it still while the newly
+        # arrived badge fades in.  This matches the card-by-card cadence in the video.
+        slide_portion = 0.78
+        if completed_cycles >= maximum_shift:
+            shift_cards = float(maximum_shift)
+        elif cycle_progress < slide_portion:
+            shift_cards = completed_cycles + _smoothstep(cycle_progress / slide_portion)
+        else:
+            shift_cards = completed_cycles + 1.0
+        shift = min(float(maximum_shift), shift_cards) * card_width
+
         for index in range(card_count):
             x = index * card_width - shift
             if x >= width or x + card_width <= 0:
                 continue
-            center = x + card_width / 2
-            badge_scale = self._badge_scale(center, focus_center, card_width) if hexagons_bounce else 1.0
-            placements.append((index, x, 1.0, badge_scale))
+            badge_opacity = 1.0
+            if hexagons_bounce and index >= initial_count:
+                arrival_cycle = index - initial_count
+                arrival_progress = raw_cycle - arrival_cycle
+                badge_opacity = _smoothstep(
+                    (arrival_progress - slide_portion) / (1.0 - slide_portion)
+                )
+            placements.append((index, x, 1.0, badge_opacity))
         return placements
 
     def editor_region(
@@ -525,26 +534,28 @@ class TimelineRenderer:
             return "description"
         return "image"
 
-    @staticmethod
-    def _badge_scale(center: float, focus: float, card_width: float) -> float:
-        distance = (center - focus) / max(1.0, card_width * 0.60)
-        return 0.72 + 0.44 * math.exp(-0.5 * distance * distance)
-
     def _render_card(
         self,
         card: CardData,
         width: int,
         height: int,
-        badge_scale: float,
+        badge_opacity: float,
         alpha: float,
         model_id: str,
     ) -> Image.Image:
-        if model_id == MODEL_ILLUSTRATED:
-            layer = self._render_illustrated_card(card, width, height, badge_scale)
-        elif model_id == MODEL_CLASSIC:
-            layer = self._render_classic_card(card, width, height, badge_scale)
-        else:
-            layer = self._render_reference_card(card, width, height, badge_scale)
+        previous_opacity = getattr(self, "_active_badge_opacity", 1.0)
+        self._active_badge_opacity = _clamp(badge_opacity)
+        try:
+            # Badge geometry remains stable as cards move.  Model-specific scale
+            # factors and user transforms still apply inside the card renderers.
+            if model_id == MODEL_ILLUSTRATED:
+                layer = self._render_illustrated_card(card, width, height, 1.0)
+            elif model_id == MODEL_CLASSIC:
+                layer = self._render_classic_card(card, width, height, 1.0)
+            else:
+                layer = self._render_reference_card(card, width, height, 1.0)
+        finally:
+            self._active_badge_opacity = previous_opacity
         if alpha < 0.999:
             channel = layer.getchannel("A").point(lambda value: round(value * alpha))
             layer.putalpha(channel)
@@ -749,8 +760,8 @@ class TimelineRenderer:
             fill=(166, 171, 160, 255),
         )
 
-    @staticmethod
     def _render_badge(
+        self,
         primary: str,
         secondary: str,
         card_width: int,
@@ -828,4 +839,8 @@ class TimelineRenderer:
                 max_lines=secondary_max_lines,
                 bold=True,
             )
+        opacity = _clamp(getattr(self, "_active_badge_opacity", 1.0))
+        if opacity < 0.999:
+            channel = canvas.getchannel("A").point(lambda value: round(value * opacity))
+            canvas.putalpha(channel)
         return canvas

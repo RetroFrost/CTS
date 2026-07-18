@@ -43,8 +43,7 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             return "image"
         return CardRelativeRenderer._field_at(model_id, local_x, local_y)
 
-    @staticmethod
-    def _gold_outline_badge(badge: Image.Image) -> Image.Image:
+    def _gold_outline_badge(self, badge: Image.Image) -> Image.Image:
         """Add the warm reference-video edge while retaining CTS's badge shadow."""
         result = badge.copy()
         draw = ImageDraw.Draw(result)
@@ -64,7 +63,12 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
         ]
         draw.line(
             points + [points[0]],
-            fill=(235, 178, 87, 255),
+            fill=(
+                235,
+                178,
+                87,
+                round(255 * max(0.0, min(1.0, getattr(self, "_active_badge_opacity", 1.0)))),
+            ),
             width=max(2, round(total_width * 0.007)),
             joint="curve",
         )

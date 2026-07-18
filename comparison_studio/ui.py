@@ -912,10 +912,10 @@ class MainWindow(QMainWindow):
         duration_row.addWidget(self.duration_info, 1)
         animation_label = QLabel("Animation")
         animation_label.setStyleSheet("font-weight:700;")
-        self.hexagons_bounce = QCheckBox("Hexagons bounce")
+        self.hexagons_bounce = QCheckBox("Badge reveal")
         self.hexagons_bounce.setChecked(True)
         self.hexagons_bounce.setToolTip(
-            "Animate the red value badges during entrances and horizontal scrolling."
+            "Fade each red value badge in after its card slides into place, like the reference video."
         )
         self.hexagons_bounce.toggled.connect(self._data_changed)
         duration_row.addWidget(animation_label)
