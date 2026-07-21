@@ -25,7 +25,7 @@ class TimelineEngineTest {
     }
 
     @Test
-    fun firstCardUsesAHorizontalWipeBeforeItsBadgeSettles() {
+    fun firstCardUsesAHorizontalWipeBeforeTheBadgeSequence() {
         val project = CtsProject(model = VisualModel.Illustrated)
         val firstFrame = TimelineEngine.placements(project, 0f)
         assertEquals(1, firstFrame.size)
@@ -35,10 +35,30 @@ class TimelineEngineTest {
         val entering = TimelineEngine.placements(project, 0.7f).first()
         assertTrue(entering.bodyReveal > 0.75f)
         assertTrue(entering.badgeVisible)
-        assertTrue(entering.badgeSettle in 0f..0.25f)
+        assertTrue(entering.badgeProgress in 0.08f..0.11f)
 
         val settledBody = TimelineEngine.placements(project, BODY_WIPE_SECONDS).first()
         assertEquals(1f, settledBody.bodyReveal, 0.001f)
+    }
+
+    @Test
+    fun badgePhasePreservesTheMeasuredTextAndSheenWindow() {
+        val project = CtsProject(model = VisualModel.Illustrated)
+        val atShapeStart = TimelineEngine.placements(project, BADGE_DELAY_SECONDS).first()
+        assertTrue(atShapeStart.badgeVisible)
+        assertEquals(0f, atShapeStart.badgeProgress, 0.001f)
+
+        val halfway = TimelineEngine.placements(
+            project,
+            BADGE_DELAY_SECONDS + BADGE_ANIMATION_SECONDS / 2f,
+        ).first()
+        assertEquals(0.5f, halfway.badgeProgress, 0.001f)
+
+        val complete = TimelineEngine.placements(
+            project,
+            BADGE_DELAY_SECONDS + BADGE_ANIMATION_SECONDS,
+        ).first()
+        assertEquals(1f, complete.badgeProgress, 0.001f)
     }
 
     @Test
@@ -73,7 +93,7 @@ class TimelineEngineTest {
             scrollStart + SCROLL_SECONDS,
         ).first { it.cardIndex == 4 }
         assertTrue(atArrival.badgeVisible)
-        assertEquals(0f, atArrival.badgeSettle, 0.01f)
+        assertEquals(0f, atArrival.badgeProgress, 0.01f)
         assertEquals(3f, atArrival.xInCards, 0.001f)
     }
 }

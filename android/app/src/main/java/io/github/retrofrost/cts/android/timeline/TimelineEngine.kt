@@ -17,11 +17,11 @@ const val FADE_SECONDS = 0.8f
 /** The opening wipe measured from a card's left edge. */
 const val BODY_WIPE_SECONDS = 1.1f
 
-/** The badge starts after most of its parent card has been uncovered. */
+/** The red badge first becomes visible after the card body is mostly uncovered. */
 const val BADGE_DELAY_SECONDS = 0.55f
 
-/** Oversized badges settle slowly while the next card is being introduced. */
-const val BADGE_SETTLE_SECONDS = 2.6f
+/** Full frame-measured badge sequence: shape, three text hits, settle, and sheen. */
+const val BADGE_ANIMATION_SECONDS = 1.60f
 
 /** The supplied reference pauses briefly after the fourth opening card. */
 const val INTRO_TAIL_HOLD_SECONDS = 0.8f
@@ -34,8 +34,8 @@ data class CardPlacement(
     val bodyReveal: Float,
     /** True once the red badge has begun its entrance. */
     val badgeVisible: Boolean,
-    /** 0 = oversized/off the top edge, 1 = settled at its canonical size. */
-    val badgeSettle: Float,
+    /** Raw 0..1 reference-animation time; rendering owns every individual keyframe. */
+    val badgeProgress: Float,
 )
 
 object TimelineEngine {
@@ -81,7 +81,7 @@ object TimelineEngine {
                             xInCards = index.toFloat(),
                             bodyReveal = materialEase(localTime / BODY_WIPE_SECONDS),
                             badgeVisible = badgeTime >= 0f,
-                            badgeSettle = materialEase(badgeTime / BADGE_SETTLE_SECONDS),
+                            badgeProgress = (badgeTime / BADGE_ANIMATION_SECONDS).coerceIn(0f, 1f),
                         ),
                     )
                 }
@@ -116,7 +116,7 @@ object TimelineEngine {
                         xInCards = x,
                         bodyReveal = 1f,
                         badgeVisible = badgeTime >= 0f,
-                        badgeSettle = materialEase(badgeTime / BADGE_SETTLE_SECONDS),
+                        badgeProgress = (badgeTime / BADGE_ANIMATION_SECONDS).coerceIn(0f, 1f),
                     ),
                 )
             }
@@ -154,7 +154,7 @@ object TimelineEngine {
         return "%d:%02d".format(minutes, remainder)
     }
 
-    /** Material's fast-out-slow-in curve closely matches the reference wipe and slide. */
+    /** Material fast-out-slow-in curve used by the source card wipe and strip motion. */
     private fun materialEase(value: Float): Float {
         val x = value.coerceIn(0f, 1f)
         var low = 0f
