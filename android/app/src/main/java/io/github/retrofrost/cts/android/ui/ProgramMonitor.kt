@@ -147,6 +147,7 @@ private fun ReferenceParentCard(
             .background(Color.Black)
             .clickable(onClick = onSelect),
     ) {
+        val cardLayoutScope = this
         val fullCardWidth = maxWidth
         val reveal = bodyReveal.coerceIn(0f, 1f)
 
@@ -163,7 +164,7 @@ private fun ReferenceParentCard(
                     .width(fullCardWidth)
                     .fillMaxHeight(),
             ) {
-                ReferenceCardBody(
+                cardLayoutScope.ReferenceCardBody(
                     card = card,
                     selected = selected,
                     onSelect = onSelect,
