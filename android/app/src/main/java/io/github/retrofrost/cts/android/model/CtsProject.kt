@@ -16,13 +16,21 @@ enum class VisualModel(
     val label: String,
     val visibleCards: Int,
 ) {
-    Reference("reference_detail", "Reference Detail", 4),
-    Illustrated("illustrated_cards", "Illustrated Cards", 3),
-    Compact("classic_compact", "Classic Compact", 4),
+    /**
+     * CTS Android has one canonical design: the four-column illustrated comparison
+     * supplied as the visual reference. Keep the historical `illustrated_cards` id so
+     * Android and desktop project files continue to open without migration prompts.
+     */
+    Illustrated("illustrated_cards", "Reference Timeline", 4),
     ;
 
     companion object {
-        fun fromId(id: String?): VisualModel = entries.firstOrNull { it.id == id } ?: Reference
+        /**
+         * Every legacy model id is intentionally folded into the sole Android design.
+         * Imported projects retain their data, images, transforms, and timing while the
+         * old visual-model choice is discarded.
+         */
+        fun fromId(@Suppress("UNUSED_PARAMETER") id: String?): VisualModel = Illustrated
     }
 }
 
@@ -70,12 +78,17 @@ data class CtsCard(
 data class CtsProject(
     val version: Int = 3,
     val name: String = "Untitled comparison",
-    val model: VisualModel = VisualModel.Reference,
+    val model: VisualModel = VisualModel.Illustrated,
     val cards: List<CtsCard> = sampleCards(),
+    /** Retained only for old project-file compatibility; the canonical badge is always shown. */
     val showHexagons: Boolean = true,
     val customDurationSeconds: Float? = null,
 ) {
-    fun normalized(): CtsProject = copy(cards = cards.map { it.withOwnedImageSubcard() })
+    fun normalized(): CtsProject = copy(
+        model = VisualModel.Illustrated,
+        cards = cards.map { it.withOwnedImageSubcard() },
+        showHexagons = true,
+    )
 
     fun updateCard(cardId: String, update: (CtsCard) -> CtsCard): CtsProject = copy(
         cards = cards.map { card ->
@@ -108,28 +121,33 @@ data class CtsProject(
 
 fun sampleCards(): List<CtsCard> = listOf(
     CtsCard(
-        badgePrimary = "2008",
-        title = "Android 1.0",
-        description = "The first commercial Android release.",
+        badgePrimary = "10",
+        badgeSecondary = "SECONDS OLD",
+        title = "Breathing",
+        description = "A baby's first breath requires blood flow through the heart.",
     ),
     CtsCard(
-        badgePrimary = "2011",
-        title = "Android 4.0",
-        description = "Phones and tablets met under the Holo design language.",
+        badgePrimary = "1",
+        badgeSecondary = "HOUR OLD",
+        title = "Suckling",
+        description = "Newborns instinctively try to feed within just hours.",
     ),
     CtsCard(
-        badgePrimary = "2014",
-        title = "Android 5.0",
-        description = "Material Design introduced depth, motion, and bold color.",
+        badgePrimary = "3",
+        badgeSecondary = "DAYS OLD",
+        title = "Recognizing Mom's Smell",
+        description = "Within days a baby can recognize a familiar scent.",
     ),
     CtsCard(
-        badgePrimary = "2021",
-        title = "Android 12",
-        description = "Material You made the interface react to the wallpaper.",
+        badgePrimary = "6.5",
+        badgeSecondary = "MONTHS OLD",
+        title = "Recognizing Their Own Name",
+        description = "A baby turns toward their name months before speaking.",
     ),
     CtsCard(
-        badgePrimary = "2025",
-        title = "Android 16",
-        description = "A modern Android generation built around adaptive experiences.",
+        badgePrimary = "8",
+        badgeSecondary = "MONTHS OLD",
+        title = "Object Permanence",
+        description = "Objects still exist even when they are out of sight.",
     ),
 )

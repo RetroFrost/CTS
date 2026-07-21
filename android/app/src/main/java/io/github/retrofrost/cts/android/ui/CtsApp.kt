@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -32,11 +31,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.TableRows
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -49,12 +45,10 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -77,7 +71,6 @@ import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
 import io.github.retrofrost.cts.android.model.NormalizedRect
-import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.persistence.ProjectJson
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import kotlinx.coroutines.launch
@@ -85,7 +78,6 @@ import java.util.UUID
 
 private enum class EditorTab(val label: String) {
     Data("Data"),
-    Models("Models"),
     Audio("Audio"),
     Export("Export"),
 }
@@ -119,7 +111,7 @@ fun CtsAndroidApp() {
 
     fun updateSelectedCard(update: (CtsCard) -> CtsCard) {
         val id = selectedCardId ?: return
-        project = project.updateCard(id, update)
+        project = project.updateCard(id, update).normalized()
     }
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -135,7 +127,7 @@ fun CtsAndroidApp() {
         updateSelectedCard { card ->
             card.copy(imageSubcard = card.imageSubcard.copy(source = uri.toString()))
         }
-        showMessage("Image attached without resetting its subcard transform")
+        showMessage("Image attached without resetting its position or size")
     }
 
     val openProject = rememberLauncherForActivityResult(
@@ -147,12 +139,12 @@ fun CtsAndroidApp() {
                 ?.bufferedReader()
                 ?.use { it.readText() }
                 ?: error("The selected project could not be read.")
-            project = ProjectJson.decode(text)
+            project = ProjectJson.decode(text).normalized()
             selectedCardId = project.cards.firstOrNull()?.id
             positionSeconds = 0f
             isPlaying = false
         }.onSuccess {
-            showMessage("Project opened")
+            showMessage("Project opened in the reference design")
         }.onFailure { error ->
             showMessage(error.message ?: "Could not open that CTS project")
         }
@@ -165,7 +157,7 @@ fun CtsAndroidApp() {
         runCatching {
             context.contentResolver.openOutputStream(uri)
                 ?.bufferedWriter()
-                ?.use { it.write(ProjectJson.encode(project)) }
+                ?.use { it.write(ProjectJson.encode(project.normalized())) }
                 ?: error("The selected destination could not be written.")
         }.onSuccess {
             showMessage("Project saved in desktop-compatible .cts.json format")
@@ -197,7 +189,7 @@ fun CtsAndroidApp() {
                     Column {
                         Text("CTS Android", fontWeight = FontWeight.Black)
                         Text(
-                            "StarterFreaks · native alpha",
+                            "Single reference design",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -232,7 +224,7 @@ fun CtsAndroidApp() {
                                 transform = transform.clamped(),
                             ),
                         )
-                    }
+                    }.normalized()
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -258,7 +250,6 @@ fun CtsAndroidApp() {
                 EditorTab.entries.forEach { tab ->
                     val icon = when (tab) {
                         EditorTab.Data -> Icons.Filled.TableRows
-                        EditorTab.Models -> Icons.Filled.Tune
                         EditorTab.Audio -> Icons.Filled.MusicNote
                         EditorTab.Export -> Icons.Filled.Movie
                     }
@@ -291,15 +282,6 @@ fun CtsAndroidApp() {
                         onUpdateSelectedCard = ::updateSelectedCard,
                         onChooseImage = { imagePicker.launch(arrayOf("image/*")) },
                         onInsertData = { showInsertDialog = true },
-                    )
-
-                    EditorTab.Models -> ModelsPanel(
-                        project = project,
-                        onProjectChanged = { updated ->
-                            project = updated
-                            positionSeconds = 0f
-                            isPlaying = false
-                        },
                     )
 
                     EditorTab.Audio -> AudioPanel()
@@ -395,6 +377,22 @@ private fun DataPanel(
         }
 
         item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text("Reference design locked", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Four cards, red badges, image/title/description bands, wipes, scrolling, and effects always match the template. Only your data changes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -455,7 +453,7 @@ private fun DataPanel(
             item {
                 HorizontalDivider()
                 Text(
-                    "Parent card",
+                    "Card data",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 8.dp),
@@ -466,7 +464,7 @@ private fun DataPanel(
                 OutlinedTextField(
                     value = selectedCard.badgePrimary,
                     onValueChange = { value -> onUpdateSelectedCard { it.copy(badgePrimary = value) } },
-                    label = { Text("Badge value / date") },
+                    label = { Text("Badge value") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -478,7 +476,7 @@ private fun DataPanel(
                     onValueChange = { value -> onUpdateSelectedCard { it.copy(badgeSecondary = value) } },
                     label = { Text("Badge label / unit") },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+                    maxLines = 2,
                 )
             }
 
@@ -488,6 +486,7 @@ private fun DataPanel(
                     onValueChange = { value -> onUpdateSelectedCard { it.copy(title = value) } },
                     label = { Text("Title") },
                     modifier = Modifier.fillMaxWidth(),
+                    maxLines = 2,
                 )
             }
 
@@ -504,7 +503,7 @@ private fun DataPanel(
 
             item {
                 Text(
-                    "Image subcard · child of this parent only",
+                    "Artwork",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
@@ -551,83 +550,6 @@ private fun DataPanel(
 }
 
 @Composable
-private fun ModelsPanel(
-    project: CtsProject,
-    onProjectChanged: (CtsProject) -> Unit,
-) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item {
-            Text("Visual model", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-            Text(
-                "Switching models keeps the card data and image-child transforms.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        items(VisualModel.entries.size) { index ->
-            val model = VisualModel.entries[index]
-            ElevatedCard(
-                onClick = { onProjectChanged(project.copy(model = model)) },
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = if (project.model == model) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    },
-                ),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(
-                        selected = project.model == model,
-                        onClick = { onProjectChanged(project.copy(model = model)) },
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(model.label, fontWeight = FontWeight.Bold)
-                        Text(
-                            "${model.visibleCards} cards on screen · each parent owns one image subcard",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            Card {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Show hexagons", fontWeight = FontWeight.Bold)
-                        Text(
-                            "The image subcard remains attached to its parent either way.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Switch(
-                        checked = project.showHexagons,
-                        onCheckedChange = { onProjectChanged(project.copy(showHexagons = it)) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun AudioPanel() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
@@ -638,7 +560,7 @@ private fun AudioPanel() {
             Icon(Icons.Filled.MusicNote, contentDescription = null, modifier = Modifier.size(52.dp))
             Text("Soundtrack editor", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             Text(
-                "The first Android alpha concentrates on the renderer, data flow, and parent → child image architecture. Multi-track audio is the next editor module.",
+                "The native renderer, data flow, and reference animation are ready. Multi-track Android audio remains the next editor module.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -660,7 +582,7 @@ private fun ExportPanel(
         item {
             Text("Project & export", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             Text(
-                "Projects are saved as desktop-compatible .cts.json files.",
+                "Projects are saved as desktop-compatible .cts.json files and always reopen with the reference design.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -684,7 +606,7 @@ private fun ExportPanel(
                 ) {
                     Text("Native MP4 renderer", fontWeight = FontWeight.Bold)
                     Text(
-                        "Scene graph: ready\nTimeline preview: ready\nParent/image-subcard transforms: ready\nMediaCodec frame encoder: next milestone",
+                        "Reference scene graph: ready\nReference timeline preview: ready\nParent/image transforms: ready\nMediaCodec frame encoder: next milestone",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     FilledTonalButton(onClick = {}, enabled = false) {
@@ -711,10 +633,11 @@ private fun InsertDataDialog(
 ) {
     var text by remember {
         mutableStateOf(
-            "Badge\tTitle\tDescription\tImage\n" +
+            "Badge\tLabel\tTitle\tDescription\tImage\n" +
                 existingCards.joinToString("\n") { card ->
                     listOf(
                         card.badgePrimary,
+                        card.badgeSecondary,
                         card.title,
                         card.description,
                         card.imageSubcard.source.orEmpty(),
@@ -743,7 +666,7 @@ private fun InsertDataDialog(
                         .fillMaxWidth()
                         .height(280.dp),
                     textStyle = MaterialTheme.typography.bodySmall,
-                    label = { Text("Badge · Title · Description · Image") },
+                    label = { Text("Badge · Label · Title · Description · Image") },
                 )
                 error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error)
@@ -787,7 +710,7 @@ private fun parseCards(text: String, existingCards: List<CtsCard>): List<CtsCard
         "details", "image", "artwork", "label", "unit",
     )
     val hasHeader = first.any { it in knownHeaders }
-    val headers = if (hasHeader) first else listOf("badge", "title", "description", "image", "label")
+    val headers = if (hasHeader) first else listOf("badge", "label", "title", "description", "image")
     val rows = if (hasHeader) matrix.drop(1) else matrix
 
     fun index(vararg names: String): Int = headers.indexOfFirst { it in names }
@@ -805,6 +728,7 @@ private fun parseCards(text: String, existingCards: List<CtsCard>): List<CtsCard
         val old = existingCards.getOrNull(rowIndex)
         val cardId = old?.id ?: UUID.randomUUID().toString()
         val pastedImage = value(row, imageIndex)
+        val imageSource = pastedImage.takeIf { it.isNotBlank() } ?: old?.imageSubcard?.source
         CtsCard(
             id = cardId,
             badgePrimary = value(row, badgeIndex),
@@ -814,7 +738,7 @@ private fun parseCards(text: String, existingCards: List<CtsCard>): List<CtsCard
             imageSubcard = ImageSubcard(
                 id = old?.imageSubcard?.id ?: UUID.randomUUID().toString(),
                 parentCardId = cardId,
-                source = pastedImage.ifBlank { old?.imageSubcard?.source },
+                source = imageSource,
                 transform = old?.imageSubcard?.transform ?: NormalizedRect.Full,
             ),
         )
