@@ -4,11 +4,27 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from . import exporter as exporter_module
 from .card_relative_transform import CardRelativeMainWindow, CardRelativeRenderer
-from .data import MODEL_ILLUSTRATED
+from .data import (
+    MODEL_ILLUSTRATED,
+    REFERENCE_REVEAL_SECONDS,
+    REFERENCE_SCROLL_SECONDS,
+)
+from .exact_badge import clamp, render_reference_badge_layer
 from .interaction_runtime import RuntimeTransformRenderer
-from .renderer import CARD_BODY, DIVIDER, TITLE_BACKGROUND, _draw_text_box, date_lines
+from .renderer import (
+    CARD_BODY,
+    DIVIDER,
+    TITLE_BACKGROUND,
+    _draw_text_box,
+    _smoothstep,
+    date_lines,
+)
 from .reselect_fix import ReselectAwareRenderer
 from .studio_ui import StudioAssetCache
+
+
+BADGE_DELAY_SECONDS = 0.55
+BADGE_ANIMATION_SECONDS = 1.60
 
 
 class ReferenceIllustratedRenderer(CardRelativeRenderer):
@@ -16,14 +32,16 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
 
     Artwork remains the image subcard owned by the parent card. The title and optional
     description are overlays, so changing their layout does not break image transforms.
+    The badge animation is shared with Android and follows the supplied video's first
+    five seconds frame for frame.
     """
 
     @staticmethod
     def _field_box(model_id: str, role: str):
         if model_id == MODEL_ILLUSTRATED:
             return {
-                "badge_primary": (0.14, 0.045, 0.72, 0.16),
-                "badge_secondary": (0.18, 0.205, 0.64, 0.085),
+                "badge_primary": (0.164, 0.009, 0.726, 0.185),
+                "badge_secondary": (0.164, 0.194, 0.726, 0.165),
                 "title": (0.025, 0.628, 0.95, 0.098),
                 "description": (0.035, 0.742, 0.93, 0.235),
                 # Keep the established full artwork owner frame so existing per-card
@@ -39,10 +57,75 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
                 return "description"
             if local_y >= 0.625:
                 return "title"
-            if 0.10 <= local_x <= 0.90 and local_y <= 0.34:
-                return "badge_primary" if local_y <= 0.205 else "badge_secondary"
+            if 0.13 <= local_x <= 0.91 and local_y <= 0.36:
+                return "badge_primary" if local_y <= 0.19 else "badge_secondary"
             return "image"
         return CardRelativeRenderer._field_at(model_id, local_x, local_y)
+
+    def _placements(
+        self,
+        card_count: int,
+        model_time: float,
+        visible_cards: int,
+        width: float,
+        hexagons_bounce: bool = True,
+    ) -> list[tuple[int, float, float, float]]:
+        """Return the normal card placement plus the raw exact badge phase.
+
+        The fourth tuple value used to be badge opacity. For this renderer it is the
+        0..1 source-animation phase consumed by ``render_reference_badge_layer``.
+        """
+        card_width = width / visible_cards
+        initial_count = min(card_count, visible_cards)
+        intro_duration = initial_count * REFERENCE_REVEAL_SECONDS
+        placements: list[tuple[int, float, float, float]] = []
+
+        if model_time < intro_duration:
+            for index in range(initial_count):
+                local = model_time - index * REFERENCE_REVEAL_SECONDS
+                if local < 0:
+                    continue
+                card_alpha = _smoothstep(local / 0.62)
+                badge_time = local - BADGE_DELAY_SECONDS
+                badge_phase = (
+                    clamp(badge_time / BADGE_ANIMATION_SECONDS)
+                    if badge_time > 0
+                    else 0.0
+                )
+                placements.append((index, index * card_width, card_alpha, badge_phase))
+            return placements
+
+        scroll_elapsed = max(0.0, model_time - intro_duration)
+        maximum_shift = max(0, card_count - visible_cards)
+        raw_cycle = min(float(maximum_shift), scroll_elapsed / REFERENCE_SCROLL_SECONDS)
+        completed_cycles = min(maximum_shift, int(raw_cycle))
+        cycle_progress = raw_cycle - completed_cycles
+
+        slide_portion = 0.78
+        if completed_cycles >= maximum_shift:
+            shift_cards = float(maximum_shift)
+        elif cycle_progress < slide_portion:
+            shift_cards = completed_cycles + _smoothstep(cycle_progress / slide_portion)
+        else:
+            shift_cards = completed_cycles + 1.0
+        shift = min(float(maximum_shift), shift_cards) * card_width
+
+        for index in range(card_count):
+            x = index * card_width - shift
+            if x >= width or x + card_width <= 0:
+                continue
+            if index < initial_count:
+                badge_phase = 1.0
+            else:
+                badge_start = intro_duration + (index - initial_count + 1) * REFERENCE_SCROLL_SECONDS
+                badge_time = model_time - badge_start
+                badge_phase = (
+                    clamp(badge_time / BADGE_ANIMATION_SECONDS)
+                    if badge_time > 0
+                    else 0.0
+                )
+            placements.append((index, x, 1.0, badge_phase))
+        return placements
 
     @staticmethod
     def _fit_artwork(source: Image.Image, size: tuple[int, int]) -> Image.Image:
@@ -76,7 +159,7 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
         return canvas
 
     def _gold_outline_badge(self, badge: Image.Image) -> Image.Image:
-        """Add the warm reference-video edge while retaining CTS's badge shadow."""
+        """Retained for legacy models; the exact illustrated badge draws its own edge."""
         result = badge.copy()
         draw = ImageDraw.Draw(result)
         total_width, total_height = result.size
@@ -95,12 +178,7 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
         ]
         draw.line(
             points + [points[0]],
-            fill=(
-                235,
-                178,
-                87,
-                round(255 * max(0.0, min(1.0, getattr(self, "_active_badge_opacity", 1.0)))),
-            ),
+            fill=(235, 178, 87, 255),
             width=max(2, round(total_width * 0.007)),
             joint="curve",
         )
@@ -198,16 +276,11 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             description_top = title_bottom
             artwork_bottom = round(height * 0.88)
         else:
-            # No empty dark panel: artwork uses the former description area and the
-            # title becomes the card's bottom band.
             title_top = round(height * 0.88)
             title_bottom = height
             description_top = height
             artwork_bottom = title_top
 
-        # Always paint the selected Illustrated background first. Transparent line-art
-        # icons are then contained and centered over it; opaque full-card artwork keeps
-        # the established edge-to-edge cover behavior.
         source = self.assets.load(card.image)
         background_id = getattr(self._studio_settings, "illustrated_background", "beach")
         self._draw_background(
@@ -222,7 +295,6 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             )
             layer.alpha_composite(fitted, (divider, 0))
 
-        # Soft separation shadow where the artwork meets the title strip.
         shadow_height = max(8, round(height * 0.018))
         shadow = Image.new("RGBA", layer.size, (0, 0, 0, 0))
         shadow_draw = ImageDraw.Draw(shadow)
@@ -276,21 +348,15 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
                 bold=False,
             )
 
-        top_height = round(height * 0.40)
-        badge = self._render_badge(
-            card.uploaded,
-            card.badge_label,
-            width,
-            top_height,
-            badge_scale * 1.03,
-            primary_max_lines=3,
-            secondary_max_lines=2,
-            minimum_text_scale=0.075,
-        )
-        badge = self._gold_outline_badge(badge)
+        phase = clamp(getattr(self, "_active_badge_opacity", 1.0))
         layer.alpha_composite(
-            badge,
-            ((width - badge.width) // 2, max(2, round(height * 0.006))),
+            render_reference_badge_layer(
+                width,
+                height,
+                card.uploaded,
+                card.badge_label,
+                phase,
+            )
         )
         return layer
 
