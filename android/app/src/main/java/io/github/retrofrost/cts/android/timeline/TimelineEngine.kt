@@ -20,8 +20,8 @@ const val BODY_WIPE_SECONDS = 1.1f
 /** The red badge first becomes visible after the card body is mostly uncovered. */
 const val BADGE_DELAY_SECONDS = 0.55f
 
-/** Frame-measured duration of the diagonal grow-and-slide badge entrance. */
-const val BADGE_SETTLE_SECONDS = 1.45f
+/** Full frame-measured badge sequence: shape, three text hits, settle, and sheen. */
+const val BADGE_ANIMATION_SECONDS = 1.60f
 
 /** The supplied reference pauses briefly after the fourth opening card. */
 const val INTRO_TAIL_HOLD_SECONDS = 0.8f
@@ -34,8 +34,8 @@ data class CardPlacement(
     val bodyReveal: Float,
     /** True once the red badge has begun its entrance. */
     val badgeVisible: Boolean,
-    /** 0 = half-size beyond the upper-left edge, 1 = settled at its reference position. */
-    val badgeSettle: Float,
+    /** Raw 0..1 reference-animation time; rendering owns every individual keyframe. */
+    val badgeProgress: Float,
 )
 
 object TimelineEngine {
@@ -81,7 +81,7 @@ object TimelineEngine {
                             xInCards = index.toFloat(),
                             bodyReveal = materialEase(localTime / BODY_WIPE_SECONDS),
                             badgeVisible = badgeTime >= 0f,
-                            badgeSettle = referenceBadgeEase(badgeTime / BADGE_SETTLE_SECONDS),
+                            badgeProgress = (badgeTime / BADGE_ANIMATION_SECONDS).coerceIn(0f, 1f),
                         ),
                     )
                 }
@@ -116,7 +116,7 @@ object TimelineEngine {
                         xInCards = x,
                         bodyReveal = 1f,
                         badgeVisible = badgeTime >= 0f,
-                        badgeSettle = referenceBadgeEase(badgeTime / BADGE_SETTLE_SECONDS),
+                        badgeProgress = (badgeTime / BADGE_ANIMATION_SECONDS).coerceIn(0f, 1f),
                     ),
                 )
             }
@@ -154,7 +154,7 @@ object TimelineEngine {
         return "%d:%02d".format(minutes, remainder)
     }
 
-    /** Material fast-out-slow-in curve for the card wipe and horizontal strip. */
+    /** Material fast-out-slow-in curve used by the source card wipe and strip motion. */
     private fun materialEase(value: Float): Float {
         val x = value.coerceIn(0f, 1f)
         var low = 0f
@@ -165,16 +165,6 @@ object TimelineEngine {
             if (curveX < x) low = t else high = t
         }
         return cubic((low + high) / 2f, 0f, 1f)
-    }
-
-    /**
-     * The badge in the source accelerates immediately, then spends most of its time
-     * easing into the final position. A cubic ease-out follows the measured frames.
-     */
-    private fun referenceBadgeEase(value: Float): Float {
-        val t = value.coerceIn(0f, 1f)
-        val inverse = 1f - t
-        return 1f - inverse * inverse * inverse
     }
 
     private fun cubic(t: Float, firstControl: Float, secondControl: Float): Float {
