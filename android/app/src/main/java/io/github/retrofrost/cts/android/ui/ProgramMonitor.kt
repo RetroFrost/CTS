@@ -2,15 +2,18 @@ package io.github.retrofrost.cts.android.ui
 
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -34,10 +37,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -53,7 +62,6 @@ import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
 import io.github.retrofrost.cts.android.model.NormalizedRect
-import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import io.github.retrofrost.cts.android.ui.theme.CtsPurple
 import kotlinx.coroutines.Dispatchers
@@ -64,15 +72,21 @@ import java.net.URL
 
 private enum class ResizeCorner { NorthWest, NorthEast, SouthWest, SouthEast }
 
-private val HexagonShape = GenericShape { size, _ ->
-    moveTo(size.width * 0.25f, 0f)
-    lineTo(size.width * 0.75f, 0f)
-    lineTo(size.width, size.height * 0.5f)
-    lineTo(size.width * 0.75f, size.height)
-    lineTo(size.width * 0.25f, size.height)
-    lineTo(0f, size.height * 0.5f)
+/** Point-up/point-down badge used by the supplied comparison video. */
+private val ReferenceHexagonShape = GenericShape { size, _ ->
+    moveTo(size.width * 0.5f, 0f)
+    lineTo(size.width, size.height * 0.22f)
+    lineTo(size.width, size.height * 0.78f)
+    lineTo(size.width * 0.5f, size.height)
+    lineTo(0f, size.height * 0.78f)
+    lineTo(0f, size.height * 0.22f)
     close()
 }
+
+private val ImageFrame = NormalizedRect(0.008f, 0f, 0.984f, 0.807f)
+private val TitleFrame = NormalizedRect(0.008f, 0.807f, 0.984f, 0.088f)
+private val DescriptionFrame = NormalizedRect(0.008f, 0.895f, 0.984f, 0.101f)
+private val BadgeFrame = NormalizedRect(0.245f, 0.063f, 0.51f, 0.263f)
 
 @Composable
 fun ProgramMonitor(
@@ -93,24 +107,23 @@ fun ProgramMonitor(
                 .background(Color.Black)
                 .clipToBounds(),
         ) {
-            val cardWidth = maxWidth / project.model.visibleCards
+            // The reference always uses exactly four equal columns.
+            val cardWidth = maxWidth / 4
             placements.forEach { placement ->
                 val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
-                ParentCard(
+                ReferenceParentCard(
                     card = card,
-                    model = project.model,
-                    showHexagons = project.showHexagons,
+                    bodyReveal = placement.bodyReveal,
+                    badgeVisible = placement.badgeVisible,
+                    badgeSettle = placement.badgeSettle,
                     selected = selectedCardId == card.id,
                     onSelect = { onSelectCard(card.id) },
                     onImageTransformChanged = { onImageTransformChanged(card.id, it) },
                     modifier = Modifier
-                        .offset(
-                            x = cardWidth * placement.xInCards,
-                            y = maxHeight * ((1f - placement.alpha) * 0.018f),
-                        )
+                        .offset(x = cardWidth * placement.xInCards)
                         .width(cardWidth)
                         .fillMaxHeight()
-                        .alpha(placement.alpha * fadeAlpha)
+                        .alpha(fadeAlpha)
                         .zIndex(placement.cardIndex.toFloat()),
                 )
             }
@@ -119,10 +132,11 @@ fun ProgramMonitor(
 }
 
 @Composable
-private fun ParentCard(
+private fun ReferenceParentCard(
     card: CtsCard,
-    model: VisualModel,
-    showHexagons: Boolean,
+    bodyReveal: Float,
+    badgeVisible: Boolean,
+    badgeSettle: Float,
     selected: Boolean,
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
@@ -130,35 +144,47 @@ private fun ParentCard(
 ) {
     BoxWithConstraints(
         modifier = modifier
-            .background(Color(0xFF121419))
-            .border(0.6.dp, Color(0xFF08090B))
+            .background(Color.Black)
             .clickable(onClick = onSelect),
     ) {
-        when (model) {
-            VisualModel.Reference -> ReferenceCard(
-                card,
-                showHexagons,
-                selected,
-                onSelect,
-                onImageTransformChanged,
-            )
-            VisualModel.Illustrated -> IllustratedCard(
-                card,
-                showHexagons,
-                selected,
-                onSelect,
-                onImageTransformChanged,
-            )
-            VisualModel.Compact -> CompactCard(
-                card,
-                showHexagons,
-                selected,
-                onSelect,
-                onImageTransformChanged,
-            )
+        val fullCardWidth = maxWidth
+        val reveal = bodyReveal.coerceIn(0f, 1f)
+
+        // The card itself is uncovered from left to right. Its internal geometry never
+        // stretches, so text, artwork, and dividers remain exactly where they settle.
+        Box(
+            modifier = Modifier
+                .width(fullCardWidth * reveal)
+                .fillMaxHeight()
+                .clipToBounds(),
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(fullCardWidth)
+                    .fillMaxHeight(),
+            ) {
+                ReferenceCardBody(
+                    card = card,
+                    selected = selected,
+                    onSelect = onSelect,
+                    onImageTransformChanged = onImageTransformChanged,
+                )
+            }
         }
 
-        if (selected) {
+        // Badges are a separate child layer. This lets the oversized entrance extend
+        // above the card while the parent card and its image continue to move together.
+        if (badgeVisible) {
+            Frame(BadgeFrame) {
+                ReferenceBadge(
+                    card = card,
+                    settleProgress = badgeSettle,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+
+        if (selected && reveal > 0.98f) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -169,90 +195,158 @@ private fun ParentCard(
 }
 
 @Composable
-private fun BoxWithConstraintsScope.ReferenceCard(
+private fun BoxWithConstraintsScope.ReferenceCardBody(
     card: CtsCard,
-    showHexagons: Boolean,
-    selected: Boolean,
-    onSelect: () -> Unit,
-    onImageTransformChanged: (NormalizedRect) -> Unit,
-) {
-    Frame(NormalizedRect(0f, 0f, 1f, 0.44f), Modifier.background(Color(0xFF111319))) {
-        Badge(card, showHexagons, Modifier.align(Alignment.Center))
-    }
-    Frame(NormalizedRect(0f, 0.44f, 1f, 0.098f), Modifier.background(Color(0xFFF4F3EE))) {
-        CardText(card.title, Color(0xFF111111), FontWeight.Bold, 9.sp)
-    }
-    Frame(NormalizedRect(0f, 0.538f, 1f, 0.132f), Modifier.background(Color(0xFFC9C5BA))) {
-        CardText(card.description, Color(0xFF2B2925), FontWeight.Normal, 6.5.sp, 4)
-    }
-    Frame(imageFrame(VisualModel.Reference), Modifier.background(Color(0xFF5E605E))) {
-        ImageSubcardFrame(
-            card.imageSubcard,
-            selected,
-            ContentScale.Crop,
-            onSelect,
-            onImageTransformChanged,
-        )
-    }
-}
-
-@Composable
-private fun BoxWithConstraintsScope.IllustratedCard(
-    card: CtsCard,
-    showHexagons: Boolean,
     selected: Boolean,
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
     Frame(
-        imageFrame(VisualModel.Illustrated),
+        ImageFrame,
         Modifier.background(
             Brush.verticalGradient(
-                0f to Color(0xFF55CFE4),
-                0.64f to Color(0xFF55CFE4),
-                0.65f to Color(0xFFEAC17B),
-                1f to Color(0xFFF2D394),
+                0f to Color(0xFF138DDB),
+                0.72f to Color(0xFF138DDB),
+                1f to Color(0xFF0B74BE),
             ),
         ),
     ) {
         ImageSubcardFrame(
             card.imageSubcard,
             selected,
-            ContentScale.Fit,
-            onSelect,
-            onImageTransformChanged,
-        )
-    }
-    Frame(NormalizedRect(0f, 0.88f, 1f, 0.12f), Modifier.background(Color(0xFFF4F3EE))) {
-        CardText(card.title, Color(0xFF111111), FontWeight.Bold, 9.sp)
-    }
-    Frame(NormalizedRect(0.13f, 0.035f, 0.74f, 0.28f)) {
-        Badge(card, showHexagons, Modifier.align(Alignment.Center))
-    }
-}
-
-@Composable
-private fun BoxWithConstraintsScope.CompactCard(
-    card: CtsCard,
-    showHexagons: Boolean,
-    selected: Boolean,
-    onSelect: () -> Unit,
-    onImageTransformChanged: (NormalizedRect) -> Unit,
-) {
-    Frame(NormalizedRect(0f, 0f, 1f, 0.39f), Modifier.background(Color(0xFF101113))) {
-        Badge(card, showHexagons, Modifier.align(Alignment.Center))
-    }
-    Frame(NormalizedRect(0f, 0.39f, 1f, 0.115f), Modifier.background(Color(0xFFF0F0F0))) {
-        CardText(card.title, Color(0xFF111111), FontWeight.Bold, 8.sp, 3)
-    }
-    Frame(imageFrame(VisualModel.Compact), Modifier.background(Color(0xFF777976))) {
-        ImageSubcardFrame(
-            card.imageSubcard,
-            selected,
             ContentScale.Crop,
             onSelect,
             onImageTransformChanged,
         )
+    }
+
+    Frame(TitleFrame, Modifier.background(Color(0xFFF0F0F0))) {
+        CardText(
+            text = card.title,
+            color = Color(0xFF101010),
+            fontWeight = FontWeight.Black,
+            fontSize = 8.4.sp,
+            maxLines = 2,
+        )
+    }
+
+    Frame(DescriptionFrame, Modifier.background(Color(0xFF625F56))) {
+        CardText(
+            text = card.description,
+            color = Color.White,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 5.4.sp,
+            maxLines = 3,
+        )
+    }
+
+    // Four black separators are visible in the reference at every stage of movement.
+    Box(
+        Modifier
+            .align(Alignment.CenterStart)
+            .width(1.4.dp)
+            .fillMaxHeight()
+            .background(Color(0xFF11100C)),
+    )
+    Box(
+        Modifier
+            .align(Alignment.CenterEnd)
+            .width(1.4.dp)
+            .fillMaxHeight()
+            .background(Color(0xFF11100C)),
+    )
+    Box(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .height(1.4.dp)
+            .width(maxWidth)
+            .background(Color(0xFF11100C)),
+    )
+}
+
+@Composable
+private fun ReferenceBadge(
+    card: CtsCard,
+    settleProgress: Float,
+    modifier: Modifier = Modifier,
+) {
+    val settle = settleProgress.coerceIn(0f, 1f)
+    val density = LocalDensity.current
+
+    BoxWithConstraints(modifier = modifier) {
+        val translation = with(density) { (-maxHeight * 0.42f * (1f - settle)).toPx() }
+        val scale = 1.42f - 0.42f * settle
+        val primarySize = (maxWidth.value * 0.22f).sp
+        val secondarySize = (maxWidth.value * 0.105f).sp
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationY = translation
+                    transformOrigin = TransformOrigin.Center
+                }
+                .shadow(7.dp, ReferenceHexagonShape, clip = false)
+                .clip(ReferenceHexagonShape)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xFFEB0909),
+                            Color(0xFFE00000),
+                            Color(0xFFD50000),
+                        ),
+                    ),
+                )
+                .border(0.8.dp, Color(0xFFFF4545), ReferenceHexagonShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            // A moving diagonal gloss is visible while each large badge settles.
+            Canvas(Modifier.fillMaxSize()) {
+                if (settle < 0.94f) {
+                    val shineProgress = (settle / 0.94f).coerceIn(0f, 1f)
+                    val shineX = -size.width * 0.30f + size.width * 1.65f * shineProgress
+                    val shineAlpha = 0.34f * (1f - settle)
+                    rotate(18f, pivot = Offset(shineX, size.height / 2f)) {
+                        drawRect(
+                            color = Color.White.copy(alpha = shineAlpha),
+                            topLeft = Offset(shineX - size.width * 0.075f, -size.height * 0.20f),
+                            size = Size(size.width * 0.15f, size.height * 1.40f),
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = card.badgePrimary,
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    fontSize = primarySize,
+                    lineHeight = primarySize * 0.98f,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (card.badgeSecondary.isNotBlank()) {
+                    Text(
+                        text = card.badgeSecondary,
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = secondarySize,
+                        lineHeight = secondarySize * 1.02f,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -272,55 +366,22 @@ private fun BoxWithConstraintsScope.Frame(
 }
 
 @Composable
-private fun Badge(card: CtsCard, showHexagons: Boolean, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxSize(0.72f)
-            .then(
-                if (showHexagons) {
-                    Modifier
-                        .clip(HexagonShape)
-                        .background(Color(0xFF7D67EE))
-                        .border(1.dp, Color(0xFFD7D0FF), HexagonShape)
-                } else {
-                    Modifier
-                },
-            )
-            .padding(horizontal = 7.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = listOf(card.badgePrimary, card.badgeSecondary)
-                .filter(String::isNotBlank)
-                .joinToString("\n"),
-            color = Color.White,
-            fontWeight = FontWeight.Black,
-            fontSize = 10.sp,
-            lineHeight = 10.sp,
-            textAlign = TextAlign.Center,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
 private fun BoxScope.CardText(
     text: String,
     color: Color,
     fontWeight: FontWeight,
     fontSize: TextUnit,
-    maxLines: Int = 2,
+    maxLines: Int,
 ) {
     Text(
         text = text,
         modifier = Modifier
             .align(Alignment.Center)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            .padding(horizontal = 4.dp, vertical = 1.dp),
         color = color,
         fontWeight = fontWeight,
         fontSize = fontSize,
-        lineHeight = fontSize * 1.06f,
+        lineHeight = fontSize * 1.04f,
         textAlign = TextAlign.Center,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
@@ -467,13 +528,17 @@ private fun BoxScope.ImageContent(source: String?, contentScale: ContentScale) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF474B48)),
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF138DDB), Color(0xFF0B74BE)),
+                    ),
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Outlined.Image,
                 contentDescription = null,
-                tint = Color(0xFFB9BDB8),
+                tint = Color.White.copy(alpha = 0.72f),
                 modifier = Modifier.size(26.dp),
             )
         }
@@ -503,12 +568,6 @@ private fun rememberSourceBitmap(source: String?): State<ImageBitmap?> {
             }.getOrNull()
         }
     }
-}
-
-private fun imageFrame(model: VisualModel): NormalizedRect = when (model) {
-    VisualModel.Reference -> NormalizedRect(0.085f, 0.67f, 0.83f, 0.32f)
-    VisualModel.Illustrated -> NormalizedRect(0.01f, 0.01f, 0.98f, 0.87f)
-    VisualModel.Compact -> NormalizedRect(0.01f, 0.505f, 0.98f, 0.485f)
 }
 
 private fun NormalizedRect.moveBy(dx: Float, dy: Float): NormalizedRect =
