@@ -15,8 +15,11 @@ FIELDS = ("badge_primary", "badge_secondary", "title", "description", "image")
 
 REVEAL_SECONDS = 2.0
 SCROLL_SECONDS = 3.3333333333333335
-END_HOLD_SECONDS = 2.0
-FADE_SECONDS = 0.8
+END_HOLD_SECONDS = 0.25
+OUTRO_COVER_SECONDS = 0.32
+OUTRO_CONTENT_DELAY_SECONDS = 0.18
+OUTRO_HOLD_SECONDS = 4.25
+FADE_SECONDS = 1.2
 BODY_WIPE_SECONDS = 1.1
 BADGE_DELAY_SECONDS = 0.55
 BADGE_SETTLE_SECONDS = 2.6
@@ -71,7 +74,15 @@ def automatic_duration(card_count: int) -> float:
         return 0.0
     reveal = min(card_count, VISIBLE_CARDS) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
     scroll = max(0, card_count - VISIBLE_CARDS) * SCROLL_SECONDS
-    return reveal + scroll + END_HOLD_SECONDS + FADE_SECONDS
+    return (
+        reveal
+        + scroll
+        + END_HOLD_SECONDS
+        + OUTRO_COVER_SECONDS
+        + OUTRO_CONTENT_DELAY_SECONDS
+        + OUTRO_HOLD_SECONDS
+        + FADE_SECONDS
+    )
 
 
 def timeline_parts(card_count: int) -> tuple[float, int, float, float]:
@@ -80,7 +91,13 @@ def timeline_parts(card_count: int) -> tuple[float, int, float, float]:
     intro = min(card_count, VISIBLE_CARDS) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
     scroll_steps = max(0, card_count - VISIBLE_CARDS)
     automatic_scroll = scroll_steps * SCROLL_SECONDS
-    fixed_tail = END_HOLD_SECONDS + FADE_SECONDS
+    fixed_tail = (
+        END_HOLD_SECONDS
+        + OUTRO_COVER_SECONDS
+        + OUTRO_CONTENT_DELAY_SECONDS
+        + OUTRO_HOLD_SECONDS
+        + FADE_SECONDS
+    )
     return intro, scroll_steps, automatic_scroll, fixed_tail
 
 

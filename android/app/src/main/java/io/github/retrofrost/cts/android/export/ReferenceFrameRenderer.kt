@@ -42,23 +42,31 @@ class ReferenceFrameRenderer(
         require(target.width == width && target.height == height)
         val canvas = Canvas(target)
         canvas.drawColor(Color.BLACK)
-        val placements = TimelineEngine.placements(project, outputTimeSeconds)
         val cardWidth = width / 4f
 
-        placements.forEach { placement ->
+        if (TimelineEngine.introCreditsVisible(project, outputTimeSeconds)) {
+            ReferenceOverlayRenderer.drawIntroCredits(canvas, width, height, paint)
+        }
+
+        TimelineEngine.placements(project, outputTimeSeconds).forEach { placement ->
             val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
             val cardX = cardWidth * placement.xInCards
-
             canvas.save()
             canvas.translate(cardX, 0f)
             canvas.clipRect(0f, 0f, cardWidth * placement.bodyReveal.coerceIn(0f, 1f), height.toFloat())
             drawCardBody(canvas, card, cardWidth)
             canvas.restore()
-
-            if (placement.badgeVisible) {
-                drawBadge(canvas, card, cardX, cardWidth, placement.badgeSettle)
-            }
+            if (placement.badgeVisible) drawBadge(canvas, card, cardX, cardWidth, placement.badgeSettle)
         }
+
+        ReferenceOverlayRenderer.drawOutro(
+            canvas,
+            width,
+            height,
+            TimelineEngine.outroCoverProgress(project, outputTimeSeconds),
+            TimelineEngine.outroContentAlpha(project, outputTimeSeconds),
+            paint,
+        )
 
         val fade = TimelineEngine.fadeAlpha(project, outputTimeSeconds).coerceIn(0f, 1f)
         if (fade < 0.999f) {

@@ -100,6 +100,9 @@ fun ProgramMonitor(
 ) {
     val placements = TimelineEngine.placements(project, positionSeconds)
     val fadeAlpha = TimelineEngine.fadeAlpha(project, positionSeconds)
+    val showIntroCredits = TimelineEngine.introCreditsVisible(project, positionSeconds)
+    val outroCover = TimelineEngine.outroCoverProgress(project, positionSeconds)
+    val outroContent = TimelineEngine.outroContentAlpha(project, positionSeconds)
 
     Surface(modifier = modifier, color = Color.Black, shadowElevation = 4.dp) {
         BoxWithConstraints(
@@ -108,8 +111,9 @@ fun ProgramMonitor(
                 .background(Color.Black)
                 .clipToBounds(),
         ) {
-            // The reference always uses exactly four equal columns.
             val cardWidth = maxWidth / 4
+            if (showIntroCredits) ReferenceIntroCreditsPanel(cardWidth)
+
             placements.forEach { placement ->
                 val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
                 ReferenceParentCard(
@@ -124,8 +128,17 @@ fun ProgramMonitor(
                         .offset(x = cardWidth * placement.xInCards)
                         .width(cardWidth)
                         .fillMaxHeight()
-                        .alpha(fadeAlpha)
-                        .zIndex(placement.cardIndex.toFloat()),
+                        .zIndex(placement.cardIndex.toFloat() + 1f),
+                )
+            }
+
+            ReferenceOutroOverlay(cardWidth, outroCover, outroContent)
+            if (fadeAlpha < 0.999f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 1f - fadeAlpha))
+                        .zIndex(200f),
                 )
             }
         }

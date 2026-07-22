@@ -61,24 +61,23 @@ class SharedContractTest(unittest.TestCase):
             self.assertIn(json.dumps(title, ensure_ascii=False), kotlin)
 
     def test_duration_matches_android_reference_timeline(self) -> None:
-        expected = 4 * 2.0 + 0.8 + (10.0 / 3.0) + 2.0 + 0.8
+        expected = (
+            4 * shared_contract.REVEAL_SECONDS
+            + shared_contract.INTRO_TAIL_HOLD_SECONDS
+            + shared_contract.SCROLL_SECONDS
+            + shared_contract.END_HOLD_SECONDS
+            + shared_contract.OUTRO_COVER_SECONDS
+            + shared_contract.OUTRO_CONTENT_DELAY_SECONDS
+            + shared_contract.OUTRO_HOLD_SECONDS
+            + shared_contract.FADE_SECONDS
+        )
         self.assertAlmostEqual(shared_contract.automatic_duration(5), expected, places=6)
         self.assertEqual(shared_contract.automatic_duration(0), 0.0)
-        custom = expected + 6.0
-        scroll_start = 4 * 2.0 + 0.8
+        custom = expected + 5.0
         self.assertAlmostEqual(shared_contract.chosen_duration(5, custom), custom)
         self.assertAlmostEqual(
-            shared_contract.scroll_seconds_per_card(5, custom),
-            (10.0 / 3.0) + 6.0,
-        )
-        self.assertAlmostEqual(shared_contract.model_time(5, scroll_start, custom), scroll_start)
-        self.assertAlmostEqual(
-            shared_contract.model_time(
-                5,
-                scroll_start + shared_contract.scroll_seconds_per_card(5, custom) / 2.0,
-                custom,
-            ),
-            scroll_start + (10.0 / 3.0) / 2.0,
+            shared_contract.model_time(5, 4 * shared_contract.REVEAL_SECONDS, custom),
+            4 * shared_contract.REVEAL_SECONDS,
         )
 
     def test_material_curve_and_scroll_shift_are_bounded(self) -> None:

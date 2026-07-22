@@ -10,6 +10,9 @@ import kotlin.math.min
 const val REVEAL_SECONDS = SharedContract.REVEAL_SECONDS
 const val SCROLL_SECONDS = SharedContract.SCROLL_SECONDS
 const val END_HOLD_SECONDS = SharedContract.END_HOLD_SECONDS
+const val OUTRO_COVER_SECONDS = SharedContract.OUTRO_COVER_SECONDS
+const val OUTRO_CONTENT_DELAY_SECONDS = SharedContract.OUTRO_CONTENT_DELAY_SECONDS
+const val OUTRO_HOLD_SECONDS = SharedContract.OUTRO_HOLD_SECONDS
 const val FADE_SECONDS = SharedContract.FADE_SECONDS
 const val BODY_WIPE_SECONDS = SharedContract.BODY_WIPE_SECONDS
 const val BADGE_DELAY_SECONDS = SharedContract.BADGE_DELAY_SECONDS
@@ -17,15 +20,12 @@ const val BADGE_SETTLE_SECONDS = SharedContract.BADGE_SETTLE_SECONDS
 const val INTRO_TAIL_HOLD_SECONDS = SharedContract.INTRO_TAIL_HOLD_SECONDS
 const val MIN_SCROLL_STEP_SECONDS = SharedContract.MIN_SCROLL_STEP_SECONDS
 
+/** One card in the reference timeline. The body is always complete; xInCards performs motion. */
 data class CardPlacement(
     val cardIndex: Int,
-    /** Horizontal position measured in parent-card widths. */
     val xInCards: Float,
-    /** Left-to-right opening wipe. Scrolling cards are already fully uncovered. */
     val bodyReveal: Float,
-    /** True once the red badge has begun its entrance. */
     val badgeVisible: Boolean,
-    /** 0 = oversized/off the top edge, 1 = settled at its canonical size. */
     val badgeSettle: Float,
 )
 
@@ -44,7 +44,8 @@ object TimelineEngine {
         val intro = min(cardCount, visible) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
         val scrollSteps = max(0, cardCount - visible)
         val automaticScroll = scrollSteps * SCROLL_SECONDS
-        val fixedTail = END_HOLD_SECONDS + FADE_SECONDS
+        val fixedTail = END_HOLD_SECONDS + OUTRO_COVER_SECONDS +
+            OUTRO_CONTENT_DELAY_SECONDS + OUTRO_HOLD_SECONDS + FADE_SECONDS
         return TimelineParts(intro, scrollSteps, automaticScroll, fixedTail)
     }
 
@@ -53,10 +54,6 @@ object TimelineEngine {
         return parts.introSeconds + parts.automaticScrollSeconds + parts.fixedTailSeconds
     }
 
-    /**
-     * CTS Easy custom length keeps the intro, ending hold, and fade at their normal speed.
-     * Only the horizontal scrolling segment is stretched or compressed.
-     */
     fun duration(project: CtsProject): Float {
         val parts = timelineParts(project)
         val automatic = automaticDuration(project)
@@ -79,7 +76,6 @@ object TimelineEngine {
         )
     }
 
-    /** Actual output seconds assigned to each one-card horizontal movement. */
     fun secondsPerCard(project: CtsProject): Float {
         val parts = timelineParts(project)
         if (parts.scrollSteps <= 0) return 0f
@@ -93,9 +89,7 @@ object TimelineEngine {
             DurationRuntime.resolve(project.customDurationSeconds) == null ||
             parts.scrollSteps <= 0 ||
             parts.automaticScrollSeconds <= 0f
-        ) {
-            return output
-        }
+        ) return output
         if (output <= parts.introSeconds) return output
 
         val chosenScroll = chosenScrollDuration(project, parts)
@@ -103,7 +97,6 @@ object TimelineEngine {
             val progress = (output - parts.introSeconds) / chosenScroll.coerceAtLeast(0.001f)
             return parts.introSeconds + progress * parts.automaticScrollSeconds
         }
-
         return parts.introSeconds + parts.automaticScrollSeconds +
             (output - parts.introSeconds - chosenScroll)
     }
@@ -115,9 +108,7 @@ object TimelineEngine {
             DurationRuntime.resolve(project.customDurationSeconds) == null ||
             parts.scrollSteps <= 0 ||
             parts.automaticScrollSeconds <= 0f
-        ) {
-            return modelTime
-        }
+        ) return modelTime
         if (modelTime <= parts.introSeconds) return modelTime
 
         val chosenScroll = chosenScrollDuration(project, parts)
@@ -126,9 +117,30 @@ object TimelineEngine {
                 parts.automaticScrollSeconds.coerceAtLeast(0.001f)
             return parts.introSeconds + progress * chosenScroll
         }
-
         return parts.introSeconds + chosenScroll +
             (modelTime - parts.introSeconds - parts.automaticScrollSeconds)
+    }
+
+    private fun scrollEnd(project: CtsProject): Float {
+        val parts = timelineParts(project)
+        return parts.introSeconds + parts.automaticScrollSeconds
+    }
+
+    private fun outroStart(project: CtsProject): Float = scrollEnd(project) + END_HOLD_SECONDS
+
+    fun introCreditsVisible(project: CtsProject, outputTimeSeconds: Float): Boolean {
+        if (project.cards.isEmpty()) return false
+        return modelTime(project, outputTimeSeconds) < timelineParts(project).introSeconds
+    }
+
+    fun outroCoverProgress(project: CtsProject, outputTimeSeconds: Float): Float {
+        val elapsed = modelTime(project, outputTimeSeconds) - outroStart(project)
+        return materialEase(elapsed / OUTRO_COVER_SECONDS.coerceAtLeast(0.001f))
+    }
+
+    fun outroContentAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
+        val start = outroStart(project) + OUTRO_COVER_SECONDS + OUTRO_CONTENT_DELAY_SECONDS
+        return smoothStep((modelTime(project, outputTimeSeconds) - start) / 0.12f)
     }
 
     fun placements(project: CtsProject, outputTimeSeconds: Float): List<CardPlacement> {
@@ -147,12 +159,14 @@ object TimelineEngine {
                 for (index in 0 until initialCount) {
                     val localTime = modelTime - index * REVEAL_SECONDS
                     if (localTime < 0f) continue
+                    val slide = materialEase(localTime / BODY_WIPE_SECONDS)
                     val badgeTime = localTime - BADGE_DELAY_SECONDS
                     add(
                         CardPlacement(
                             cardIndex = index,
-                            xInCards = index.toFloat(),
-                            bodyReveal = materialEase(localTime / BODY_WIPE_SECONDS),
+                            // Each opening card comes from exactly one slot to its left.
+                            xInCards = index - 1f + slide,
+                            bodyReveal = 1f,
                             badgeVisible = badgeTime >= 0f,
                             badgeSettle = materialEase(badgeTime / BADGE_SETTLE_SECONDS),
                         ),
@@ -180,7 +194,8 @@ object TimelineEngine {
                 val badgeStart = if (index < initialCount) {
                     index * REVEAL_SECONDS + BADGE_DELAY_SECONDS
                 } else {
-                    scrollStart + (index - initialCount + 1) * SCROLL_SECONDS
+                    // The reference badge enters just before the incoming card reaches slot four.
+                    scrollStart + (index - initialCount + 1) * SCROLL_SECONDS - BADGE_DELAY_SECONDS
                 }
                 val badgeTime = modelTime - badgeStart
                 add(
@@ -200,7 +215,7 @@ object TimelineEngine {
         val modelTime = modelTime(project, outputTimeSeconds)
         val fadeStart = automaticDuration(project) - FADE_SECONDS
         if (modelTime <= fadeStart) return 1f
-        return 1f - smoothStep((modelTime - fadeStart) / FADE_SECONDS)
+        return 1f - smoothStep((modelTime - fadeStart) / FADE_SECONDS.coerceAtLeast(0.001f))
     }
 
     fun editingTimeForCard(project: CtsProject, cardIndex: Int): Float {
@@ -209,7 +224,7 @@ object TimelineEngine {
         val initialCount = min(project.cards.size, SharedContract.VISIBLE_CARDS)
         val scrollStart = initialCount * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
         val targetModelTime = if (safeIndex < SharedContract.VISIBLE_CARDS) {
-            scrollStart
+            safeIndex * REVEAL_SECONDS + BODY_WIPE_SECONDS
         } else {
             scrollStart + (safeIndex - SharedContract.VISIBLE_CARDS + 1) * SCROLL_SECONDS
         }
@@ -218,9 +233,7 @@ object TimelineEngine {
 
     fun formatTime(seconds: Float): String {
         val total = seconds.coerceAtLeast(0f).toInt()
-        val minutes = total / 60
-        val remainder = total % 60
-        return "%d:%02d".format(minutes, remainder)
+        return "%d:%02d".format(total / 60, total % 60)
     }
 
     private fun materialEase(value: Float): Float {

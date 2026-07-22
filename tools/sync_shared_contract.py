@@ -21,6 +21,9 @@ TIMING_CONSTANTS = {
     "REVEAL_SECONDS": "reveal_seconds",
     "SCROLL_SECONDS": "scroll_seconds",
     "END_HOLD_SECONDS": "end_hold_seconds",
+    "OUTRO_COVER_SECONDS": "outro_cover_seconds",
+    "OUTRO_CONTENT_DELAY_SECONDS": "outro_content_delay_seconds",
+    "OUTRO_HOLD_SECONDS": "outro_hold_seconds",
     "FADE_SECONDS": "fade_seconds",
     "BODY_WIPE_SECONDS": "body_wipe_seconds",
     "BADGE_DELAY_SECONDS": "badge_delay_seconds",
@@ -96,6 +99,9 @@ FIELDS = ({fields})
 REVEAL_SECONDS = {float(timing["reveal_seconds"])}
 SCROLL_SECONDS = {float(timing["scroll_seconds"])}
 END_HOLD_SECONDS = {float(timing["end_hold_seconds"])}
+OUTRO_COVER_SECONDS = {float(timing["outro_cover_seconds"])}
+OUTRO_CONTENT_DELAY_SECONDS = {float(timing["outro_content_delay_seconds"])}
+OUTRO_HOLD_SECONDS = {float(timing["outro_hold_seconds"])}
 FADE_SECONDS = {float(timing["fade_seconds"])}
 BODY_WIPE_SECONDS = {float(timing["body_wipe_seconds"])}
 BADGE_DELAY_SECONDS = {float(timing["badge_delay_seconds"])}
@@ -136,7 +142,15 @@ def automatic_duration(card_count: int) -> float:
         return 0.0
     reveal = min(card_count, VISIBLE_CARDS) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
     scroll = max(0, card_count - VISIBLE_CARDS) * SCROLL_SECONDS
-    return reveal + scroll + END_HOLD_SECONDS + FADE_SECONDS
+    return (
+        reveal
+        + scroll
+        + END_HOLD_SECONDS
+        + OUTRO_COVER_SECONDS
+        + OUTRO_CONTENT_DELAY_SECONDS
+        + OUTRO_HOLD_SECONDS
+        + FADE_SECONDS
+    )
 
 
 def timeline_parts(card_count: int) -> tuple[float, int, float, float]:
@@ -145,7 +159,13 @@ def timeline_parts(card_count: int) -> tuple[float, int, float, float]:
     intro = min(card_count, VISIBLE_CARDS) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
     scroll_steps = max(0, card_count - VISIBLE_CARDS)
     automatic_scroll = scroll_steps * SCROLL_SECONDS
-    fixed_tail = END_HOLD_SECONDS + FADE_SECONDS
+    fixed_tail = (
+        END_HOLD_SECONDS
+        + OUTRO_COVER_SECONDS
+        + OUTRO_CONTENT_DELAY_SECONDS
+        + OUTRO_HOLD_SECONDS
+        + FADE_SECONDS
+    )
     return intro, scroll_steps, automatic_scroll, fixed_tail
 
 
@@ -299,6 +319,9 @@ object SharedContract {{
     const val REVEAL_SECONDS = {float(timing["reveal_seconds"])}f
     const val SCROLL_SECONDS = {float(timing["scroll_seconds"])}f
     const val END_HOLD_SECONDS = {float(timing["end_hold_seconds"])}f
+    const val OUTRO_COVER_SECONDS = {float(timing["outro_cover_seconds"])}f
+    const val OUTRO_CONTENT_DELAY_SECONDS = {float(timing["outro_content_delay_seconds"])}f
+    const val OUTRO_HOLD_SECONDS = {float(timing["outro_hold_seconds"])}f
     const val FADE_SECONDS = {float(timing["fade_seconds"])}f
     const val BODY_WIPE_SECONDS = {float(timing["body_wipe_seconds"])}f
     const val BADGE_DELAY_SECONDS = {float(timing["badge_delay_seconds"])}f

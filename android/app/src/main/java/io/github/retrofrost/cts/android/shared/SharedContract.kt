@@ -13,8 +13,11 @@ object SharedContract {
 
     const val REVEAL_SECONDS = 2.0f
     const val SCROLL_SECONDS = 3.3333333333333335f
-    const val END_HOLD_SECONDS = 2.0f
-    const val FADE_SECONDS = 0.8f
+    const val END_HOLD_SECONDS = 0.25f
+    const val OUTRO_COVER_SECONDS = 0.32f
+    const val OUTRO_CONTENT_DELAY_SECONDS = 0.18f
+    const val OUTRO_HOLD_SECONDS = 4.25f
+    const val FADE_SECONDS = 1.2f
     const val BODY_WIPE_SECONDS = 1.1f
     const val BADGE_DELAY_SECONDS = 0.55f
     const val BADGE_SETTLE_SECONDS = 2.6f

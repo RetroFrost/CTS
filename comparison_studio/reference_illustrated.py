@@ -6,6 +6,13 @@ from . import exporter as exporter_module
 from .card_relative_transform import CardRelativeMainWindow, CardRelativeRenderer
 from .interaction_runtime import RuntimeTransformRenderer
 from .renderer import BACKGROUND, _clamp, _draw_text_box, _smoothstep
+from .reference_overlays import (
+    draw_intro_credits,
+    draw_outro,
+    intro_credits_visible,
+    outro_content_alpha,
+    outro_cover_progress,
+)
 from .reselect_fix import ReselectAwareRenderer
 from .shared_contract import (
     BADGE_DELAY_SECONDS,
@@ -132,11 +139,12 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
                 if local_time < 0.0:
                     continue
                 badge_time = local_time - BADGE_DELAY_SECONDS
+                slide = material_ease(local_time / BODY_WIPE_SECONDS)
                 placements.append(
                     (
                         index,
-                        index * card_width,
-                        material_ease(local_time / BODY_WIPE_SECONDS),
+                        (index - 1.0 + slide) * card_width,
+                        1.0,
                         material_ease(badge_time / BADGE_SETTLE_SECONDS)
                         if badge_time >= 0.0
                         else 0.0,
@@ -153,7 +161,7 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             if index < initial_count:
                 badge_start = index * REVEAL_SECONDS + BADGE_DELAY_SECONDS
             else:
-                badge_start = scroll_start + (index - initial_count + 1) * SCROLL_SECONDS
+                badge_start = scroll_start + (index - initial_count + 1) * SCROLL_SECONDS - BADGE_DELAY_SECONDS
             badge_time = timeline_time - badge_start
             placements.append(
                 (
@@ -193,6 +201,8 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
 
         card_width_float = width / VISIBLE_CARDS
         card_width = max(1, round(card_width_float))
+        if intro_credits_visible(len(cards), timeline_time):
+            draw_intro_credits(frame)
         placements = self._placements(len(cards), timeline_time, VISIBLE_CARDS, width, True)
 
         for card_index, card_x, body_reveal, badge_settle in placements:
@@ -225,6 +235,11 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
                 card_layer = self._apply_wipe(card_layer, body_reveal)
                 self._composite_clipped(frame, card_layer, round(card_x), 0)
 
+        draw_outro(
+            frame,
+            outro_cover_progress(len(cards), timeline_time),
+            outro_content_alpha(len(cards), timeline_time),
+        )
         result = frame.convert("RGB")
         fade_start = duration - FADE_SECONDS
         if timeline_time > fade_start:
