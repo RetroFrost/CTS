@@ -4,54 +4,76 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from . import exporter as exporter_module
 from .card_relative_transform import CardRelativeMainWindow, CardRelativeRenderer
-from .data import MODEL_ILLUSTRATED
 from .interaction_runtime import RuntimeTransformRenderer
-from .renderer import CARD_BODY, DIVIDER, TITLE_BACKGROUND, _draw_text_box, date_lines
+from .renderer import BACKGROUND, _clamp, _draw_text_box, _smoothstep
 from .reselect_fix import ReselectAwareRenderer
+from .shared_contract import (
+    BADGE_DELAY_SECONDS,
+    BADGE_FRAME,
+    BADGE_SETTLE_SECONDS,
+    BODY_WIPE_SECONDS,
+    COLORS,
+    DESCRIPTION_FRAME,
+    FADE_SECONDS,
+    IMAGE_FRAME,
+    INTRO_TAIL_HOLD_SECONDS,
+    MODEL_ID,
+    REVEAL_SECONDS,
+    SCROLL_SECONDS,
+    TITLE_FRAME,
+    VISIBLE_CARDS,
+    automatic_duration,
+    material_ease,
+    model_time as shared_model_time,
+    placement_shift,
+)
 from .studio_ui import StudioAssetCache
 
 
-class ReferenceIllustratedRenderer(CardRelativeRenderer):
-    """Render Illustrated Cards using the tall reference-video composition.
+def _rgb(value: str) -> tuple[int, int, int]:
+    value = value.lstrip("#")
+    return tuple(int(value[index : index + 2], 16) for index in (0, 2, 4))
 
-    Artwork remains the image subcard owned by the parent card. The title and optional
-    description are overlays, so changing their layout does not break image transforms.
+
+class ReferenceIllustratedRenderer(CardRelativeRenderer):
+    """Desktop implementation of the canonical Android reference timeline.
+
+    The renderer deliberately ignores historical visual-model choices. Project data and
+    transforms survive, but every project is presented with the same four-column design,
+    timing curve, wipe, badge entrance, hold, and fade used by CTS Android.
     """
 
     @staticmethod
-    def _field_box(model_id: str, role: str):
-        if model_id == MODEL_ILLUSTRATED:
-            return {
-                "badge_primary": (0.14, 0.045, 0.72, 0.16),
-                "badge_secondary": (0.18, 0.205, 0.64, 0.085),
-                "title": (0.025, 0.628, 0.95, 0.098),
-                "description": (0.035, 0.742, 0.93, 0.235),
-                # Keep the established full artwork owner frame so existing per-card
-                # image transforms continue to load exactly where users placed them.
-                "image": (0.01, 0.01, 0.98, 0.87),
-            }.get(role)
-        return CardRelativeRenderer._field_box(model_id, role)
+    def _field_box(_model_id: str, role: str):
+        return {
+            "badge_primary": BADGE_FRAME,
+            "badge_secondary": BADGE_FRAME,
+            "title": TITLE_FRAME,
+            "description": DESCRIPTION_FRAME,
+            "image": IMAGE_FRAME,
+        }.get(role)
 
     @staticmethod
-    def _field_at(model_id: str, local_x: float, local_y: float) -> str | None:
-        if model_id == MODEL_ILLUSTRATED:
-            if local_y >= 0.73:
-                return "description"
-            if local_y >= 0.625:
-                return "title"
-            if 0.10 <= local_x <= 0.90 and local_y <= 0.34:
-                return "badge_primary" if local_y <= 0.205 else "badge_secondary"
+    def _field_at(_model_id: str, local_x: float, local_y: float) -> str | None:
+        badge_x, badge_y, badge_width, badge_height = BADGE_FRAME
+        if (
+            badge_x <= local_x <= badge_x + badge_width
+            and badge_y <= local_y <= badge_y + badge_height
+        ):
+            split = badge_y + badge_height * 0.58
+            return "badge_primary" if local_y <= split else "badge_secondary"
+        if local_y < TITLE_FRAME[1]:
             return "image"
-        return CardRelativeRenderer._field_at(model_id, local_x, local_y)
+        if local_y < DESCRIPTION_FRAME[1]:
+            return "title"
+        return "description"
 
     @staticmethod
     def _fit_artwork(source: Image.Image, size: tuple[int, int]) -> Image.Image:
-        """Contain transparent icons while keeping opaque artwork in cover mode."""
         target_width = max(1, int(size[0]))
         target_height = max(1, int(size[1]))
         rgba = source.convert("RGBA")
         alpha_min, _alpha_max = rgba.getchannel("A").getextrema()
-
         if alpha_min >= 250:
             return ImageOps.fit(
                 rgba,
@@ -59,7 +81,6 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
                 Image.Resampling.LANCZOS,
                 centering=(0.5, 0.5),
             )
-
         contained = ImageOps.contain(
             rgba,
             (target_width, target_height),
@@ -68,230 +89,296 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
         canvas = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
         canvas.alpha_composite(
             contained,
-            (
-                (target_width - contained.width) // 2,
-                (target_height - contained.height) // 2,
-            ),
+            ((target_width - contained.width) // 2, (target_height - contained.height) // 2),
         )
         return canvas
 
-    def _gold_outline_badge(self, badge: Image.Image) -> Image.Image:
-        """Add the warm reference-video edge while retaining CTS's badge shadow."""
-        result = badge.copy()
-        draw = ImageDraw.Draw(result)
-        total_width, total_height = result.size
-        padding_x = max(2, round(total_width * 0.068))
-        padding_y = max(2, round(total_height * 0.068))
-        x0, y0 = padding_x, padding_y
-        x1, y1 = total_width - padding_x, total_height - padding_y
-        badge_height = max(1, y1 - y0)
-        points = [
-            ((x0 + x1) // 2, y0),
-            (x1, y0 + round(badge_height * 0.20)),
-            (x1, y0 + round(badge_height * 0.78)),
-            ((x0 + x1) // 2, y1),
-            (x0, y0 + round(badge_height * 0.78)),
-            (x0, y0 + round(badge_height * 0.20)),
-        ]
-        draw.line(
-            points + [points[0]],
-            fill=(
-                235,
-                178,
-                87,
-                round(255 * max(0.0, min(1.0, getattr(self, "_active_badge_opacity", 1.0)))),
-            ),
-            width=max(2, round(total_width * 0.007)),
-            joint="curve",
-        )
+    def _placements(
+        self,
+        card_count: int,
+        timeline_time: float,
+        _visible_cards: int,
+        width: float,
+        _hexagons_bounce: bool = True,
+    ) -> list[tuple[int, float, float, float]]:
+        """Return Android-compatible x, body-wipe, and badge-settle values."""
+        if card_count <= 0:
+            return []
+        card_width = width / VISIBLE_CARDS
+        initial_count = min(card_count, VISIBLE_CARDS)
+        scroll_start = initial_count * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
+        placements: list[tuple[int, float, float, float]] = []
+
+        if timeline_time < scroll_start:
+            for index in range(initial_count):
+                local_time = timeline_time - index * REVEAL_SECONDS
+                if local_time < 0.0:
+                    continue
+                badge_time = local_time - BADGE_DELAY_SECONDS
+                placements.append(
+                    (
+                        index,
+                        index * card_width,
+                        material_ease(local_time / BODY_WIPE_SECONDS),
+                        material_ease(badge_time / BADGE_SETTLE_SECONDS)
+                        if badge_time >= 0.0
+                        else 0.0,
+                    )
+                )
+            return placements
+
+        maximum_shift = max(0, card_count - VISIBLE_CARDS)
+        eased_shift = placement_shift(timeline_time - scroll_start, maximum_shift)
+        for index in range(card_count):
+            x_in_cards = index - eased_shift
+            if x_in_cards >= VISIBLE_CARDS or x_in_cards + 1.0 <= 0.0:
+                continue
+            if index < initial_count:
+                badge_start = index * REVEAL_SECONDS + BADGE_DELAY_SECONDS
+            else:
+                badge_start = scroll_start + (index - initial_count + 1) * SCROLL_SECONDS
+            badge_time = timeline_time - badge_start
+            placements.append(
+                (
+                    index,
+                    x_in_cards * card_width,
+                    1.0,
+                    material_ease(badge_time / BADGE_SETTLE_SECONDS)
+                    if badge_time >= 0.0
+                    else 0.0,
+                )
+            )
+        return placements
+
+    @staticmethod
+    def _apply_wipe(layer: Image.Image, reveal: float) -> Image.Image:
+        reveal = _clamp(reveal)
+        if reveal >= 0.999:
+            return layer
+        width = max(0, min(layer.width, round(layer.width * reveal)))
+        result = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+        if width:
+            result.alpha_composite(layer.crop((0, 0, width, layer.height)), (0, 0))
         return result
 
-    def _render_reference_card(
-        self,
-        card,
-        width: int,
-        height: int,
-        badge_scale: float,
-    ) -> Image.Image:
-        """Collapse Reference Detail's empty description gap into a larger image area."""
-        if card.description.strip():
-            return super()._render_reference_card(card, width, height, badge_scale)
+    def render(self, cards, output_time: float, settings, size=None):
+        self._studio_settings = settings
+        width, height = size or (settings.width, settings.height)
+        frame = Image.new("RGBA", (width, height), _rgb(COLORS["background"]) + (255,))
+        if not cards:
+            return frame.convert("RGB")
 
-        layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(layer)
-        top_height = round(height * 0.44)
-        title_height = round(height * 0.098)
-        title_top = top_height
-        body_top = title_top + title_height
-        divider_width = max(2, round(width * 0.008))
+        custom_duration = getattr(settings, "custom_duration", None)
+        timeline_time = shared_model_time(len(cards), output_time, custom_duration)
+        duration = automatic_duration(len(cards))
+        if timeline_time >= duration:
+            return frame.convert("RGB")
 
-        draw.rectangle((0, title_top, width, title_top + title_height), fill=TITLE_BACKGROUND + (255,))
-        draw.rectangle((0, body_top, width, height), fill=CARD_BODY + (255,))
-        draw.rectangle((0, title_top, divider_width, height), fill=DIVIDER + (255,))
-        draw.rectangle((width - divider_width, title_top, width, height), fill=DIVIDER + (255,))
-        draw.rectangle(
-            (0, title_top, width, title_top + max(2, divider_width // 2)),
-            fill=DIVIDER + (255,),
-        )
-        draw.rectangle(
-            (0, body_top, width, body_top + max(2, divider_width // 2)),
-            fill=DIVIDER + (255,),
-        )
+        card_width_float = width / VISIBLE_CARDS
+        card_width = max(1, round(card_width_float))
+        placements = self._placements(len(cards), timeline_time, VISIBLE_CARDS, width, True)
 
-        title_padding = round(width * 0.045)
-        _draw_text_box(
-            draw,
-            card.title,
-            (title_padding, title_top + 5, width - title_padding, body_top - 5),
-            (15, 15, 17, 255),
-            maximum_size=round(height * 0.047),
-            minimum_size=round(height * 0.025),
-            max_lines=2,
-            bold=True,
-        )
+        for card_index, card_x, body_reveal, badge_settle in placements:
+            active = [
+                (role, self._clamp_unit_box(box))
+                for (index, role), box in self.transforms.items()
+                if index == card_index and self._field_box(MODEL_ID, role) is not None
+            ]
+            if active:
+                card_group = super()._render_transformed_card_group(
+                    cards[card_index],
+                    active,
+                    card_width,
+                    height,
+                    badge_settle,
+                    1.0,
+                    MODEL_ID,
+                )
+                card_group = self._apply_wipe(card_group, body_reveal)
+                self._composite_clipped(frame, card_group, round(card_x), 0)
+            else:
+                card_layer = super()._render_card(
+                    cards[card_index],
+                    card_width,
+                    height,
+                    badge_settle,
+                    1.0,
+                    MODEL_ID,
+                )
+                card_layer = self._apply_wipe(card_layer, body_reveal)
+                self._composite_clipped(frame, card_layer, round(card_x), 0)
 
-        image_margin = round(width * 0.085)
-        image_top = body_top + max(6, round((height - body_top) * 0.025))
-        image_box = (
-            image_margin,
-            image_top,
-            width - image_margin,
-            height - max(5, divider_width),
-        )
-        source_image = self.assets.load(card.image)
-        if source_image is not None:
-            fitted = self._fit_artwork(
-                source_image,
-                (image_box[2] - image_box[0], image_box[3] - image_box[1]),
+        result = frame.convert("RGB")
+        fade_start = duration - FADE_SECONDS
+        if timeline_time > fade_start:
+            fade = _smoothstep((timeline_time - fade_start) / FADE_SECONDS)
+            result = Image.blend(
+                result,
+                Image.new("RGB", result.size, _rgb(COLORS["background"])),
+                fade,
             )
-            layer.alpha_composite(fitted, (image_box[0], image_box[1]))
-            draw.rectangle(
-                image_box,
-                outline=(24, 25, 23, 255),
-                width=max(2, divider_width // 2),
-            )
+        return result
 
-        primary, secondary = card.uploaded, card.badge_label
-        if primary and not secondary:
-            primary, secondary = date_lines(primary)
-        badge = self._render_badge(primary, secondary, width, top_height, badge_scale)
-        badge_x = (width - badge.width) // 2
-        badge_y = max(4, round((top_height - badge.height) * 0.52))
-        layer.alpha_composite(badge, (badge_x, badge_y))
-        return layer
+    def _card_box_to_global(self, cards, output_time, settings, card_index, card_box):
+        placement = self._card_placement(cards, output_time, settings, card_index)
+        if placement is None:
+            return None
+        card_x, card_width, _reveal = placement
+        x, y, width, height = card_box
+        return card_x + x * card_width, y, width * card_width, height
+
+    def _global_box_to_card(self, cards, output_time, settings, card_index, global_box):
+        placement = self._card_placement(cards, output_time, settings, card_index)
+        if placement is None:
+            return None
+        card_x, card_width, _reveal = placement
+        x, y, width, height = (float(value) for value in global_box)
+        return (
+            (x - card_x) / max(0.000001, card_width),
+            y,
+            width / max(0.000001, card_width),
+            height,
+        )
+
+    def _render_reference_card(self, card, width: int, height: int, badge_scale: float) -> Image.Image:
+        return self._render_illustrated_card(card, width, height, badge_scale)
+
+    def _render_classic_card(self, card, width: int, height: int, badge_scale: float) -> Image.Image:
+        return self._render_illustrated_card(card, width, height, badge_scale)
 
     def _render_illustrated_card(
         self,
         card,
         width: int,
         height: int,
-        badge_scale: float,
+        _badge_scale: float,
     ) -> Image.Image:
         layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(layer)
-
         divider = max(2, round(width * 0.008))
-        has_description = bool(card.description.strip())
-        if has_description:
-            title_top = round(height * 0.628)
-            title_bottom = round(height * 0.728)
-            description_top = title_bottom
-            artwork_bottom = round(height * 0.88)
-        else:
-            # No empty dark panel: artwork uses the former description area and the
-            # title becomes the card's bottom band.
-            title_top = round(height * 0.88)
-            title_bottom = height
-            description_top = height
-            artwork_bottom = title_top
 
-        # Always paint the selected Illustrated background first. Transparent line-art
-        # icons are then contained and centered over it; opaque full-card artwork keeps
-        # the established edge-to-edge cover behavior.
+        image_left = round(width * IMAGE_FRAME[0])
+        image_top = round(height * IMAGE_FRAME[1])
+        image_right = round(width * (IMAGE_FRAME[0] + IMAGE_FRAME[2]))
+        image_bottom = round(height * (IMAGE_FRAME[1] + IMAGE_FRAME[3]))
+        image_box = (image_left, image_top, image_right, image_bottom)
+
+        image_top_color = _rgb(COLORS["image_top"])
+        image_bottom_color = _rgb(COLORS["image_bottom"])
+        image_height = max(1, image_bottom - image_top)
+        for row in range(image_height):
+            progress = row / max(1, image_height - 1)
+            if progress <= 0.72:
+                color = image_top_color
+            else:
+                local = (progress - 0.72) / 0.28
+                color = tuple(
+                    round(start + (end - start) * local)
+                    for start, end in zip(image_top_color, image_bottom_color)
+                )
+            draw.line((image_left, image_top + row, image_right, image_top + row), fill=color + (255,))
+
         source = self.assets.load(card.image)
-        background_id = getattr(self._studio_settings, "illustrated_background", "beach")
-        self._draw_background(
-            draw,
-            (divider, 0, width - divider, artwork_bottom),
-            background_id,
-        )
         if source is not None:
             fitted = self._fit_artwork(
                 source,
-                (max(1, width - divider * 2), max(1, artwork_bottom)),
+                (max(1, image_right - image_left), max(1, image_bottom - image_top)),
             )
-            layer.alpha_composite(fitted, (divider, 0))
+            layer.alpha_composite(fitted, (image_left, image_top))
 
-        # Soft separation shadow where the artwork meets the title strip.
-        shadow_height = max(8, round(height * 0.018))
-        shadow = Image.new("RGBA", layer.size, (0, 0, 0, 0))
-        shadow_draw = ImageDraw.Draw(shadow)
-        shadow_draw.rectangle(
-            (divider, title_top - shadow_height // 2, width - divider, title_top + 2),
-            fill=(0, 0, 0, 105),
+        title_left = round(width * TITLE_FRAME[0])
+        title_top = round(height * TITLE_FRAME[1])
+        title_right = round(width * (TITLE_FRAME[0] + TITLE_FRAME[2]))
+        title_bottom = round(height * (TITLE_FRAME[1] + TITLE_FRAME[3]))
+        description_left = round(width * DESCRIPTION_FRAME[0])
+        description_top = round(height * DESCRIPTION_FRAME[1])
+        description_right = round(width * (DESCRIPTION_FRAME[0] + DESCRIPTION_FRAME[2]))
+        description_bottom = round(height * (DESCRIPTION_FRAME[1] + DESCRIPTION_FRAME[3]))
+
+        draw.rectangle(
+            (title_left, title_top, title_right, title_bottom),
+            fill=_rgb(COLORS["title_background"]) + (255,),
         )
-        shadow = shadow.filter(ImageFilter.GaussianBlur(max(2, round(height * 0.006))))
-        layer.alpha_composite(shadow)
+        draw.rectangle(
+            (description_left, description_top, description_right, description_bottom),
+            fill=_rgb(COLORS["description_background"]) + (255,),
+        )
+        divider_color = _rgb(COLORS["divider"]) + (255,)
+        draw.rectangle((0, 0, divider, height), fill=divider_color)
+        draw.rectangle((width - divider, 0, width, height), fill=divider_color)
+        draw.rectangle((0, title_top, width, title_top + divider), fill=divider_color)
+        draw.rectangle((0, description_top, width, description_top + divider), fill=divider_color)
+        draw.rectangle((0, height - divider, width, height), fill=divider_color)
 
-        draw = ImageDraw.Draw(layer)
-        draw.rectangle((0, title_top, width, title_bottom), fill=(247, 246, 242, 255))
-        accent_height = max(2, round(height * 0.007))
-        if has_description:
-            draw.rectangle((0, description_top, width, height), fill=(22, 22, 22, 255))
-            draw.rectangle(
-                (0, title_bottom - accent_height, width, title_bottom),
-                fill=(188, 99, 0, 255),
-            )
-        draw.rectangle((0, 0, divider, height), fill=(18, 18, 18, 255))
-        draw.rectangle((width - divider, 0, width, height), fill=(18, 18, 18, 255))
-
-        title_padding = round(width * 0.028)
-        title_text_bottom = title_bottom - (accent_height if has_description else 0) - 3
+        padding = round(width * 0.035)
         _draw_text_box(
             draw,
             card.title,
-            (title_padding, title_top + 3, width - title_padding, title_text_bottom),
-            (20, 20, 20, 255),
-            maximum_size=round(height * 0.049),
-            minimum_size=max(8, round(height * 0.021)),
+            (title_left + padding, title_top + 2, title_right - padding, title_bottom - 2),
+            _rgb(COLORS["title_text"]) + (255,),
+            maximum_size=max(12, round(height * 0.043)),
+            minimum_size=max(8, round(height * 0.018)),
             max_lines=2,
             bold=True,
         )
-
-        if has_description:
-            description_padding = round(width * 0.055)
-            _draw_text_box(
-                draw,
-                card.description,
-                (
-                    description_padding,
-                    description_top + round(height * 0.018),
-                    width - description_padding,
-                    height - round(height * 0.018),
-                ),
-                (238, 238, 238, 255),
-                maximum_size=round(height * 0.032),
-                minimum_size=max(7, round(height * 0.017)),
-                max_lines=4,
-                bold=False,
-            )
-
-        top_height = round(height * 0.40)
-        badge = self._render_badge(
-            card.uploaded,
-            card.badge_label,
-            width,
-            top_height,
-            badge_scale * 1.03,
-            primary_max_lines=3,
-            secondary_max_lines=2,
-            minimum_text_scale=0.075,
+        _draw_text_box(
+            draw,
+            card.description,
+            (
+                description_left + padding,
+                description_top + 2,
+                description_right - padding,
+                description_bottom - 2,
+            ),
+            _rgb(COLORS["description_text"]) + (255,),
+            maximum_size=max(10, round(height * 0.027)),
+            minimum_size=max(7, round(height * 0.014)),
+            max_lines=3,
+            bold=True,
         )
-        badge = self._gold_outline_badge(badge)
-        layer.alpha_composite(
-            badge,
-            ((width - badge.width) // 2, max(2, round(height * 0.006))),
-        )
+
+        settle = _clamp(float(getattr(self, "_active_badge_opacity", 0.0)))
+        if settle > 0.0:
+            previous_opacity = getattr(self, "_active_badge_opacity", 1.0)
+            self._active_badge_opacity = 1.0
+            try:
+                entrance_scale = 1.42 - 0.42 * settle
+                badge = self._render_badge(
+                    card.uploaded,
+                    card.badge_label,
+                    width,
+                    round(height * 0.36),
+                    0.74 * entrance_scale,
+                    primary_max_lines=2,
+                    secondary_max_lines=2,
+                    minimum_text_scale=0.08,
+                )
+            finally:
+                self._active_badge_opacity = previous_opacity
+
+            settled_y = round(height * BADGE_FRAME[1])
+            translation = round(-badge.height * 0.42 * (1.0 - settle))
+            badge_x = (width - badge.width) // 2
+            badge_y = settled_y + translation
+            layer.alpha_composite(badge, (badge_x, badge_y))
+
+            if settle < 0.94:
+                gloss = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+                gloss_draw = ImageDraw.Draw(gloss)
+                progress = settle / 0.94
+                shine_x = badge_x - badge.width * 0.30 + badge.width * 1.65 * progress
+                gloss_draw.polygon(
+                    [
+                        (round(shine_x - badge.width * 0.06), badge_y),
+                        (round(shine_x + badge.width * 0.06), badge_y),
+                        (round(shine_x + badge.width * 0.22), badge_y + badge.height),
+                        (round(shine_x + badge.width * 0.10), badge_y + badge.height),
+                    ],
+                    fill=(255, 255, 255, round(86 * (1.0 - settle))),
+                )
+                gloss = gloss.filter(ImageFilter.GaussianBlur(max(1, round(width * 0.006))))
+                layer.alpha_composite(gloss)
+
         return layer
 
 
@@ -300,6 +387,13 @@ exporter_module.TimelineRenderer = ReferenceIllustratedRenderer
 
 
 class ReferenceIllustratedMainWindow(CardRelativeMainWindow):
+    def project_settings(self):
+        settings = super().project_settings()
+        settings.model_id = MODEL_ID
+        settings.visible_cards = VISIBLE_CARDS
+        settings.hexagons_bounce = True
+        return settings
+
     def _new_renderer(self) -> ReferenceIllustratedRenderer:
         RuntimeTransformRenderer.ACTIVE_TRANSFORMS = self.transform_overrides
         ReselectAwareRenderer.ACTIVE_TRANSFORMS = self.transform_overrides

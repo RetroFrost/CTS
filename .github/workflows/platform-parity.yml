@@ -1,0 +1,57 @@
+name: CTS Platform Parity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "shared/**"
+      - "tools/sync_shared_contract.py"
+      - "comparison_studio/shared_contract.py"
+      - "comparison_studio/easy_timing.py"
+      - "comparison_studio/reference_illustrated.py"
+      - "comparison_studio/csv_text_easy.py"
+      - "android/app/src/main/java/io/github/retrofrost/cts/android/shared/**"
+      - "android/app/src/main/java/io/github/retrofrost/cts/android/model/**"
+      - "android/app/src/main/java/io/github/retrofrost/cts/android/timeline/**"
+      - "tests/test_shared_contract.py"
+      - ".github/workflows/platform-parity.yml"
+  pull_request:
+    paths:
+      - "shared/**"
+      - "tools/sync_shared_contract.py"
+      - "comparison_studio/shared_contract.py"
+      - "comparison_studio/easy_timing.py"
+      - "comparison_studio/reference_illustrated.py"
+      - "comparison_studio/csv_text_easy.py"
+      - "android/app/src/main/java/io/github/retrofrost/cts/android/shared/**"
+      - "android/app/src/main/java/io/github/retrofrost/cts/android/model/**"
+      - "android/app/src/main/java/io/github/retrofrost/cts/android/timeline/**"
+      - "tests/test_shared_contract.py"
+      - ".github/workflows/platform-parity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    name: Verify generated contract and behavior
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check generated Android and desktop adapters
+        run: python tools/sync_shared_contract.py --check
+
+      - name: Run shared contract tests
+        run: python -m unittest tests.test_shared_contract -v
+
+      - name: Compile desktop Python sources
+        run: python -m compileall -q comparison_studio tools tests/test_shared_contract.py

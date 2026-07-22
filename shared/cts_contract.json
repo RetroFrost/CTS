@@ -1,0 +1,84 @@
+{
+  "contract_version": 1,
+  "project_version": 3,
+  "canonical_model": {
+    "id": "illustrated_cards",
+    "label": "Reference Timeline",
+    "visible_cards": 4,
+    "legacy_ids": [
+      "illustrated_cards",
+      "reference_detail",
+      "classic_compact"
+    ]
+  },
+  "timing": {
+    "reveal_seconds": 2.0,
+    "scroll_seconds": 3.3333333333333335,
+    "end_hold_seconds": 2.0,
+    "fade_seconds": 0.8,
+    "body_wipe_seconds": 1.1,
+    "badge_delay_seconds": 0.55,
+    "badge_settle_seconds": 2.6,
+    "intro_tail_hold_seconds": 0.8,
+    "material_ease": [0.4, 0.0, 0.2, 1.0]
+  },
+  "layout": {
+    "image_frame": [0.008, 0.0, 0.984, 0.807],
+    "title_frame": [0.008, 0.807, 0.984, 0.088],
+    "description_frame": [0.008, 0.895, 0.984, 0.101],
+    "badge_frame": [0.245, 0.063, 0.51, 0.263]
+  },
+  "colors": {
+    "background": "#000000",
+    "image_top": "#138DDB",
+    "image_bottom": "#0B74BE",
+    "title_background": "#F0F0F0",
+    "title_text": "#101010",
+    "description_background": "#625F56",
+    "description_text": "#FFFFFF",
+    "divider": "#11100C",
+    "badge_top": "#EB0909",
+    "badge_middle": "#E00000",
+    "badge_bottom": "#D50000",
+    "badge_border": "#FF4545"
+  },
+  "fields": [
+    "badge_primary",
+    "badge_secondary",
+    "title",
+    "description",
+    "image"
+  ],
+  "sample_cards": [
+    {
+      "badge_primary": "10",
+      "badge_secondary": "SECONDS OLD",
+      "title": "Breathing",
+      "description": "A baby's first breath requires blood flow through the heart."
+    },
+    {
+      "badge_primary": "1",
+      "badge_secondary": "HOUR OLD",
+      "title": "Suckling",
+      "description": "Newborns instinctively try to feed within just hours."
+    },
+    {
+      "badge_primary": "3",
+      "badge_secondary": "DAYS OLD",
+      "title": "Recognizing Mom's Smell",
+      "description": "Within days a baby can recognize a familiar scent."
+    },
+    {
+      "badge_primary": "6.5",
+      "badge_secondary": "MONTHS OLD",
+      "title": "Recognizing Their Own Name",
+      "description": "A baby turns toward their name months before speaking."
+    },
+    {
+      "badge_primary": "8",
+      "badge_secondary": "MONTHS OLD",
+      "title": "Object Permanence",
+      "description": "Objects still exist even when they are out of sight."
+    }
+  ]
+}
