@@ -16,6 +16,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
+import io.github.retrofrost.cts.android.layout.CardContentLayout
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.NormalizedRect
@@ -75,9 +76,10 @@ class ReferenceFrameRenderer(
     }
 
     private fun drawCardBody(canvas: Canvas, card: CtsCard, cardWidth: Float) {
-        val image = frameRect(IMAGE_FRAME, cardWidth)
-        val title = frameRect(TITLE_FRAME, cardWidth)
-        val description = frameRect(DESCRIPTION_FRAME, cardWidth)
+        val frames = CardContentLayout.frames(card)
+        val image = frameRect(frames.image, cardWidth)
+        val title = frames.title?.let { frameRect(it, cardWidth) }
+        val description = frames.description?.let { frameRect(it, cardWidth) }
 
         paint.shader = LinearGradient(
             image.left,
@@ -105,45 +107,53 @@ class ReferenceFrameRenderer(
             canvas.restore()
         }
 
-        paint.color = Color.rgb(240, 240, 240)
-        canvas.drawRect(title, paint)
-        paint.color = Color.rgb(98, 95, 86)
-        canvas.drawRect(description, paint)
+        title?.let {
+            paint.color = Color.rgb(240, 240, 240)
+            canvas.drawRect(it, paint)
+        }
+        description?.let {
+            paint.color = Color.rgb(98, 95, 86)
+            canvas.drawRect(it, paint)
+        }
 
         val divider = max(2f, cardWidth * 0.008f)
         paint.color = Color.rgb(17, 16, 12)
         canvas.drawRect(0f, 0f, divider, height.toFloat(), paint)
         canvas.drawRect(cardWidth - divider, 0f, cardWidth, height.toFloat(), paint)
-        canvas.drawRect(0f, title.top, cardWidth, title.top + divider, paint)
-        canvas.drawRect(0f, description.top, cardWidth, description.top + divider, paint)
+        title?.let { canvas.drawRect(0f, it.top, cardWidth, it.top + divider, paint) }
+        description?.let { canvas.drawRect(0f, it.top, cardWidth, it.top + divider, paint) }
         canvas.drawRect(0f, height - divider, cardWidth, height.toFloat(), paint)
 
         val padding = cardWidth * 0.035f
-        drawTextBlock(
-            canvas = canvas,
-            text = card.title,
-            rect = RectF(title.left + padding, title.top + 2f, title.right - padding, title.bottom - 2f),
-            color = Color.rgb(16, 16, 16),
-            bold = true,
-            maximumSize = height * 0.043f,
-            minimumSize = height * 0.018f,
-            maxLines = 2,
-        )
-        drawTextBlock(
-            canvas = canvas,
-            text = card.description,
-            rect = RectF(
-                description.left + padding,
-                description.top + 2f,
-                description.right - padding,
-                description.bottom - 2f,
-            ),
-            color = Color.WHITE,
-            bold = true,
-            maximumSize = height * 0.027f,
-            minimumSize = height * 0.014f,
-            maxLines = 3,
-        )
+        title?.let {
+            drawTextBlock(
+                canvas = canvas,
+                text = card.title,
+                rect = RectF(it.left + padding, it.top + 2f, it.right - padding, it.bottom - 2f),
+                color = Color.rgb(16, 16, 16),
+                bold = true,
+                maximumSize = height * 0.043f,
+                minimumSize = height * 0.018f,
+                maxLines = 2,
+            )
+        }
+        description?.let {
+            drawTextBlock(
+                canvas = canvas,
+                text = card.description,
+                rect = RectF(
+                    it.left + padding,
+                    it.top + 2f,
+                    it.right - padding,
+                    it.bottom - 2f,
+                ),
+                color = Color.WHITE,
+                bold = true,
+                maximumSize = height * 0.027f,
+                minimumSize = height * 0.014f,
+                maxLines = 3,
+            )
+        }
     }
 
     private fun drawBadge(
@@ -329,9 +339,6 @@ class ReferenceFrameRenderer(
     }
 
     private companion object {
-        val IMAGE_FRAME = NormalizedRect(0.008f, 0f, 0.984f, 0.807f)
-        val TITLE_FRAME = NormalizedRect(0.008f, 0.807f, 0.984f, 0.088f)
-        val DESCRIPTION_FRAME = NormalizedRect(0.008f, 0.895f, 0.984f, 0.101f)
         val BADGE_FRAME = NormalizedRect(0.245f, 0.063f, 0.51f, 0.263f)
     }
 }

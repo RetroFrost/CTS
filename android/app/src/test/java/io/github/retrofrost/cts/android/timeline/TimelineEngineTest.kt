@@ -1,13 +1,20 @@
 package io.github.retrofrost.cts.android.timeline
 
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.DurationRuntime
 import io.github.retrofrost.cts.android.model.VisualModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class TimelineEngineTest {
+    @Before
+    fun resetDurationChoice() {
+        DurationRuntime.resetForTests()
+    }
+
     @Test
     fun androidExposesOnlyTheCanonicalFourCardModel() {
         assertEquals(listOf(VisualModel.Illustrated), VisualModel.entries)
@@ -19,9 +26,43 @@ class TimelineEngineTest {
     @Test
     fun automaticDurationIncludesTheReferenceIntroHold() {
         val project = CtsProject(model = VisualModel.Illustrated)
-        // Five cards: 4*2s reveal + 0.8s intro hold + 1*(10/3)s scroll
-        // + 2s final hold + 0.8s fade.
         assertEquals(14.933333f, TimelineEngine.automaticDuration(project), 0.0001f)
+    }
+
+    @Test
+    fun customLengthChangesOnlySecondsPerScrollingCard() {
+        val automaticProject = CtsProject(model = VisualModel.Illustrated)
+        val automaticDuration = TimelineEngine.automaticDuration(automaticProject)
+        val customProject = automaticProject.copy(customDurationSeconds = automaticDuration + 6f)
+        val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
+
+        assertEquals(automaticDuration + 6f, TimelineEngine.duration(customProject), 0.0001f)
+        assertEquals(SCROLL_SECONDS + 6f, TimelineEngine.secondsPerCard(customProject), 0.0001f)
+        assertEquals(scrollStart, TimelineEngine.modelTime(customProject, scrollStart), 0.0001f)
+
+        val halfOutput = scrollStart + TimelineEngine.secondsPerCard(customProject) / 2f
+        assertEquals(
+            scrollStart + SCROLL_SECONDS / 2f,
+            TimelineEngine.modelTime(customProject, halfOutput),
+            0.0001f,
+        )
+        assertEquals(
+            automaticDuration - FADE_SECONDS,
+            TimelineEngine.modelTime(customProject, TimelineEngine.duration(customProject) - FADE_SECONDS),
+            0.0001f,
+        )
+    }
+
+    @Test
+    fun customLengthIsIgnoredWhenEveryCardAlreadyFitsOnScreen() {
+        val automaticProject = CtsProject().let { it.copy(cards = it.cards.take(4)) }
+        val customProject = automaticProject.copy(customDurationSeconds = 60f)
+        assertEquals(
+            TimelineEngine.automaticDuration(automaticProject),
+            TimelineEngine.duration(customProject),
+            0.0001f,
+        )
+        assertEquals(0f, TimelineEngine.secondsPerCard(customProject), 0.0001f)
     }
 
     @Test

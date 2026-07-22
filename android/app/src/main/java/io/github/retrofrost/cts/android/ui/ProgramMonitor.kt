@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import io.github.retrofrost.cts.android.layout.CardContentLayout
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
@@ -83,9 +84,6 @@ private val ReferenceHexagonShape = GenericShape { size, _ ->
     close()
 }
 
-private val ImageFrame = NormalizedRect(0.008f, 0f, 0.984f, 0.807f)
-private val TitleFrame = NormalizedRect(0.008f, 0.807f, 0.984f, 0.088f)
-private val DescriptionFrame = NormalizedRect(0.008f, 0.895f, 0.984f, 0.101f)
 private val BadgeFrame = NormalizedRect(0.245f, 0.063f, 0.51f, 0.263f)
 
 @Composable
@@ -202,8 +200,9 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
+    val frames = CardContentLayout.frames(card)
     Frame(
-        ImageFrame,
+        frames.image,
         Modifier.background(
             Brush.verticalGradient(
                 0f to Color(0xFF138DDB),
@@ -221,24 +220,28 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
         )
     }
 
-    Frame(TitleFrame, Modifier.background(Color(0xFFF0F0F0))) {
-        CardText(
-            text = card.title,
-            color = Color(0xFF101010),
-            fontWeight = FontWeight.Black,
-            fontSize = 8.4.sp,
-            maxLines = 2,
-        )
+    frames.title?.let { titleFrame ->
+        Frame(titleFrame, Modifier.background(Color(0xFFF0F0F0))) {
+            CardText(
+                text = card.title,
+                color = Color(0xFF101010),
+                fontWeight = FontWeight.Black,
+                fontSize = 8.4.sp,
+                maxLines = 2,
+            )
+        }
     }
 
-    Frame(DescriptionFrame, Modifier.background(Color(0xFF625F56))) {
-        CardText(
-            text = card.description,
-            color = Color.White,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 5.4.sp,
-            maxLines = 3,
-        )
+    frames.description?.let { descriptionFrame ->
+        Frame(descriptionFrame, Modifier.background(Color(0xFF625F56))) {
+            CardText(
+                text = card.description,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 5.4.sp,
+                maxLines = 3,
+            )
+        }
     }
 
     // Four black separators are visible in the reference at every stage of movement.

@@ -15,6 +15,7 @@ const val BODY_WIPE_SECONDS = SharedContract.BODY_WIPE_SECONDS
 const val BADGE_DELAY_SECONDS = SharedContract.BADGE_DELAY_SECONDS
 const val BADGE_SETTLE_SECONDS = SharedContract.BADGE_SETTLE_SECONDS
 const val INTRO_TAIL_HOLD_SECONDS = SharedContract.INTRO_TAIL_HOLD_SECONDS
+private const val MIN_SCROLL_STEP_SECONDS = 0.12f
 
 data class CardPlacement(
     val cardIndex: Int,
@@ -28,29 +29,106 @@ data class CardPlacement(
     val badgeSettle: Float,
 )
 
+private data class TimelineParts(
+    val introSeconds: Float,
+    val scrollSteps: Int,
+    val automaticScrollSeconds: Float,
+    val fixedTailSeconds: Float,
+)
+
 object TimelineEngine {
-    fun automaticDuration(project: CtsProject): Float {
+    private fun timelineParts(project: CtsProject): TimelineParts {
         val cardCount = project.cards.size
-        if (cardCount <= 0) return 0f
+        if (cardCount <= 0) return TimelineParts(0f, 0, 0f, 0f)
         val visible = SharedContract.VISIBLE_CARDS
-        val reveal = min(cardCount, visible) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
-        val scroll = max(0, cardCount - visible) * SCROLL_SECONDS
-        return reveal + scroll + END_HOLD_SECONDS + FADE_SECONDS
+        val intro = min(cardCount, visible) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
+        val scrollSteps = max(0, cardCount - visible)
+        val automaticScroll = scrollSteps * SCROLL_SECONDS
+        val fixedTail = END_HOLD_SECONDS + FADE_SECONDS
+        return TimelineParts(intro, scrollSteps, automaticScroll, fixedTail)
+    }
+
+    fun automaticDuration(project: CtsProject): Float {
+        val parts = timelineParts(project)
+        return parts.introSeconds + parts.automaticScrollSeconds + parts.fixedTailSeconds
     }
 
     /**
-     * Previous CTS versions allowed an automatic length or a custom target. A custom target
-     * scales the complete animation, including entrances, scrolling, ending hold, and fade.
+     * CTS Easy custom length keeps the intro, ending hold, and fade at their normal speed.
+     * Only the horizontal scrolling segment is stretched or compressed.
      */
-    fun duration(project: CtsProject): Float =
-        DurationRuntime.resolve(project.customDurationSeconds)?.coerceAtLeast(1f)
-            ?: automaticDuration(project)
+    fun duration(project: CtsProject): Float {
+        val parts = timelineParts(project)
+        val automatic = automaticDuration(project)
+        val custom = DurationRuntime.resolve(project.customDurationSeconds) ?: return automatic
+        if (parts.scrollSteps <= 0) return automatic
+        val minimum = parts.introSeconds +
+            parts.scrollSteps * MIN_SCROLL_STEP_SECONDS +
+            parts.fixedTailSeconds
+        return max(minimum, custom)
+    }
+
+    private fun chosenScrollDuration(project: CtsProject, parts: TimelineParts): Float {
+        if (parts.scrollSteps <= 0) return 0f
+        if (DurationRuntime.resolve(project.customDurationSeconds) == null) {
+            return parts.automaticScrollSeconds
+        }
+        return max(
+            parts.scrollSteps * MIN_SCROLL_STEP_SECONDS,
+            duration(project) - parts.introSeconds - parts.fixedTailSeconds,
+        )
+    }
+
+    /** Actual output seconds assigned to each one-card horizontal movement. */
+    fun secondsPerCard(project: CtsProject): Float {
+        val parts = timelineParts(project)
+        if (parts.scrollSteps <= 0) return 0f
+        return chosenScrollDuration(project, parts) / parts.scrollSteps
+    }
 
     fun modelTime(project: CtsProject, outputTimeSeconds: Float): Float {
-        val automatic = automaticDuration(project)
-        val chosen = duration(project)
-        val speed = if (automatic > 0f && chosen > 0f) automatic / chosen else 1f
-        return outputTimeSeconds.coerceAtLeast(0f) * speed
+        val output = outputTimeSeconds.coerceAtLeast(0f)
+        val parts = timelineParts(project)
+        if (
+            DurationRuntime.resolve(project.customDurationSeconds) == null ||
+            parts.scrollSteps <= 0 ||
+            parts.automaticScrollSeconds <= 0f
+        ) {
+            return output
+        }
+        if (output <= parts.introSeconds) return output
+
+        val chosenScroll = chosenScrollDuration(project, parts)
+        if (output < parts.introSeconds + chosenScroll) {
+            val progress = (output - parts.introSeconds) / chosenScroll.coerceAtLeast(0.001f)
+            return parts.introSeconds + progress * parts.automaticScrollSeconds
+        }
+
+        return parts.introSeconds + parts.automaticScrollSeconds +
+            (output - parts.introSeconds - chosenScroll)
+    }
+
+    private fun outputTimeForModelTime(project: CtsProject, modelTimeSeconds: Float): Float {
+        val modelTime = modelTimeSeconds.coerceAtLeast(0f)
+        val parts = timelineParts(project)
+        if (
+            DurationRuntime.resolve(project.customDurationSeconds) == null ||
+            parts.scrollSteps <= 0 ||
+            parts.automaticScrollSeconds <= 0f
+        ) {
+            return modelTime
+        }
+        if (modelTime <= parts.introSeconds) return modelTime
+
+        val chosenScroll = chosenScrollDuration(project, parts)
+        if (modelTime < parts.introSeconds + parts.automaticScrollSeconds) {
+            val progress = (modelTime - parts.introSeconds) /
+                parts.automaticScrollSeconds.coerceAtLeast(0.001f)
+            return parts.introSeconds + progress * chosenScroll
+        }
+
+        return parts.introSeconds + chosenScroll +
+            (modelTime - parts.introSeconds - parts.automaticScrollSeconds)
     }
 
     fun placements(project: CtsProject, outputTimeSeconds: Float): List<CardPlacement> {
@@ -135,10 +213,7 @@ object TimelineEngine {
         } else {
             scrollStart + (safeIndex - SharedContract.VISIBLE_CARDS + 1) * SCROLL_SECONDS
         }
-        val automatic = automaticDuration(project)
-        val chosen = duration(project)
-        val speed = if (automatic > 0f && chosen > 0f) automatic / chosen else 1f
-        return min(chosen, targetModelTime / speed.coerceAtLeast(0.001f))
+        return min(duration(project), outputTimeForModelTime(project, targetModelTime))
     }
 
     fun formatTime(seconds: Float): String {

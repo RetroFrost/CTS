@@ -33,8 +33,8 @@ import kotlin.math.roundToInt
 
 /**
  * Keeps the previous CTS Easy duration workflow visible while using the recreated editor.
- * Automatic length is the default. A custom MM:SS target scales the entire timeline and is
- * used by both live preview and the WorkManager background encoder.
+ * Automatic length is the default. A custom MM:SS target changes seconds per scrolling card
+ * while entrances and the ending remain at normal speed in preview and background export.
  */
 @Composable
 fun CtsAndroidAppWithVideoLength() {
@@ -112,7 +112,7 @@ private fun VideoLengthDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     "This works like previous CTS versions: keep automatic timing, or enter a target length. " +
-                        "A custom target speeds up or slows down the whole animation.",
+                        "CTS changes the scrolling speed while keeping entrances and the ending unchanged.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

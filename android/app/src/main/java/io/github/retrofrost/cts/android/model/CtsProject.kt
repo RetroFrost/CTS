@@ -122,7 +122,7 @@ data class CtsProject(
     val cards: List<CtsCard> = sampleCards(),
     /** Retained only for old project-file compatibility; the canonical badge is always shown. */
     val showHexagons: Boolean = true,
-    /** Null keeps the old automatic-length behavior; a value scales the whole animation. */
+    /** Null uses automatic timing; a value retimes only horizontal card scrolling. */
     val customDurationSeconds: Float? = null,
     val soundtrack: SoundtrackSettings = SoundtrackSettings(),
     val export: ExportSettings = ExportSettings(),
