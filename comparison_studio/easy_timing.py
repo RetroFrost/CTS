@@ -66,6 +66,8 @@ class EasyTimingMixin:
         return shared_model_time(card_count, output_time, self.custom_duration)
 
     def seconds_per_card(self, card_count: int) -> float:
+        if card_count <= VISIBLE_CARDS:
+            return 0.0
         speed = self.speed_multiplier(card_count)
         return SCROLL_SECONDS / speed if speed > 0.0 else 0.0
 
