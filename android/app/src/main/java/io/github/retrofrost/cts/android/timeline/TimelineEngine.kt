@@ -144,6 +144,8 @@ object TimelineEngine {
 
     private fun materialEase(value: Float): Float {
         val x = value.coerceIn(0f, 1f)
+        if (x <= 0f) return 0f
+        if (x >= 1f) return 1f
         var low = 0f
         var high = 1f
         repeat(12) {
