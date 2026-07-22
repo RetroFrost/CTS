@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.timeline
 
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.DurationRuntime
 import io.github.retrofrost.cts.android.shared.SharedContract
 import kotlin.math.floor
 import kotlin.math.max
@@ -37,8 +38,13 @@ object TimelineEngine {
         return reveal + scroll + END_HOLD_SECONDS + FADE_SECONDS
     }
 
+    /**
+     * Previous CTS versions allowed an automatic length or a custom target. A custom target
+     * scales the complete animation, including entrances, scrolling, ending hold, and fade.
+     */
     fun duration(project: CtsProject): Float =
-        project.customDurationSeconds?.coerceAtLeast(1f) ?: automaticDuration(project)
+        DurationRuntime.resolve(project.customDurationSeconds)?.coerceAtLeast(1f)
+            ?: automaticDuration(project)
 
     fun modelTime(project: CtsProject, outputTimeSeconds: Float): Float {
         val automatic = automaticDuration(project)
