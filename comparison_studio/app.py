@@ -6,7 +6,7 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
-from .csv_text_easy import EASY_STYLE, CsvTextEasyMainWindow
+from .desktop_v2 import DESKTOP_STYLE, DesktopMainWindow
 
 
 def _exception_hook(exc_type, exc_value, exc_traceback) -> None:
@@ -29,9 +29,8 @@ def main() -> int:
     app.setApplicationVersion(__version__)
     app.setOrganizationName("Ethan Woods")
     app.setStyle("Fusion")
-    app.setStyleSheet(EASY_STYLE)
+    app.setStyleSheet(DESKTOP_STYLE)
     sys.excepthook = _exception_hook
-    window = CsvTextEasyMainWindow()
-    window.setWindowTitle(f"CTS Easy {__version__} — Comparison Timeline Studio")
+    window = DesktopMainWindow()
     window.show()
     return app.exec()
