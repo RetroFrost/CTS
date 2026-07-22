@@ -48,7 +48,18 @@ jobs:
           gradle-version: "8.13"
 
       - name: Build debug APK
-        run: gradle --project-dir android :app:assembleDebug --stacktrace --console=plain
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:assembleDebug --stacktrace --console=plain 2>&1 | tee android/gradle-build.log
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTS-Android-build-log
+          path: android/gradle-build.log
+          if-no-files-found: error
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -69,4 +80,4 @@ jobs:
         with:
           name: CTS-Android-test-log
           path: android/gradle-test.log
-          if-no-files-found: error
+          if-no-files-found: warn
