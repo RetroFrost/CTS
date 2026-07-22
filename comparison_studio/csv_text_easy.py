@@ -155,8 +155,7 @@ class CsvTextEasyMainWindow(EasyMainWindow):
 
     def _apply_csv_text_copy(self) -> None:
         if hasattr(self, "insert_data_button"):
-            compact = getattr(self, "_compact_mode", False)
-            self.insert_data_button.setText("CSV TEXT" if compact else "PASTE CSV TEXT")
+            self.insert_data_button.setText("PASTE CSV TEXT")
             self.insert_data_button.setToolTip(
                 "Paste or type comma-separated text; the first row is the field names"
             )
