@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import io.github.retrofrost.cts.android.ui.CtsAndroidApp
+import io.github.retrofrost.cts.android.ui.CtsAndroidAppV2
 import io.github.retrofrost.cts.android.ui.theme.CtsTheme
 
 class MainActivity : ComponentActivity() {
@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CtsTheme {
-                CtsAndroidApp()
+                CtsAndroidAppV2()
             }
         }
     }
