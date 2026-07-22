@@ -1,0 +1,23 @@
+name: CTS source snapshot temp
+
+on:
+  push:
+    branches:
+      - agent/android-background-export
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CTS-Android-source-snapshot
+          path: |
+            android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt
+            android/app/src/main/java/io/github/retrofrost/cts/android/model/CtsProject.kt
+            android/app/src/main/java/io/github/retrofrost/cts/android/persistence/ProjectJson.kt
+          if-no-files-found: error
