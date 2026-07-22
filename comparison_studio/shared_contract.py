@@ -105,6 +105,10 @@ def editing_time_for_card(card_count: int, card_index: int, custom_duration: flo
 
 def material_ease(value: float) -> float:
     x = max(0.0, min(1.0, float(value)))
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
     x1, y1, x2, y2 = MATERIAL_EASE
     low, high = 0.0, 1.0
     for _ in range(12):
