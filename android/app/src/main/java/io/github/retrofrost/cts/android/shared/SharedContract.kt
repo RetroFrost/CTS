@@ -19,6 +19,7 @@ object SharedContract {
     const val BADGE_DELAY_SECONDS = 0.55f
     const val BADGE_SETTLE_SECONDS = 2.6f
     const val INTRO_TAIL_HOLD_SECONDS = 0.8f
+    const val MIN_SCROLL_STEP_SECONDS = 0.12f
 
     const val MATERIAL_EASE_X1 = 0.4f
     const val MATERIAL_EASE_Y1 = 0.0f

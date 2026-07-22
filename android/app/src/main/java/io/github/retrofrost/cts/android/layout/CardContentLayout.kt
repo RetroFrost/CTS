@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.layout
 
 import io.github.retrofrost.cts.android.model.CtsCard
+import io.github.retrofrost.cts.android.shared.SharedContract
 import io.github.retrofrost.cts.android.model.NormalizedRect
 
 data class CardContentFrames(
@@ -14,11 +15,11 @@ data class CardContentFrames(
  * the artwork grows into every released slot, matching CTS's optional-column behavior.
  */
 object CardContentLayout {
-    private const val LEFT = 0.008f
-    private const val WIDTH = 0.984f
-    private const val CONTENT_BOTTOM = 0.996f
-    private const val TITLE_HEIGHT = 0.088f
-    private const val DESCRIPTION_HEIGHT = 0.101f
+    private const val LEFT = SharedContract.IMAGE_X
+    private const val WIDTH = SharedContract.IMAGE_WIDTH
+    private const val CONTENT_BOTTOM = SharedContract.DESCRIPTION_Y + SharedContract.DESCRIPTION_HEIGHT
+    private const val TITLE_HEIGHT = SharedContract.TITLE_HEIGHT
+    private const val DESCRIPTION_HEIGHT = SharedContract.DESCRIPTION_HEIGHT
 
     fun frames(card: CtsCard): CardContentFrames {
         var cursor = CONTENT_BOTTOM

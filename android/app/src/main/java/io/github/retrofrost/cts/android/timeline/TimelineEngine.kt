@@ -15,7 +15,7 @@ const val BODY_WIPE_SECONDS = SharedContract.BODY_WIPE_SECONDS
 const val BADGE_DELAY_SECONDS = SharedContract.BADGE_DELAY_SECONDS
 const val BADGE_SETTLE_SECONDS = SharedContract.BADGE_SETTLE_SECONDS
 const val INTRO_TAIL_HOLD_SECONDS = SharedContract.INTRO_TAIL_HOLD_SECONDS
-private const val MIN_SCROLL_STEP_SECONDS = 0.12f
+const val MIN_SCROLL_STEP_SECONDS = SharedContract.MIN_SCROLL_STEP_SECONDS
 
 data class CardPlacement(
     val cardIndex: Int,
