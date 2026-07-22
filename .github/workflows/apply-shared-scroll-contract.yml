@@ -1,0 +1,38 @@
+name: Apply shared scroll timing contract
+
+on:
+  push:
+    branches:
+      - agent/android-background-export
+    paths:
+      - tools/apply_shared_scroll_contract.py
+      - .github/workflows/apply-shared-scroll-contract.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/android-background-export
+          fetch-depth: 0
+      - name: Apply migration
+        run: python tools/apply_shared_scroll_contract.py
+      - name: Validate patch
+        run: git diff --check
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add shared comparison_studio android tools/sync_shared_contract.py tests/test_shared_contract.py
+          git commit -m "Share CTS scroll-only duration timing across platforms"
+          git push origin HEAD:agent/android-background-export
