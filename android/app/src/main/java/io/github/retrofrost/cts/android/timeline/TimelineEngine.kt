@@ -1,30 +1,19 @@
 package io.github.retrofrost.cts.android.timeline
 
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.shared.SharedContract
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
-/** Two seconds between the beginning of each opening-card reveal. */
-const val REVEAL_SECONDS = 2f
-
-/** One card-width movement, measured from one settled viewport to the next. */
-const val SCROLL_SECONDS = 10f / 3f
-
-const val END_HOLD_SECONDS = 2f
-const val FADE_SECONDS = 0.8f
-
-/** The opening wipe measured from a card's left edge. */
-const val BODY_WIPE_SECONDS = 1.1f
-
-/** The badge starts after most of its parent card has been uncovered. */
-const val BADGE_DELAY_SECONDS = 0.55f
-
-/** Oversized badges settle slowly while the next card is being introduced. */
-const val BADGE_SETTLE_SECONDS = 2.6f
-
-/** The supplied reference pauses briefly after the fourth opening card. */
-const val INTRO_TAIL_HOLD_SECONDS = 0.8f
+const val REVEAL_SECONDS = SharedContract.REVEAL_SECONDS
+const val SCROLL_SECONDS = SharedContract.SCROLL_SECONDS
+const val END_HOLD_SECONDS = SharedContract.END_HOLD_SECONDS
+const val FADE_SECONDS = SharedContract.FADE_SECONDS
+const val BODY_WIPE_SECONDS = SharedContract.BODY_WIPE_SECONDS
+const val BADGE_DELAY_SECONDS = SharedContract.BADGE_DELAY_SECONDS
+const val BADGE_SETTLE_SECONDS = SharedContract.BADGE_SETTLE_SECONDS
+const val INTRO_TAIL_HOLD_SECONDS = SharedContract.INTRO_TAIL_HOLD_SECONDS
 
 data class CardPlacement(
     val cardIndex: Int,
@@ -42,7 +31,7 @@ object TimelineEngine {
     fun automaticDuration(project: CtsProject): Float {
         val cardCount = project.cards.size
         if (cardCount <= 0) return 0f
-        val visible = project.model.visibleCards
+        val visible = SharedContract.VISIBLE_CARDS
         val reveal = min(cardCount, visible) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
         val scroll = max(0, cardCount - visible) * SCROLL_SECONDS
         return reveal + scroll + END_HOLD_SECONDS + FADE_SECONDS
@@ -65,7 +54,7 @@ object TimelineEngine {
         val modelTime = modelTime(project, outputTimeSeconds)
         if (modelTime >= automaticDuration(project)) return emptyList()
 
-        val visibleCards = project.model.visibleCards
+        val visibleCards = SharedContract.VISIBLE_CARDS
         val initialCount = min(cardCount, visibleCards)
         val scrollStart = initialCount * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
 
@@ -133,13 +122,12 @@ object TimelineEngine {
     fun editingTimeForCard(project: CtsProject, cardIndex: Int): Float {
         if (project.cards.isEmpty()) return 0f
         val safeIndex = cardIndex.coerceIn(0, project.cards.lastIndex)
-        val visible = project.model.visibleCards
-        val initialCount = min(project.cards.size, visible)
+        val initialCount = min(project.cards.size, SharedContract.VISIBLE_CARDS)
         val scrollStart = initialCount * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
-        val targetModelTime = if (safeIndex < visible) {
+        val targetModelTime = if (safeIndex < SharedContract.VISIBLE_CARDS) {
             scrollStart
         } else {
-            scrollStart + (safeIndex - visible + 1) * SCROLL_SECONDS
+            scrollStart + (safeIndex - SharedContract.VISIBLE_CARDS + 1) * SCROLL_SECONDS
         }
         val automatic = automaticDuration(project)
         val chosen = duration(project)
@@ -154,17 +142,20 @@ object TimelineEngine {
         return "%d:%02d".format(minutes, remainder)
     }
 
-    /** Material's fast-out-slow-in curve closely matches the reference wipe and slide. */
     private fun materialEase(value: Float): Float {
         val x = value.coerceIn(0f, 1f)
         var low = 0f
         var high = 1f
         repeat(12) {
             val t = (low + high) / 2f
-            val curveX = cubic(t, 0.4f, 0.2f)
+            val curveX = cubic(t, SharedContract.MATERIAL_EASE_X1, SharedContract.MATERIAL_EASE_X2)
             if (curveX < x) low = t else high = t
         }
-        return cubic((low + high) / 2f, 0f, 1f)
+        return cubic(
+            (low + high) / 2f,
+            SharedContract.MATERIAL_EASE_Y1,
+            SharedContract.MATERIAL_EASE_Y2,
+        )
     }
 
     private fun cubic(t: Float, firstControl: Float, secondControl: Float): Float {
