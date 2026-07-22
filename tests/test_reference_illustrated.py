@@ -1,7 +1,7 @@
 import unittest
 
 from comparison_studio.data import CardData
-from comparison_studio.reference_illustrated import ReferenceIllustratedRenderer
+from comparison_studio.reference_illustrated import ReferenceIllustratedRenderer, _content_frames
 from comparison_studio.shared_contract import COLORS
 
 
@@ -23,21 +23,39 @@ class ReferenceIllustratedTests(unittest.TestCase):
 
     def test_empty_description_gives_its_band_to_artwork(self) -> None:
         card = CardData("1 in 5", "School Crush", "", "", "People")
+        image_frame, title_frame, description_frame = _content_frames(card)
         image = self.renderer._render_illustrated_card(card, 400, 1000, 1.0)
+
         self.assertEqual(image.size, (400, 1000))
-        self.assertEqual(image.getpixel((20, 850))[:3], rgb(COLORS["image_bottom"]))
+        self.assertAlmostEqual(image_frame[3], 0.908)
+        self.assertIsNotNone(title_frame)
+        self.assertIsNone(description_frame)
+        self.assertNotEqual(image.getpixel((20, 850))[:3], rgb(COLORS["title_background"]))
+        self.assertNotEqual(image.getpixel((20, 850))[:3], rgb(COLORS["description_background"]))
         self.assertEqual(image.getpixel((20, 950))[:3], rgb(COLORS["title_background"]))
 
     def test_empty_title_gives_its_band_to_artwork(self) -> None:
         card = CardData("1 in 5", "", "Description", "", "People")
+        image_frame, title_frame, description_frame = _content_frames(card)
         image = self.renderer._render_illustrated_card(card, 400, 1000, 1.0)
-        self.assertEqual(image.getpixel((20, 850))[:3], rgb(COLORS["image_bottom"]))
+
+        self.assertAlmostEqual(image_frame[3], 0.895)
+        self.assertIsNone(title_frame)
+        self.assertIsNotNone(description_frame)
+        self.assertNotEqual(image.getpixel((20, 850))[:3], rgb(COLORS["title_background"]))
+        self.assertNotEqual(image.getpixel((20, 850))[:3], rgb(COLORS["description_background"]))
         self.assertEqual(image.getpixel((20, 950))[:3], rgb(COLORS["description_background"]))
 
     def test_empty_text_lets_artwork_fill_the_card(self) -> None:
         card = CardData("1 in 5", "", "", "", "People")
+        image_frame, title_frame, description_frame = _content_frames(card)
         image = self.renderer._render_illustrated_card(card, 400, 1000, 1.0)
-        self.assertEqual(image.getpixel((20, 950))[:3], rgb(COLORS["image_bottom"]))
+
+        self.assertAlmostEqual(image_frame[3], 0.996)
+        self.assertIsNone(title_frame)
+        self.assertIsNone(description_frame)
+        self.assertNotEqual(image.getpixel((20, 950))[:3], rgb(COLORS["title_background"]))
+        self.assertNotEqual(image.getpixel((20, 950))[:3], rgb(COLORS["description_background"]))
 
     def test_historical_render_methods_resolve_to_the_same_card(self) -> None:
         card = CardData("1 in 5", "School Crush", "", "", "People")
