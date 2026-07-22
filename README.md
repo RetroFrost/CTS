@@ -5,9 +5,9 @@
 ![Android](https://img.shields.io/badge/android-Kotlin%20%2B%20Compose-3ddc84)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
 
-CTS creates continuously scrolling comparison videos from CSV-style data. Version 0.5.0 brings the Android and desktop editions back together: both now use the same canonical **Reference Timeline** design, project version, field schema, timing constants, animation curve, layout coordinates, compatibility IDs, and sample data.
+CTS creates continuously scrolling comparison videos from CSV-style data. Version 0.5.0 brings the Android and desktop editions back together: both use the same canonical **Reference Timeline** design, project version, card fields, timing constants, animation curve, layout coordinates, compatibility IDs, colors, and starter data.
 
-The desktop edition is no longer an older independent design. Android projects open on desktop, desktop projects open on Android, and historical model IDs are migrated into the shared four-column design without discarding card content.
+The desktop edition is no longer an older independent design. Historical desktop model IDs still load, but they normalize to the shared four-column Reference Timeline without discarding card content.
 
 ## Normal workflow
 
@@ -44,14 +44,14 @@ It defines:
 - normalized image, title, description, and badge frames;
 - shared colors and starter cards.
 
-Generated platform adapters live at:
+Generated adapters live at:
 
 ```text
 comparison_studio/shared_contract.py
 android/app/src/main/java/io/github/retrofrost/cts/android/shared/SharedContract.kt
 ```
 
-After editing the JSON contract, regenerate both adapters with:
+After editing the JSON contract, regenerate both adapters:
 
 ```bash
 python tools/sync_shared_contract.py
@@ -63,7 +63,9 @@ Check for drift without changing files:
 python tools/sync_shared_contract.py --check
 ```
 
-GitHub Actions runs the same check and rejects a pull request when Android and desktop no longer match the shared contract. Native interface code remains Kotlin/Compose on Android and Python/PySide6 on desktop, so platform-specific interface work still needs an implementation on each platform; shared behavior and visual constants update from the single contract.
+GitHub Actions rejects a pull request when either generated adapter, the Android Program Monitor geometry/colors, or the desktop shared behavior no longer matches the contract.
+
+Compose and PySide6 remain native implementations. A platform-specific interaction or renderer-code change therefore needs a corresponding Android and desktop implementation in the same pull request; it cannot be safely translated from Kotlin to Python or vice versa by text generation alone.
 
 ## Canonical Reference Timeline
 
@@ -75,16 +77,14 @@ Both platforms now use:
 - Material-eased one-card horizontal movement;
 - oversized red badge entrances that settle into place;
 - a two-second ending hold and 0.8-second fade;
-- whole-animation scaling when a custom target duration is selected;
+- whole-animation scaling for a custom target duration;
 - image transforms owned by their individual parent card.
 
-Desktop preview and MP4 export resolve the same renderer. Android preview uses the corresponding shared model and timing engine.
+Desktop preview and MP4 export resolve the same renderer. Android uses the corresponding shared project model and timing engine.
 
 ## Desktop installation
 
 Requirements: Python 3.10 or later, FFmpeg, and system fonts.
-
-Ubuntu or Debian:
 
 ```bash
 sudo apt update
@@ -98,14 +98,6 @@ python -m pip install -r requirements.txt
 python run.py
 ```
 
-Later launches:
-
-```bash
-cd CTS
-source .venv/bin/activate
-python run.py
-```
-
 Do not use `sudo pip` or `--break-system-packages`.
 
 ## Android build
@@ -114,7 +106,6 @@ The Android project is in `android/` and uses JDK 17 plus Gradle 8.13.
 
 ```bash
 gradle --project-dir android :app:testDebugUnitTest
-
 gradle --project-dir android :app:assembleDebug
 ```
 
@@ -126,51 +117,30 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 ## Validation
 
-Cross-platform parity:
-
 ```bash
 python tools/sync_shared_contract.py --check
-python -m unittest tests.test_shared_contract -v
-```
-
-Desktop suite:
-
-```bash
 python -m unittest discover -s tests -v
-```
-
-Android suite:
-
-```bash
 gradle --project-dir android :app:testDebugUnitTest
 ```
 
-The parity workflow also compiles the Python source tree, while the Android workflow builds the APK and runs the Kotlin tests whenever the Android tree or shared contract changes.
+The platform-parity workflow also compiles the Python source tree. The Android workflow builds the APK and runs Kotlin tests whenever Android or the shared contract changes. The desktop workflow runs the complete unit and offscreen UI suite and preserves its full failure log as an artifact.
 
 ## Project structure
 
 ```text
-shared/
-  cts_contract.json              Cross-platform source of truth
-
-tools/
-  sync_shared_contract.py        Generator and parity checker
-
-comparison_studio/
-  shared_contract.py             Generated desktop adapter
-  reference_illustrated.py       Canonical desktop renderer
-  easy_timing.py                 Android-compatible desktop timing
-  csv_text_easy.py               Synchronized desktop workflow
-  exporter.py                    FFmpeg export
-
-android/app/src/main/java/io/github/retrofrost/cts/android/
-  shared/SharedContract.kt       Generated Android adapter
-  model/CtsProject.kt            Shared project and card model
-  timeline/TimelineEngine.kt     Shared timing behavior
-  ui/ProgramMonitor.kt           Native Compose renderer
+shared/cts_contract.json                    Cross-platform source of truth
+tools/sync_shared_contract.py               Generator and parity checker
+comparison_studio/shared_contract.py        Generated desktop adapter
+comparison_studio/reference_illustrated.py  Canonical desktop renderer
+comparison_studio/easy_timing.py            Android-compatible desktop timing
+comparison_studio/csv_text_easy.py          Synchronized desktop workflow
+android/.../shared/SharedContract.kt         Generated Android adapter
+android/.../model/CtsProject.kt              Shared project/card model
+android/.../timeline/TimelineEngine.kt       Shared timing behavior
+android/.../ui/ProgramMonitor.kt             Native Compose renderer
 ```
 
-See [Platform parity](docs/platform-parity.md) for the contribution rules.
+See [Platform parity](docs/platform-parity.md) for contribution rules.
 
 ## License
 
