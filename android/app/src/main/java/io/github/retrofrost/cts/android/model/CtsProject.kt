@@ -1,5 +1,7 @@
 package io.github.retrofrost.cts.android.model
 
+import io.github.retrofrost.cts.android.shared.SHARED_SAMPLE_CARDS
+import io.github.retrofrost.cts.android.shared.SharedContract
 import java.util.UUID
 
 /**
@@ -16,20 +18,16 @@ enum class VisualModel(
     val label: String,
     val visibleCards: Int,
 ) {
-    /**
-     * CTS Android has one canonical design: the four-column illustrated comparison
-     * supplied as the visual reference. Keep the historical `illustrated_cards` id so
-     * Android and desktop project files continue to open without migration prompts.
-     */
-    Illustrated("illustrated_cards", "Reference Timeline", 4),
+    /** The sole model is generated from the same contract as CTS desktop. */
+    Illustrated(
+        SharedContract.MODEL_ID,
+        SharedContract.MODEL_LABEL,
+        SharedContract.VISIBLE_CARDS,
+    ),
     ;
 
     companion object {
-        /**
-         * Every legacy model id is intentionally folded into the sole Android design.
-         * Imported projects retain their data, images, transforms, and timing while the
-         * old visual-model choice is discarded.
-         */
+        /** Every historical model id is intentionally folded into the shared design. */
         fun fromId(@Suppress("UNUSED_PARAMETER") id: String?): VisualModel = Illustrated
     }
 }
@@ -76,7 +74,7 @@ data class CtsCard(
 }
 
 data class CtsProject(
-    val version: Int = 3,
+    val version: Int = SharedContract.PROJECT_VERSION,
     val name: String = "Untitled comparison",
     val model: VisualModel = VisualModel.Illustrated,
     val cards: List<CtsCard> = sampleCards(),
@@ -85,6 +83,7 @@ data class CtsProject(
     val customDurationSeconds: Float? = null,
 ) {
     fun normalized(): CtsProject = copy(
+        version = SharedContract.PROJECT_VERSION,
         model = VisualModel.Illustrated,
         cards = cards.map { it.withOwnedImageSubcard() },
         showHexagons = true,
@@ -119,35 +118,11 @@ data class CtsProject(
     }
 }
 
-fun sampleCards(): List<CtsCard> = listOf(
+fun sampleCards(): List<CtsCard> = SHARED_SAMPLE_CARDS.map { sample ->
     CtsCard(
-        badgePrimary = "10",
-        badgeSecondary = "SECONDS OLD",
-        title = "Breathing",
-        description = "A baby's first breath requires blood flow through the heart.",
-    ),
-    CtsCard(
-        badgePrimary = "1",
-        badgeSecondary = "HOUR OLD",
-        title = "Suckling",
-        description = "Newborns instinctively try to feed within just hours.",
-    ),
-    CtsCard(
-        badgePrimary = "3",
-        badgeSecondary = "DAYS OLD",
-        title = "Recognizing Mom's Smell",
-        description = "Within days a baby can recognize a familiar scent.",
-    ),
-    CtsCard(
-        badgePrimary = "6.5",
-        badgeSecondary = "MONTHS OLD",
-        title = "Recognizing Their Own Name",
-        description = "A baby turns toward their name months before speaking.",
-    ),
-    CtsCard(
-        badgePrimary = "8",
-        badgeSecondary = "MONTHS OLD",
-        title = "Object Permanence",
-        description = "Objects still exist even when they are out of sight.",
-    ),
-)
+        badgePrimary = sample.badgePrimary,
+        badgeSecondary = sample.badgeSecondary,
+        title = sample.title,
+        description = sample.description,
+    )
+}
