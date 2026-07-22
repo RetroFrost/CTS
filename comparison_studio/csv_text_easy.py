@@ -4,6 +4,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton
 
 from .easy_ui import EASY_STYLE, EasyMainWindow, InsertDataDialog
+from .shared_contract import (
+    MODEL_ID,
+    MODEL_LABEL,
+    VISIBLE_CARDS,
+    editing_time_for_card,
+)
 
 
 class CsvTextDialog(InsertDataDialog):
@@ -44,12 +50,33 @@ class CsvTextDialog(InsertDataDialog):
 
 
 class CsvTextEasyMainWindow(EasyMainWindow):
-    """CTS setup wizard whose first step consumes CSV text instead of a file."""
+    """CTS setup wizard backed by the shared Android-desktop contract."""
 
     def __init__(self) -> None:
         super().__init__()
+        self._lock_shared_design()
         self._apply_csv_text_copy()
         self.statusBar().showMessage("Video setup · Step 1 of 5 · Paste CSV text")
+
+    def _lock_shared_design(self) -> None:
+        """Prevent the desktop UI from drifting back to legacy-only styles."""
+        if hasattr(self, "model_combo"):
+            index = self.model_combo.findData(MODEL_ID)
+            if index >= 0:
+                self.model_combo.setCurrentIndex(index)
+            self.model_combo.setEnabled(False)
+            self.model_combo.setToolTip(
+                "This design is shared with CTS Android. Edit shared/cts_contract.json "
+                "to change both platforms."
+            )
+        if hasattr(self, "default_visible"):
+            self.default_visible.setChecked(True)
+            self.default_visible.setEnabled(False)
+        if hasattr(self, "easy_style_button"):
+            self.easy_style_button.setText(f"{MODEL_LABEL.upper()} · ANDROID SYNC")
+            self.easy_style_button.setToolTip(
+                "Desktop and Android use this same generated layout and timing contract"
+            )
 
     def _choose_spreadsheet_file(self) -> None:
         """Compatibility method used by the existing first-step button connection."""
@@ -58,18 +85,59 @@ class CsvTextEasyMainWindow(EasyMainWindow):
             return
         self._apply_inserted_data(dialog.selected_data, dialog.warnings, advance=True)
 
+    def _open_style_sheet(self) -> None:
+        """The style step confirms the shared template instead of offering legacy models."""
+        self._lock_shared_design()
+        self.statusBar().showMessage(
+            f"{MODEL_LABEL} is synchronized with CTS Android · setup step 3: choose music",
+            5000,
+        )
+        self._set_wizard_step(2)
+
+    def _refresh_style_button_text(self) -> None:
+        if not hasattr(self, "easy_style_button"):
+            return
+        compact = getattr(self, "_compact_mode", False)
+        self.easy_style_button.setText(
+            "ANDROID SYNC" if compact else f"{MODEL_LABEL.upper()} · ANDROID SYNC"
+        )
+        self.easy_style_button.setToolTip(
+            "The canonical CTS design is generated for both Android and desktop"
+        )
+
+    def project_settings(self):
+        settings = super().project_settings()
+        settings.model_id = MODEL_ID
+        settings.visible_cards = VISIBLE_CARDS
+        settings.hexagons_bounce = True
+        return settings
+
+    def _editing_time_for_card(self, card_index: int) -> float:
+        cards = self.cards()
+        if not cards:
+            return 0.0
+        settings = self.project_settings()
+        return editing_time_for_card(
+            len(cards),
+            card_index,
+            getattr(settings, "custom_duration", None),
+        )
+
     def _set_wizard_step(self, step: int, *, focus: bool = True) -> None:
         super()._set_wizard_step(step, focus=focus)
+        self._lock_shared_design()
         self._apply_csv_text_copy()
         if focus and getattr(self, "_wizard_step", 0) == 0:
             self.statusBar().showMessage("Video setup · Step 1 of 5 · Paste CSV text", 4000)
 
     def _apply_responsive_layout(self) -> None:
         super()._apply_responsive_layout()
+        self._lock_shared_design()
         self._apply_csv_text_copy()
 
     def _update_android_summary(self, *_args) -> None:
         super()._update_android_summary(*_args)
+        self._lock_shared_design()
         self._apply_csv_text_copy()
 
     def _refresh_duration_labels(self) -> None:
