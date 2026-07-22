@@ -38,14 +38,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -275,8 +271,9 @@ private fun ReferenceBadge(
     val density = LocalDensity.current
 
     BoxWithConstraints(modifier = modifier) {
-        val translation = with(density) { (-maxHeight * 0.42f * (1f - settle)).toPx() }
-        val scale = 1.42f - 0.42f * settle
+        // The reference badge is full-size from its first visible frame. Only its
+        // vertical position changes: it drops from above and settles into place.
+        val translation = with(density) { (-maxHeight * 0.92f * (1f - settle)).toPx() }
         val primarySize = (maxWidth.value * 0.22f).sp
         val secondarySize = (maxWidth.value * 0.105f).sp
 
@@ -284,10 +281,7 @@ private fun ReferenceBadge(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
                     translationY = translation
-                    transformOrigin = TransformOrigin.Center
                 }
                 .shadow(7.dp, ReferenceHexagonShape, clip = false)
                 .clip(ReferenceHexagonShape)
@@ -303,22 +297,6 @@ private fun ReferenceBadge(
                 .border(0.8.dp, Color(0xFFFF4545), ReferenceHexagonShape),
             contentAlignment = Alignment.Center,
         ) {
-            // A moving diagonal gloss is visible while each large badge settles.
-            Canvas(Modifier.fillMaxSize()) {
-                if (settle < 0.94f) {
-                    val shineProgress = (settle / 0.94f).coerceIn(0f, 1f)
-                    val shineX = -size.width * 0.30f + size.width * 1.65f * shineProgress
-                    val shineAlpha = 0.34f * (1f - settle)
-                    rotate(18f, pivot = Offset(shineX, size.height / 2f)) {
-                        drawRect(
-                            color = Color.White.copy(alpha = shineAlpha),
-                            topLeft = Offset(shineX - size.width * 0.075f, -size.height * 0.20f),
-                            size = Size(size.width * 0.15f, size.height * 1.40f),
-                        )
-                    }
-                }
-            }
-
             Column(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,

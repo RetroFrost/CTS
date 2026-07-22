@@ -17,7 +17,7 @@ object SharedContract {
     const val FADE_SECONDS = 0.8f
     const val BODY_WIPE_SECONDS = 1.1f
     const val BADGE_DELAY_SECONDS = 0.55f
-    const val BADGE_SETTLE_SECONDS = 2.6f
+    const val BADGE_SETTLE_SECONDS = 0.7f
     const val INTRO_TAIL_HOLD_SECONDS = 0.8f
 
     const val MATERIAL_EASE_X1 = 0.4f
