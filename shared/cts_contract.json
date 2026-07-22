@@ -18,7 +18,7 @@
     "fade_seconds": 0.8,
     "body_wipe_seconds": 1.1,
     "badge_delay_seconds": 0.55,
-    "badge_settle_seconds": 2.6,
+    "badge_settle_seconds": 0.7,
     "intro_tail_hold_seconds": 0.8,
     "material_ease": [0.4, 0.0, 0.2, 1.0]
   },
