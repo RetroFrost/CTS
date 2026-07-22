@@ -21,11 +21,15 @@ TIMING_CONSTANTS = {
     "REVEAL_SECONDS": "reveal_seconds",
     "SCROLL_SECONDS": "scroll_seconds",
     "END_HOLD_SECONDS": "end_hold_seconds",
+    "OUTRO_COVER_SECONDS": "outro_cover_seconds",
+    "OUTRO_CONTENT_DELAY_SECONDS": "outro_content_delay_seconds",
+    "OUTRO_HOLD_SECONDS": "outro_hold_seconds",
     "FADE_SECONDS": "fade_seconds",
     "BODY_WIPE_SECONDS": "body_wipe_seconds",
     "BADGE_DELAY_SECONDS": "badge_delay_seconds",
     "BADGE_SETTLE_SECONDS": "badge_settle_seconds",
     "INTRO_TAIL_HOLD_SECONDS": "intro_tail_hold_seconds",
+    "MIN_SCROLL_STEP_SECONDS": "min_scroll_step_seconds",
 }
 FRAME_CONSTANTS = {
     "image_frame": "IMAGE",
@@ -95,11 +99,15 @@ FIELDS = ({fields})
 REVEAL_SECONDS = {float(timing["reveal_seconds"])}
 SCROLL_SECONDS = {float(timing["scroll_seconds"])}
 END_HOLD_SECONDS = {float(timing["end_hold_seconds"])}
+OUTRO_COVER_SECONDS = {float(timing["outro_cover_seconds"])}
+OUTRO_CONTENT_DELAY_SECONDS = {float(timing["outro_content_delay_seconds"])}
+OUTRO_HOLD_SECONDS = {float(timing["outro_hold_seconds"])}
 FADE_SECONDS = {float(timing["fade_seconds"])}
 BODY_WIPE_SECONDS = {float(timing["body_wipe_seconds"])}
 BADGE_DELAY_SECONDS = {float(timing["badge_delay_seconds"])}
 BADGE_SETTLE_SECONDS = {float(timing["badge_settle_seconds"])}
 INTRO_TAIL_HOLD_SECONDS = {float(timing["intro_tail_hold_seconds"])}
+MIN_SCROLL_STEP_SECONDS = {float(timing["min_scroll_step_seconds"])}
 MATERIAL_EASE = ({ease})
 
 IMAGE_FRAME = ({frame("image_frame")})
@@ -134,19 +142,85 @@ def automatic_duration(card_count: int) -> float:
         return 0.0
     reveal = min(card_count, VISIBLE_CARDS) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
     scroll = max(0, card_count - VISIBLE_CARDS) * SCROLL_SECONDS
-    return reveal + scroll + END_HOLD_SECONDS + FADE_SECONDS
+    return (
+        reveal
+        + scroll
+        + END_HOLD_SECONDS
+        + OUTRO_COVER_SECONDS
+        + OUTRO_CONTENT_DELAY_SECONDS
+        + OUTRO_HOLD_SECONDS
+        + FADE_SECONDS
+    )
+
+
+def timeline_parts(card_count: int) -> tuple[float, int, float, float]:
+    if card_count <= 0:
+        return 0.0, 0, 0.0, 0.0
+    intro = min(card_count, VISIBLE_CARDS) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
+    scroll_steps = max(0, card_count - VISIBLE_CARDS)
+    automatic_scroll = scroll_steps * SCROLL_SECONDS
+    fixed_tail = (
+        END_HOLD_SECONDS
+        + OUTRO_COVER_SECONDS
+        + OUTRO_CONTENT_DELAY_SECONDS
+        + OUTRO_HOLD_SECONDS
+        + FADE_SECONDS
+    )
+    return intro, scroll_steps, automatic_scroll, fixed_tail
 
 
 def chosen_duration(card_count: int, custom_duration: float | None) -> float:
     automatic = automatic_duration(card_count)
-    return max(1.0, float(custom_duration)) if custom_duration is not None else automatic
+    intro, scroll_steps, _automatic_scroll, fixed_tail = timeline_parts(card_count)
+    if custom_duration is None or scroll_steps <= 0:
+        return automatic
+    minimum = intro + scroll_steps * MIN_SCROLL_STEP_SECONDS + fixed_tail
+    return max(minimum, float(custom_duration))
+
+
+def scroll_seconds_per_card(card_count: int, custom_duration: float | None) -> float:
+    intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(card_count)
+    if scroll_steps <= 0:
+        return 0.0
+    if custom_duration is None:
+        return SCROLL_SECONDS
+    chosen_scroll = max(
+        scroll_steps * MIN_SCROLL_STEP_SECONDS,
+        chosen_duration(card_count, custom_duration) - intro - fixed_tail,
+    )
+    return chosen_scroll / scroll_steps
 
 
 def model_time(card_count: int, output_time: float, custom_duration: float | None) -> float:
-    automatic = automatic_duration(card_count)
-    chosen = chosen_duration(card_count, custom_duration)
-    speed = automatic / chosen if automatic > 0.0 and chosen > 0.0 else 1.0
-    return max(0.0, float(output_time)) * speed
+    output = max(0.0, float(output_time))
+    intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(card_count)
+    if custom_duration is None or scroll_steps <= 0 or automatic_scroll <= 0.0:
+        return output
+    if output <= intro:
+        return output
+    chosen_scroll = max(
+        scroll_steps * MIN_SCROLL_STEP_SECONDS,
+        chosen_duration(card_count, custom_duration) - intro - fixed_tail,
+    )
+    if output < intro + chosen_scroll:
+        return intro + ((output - intro) / max(0.001, chosen_scroll)) * automatic_scroll
+    return intro + automatic_scroll + (output - intro - chosen_scroll)
+
+
+def output_time_for_model_time(card_count: int, model_time_value: float, custom_duration: float | None) -> float:
+    model_value = max(0.0, float(model_time_value))
+    intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(card_count)
+    if custom_duration is None or scroll_steps <= 0 or automatic_scroll <= 0.0:
+        return model_value
+    if model_value <= intro:
+        return model_value
+    chosen_scroll = max(
+        scroll_steps * MIN_SCROLL_STEP_SECONDS,
+        chosen_duration(card_count, custom_duration) - intro - fixed_tail,
+    )
+    if model_value < intro + automatic_scroll:
+        return intro + ((model_value - intro) / max(0.001, automatic_scroll)) * chosen_scroll
+    return intro + chosen_scroll + (model_value - intro - automatic_scroll)
 
 
 def editing_time_for_card(card_count: int, card_index: int, custom_duration: float | None) -> float:
@@ -156,10 +230,10 @@ def editing_time_for_card(card_count: int, card_index: int, custom_duration: flo
     initial_count = min(card_count, VISIBLE_CARDS)
     scroll_start = initial_count * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
     target_model_time = scroll_start if safe_index < VISIBLE_CARDS else scroll_start + (safe_index - VISIBLE_CARDS + 1) * SCROLL_SECONDS
-    automatic = automatic_duration(card_count)
-    chosen = chosen_duration(card_count, custom_duration)
-    speed = automatic / chosen if automatic > 0.0 and chosen > 0.0 else 1.0
-    return min(chosen, target_model_time / max(0.001, speed))
+    return min(
+        chosen_duration(card_count, custom_duration),
+        output_time_for_model_time(card_count, target_model_time, custom_duration),
+    )
 
 
 def material_ease(value: float) -> float:
@@ -245,11 +319,15 @@ object SharedContract {{
     const val REVEAL_SECONDS = {float(timing["reveal_seconds"])}f
     const val SCROLL_SECONDS = {float(timing["scroll_seconds"])}f
     const val END_HOLD_SECONDS = {float(timing["end_hold_seconds"])}f
+    const val OUTRO_COVER_SECONDS = {float(timing["outro_cover_seconds"])}f
+    const val OUTRO_CONTENT_DELAY_SECONDS = {float(timing["outro_content_delay_seconds"])}f
+    const val OUTRO_HOLD_SECONDS = {float(timing["outro_hold_seconds"])}f
     const val FADE_SECONDS = {float(timing["fade_seconds"])}f
     const val BODY_WIPE_SECONDS = {float(timing["body_wipe_seconds"])}f
     const val BADGE_DELAY_SECONDS = {float(timing["badge_delay_seconds"])}f
     const val BADGE_SETTLE_SECONDS = {float(timing["badge_settle_seconds"])}f
     const val INTRO_TAIL_HOLD_SECONDS = {float(timing["intro_tail_hold_seconds"])}f
+    const val MIN_SCROLL_STEP_SECONDS = {float(timing["min_scroll_step_seconds"])}f
 
     const val MATERIAL_EASE_X1 = {float(ease[0])}f
     const val MATERIAL_EASE_Y1 = {float(ease[1])}f

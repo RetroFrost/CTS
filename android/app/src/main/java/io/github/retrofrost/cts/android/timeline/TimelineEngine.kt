@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.timeline
 
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.DurationRuntime
 import io.github.retrofrost.cts.android.shared.SharedContract
 import kotlin.math.floor
 import kotlin.math.max
@@ -9,42 +10,137 @@ import kotlin.math.min
 const val REVEAL_SECONDS = SharedContract.REVEAL_SECONDS
 const val SCROLL_SECONDS = SharedContract.SCROLL_SECONDS
 const val END_HOLD_SECONDS = SharedContract.END_HOLD_SECONDS
+const val OUTRO_COVER_SECONDS = SharedContract.OUTRO_COVER_SECONDS
+const val OUTRO_CONTENT_DELAY_SECONDS = SharedContract.OUTRO_CONTENT_DELAY_SECONDS
+const val OUTRO_HOLD_SECONDS = SharedContract.OUTRO_HOLD_SECONDS
 const val FADE_SECONDS = SharedContract.FADE_SECONDS
 const val BODY_WIPE_SECONDS = SharedContract.BODY_WIPE_SECONDS
 const val BADGE_DELAY_SECONDS = SharedContract.BADGE_DELAY_SECONDS
 const val BADGE_SETTLE_SECONDS = SharedContract.BADGE_SETTLE_SECONDS
 const val INTRO_TAIL_HOLD_SECONDS = SharedContract.INTRO_TAIL_HOLD_SECONDS
+const val MIN_SCROLL_STEP_SECONDS = SharedContract.MIN_SCROLL_STEP_SECONDS
 
+/** One card in the reference timeline. The body is always complete; xInCards performs motion. */
 data class CardPlacement(
     val cardIndex: Int,
-    /** Horizontal position measured in parent-card widths. */
     val xInCards: Float,
-    /** Left-to-right opening wipe. Scrolling cards are already fully uncovered. */
     val bodyReveal: Float,
-    /** True once the red badge has begun its entrance. */
     val badgeVisible: Boolean,
-    /** 0 = oversized/off the top edge, 1 = settled at its canonical size. */
     val badgeSettle: Float,
 )
 
+private data class TimelineParts(
+    val introSeconds: Float,
+    val scrollSteps: Int,
+    val automaticScrollSeconds: Float,
+    val fixedTailSeconds: Float,
+)
+
 object TimelineEngine {
-    fun automaticDuration(project: CtsProject): Float {
+    private fun timelineParts(project: CtsProject): TimelineParts {
         val cardCount = project.cards.size
-        if (cardCount <= 0) return 0f
+        if (cardCount <= 0) return TimelineParts(0f, 0, 0f, 0f)
         val visible = SharedContract.VISIBLE_CARDS
-        val reveal = min(cardCount, visible) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
-        val scroll = max(0, cardCount - visible) * SCROLL_SECONDS
-        return reveal + scroll + END_HOLD_SECONDS + FADE_SECONDS
+        val intro = min(cardCount, visible) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
+        val scrollSteps = max(0, cardCount - visible)
+        val automaticScroll = scrollSteps * SCROLL_SECONDS
+        val fixedTail = END_HOLD_SECONDS + OUTRO_COVER_SECONDS +
+            OUTRO_CONTENT_DELAY_SECONDS + OUTRO_HOLD_SECONDS + FADE_SECONDS
+        return TimelineParts(intro, scrollSteps, automaticScroll, fixedTail)
     }
 
-    fun duration(project: CtsProject): Float =
-        project.customDurationSeconds?.coerceAtLeast(1f) ?: automaticDuration(project)
+    fun automaticDuration(project: CtsProject): Float {
+        val parts = timelineParts(project)
+        return parts.introSeconds + parts.automaticScrollSeconds + parts.fixedTailSeconds
+    }
+
+    fun duration(project: CtsProject): Float {
+        val parts = timelineParts(project)
+        val automatic = automaticDuration(project)
+        val custom = DurationRuntime.resolve(project.customDurationSeconds) ?: return automatic
+        if (parts.scrollSteps <= 0) return automatic
+        val minimum = parts.introSeconds +
+            parts.scrollSteps * MIN_SCROLL_STEP_SECONDS +
+            parts.fixedTailSeconds
+        return max(minimum, custom)
+    }
+
+    private fun chosenScrollDuration(project: CtsProject, parts: TimelineParts): Float {
+        if (parts.scrollSteps <= 0) return 0f
+        if (DurationRuntime.resolve(project.customDurationSeconds) == null) {
+            return parts.automaticScrollSeconds
+        }
+        return max(
+            parts.scrollSteps * MIN_SCROLL_STEP_SECONDS,
+            duration(project) - parts.introSeconds - parts.fixedTailSeconds,
+        )
+    }
+
+    fun secondsPerCard(project: CtsProject): Float {
+        val parts = timelineParts(project)
+        if (parts.scrollSteps <= 0) return 0f
+        return chosenScrollDuration(project, parts) / parts.scrollSteps
+    }
 
     fun modelTime(project: CtsProject, outputTimeSeconds: Float): Float {
-        val automatic = automaticDuration(project)
-        val chosen = duration(project)
-        val speed = if (automatic > 0f && chosen > 0f) automatic / chosen else 1f
-        return outputTimeSeconds.coerceAtLeast(0f) * speed
+        val output = outputTimeSeconds.coerceAtLeast(0f)
+        val parts = timelineParts(project)
+        if (
+            DurationRuntime.resolve(project.customDurationSeconds) == null ||
+            parts.scrollSteps <= 0 ||
+            parts.automaticScrollSeconds <= 0f
+        ) return output
+        if (output <= parts.introSeconds) return output
+
+        val chosenScroll = chosenScrollDuration(project, parts)
+        if (output < parts.introSeconds + chosenScroll) {
+            val progress = (output - parts.introSeconds) / chosenScroll.coerceAtLeast(0.001f)
+            return parts.introSeconds + progress * parts.automaticScrollSeconds
+        }
+        return parts.introSeconds + parts.automaticScrollSeconds +
+            (output - parts.introSeconds - chosenScroll)
+    }
+
+    private fun outputTimeForModelTime(project: CtsProject, modelTimeSeconds: Float): Float {
+        val modelTime = modelTimeSeconds.coerceAtLeast(0f)
+        val parts = timelineParts(project)
+        if (
+            DurationRuntime.resolve(project.customDurationSeconds) == null ||
+            parts.scrollSteps <= 0 ||
+            parts.automaticScrollSeconds <= 0f
+        ) return modelTime
+        if (modelTime <= parts.introSeconds) return modelTime
+
+        val chosenScroll = chosenScrollDuration(project, parts)
+        if (modelTime < parts.introSeconds + parts.automaticScrollSeconds) {
+            val progress = (modelTime - parts.introSeconds) /
+                parts.automaticScrollSeconds.coerceAtLeast(0.001f)
+            return parts.introSeconds + progress * chosenScroll
+        }
+        return parts.introSeconds + chosenScroll +
+            (modelTime - parts.introSeconds - parts.automaticScrollSeconds)
+    }
+
+    private fun scrollEnd(project: CtsProject): Float {
+        val parts = timelineParts(project)
+        return parts.introSeconds + parts.automaticScrollSeconds
+    }
+
+    private fun outroStart(project: CtsProject): Float = scrollEnd(project) + END_HOLD_SECONDS
+
+    fun introCreditsVisible(project: CtsProject, outputTimeSeconds: Float): Boolean {
+        if (project.cards.isEmpty()) return false
+        return modelTime(project, outputTimeSeconds) < timelineParts(project).introSeconds
+    }
+
+    fun outroCoverProgress(project: CtsProject, outputTimeSeconds: Float): Float {
+        val elapsed = modelTime(project, outputTimeSeconds) - outroStart(project)
+        return materialEase(elapsed / OUTRO_COVER_SECONDS.coerceAtLeast(0.001f))
+    }
+
+    fun outroContentAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
+        val start = outroStart(project) + OUTRO_COVER_SECONDS + OUTRO_CONTENT_DELAY_SECONDS
+        return smoothStep((modelTime(project, outputTimeSeconds) - start) / 0.12f)
     }
 
     fun placements(project: CtsProject, outputTimeSeconds: Float): List<CardPlacement> {
@@ -63,12 +159,14 @@ object TimelineEngine {
                 for (index in 0 until initialCount) {
                     val localTime = modelTime - index * REVEAL_SECONDS
                     if (localTime < 0f) continue
+                    val slide = materialEase(localTime / BODY_WIPE_SECONDS)
                     val badgeTime = localTime - BADGE_DELAY_SECONDS
                     add(
                         CardPlacement(
                             cardIndex = index,
-                            xInCards = index.toFloat(),
-                            bodyReveal = materialEase(localTime / BODY_WIPE_SECONDS),
+                            // Each opening card comes from exactly one slot to its left.
+                            xInCards = index - 1f + slide,
+                            bodyReveal = 1f,
                             badgeVisible = badgeTime >= 0f,
                             badgeSettle = materialEase(badgeTime / BADGE_SETTLE_SECONDS),
                         ),
@@ -96,7 +194,8 @@ object TimelineEngine {
                 val badgeStart = if (index < initialCount) {
                     index * REVEAL_SECONDS + BADGE_DELAY_SECONDS
                 } else {
-                    scrollStart + (index - initialCount + 1) * SCROLL_SECONDS
+                    // The reference badge enters just before the incoming card reaches slot four.
+                    scrollStart + (index - initialCount + 1) * SCROLL_SECONDS - BADGE_DELAY_SECONDS
                 }
                 val badgeTime = modelTime - badgeStart
                 add(
@@ -116,7 +215,7 @@ object TimelineEngine {
         val modelTime = modelTime(project, outputTimeSeconds)
         val fadeStart = automaticDuration(project) - FADE_SECONDS
         if (modelTime <= fadeStart) return 1f
-        return 1f - smoothStep((modelTime - fadeStart) / FADE_SECONDS)
+        return 1f - smoothStep((modelTime - fadeStart) / FADE_SECONDS.coerceAtLeast(0.001f))
     }
 
     fun editingTimeForCard(project: CtsProject, cardIndex: Int): Float {
@@ -125,21 +224,16 @@ object TimelineEngine {
         val initialCount = min(project.cards.size, SharedContract.VISIBLE_CARDS)
         val scrollStart = initialCount * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
         val targetModelTime = if (safeIndex < SharedContract.VISIBLE_CARDS) {
-            scrollStart
+            safeIndex * REVEAL_SECONDS + BODY_WIPE_SECONDS
         } else {
             scrollStart + (safeIndex - SharedContract.VISIBLE_CARDS + 1) * SCROLL_SECONDS
         }
-        val automatic = automaticDuration(project)
-        val chosen = duration(project)
-        val speed = if (automatic > 0f && chosen > 0f) automatic / chosen else 1f
-        return min(chosen, targetModelTime / speed.coerceAtLeast(0.001f))
+        return min(duration(project), outputTimeForModelTime(project, targetModelTime))
     }
 
     fun formatTime(seconds: Float): String {
         val total = seconds.coerceAtLeast(0f).toInt()
-        val minutes = total / 60
-        val remainder = total % 60
-        return "%d:%02d".format(minutes, remainder)
+        return "%d:%02d".format(total / 60, total % 60)
     }
 
     private fun materialEase(value: Float): Float {

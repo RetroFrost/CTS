@@ -3,28 +3,34 @@ from __future__ import annotations
 import unittest
 
 from comparison_studio.data import MODEL_ILLUSTRATED, ProjectSettings
-from comparison_studio.easy_timing import with_easy_timing
+from comparison_studio.easy_timing import timeline_parts, with_easy_timing
 from comparison_studio.shared_contract import SCROLL_SECONDS, VISIBLE_CARDS
 from comparison_studio.studio_ui import StudioProjectSettings
 
 
 class EasyTimingTests(unittest.TestCase):
-    def test_custom_target_scales_the_complete_animation(self) -> None:
+    def test_custom_target_retimes_only_the_scroll_segment(self) -> None:
         base = ProjectSettings(
             custom_duration=30.0,
             model_id=MODEL_ILLUSTRATED,
             visible_cards=3,
         )
         easy = with_easy_timing(base)
-        automatic = easy.auto_duration(9)
-        expected_speed = automatic / 30.0
+        intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(easy, 9)
+        chosen_scroll = easy.duration(9) - intro - fixed_tail
 
         self.assertEqual(easy.duration(9), 30.0)
         self.assertEqual(easy.effective_visible_cards(), VISIBLE_CARDS)
-        self.assertAlmostEqual(easy.model_time(3.0, 9), 3.0 * expected_speed, places=6)
-        self.assertNotEqual(base.model_time(3.0, 9), easy.model_time(3.0, 9))
+        self.assertAlmostEqual(easy.model_time(3.0, 9), 3.0, places=6)
+        self.assertAlmostEqual(
+            easy.model_time(intro + chosen_scroll / 2.0, 9),
+            intro + automatic_scroll / 2.0,
+            places=6,
+        )
+        self.assertNotEqual(base.model_time(intro + chosen_scroll / 2.0, 9), easy.model_time(intro + chosen_scroll / 2.0, 9))
+        self.assertEqual(scroll_steps, 5)
 
-    def test_scroll_cadence_scales_with_android_speed(self) -> None:
+    def test_scroll_cadence_uses_the_remaining_target_time(self) -> None:
         settings = with_easy_timing(
             ProjectSettings(
                 custom_duration=30.0,
@@ -32,25 +38,29 @@ class EasyTimingTests(unittest.TestCase):
                 visible_cards=3,
             )
         )
-        expected_speed = settings.auto_duration(9) / settings.duration(9)
+        intro, scroll_steps, automatic_scroll, fixed_tail = timeline_parts(settings, 9)
+        chosen_scroll = settings.duration(9) - intro - fixed_tail
+        expected_seconds_per_card = chosen_scroll / scroll_steps
+        expected_speed = automatic_scroll / chosen_scroll
 
+        self.assertAlmostEqual(settings.seconds_per_card(9), expected_seconds_per_card, places=6)
+        self.assertAlmostEqual(settings.speed_multiplier(9), expected_speed, places=6)
+
+        during_scroll = 16.6
         self.assertAlmostEqual(
-            settings.seconds_per_card(9),
-            SCROLL_SECONDS / expected_speed,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            settings.model_time(16.6, 9),
-            16.6 * expected_speed,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            settings.model_time(28.2, 9),
-            28.2 * expected_speed,
+            settings.model_time(during_scroll, 9),
+            intro + (during_scroll - intro) * expected_speed,
             places=6,
         )
 
-    def test_custom_target_is_honored_when_all_cards_fit(self) -> None:
+        after_scroll = intro + chosen_scroll + 1.0
+        self.assertAlmostEqual(
+            settings.model_time(after_scroll, 9),
+            intro + automatic_scroll + 1.0,
+            places=6,
+        )
+
+    def test_custom_target_is_ignored_when_all_cards_fit(self) -> None:
         settings = with_easy_timing(
             ProjectSettings(
                 custom_duration=100.0,
@@ -60,13 +70,9 @@ class EasyTimingTests(unittest.TestCase):
         )
 
         self.assertEqual(settings.effective_visible_cards(), VISIBLE_CARDS)
-        self.assertAlmostEqual(settings.duration(3), 100.0)
+        self.assertAlmostEqual(settings.duration(3), settings.auto_duration(3))
         self.assertEqual(settings.seconds_per_card(3), 0.0)
-        self.assertAlmostEqual(
-            settings.model_time(50.0, 3),
-            settings.auto_duration(3) / 2.0,
-            places=6,
-        )
+        self.assertAlmostEqual(settings.model_time(5.0, 3), 5.0, places=6)
 
     def test_visual_settings_survive_easy_wrapper(self) -> None:
         base = StudioProjectSettings(

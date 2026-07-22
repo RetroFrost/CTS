@@ -1,5 +1,6 @@
 package io.github.retrofrost.cts.android.model
 
+import android.media.MediaFormat
 import io.github.retrofrost.cts.android.shared.SHARED_SAMPLE_CARDS
 import io.github.retrofrost.cts.android.shared.SharedContract
 import java.util.UUID
@@ -73,6 +74,47 @@ data class CtsCard(
         copy(imageSubcard = subcard.copy(parentCardId = id, transform = subcard.transform.clamped()))
 }
 
+/** One soundtrack is enough for the fast CTS workflow and remains desktop compatible. */
+data class SoundtrackSettings(
+    val uri: String? = null,
+    val displayName: String = "",
+    val volume: Float = 1f,
+    val loop: Boolean = true,
+) {
+    fun normalized(): SoundtrackSettings = copy(volume = volume.coerceIn(0f, 2f))
+}
+
+/** Device encoder selections and quality controls used by the background exporter. */
+data class ExportSettings(
+    val width: Int = 1280,
+    val height: Int = 720,
+    val fps: Int = 30,
+    val videoBitrate: Int = 6_000_000,
+    val videoMime: String = MediaFormat.MIMETYPE_VIDEO_AVC,
+    val videoEncoderName: String? = null,
+    val audioBitrate: Int = 192_000,
+    val audioEncoderName: String? = null,
+) {
+    fun normalized(): ExportSettings {
+        val safeWidth = width.coerceIn(640, 3840).let { it - it % 2 }
+        val safeHeight = height.coerceIn(360, 2160).let { it - it % 2 }
+        val safeMime = when (videoMime) {
+            MediaFormat.MIMETYPE_VIDEO_HEVC -> MediaFormat.MIMETYPE_VIDEO_HEVC
+            else -> MediaFormat.MIMETYPE_VIDEO_AVC
+        }
+        return copy(
+            width = safeWidth,
+            height = safeHeight,
+            fps = fps.coerceIn(15, 60),
+            videoBitrate = videoBitrate.coerceIn(1_000_000, 50_000_000),
+            videoMime = safeMime,
+            videoEncoderName = videoEncoderName?.takeIf { it.isNotBlank() },
+            audioBitrate = audioBitrate.coerceIn(64_000, 320_000),
+            audioEncoderName = audioEncoderName?.takeIf { it.isNotBlank() },
+        )
+    }
+}
+
 data class CtsProject(
     val version: Int = SharedContract.PROJECT_VERSION,
     val name: String = "Untitled comparison",
@@ -80,13 +122,19 @@ data class CtsProject(
     val cards: List<CtsCard> = sampleCards(),
     /** Retained only for old project-file compatibility; the canonical badge is always shown. */
     val showHexagons: Boolean = true,
+    /** Null uses automatic timing; a value retimes only horizontal card scrolling. */
     val customDurationSeconds: Float? = null,
+    val soundtrack: SoundtrackSettings = SoundtrackSettings(),
+    val export: ExportSettings = ExportSettings(),
 ) {
     fun normalized(): CtsProject = copy(
         version = SharedContract.PROJECT_VERSION,
         model = VisualModel.Illustrated,
         cards = cards.map { it.withOwnedImageSubcard() },
         showHexagons = true,
+        customDurationSeconds = DurationRuntime.normalizeProjectValue(customDurationSeconds),
+        soundtrack = soundtrack.normalized(),
+        export = export.normalized(),
     )
 
     fun updateCard(cardId: String, update: (CtsCard) -> CtsCard): CtsProject = copy(

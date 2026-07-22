@@ -1,9 +1,12 @@
 package io.github.retrofrost.cts.android.persistence
 
+import android.media.MediaFormat
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.ExportSettings
 import io.github.retrofrost.cts.android.model.ImageSubcard
 import io.github.retrofrost.cts.android.model.NormalizedRect
+import io.github.retrofrost.cts.android.model.SoundtrackSettings
 import io.github.retrofrost.cts.android.model.VisualModel
 import org.json.JSONArray
 import org.json.JSONObject
@@ -44,11 +47,17 @@ object ProjectJson {
             .put("project_name", normalized.name)
             .put("card_ids", JSONArray(normalized.cards.map { it.id }))
             .put("image_subcard_ids", JSONArray(normalized.cards.map { it.imageSubcard.id }))
+            .put("soundtrack_display_name", normalized.soundtrack.displayName)
+            .put("video_mime", normalized.export.videoMime)
+            .put("video_encoder_name", normalized.export.videoEncoderName ?: JSONObject.NULL)
+            .put("audio_encoder_name", normalized.export.audioEncoderName ?: JSONObject.NULL)
+            .put("video_bitrate", normalized.export.videoBitrate)
+            .put("audio_bitrate", normalized.export.audioBitrate)
 
         val settings = JSONObject()
-            .put("width", 1920)
-            .put("height", 1080)
-            .put("fps", 30)
+            .put("width", normalized.export.width)
+            .put("height", normalized.export.height)
+            .put("fps", normalized.export.fps)
             .put("custom_duration", normalized.customDurationSeconds ?: JSONObject.NULL)
             .put("model_id", normalized.model.id)
             .put("visible_cards", 0)
@@ -59,9 +68,24 @@ object ProjectJson {
                 put("description", "Description")
                 put("image", "Image")
             })
-            .put("soundtrack_master_volume", 1.0)
+            .put("soundtrack_master_volume", normalized.soundtrack.volume)
             .put("hexagons_bounce", true)
             .put("show_hexagons", normalized.showHexagons)
+
+        val audioTracks = JSONArray()
+        normalized.soundtrack.uri?.takeIf { it.isNotBlank() }?.let { uri ->
+            audioTracks.put(
+                JSONObject()
+                    .put("path", uri)
+                    .put("start_time", 0.0)
+                    .put("trim_start", 0.0)
+                    .put("trim_end", JSONObject.NULL)
+                    .put("volume", normalized.soundtrack.volume)
+                    .put("fade_in", 0.0)
+                    .put("fade_out", 0.0)
+                    .put("loop", normalized.soundtrack.loop),
+            )
+        }
 
         return JSONObject()
             .put("version", 3)
@@ -72,7 +96,7 @@ object ProjectJson {
                     .put("rows", rows),
             )
             .put("settings", settings)
-            .put("audio_tracks", JSONArray())
+            .put("audio_tracks", audioTracks)
             .put("transform_space", "per_card_image_frame_v3")
             .put("transform_overrides", transforms)
             .put("android", android)
@@ -126,8 +150,9 @@ object ProjectJson {
             setOf("image", "artwork", "picture", "photo", "image path", "image url"),
         )
 
-        val ids = root.optJSONObject("android")?.optJSONArray("card_ids")
-        val subcardIds = root.optJSONObject("android")?.optJSONArray("image_subcard_ids")
+        val android = root.optJSONObject("android")
+        val ids = android?.optJSONArray("card_ids")
+        val subcardIds = android?.optJSONArray("image_subcard_ids")
         val transforms = root.optJSONObject("transform_overrides") ?: JSONObject()
 
         fun cell(row: JSONArray, column: Int): String =
@@ -171,7 +196,28 @@ object ProjectJson {
                 .takeIf { !it.isNaN() }
                 ?.toFloat()
         }
-        val android = root.optJSONObject("android")
+        val firstAudio = root.optJSONArray("audio_tracks")?.optJSONObject(0)
+        val soundtrack = SoundtrackSettings(
+            uri = firstAudio?.optString("path")?.takeIf { it.isNotBlank() },
+            displayName = android?.optString("soundtrack_display_name").orEmpty(),
+            volume = firstAudio?.optDouble(
+                "volume",
+                settings.optDouble("soundtrack_master_volume", 1.0),
+            )?.toFloat() ?: 1f,
+            loop = firstAudio?.optBoolean("loop", true) ?: true,
+        )
+        val export = ExportSettings(
+            width = settings.optInt("width", 1280),
+            height = settings.optInt("height", 720),
+            fps = settings.optInt("fps", 30),
+            videoBitrate = android?.optInt("video_bitrate", 6_000_000) ?: 6_000_000,
+            videoMime = android?.optString("video_mime")
+                ?.takeIf { it == MediaFormat.MIMETYPE_VIDEO_HEVC }
+                ?: MediaFormat.MIMETYPE_VIDEO_AVC,
+            videoEncoderName = android?.nullableString("video_encoder_name"),
+            audioBitrate = android?.optInt("audio_bitrate", 192_000) ?: 192_000,
+            audioEncoderName = android?.nullableString("audio_encoder_name"),
+        )
 
         return CtsProject(
             name = android?.optString("project_name")?.takeIf { it.isNotBlank() }
@@ -180,11 +226,14 @@ object ProjectJson {
             cards = cards,
             showHexagons = settings.optBoolean("show_hexagons", true),
             customDurationSeconds = customDuration,
+            soundtrack = soundtrack,
+            export = export,
         )
     }
 
     private fun decodeCardProject(root: JSONObject): CtsProject {
         val settings = root.optJSONObject("settings") ?: JSONObject()
+        val android = root.optJSONObject("android")
         val cardArray = root.optJSONArray("cards") ?: JSONArray()
         val cards = buildList {
             for (index in 0 until cardArray.length()) {
@@ -235,6 +284,7 @@ object ProjectJson {
             }
         }
 
+        val firstAudio = root.optJSONArray("audio_tracks")?.optJSONObject(0)
         return CtsProject(
             name = root.optString("name", "Imported comparison"),
             model = VisualModel.fromId(
@@ -249,8 +299,29 @@ object ProjectJson {
                 .optDouble("custom_duration", Double.NaN)
                 .takeIf { !it.isNaN() }
                 ?.toFloat(),
+            soundtrack = SoundtrackSettings(
+                uri = firstAudio?.optString("path")?.takeIf { it.isNotBlank() },
+                displayName = android?.optString("soundtrack_display_name").orEmpty(),
+                volume = firstAudio?.optDouble("volume", 1.0)?.toFloat() ?: 1f,
+                loop = firstAudio?.optBoolean("loop", true) ?: true,
+            ),
+            export = ExportSettings(
+                width = settings.optInt("width", 1280),
+                height = settings.optInt("height", 720),
+                fps = settings.optInt("fps", 30),
+                videoBitrate = android?.optInt("video_bitrate", 6_000_000) ?: 6_000_000,
+                videoMime = android?.optString("video_mime")
+                    ?.takeIf { it == MediaFormat.MIMETYPE_VIDEO_HEVC }
+                    ?: MediaFormat.MIMETYPE_VIDEO_AVC,
+                videoEncoderName = android?.nullableString("video_encoder_name"),
+                audioBitrate = android?.optInt("audio_bitrate", 192_000) ?: 192_000,
+                audioEncoderName = android?.nullableString("audio_encoder_name"),
+            ),
         )
     }
+
+    private fun JSONObject.nullableString(key: String): String? =
+        if (!has(key) || isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
 
     private fun JSONArray.toRect(): NormalizedRect? {
         if (length() != 4) return null

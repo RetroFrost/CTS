@@ -14,19 +14,48 @@
   "timing": {
     "reveal_seconds": 2.0,
     "scroll_seconds": 3.3333333333333335,
-    "end_hold_seconds": 2.0,
-    "fade_seconds": 0.8,
+    "end_hold_seconds": 0.25,
+    "fade_seconds": 1.2,
     "body_wipe_seconds": 1.1,
     "badge_delay_seconds": 0.55,
     "badge_settle_seconds": 2.6,
     "intro_tail_hold_seconds": 0.8,
-    "material_ease": [0.4, 0.0, 0.2, 1.0]
+    "material_ease": [
+      0.4,
+      0.0,
+      0.2,
+      1.0
+    ],
+    "min_scroll_step_seconds": 0.12,
+    "outro_cover_seconds": 0.32,
+    "outro_content_delay_seconds": 0.18,
+    "outro_hold_seconds": 4.25
   },
   "layout": {
-    "image_frame": [0.008, 0.0, 0.984, 0.807],
-    "title_frame": [0.008, 0.807, 0.984, 0.088],
-    "description_frame": [0.008, 0.895, 0.984, 0.101],
-    "badge_frame": [0.245, 0.063, 0.51, 0.263]
+    "image_frame": [
+      0.008,
+      0.0,
+      0.984,
+      0.807
+    ],
+    "title_frame": [
+      0.008,
+      0.807,
+      0.984,
+      0.088
+    ],
+    "description_frame": [
+      0.008,
+      0.895,
+      0.984,
+      0.101
+    ],
+    "badge_frame": [
+      0.245,
+      0.063,
+      0.51,
+      0.263
+    ]
   },
   "colors": {
     "background": "#000000",

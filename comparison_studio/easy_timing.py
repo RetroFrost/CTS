@@ -2,9 +2,8 @@ from __future__ import annotations
 
 """CTS Easy timing policy generated from the shared Android-desktop contract.
 
-A custom target duration scales the complete animation exactly as Android does. Entrances,
-scrolling, the ending hold, and the fade therefore remain proportionally identical on both
-platforms instead of drifting into separate timing implementations.
+A custom target duration changes only the horizontal card-scroll interval. Entrances,
+the ending hold, and the fade keep their canonical durations on both platforms.
 """
 
 from dataclasses import asdict
@@ -12,35 +11,31 @@ from typing import Any, TypeVar
 
 from .data import ProjectSettings
 from .shared_contract import (
-    END_HOLD_SECONDS,
-    FADE_SECONDS,
-    INTRO_TAIL_HOLD_SECONDS,
-    REVEAL_SECONDS,
+    MIN_SCROLL_STEP_SECONDS,
     SCROLL_SECONDS,
     VISIBLE_CARDS,
     automatic_duration,
     chosen_duration,
     model_time as shared_model_time,
+    scroll_seconds_per_card as shared_scroll_seconds_per_card,
+    timeline_parts as shared_timeline_parts,
 )
 
 SettingsT = TypeVar("SettingsT", bound=ProjectSettings)
 _EASY_SETTINGS_TYPES: dict[type, type] = {}
 
 
-def timeline_parts(settings: ProjectSettings, card_count: int) -> tuple[float, int, float, float]:
-    """Return intro seconds, scroll steps, automatic scroll seconds, and fixed tail."""
-    if card_count <= 0:
-        return 0.0, 0, 0.0, 0.0
-    intro = min(card_count, VISIBLE_CARDS) * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
-    scroll_steps = max(0, card_count - VISIBLE_CARDS)
-    automatic_scroll = scroll_steps * SCROLL_SECONDS
-    fixed_tail = END_HOLD_SECONDS + FADE_SECONDS
-    return intro, scroll_steps, automatic_scroll, fixed_tail
+def timeline_parts(_settings: ProjectSettings, card_count: int) -> tuple[float, int, float, float]:
+    """Return intro seconds, scroll step count, automatic scroll seconds, and fixed tail."""
+    return shared_timeline_parts(card_count)
 
 
-def minimum_duration(_settings: ProjectSettings, card_count: int) -> float:
-    """Android accepts any custom duration of at least one second."""
-    return 0.0 if card_count <= 0 else 1.0
+def minimum_duration(settings: ProjectSettings, card_count: int) -> float:
+    """Shortest safe target while retaining a visible movement for every scroll step."""
+    intro, scroll_steps, _automatic_scroll, fixed_tail = timeline_parts(settings, card_count)
+    if scroll_steps <= 0:
+        return automatic_duration(card_count)
+    return intro + scroll_steps * MIN_SCROLL_STEP_SECONDS + fixed_tail
 
 
 class EasyTimingMixin:
@@ -56,20 +51,18 @@ class EasyTimingMixin:
         return chosen_duration(card_count, self.custom_duration)
 
     def speed_multiplier(self, card_count: int) -> float:
-        automatic = self.auto_duration(card_count)
-        chosen = self.duration(card_count)
-        if automatic <= 0.0 or chosen <= 0.0:
+        """Compatibility value for the horizontal scroll segment only."""
+        _intro, scroll_steps, automatic_scroll, _fixed_tail = timeline_parts(self, card_count)
+        if scroll_steps <= 0 or automatic_scroll <= 0.0:
             return 1.0
-        return automatic / chosen
+        chosen_scroll = self.seconds_per_card(card_count) * scroll_steps
+        return automatic_scroll / max(0.001, chosen_scroll)
 
     def model_time(self, output_time: float, card_count: int) -> float:
         return shared_model_time(card_count, output_time, self.custom_duration)
 
     def seconds_per_card(self, card_count: int) -> float:
-        if card_count <= VISIBLE_CARDS:
-            return 0.0
-        speed = self.speed_multiplier(card_count)
-        return SCROLL_SECONDS / speed if speed > 0.0 else 0.0
+        return shared_scroll_seconds_per_card(card_count, self.custom_duration)
 
 
 def _easy_settings_type(base_type: type) -> type:

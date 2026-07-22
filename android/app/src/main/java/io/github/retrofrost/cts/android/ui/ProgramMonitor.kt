@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import io.github.retrofrost.cts.android.layout.CardContentLayout
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
@@ -99,6 +100,9 @@ fun ProgramMonitor(
 ) {
     val placements = TimelineEngine.placements(project, positionSeconds)
     val fadeAlpha = TimelineEngine.fadeAlpha(project, positionSeconds)
+    val showIntroCredits = TimelineEngine.introCreditsVisible(project, positionSeconds)
+    val outroCover = TimelineEngine.outroCoverProgress(project, positionSeconds)
+    val outroContent = TimelineEngine.outroContentAlpha(project, positionSeconds)
 
     Surface(modifier = modifier, color = Color.Black, shadowElevation = 4.dp) {
         BoxWithConstraints(
@@ -107,8 +111,9 @@ fun ProgramMonitor(
                 .background(Color.Black)
                 .clipToBounds(),
         ) {
-            // The reference always uses exactly four equal columns.
             val cardWidth = maxWidth / 4
+            if (showIntroCredits) ReferenceIntroCreditsPanel(cardWidth)
+
             placements.forEach { placement ->
                 val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
                 ReferenceParentCard(
@@ -123,8 +128,17 @@ fun ProgramMonitor(
                         .offset(x = cardWidth * placement.xInCards)
                         .width(cardWidth)
                         .fillMaxHeight()
-                        .alpha(fadeAlpha)
-                        .zIndex(placement.cardIndex.toFloat()),
+                        .zIndex(placement.cardIndex.toFloat() + 1f),
+                )
+            }
+
+            ReferenceOutroOverlay(cardWidth, outroCover, outroContent)
+            if (fadeAlpha < 0.999f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 1f - fadeAlpha))
+                        .zIndex(200f),
                 )
             }
         }
@@ -202,8 +216,9 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
+    val frames = CardContentLayout.frames(card)
     Frame(
-        ImageFrame,
+        frames.image,
         Modifier.background(
             Brush.verticalGradient(
                 0f to Color(0xFF138DDB),
@@ -221,24 +236,28 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
         )
     }
 
-    Frame(TitleFrame, Modifier.background(Color(0xFFF0F0F0))) {
-        CardText(
-            text = card.title,
-            color = Color(0xFF101010),
-            fontWeight = FontWeight.Black,
-            fontSize = 8.4.sp,
-            maxLines = 2,
-        )
+    frames.title?.let { titleFrame ->
+        Frame(titleFrame, Modifier.background(Color(0xFFF0F0F0))) {
+            CardText(
+                text = card.title,
+                color = Color(0xFF101010),
+                fontWeight = FontWeight.Black,
+                fontSize = 8.4.sp,
+                maxLines = 2,
+            )
+        }
     }
 
-    Frame(DescriptionFrame, Modifier.background(Color(0xFF625F56))) {
-        CardText(
-            text = card.description,
-            color = Color.White,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 5.4.sp,
-            maxLines = 3,
-        )
+    frames.description?.let { descriptionFrame ->
+        Frame(descriptionFrame, Modifier.background(Color(0xFF625F56))) {
+            CardText(
+                text = card.description,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 5.4.sp,
+                maxLines = 3,
+            )
+        }
     }
 
     // Four black separators are visible in the reference at every stage of movement.
