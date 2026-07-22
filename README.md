@@ -1,4 +1,4 @@
-# CTS — Comparison Timeline Studio
+# (PC VERSION OUTDATED, USE ANDROID INSTEAD!) CTS — Comparison Timeline Studio
 
 ![Version](https://img.shields.io/badge/version-0.4.5-6d55f7)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)
