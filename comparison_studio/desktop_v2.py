@@ -302,6 +302,16 @@ class DesktopMainWindow(CsvTextEasyMainWindow):
         layout.addLayout(footer)
         return rail
 
+    def _update_android_summary(self, *_args) -> None:
+        super()._update_android_summary(*_args)
+        if not hasattr(self, "header_export_button") or not hasattr(self, "table"):
+            return
+        ready = bool(self.cards())
+        self.header_export_button.setEnabled(ready)
+        self.header_export_button.setToolTip(
+            "Export the finished MP4" if ready else "Paste CSV text first"
+        )
+
     def _set_fix_visible(self, visible: bool) -> None:
         self._fix_visible = visible
         self.fix_panel.setVisible(visible)
