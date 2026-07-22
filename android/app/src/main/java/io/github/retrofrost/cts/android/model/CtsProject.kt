@@ -122,6 +122,7 @@ data class CtsProject(
     val cards: List<CtsCard> = sampleCards(),
     /** Retained only for old project-file compatibility; the canonical badge is always shown. */
     val showHexagons: Boolean = true,
+    /** Null keeps the old automatic-length behavior; a value scales the whole animation. */
     val customDurationSeconds: Float? = null,
     val soundtrack: SoundtrackSettings = SoundtrackSettings(),
     val export: ExportSettings = ExportSettings(),
@@ -131,6 +132,7 @@ data class CtsProject(
         model = VisualModel.Illustrated,
         cards = cards.map { it.withOwnedImageSubcard() },
         showHexagons = true,
+        customDurationSeconds = DurationRuntime.normalizeProjectValue(customDurationSeconds),
         soundtrack = soundtrack.normalized(),
         export = export.normalized(),
     )
