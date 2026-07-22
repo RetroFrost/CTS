@@ -14,36 +14,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "shared" / "cts_contract.json"
 PYTHON_PATH = ROOT / "comparison_studio" / "shared_contract.py"
-KOTLIN_PATH = (
-    ROOT
-    / "android"
-    / "app"
-    / "src"
-    / "main"
-    / "java"
-    / "io"
-    / "github"
-    / "retrofrost"
-    / "cts"
-    / "android"
-    / "shared"
-    / "SharedContract.kt"
-)
-PROGRAM_MONITOR_PATH = (
-    ROOT
-    / "android"
-    / "app"
-    / "src"
-    / "main"
-    / "java"
-    / "io"
-    / "github"
-    / "retrofrost"
-    / "cts"
-    / "android"
-    / "ui"
-    / "ProgramMonitor.kt"
-)
+KOTLIN_PATH = ROOT / "android/app/src/main/java/io/github/retrofrost/cts/android/shared/SharedContract.kt"
+PROGRAM_MONITOR_PATH = ROOT / "android/app/src/main/java/io/github/retrofrost/cts/android/ui/ProgramMonitor.kt"
 
 TIMING_CONSTANTS = {
     "REVEAL_SECONDS": "reveal_seconds",
@@ -229,12 +201,12 @@ def render_kotlin(spec: dict[str, Any]) -> str:
     for key, prefix in FRAME_CONSTANTS.items():
         x, y, width, height = (float(value) for value in layout[key])
         frame_lines.extend(
-            [
+            (
                 f"    const val {prefix}_X = {x}f",
                 f"    const val {prefix}_Y = {y}f",
                 f"    const val {prefix}_WIDTH = {width}f",
                 f"    const val {prefix}_HEIGHT = {height}f",
-            ]
+            )
         )
     color_lines = [
         f"    const val {COLOR_CONSTANTS[name]} = {quoted(value)}"
@@ -255,6 +227,8 @@ def render_kotlin(spec: dict[str, Any]) -> str:
         for card in spec["sample_cards"]
     )
     ease = timing["material_ease"]
+    frames = "\n".join(frame_lines)
+    colors = "\n".join(color_lines)
     return f'''package io.github.retrofrost.cts.android.shared
 
 /** Generated from shared/cts_contract.json. Do not edit by hand. */
@@ -282,9 +256,9 @@ object SharedContract {{
     const val MATERIAL_EASE_X2 = {float(ease[2])}f
     const val MATERIAL_EASE_Y2 = {float(ease[3])}f
 
-{chr(10).join(frame_lines)}
+{frames}
 
-{chr(10).join(color_lines)}
+{colors}
 }}
 
 data class SharedSampleCard(
@@ -300,12 +274,12 @@ val SHARED_SAMPLE_CARDS = listOf(
 '''
 
 
-def _kotlin_constant(source: str, name: str) -> str | None:
+def kotlin_constant(source: str, name: str) -> str | None:
     match = re.search(rf"(?:const )?val {re.escape(name)}(?:\s*:\s*\w+)?\s*=\s*([^\n]+)", source)
     return match.group(1).strip() if match else None
 
 
-def _float_literal(value: str | None) -> float | None:
+def float_literal(value: str | None) -> float | None:
     if value is None:
         return None
     try:
@@ -316,11 +290,11 @@ def _float_literal(value: str | None) -> float | None:
 
 def semantic_check(spec: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    python_values = runpy.run_path(str(PYTHON_PATH))
     model = spec["canonical_model"]
     timing = spec["timing"]
     layout = spec["layout"]
 
+    python_values = runpy.run_path(str(PYTHON_PATH))
     expected_python: dict[str, Any] = {
         "CONTRACT_VERSION": spec["contract_version"],
         "PROJECT_VERSION": spec["project_version"],
@@ -355,35 +329,34 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
         errors.append("desktop sample cards do not match the shared contract")
 
     kotlin = KOTLIN_PATH.read_text(encoding="utf-8")
-    string_constants = {
+    for name, expected in {
         "MODEL_ID": model["id"],
         "MODEL_LABEL": model["label"],
-        **{constant: value for value, constant in COLOR_CONSTANTS.items()},
-    }
-    integer_constants = {
+    }.items():
+        if kotlin_constant(kotlin, name) != quoted(expected):
+            errors.append(f"Android {name} does not match the shared contract")
+    for color_name, constant_name in COLOR_CONSTANTS.items():
+        if kotlin_constant(kotlin, constant_name) != quoted(spec["colors"][color_name]):
+            errors.append(f"Android {constant_name} does not match the shared contract")
+    for name, expected in {
         "CONTRACT_VERSION": spec["contract_version"],
         "PROJECT_VERSION": spec["project_version"],
         "VISIBLE_CARDS": model["visible_cards"],
-    }
-    for name, expected in string_constants.items():
-        if _kotlin_constant(kotlin, name) != quoted(expected):
-            errors.append(f"Android {name} does not match the shared contract")
-    for name, expected in integer_constants.items():
-        if _kotlin_constant(kotlin, name) != str(expected):
+    }.items():
+        if kotlin_constant(kotlin, name) != str(expected):
             errors.append(f"Android {name} does not match the shared contract")
     for name, key in TIMING_CONSTANTS.items():
-        if _float_literal(_kotlin_constant(kotlin, name)) != float(timing[key]):
+        if float_literal(kotlin_constant(kotlin, name)) != float(timing[key]):
             errors.append(f"Android {name} does not match the shared contract")
     for index, suffix in enumerate(("X1", "Y1", "X2", "Y2")):
         name = f"MATERIAL_EASE_{suffix}"
-        if _float_literal(_kotlin_constant(kotlin, name)) != float(timing["material_ease"][index]):
+        if float_literal(kotlin_constant(kotlin, name)) != float(timing["material_ease"][index]):
             errors.append(f"Android {name} does not match the shared contract")
     for key, prefix in FRAME_CONSTANTS.items():
         for suffix, expected in zip(("X", "Y", "WIDTH", "HEIGHT"), layout[key]):
             name = f"{prefix}_{suffix}"
-            if _float_literal(_kotlin_constant(kotlin, name)) != float(expected):
+            if float_literal(kotlin_constant(kotlin, name)) != float(expected):
                 errors.append(f"Android {name} does not match the shared contract")
-
     for value in model["legacy_ids"] + spec["fields"]:
         if quoted(value) not in kotlin:
             errors.append(f"Android adapter is missing {value!r}")
@@ -399,18 +372,21 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
         "description_frame": "DescriptionFrame",
         "badge_frame": "BadgeFrame",
     }.items():
-        match = re.search(rf"private val {class_name}\s*=\s*NormalizedRect\(([^)]]+)\)", monitor)
+        match = re.search(rf"private val {class_name}\s*=\s*NormalizedRect\(([^)]+)\)", monitor)
         actual = None
         if match:
-            actual = tuple(float(value.strip().rstrip("fF")) for value in match.group(1).split(","))
+            actual = tuple(
+                float(value.strip().rstrip("fF")) for value in match.group(1).split(",")
+            )
         expected = tuple(float(value) for value in layout[key])
         if actual != expected:
             errors.append(f"Android ProgramMonitor {class_name} does not match the shared layout")
+    monitor_upper = monitor.upper()
     for name, value in spec["colors"].items():
         if value.upper() in {"#000000", "#FFFFFF"}:
             continue
-        compose_hex = "0xFF" + value.lstrip("#").upper()
-        if compose_hex not in monitor.upper():
+        compose_hex = ("0xFF" + value.lstrip("#")).upper()
+        if compose_hex not in monitor_upper:
             errors.append(f"Android ProgramMonitor is missing shared color {name}={value}")
 
     return errors
