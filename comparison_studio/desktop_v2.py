@@ -99,6 +99,7 @@ class DesktopMainWindow(CsvTextEasyMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("CTS Desktop — Comparison Timeline Studio")
+        self.subtitle_label.setText("DESKTOP WORKSPACE")
         self.statusBar().showMessage("CTS Desktop · Paste data to create a comparison")
 
     def _build_header(self) -> QWidget:
