@@ -1,0 +1,38 @@
+name: Apply desktop adaptive card layout
+
+on:
+  push:
+    branches:
+      - agent/android-background-export
+    paths:
+      - tools/apply_desktop_adaptive_card_layout.py
+      - .github/workflows/apply-desktop-adaptive-card-layout.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/android-background-export
+          fetch-depth: 0
+      - name: Apply migration
+        run: python tools/apply_desktop_adaptive_card_layout.py
+      - name: Validate patch
+        run: git diff --check
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add comparison_studio/reference_illustrated.py tests/test_reference_illustrated.py
+          git commit -m "Reflow empty card fields across desktop and Android"
+          git push origin HEAD:agent/android-background-export
