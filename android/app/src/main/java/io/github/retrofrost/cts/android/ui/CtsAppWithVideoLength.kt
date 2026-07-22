@@ -186,16 +186,16 @@ internal fun parseVideoLength(text: String): Float? {
     val total = when (numbers.size) {
         1 -> numbers[0]
         2 -> {
-            if (numbers[1] !in 0..59) return null
-            numbers[0] * 60 + numbers[1]
+            if (numbers[1] !in 0L..59L) return null
+            numbers[0] * 60L + numbers[1]
         }
         3 -> {
-            if (numbers[1] !in 0..59 || numbers[2] !in 0..59) return null
-            numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+            if (numbers[1] !in 0L..59L || numbers[2] !in 0L..59L) return null
+            numbers[0] * 3600L + numbers[1] * 60L + numbers[2]
         }
         else -> return null
     }
-    if (total !in 1..86_400) return null
+    if (total !in 1L..86_400L) return null
     return total.toFloat()
 }
 
