@@ -81,12 +81,13 @@ internal fun BoxWithConstraintsScope.ReferenceOutroOverlay(
     contentAlpha: Float,
 ) {
     val overlayWidth = cardWidth * 3f
+    val overlayHeight = maxHeight
     if (coverProgress > 0f) {
         Box(
             Modifier
                 .align(Alignment.TopStart)
                 .width(overlayWidth)
-                .height(maxHeight * coverProgress.coerceIn(0f, 1f))
+                .height(overlayHeight * coverProgress.coerceIn(0f, 1f))
                 .background(Color(0xFF111111))
                 .zIndex(100f),
         )
@@ -111,13 +112,19 @@ internal fun BoxWithConstraintsScope.ReferenceOutroOverlay(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    OutroVideoBox("BEST VIDEO FOR YOU", Modifier.weight(1f).height(maxHeight * 0.36f))
-                    OutroVideoBox("NEWEST VIDEO", Modifier.weight(1f).height(maxHeight * 0.36f))
+                    OutroVideoBox(
+                        "BEST VIDEO FOR YOU",
+                        Modifier.weight(1f).height(overlayHeight * 0.36f),
+                    )
+                    OutroVideoBox(
+                        "NEWEST VIDEO",
+                        Modifier.weight(1f).height(overlayHeight * 0.36f),
+                    )
                 }
                 Box(
                     modifier = Modifier
                         .width(overlayWidth * 0.36f)
-                        .height(maxHeight * 0.22f)
+                        .height(overlayHeight * 0.22f)
                         .background(Color(0xFF625F56), RoundedCornerShape(8.dp))
                         .padding(8.dp),
                     contentAlignment = Alignment.Center,
@@ -138,7 +145,9 @@ internal fun BoxWithConstraintsScope.ReferenceOutroOverlay(
 @Composable
 private fun OutroVideoBox(label: String, modifier: Modifier) {
     Box(
-        modifier = modifier.background(Color(0xFFE00000), RoundedCornerShape(8.dp)).padding(10.dp),
+        modifier = modifier
+            .background(Color(0xFFE00000), RoundedCornerShape(8.dp))
+            .padding(10.dp),
         contentAlignment = Alignment.TopCenter,
     ) {
         Text(
