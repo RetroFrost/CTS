@@ -140,7 +140,7 @@ jobs:
             Sort-Object { [int]([regex]::Match($_.Name, 'part(\d+)$').Groups[1].Value) }
           if ($patchParts.Count -ne 8) { throw "Expected 8 Alpha 17 patch chunks, found $($patchParts.Count)." }
           $patchPath = "$env:RUNNER_TEMP\alpha17.patch"
-          $patchText = ($patchParts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          $patchText = (($patchParts | ForEach-Object { Get-Content $_.FullName -Raw }) -join '') -replace "`r`n","`n" -replace "`r","`n"
           [IO.File]::WriteAllText($patchPath, $patchText, [Text.UTF8Encoding]::new($false))
           $patchHash = (Get-FileHash $patchPath -Algorithm SHA256).Hash.ToLower()
           if ($patchHash -ne '5a79c91542a8a67d01d48c91020ebbc5d55ff02010e9afe20747c090da9ce094') { throw "Alpha 17 patch checksum mismatch: $patchHash" }
