@@ -15,7 +15,7 @@ The desktop edition is no longer an older independent design. Historical desktop
 2. Confirm the synchronized Reference Timeline design.
 3. Add optional music.
 4. Keep automatic timing or enter a target video length.
-5. Export the video, or open the manual editor for detailed changes.
+5. Export the video, or open the detailed editor for precise changes.
 
 Recommended fields:
 
@@ -25,6 +25,19 @@ Badge Value,Badge Label,Title,Description,Artwork
 ```
 
 Every field is optional. Each following row becomes one card.
+
+## Recreated desktop workspace
+
+The desktop application uses a PC-native workspace instead of stretching the Android layout across a monitor:
+
+- a persistent creation rail keeps the five-step workflow visible;
+- the Program Monitor receives most of the window;
+- the detailed card, mapping, and audio editor opens below the preview;
+- setup, preview, and manual editing can remain visible together;
+- the layout scales down for 1366×768 displays;
+- preview and MP4 export still use the Android-synchronized renderer and timing contract.
+
+Run `python run.py` to launch this workspace. The older workflow classes remain in the source tree for compatibility and tests, but they are no longer the default application shell.
 
 ## One shared Android–desktop contract
 
@@ -133,7 +146,8 @@ tools/sync_shared_contract.py               Generator and parity checker
 comparison_studio/shared_contract.py        Generated desktop adapter
 comparison_studio/reference_illustrated.py  Canonical desktop renderer
 comparison_studio/easy_timing.py            Android-compatible desktop timing
-comparison_studio/csv_text_easy.py          Synchronized desktop workflow
+comparison_studio/csv_text_easy.py          Shared workflow behavior
+comparison_studio/desktop_v2.py              Default PC-native application shell
 android/.../shared/SharedContract.kt         Generated Android adapter
 android/.../model/CtsProject.kt              Shared project/card model
 android/.../timeline/TimelineEngine.kt       Shared timing behavior
