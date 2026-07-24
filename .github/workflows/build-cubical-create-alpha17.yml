@@ -1,0 +1,210 @@
+name: Build Cubical Create Alpha 17
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'alpha17-patch.part*'
+      - '.github/workflows/build-cubical-create-alpha17.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux GTK 4 amd64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Alpha 16 and apply reviewed Alpha 17 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf cubical-create-alpha17
+          mkdir -p cubical-create-alpha17
+
+          mapfile -d '' source_parts < <(
+            find . -maxdepth 1 -type f \
+              -regextype posix-extended \
+              -regex './cubical-create-alpha16-source\.b64\.part[0-9]+' \
+              -print0 | sort -zV
+          )
+          test "${#source_parts[@]}" -eq 9
+          {
+            head -c 9000 "${source_parts[0]}"
+            for part in "${source_parts[@]:1}"; do cat "$part"; done
+          } | tr -d '\r\n' > "$RUNNER_TEMP/cubical-create-alpha16.b64"
+          base64 --decode "$RUNNER_TEMP/cubical-create-alpha16.b64" > "$RUNNER_TEMP/cubical-create-alpha16.zip"
+          echo 'f47872950de2c740764babe5e0d00d220be3734310d81d5f9e6e754a7351930b  '"$RUNNER_TEMP/cubical-create-alpha16.zip" | sha256sum -c -
+          unzip -tq "$RUNNER_TEMP/cubical-create-alpha16.zip"
+          unzip -q "$RUNNER_TEMP/cubical-create-alpha16.zip" -d cubical-create-alpha17
+
+          mapfile -d '' patch_parts < <(
+            find . -maxdepth 1 -type f \
+              -regextype posix-extended \
+              -regex './alpha17-patch\.part[0-9]+' \
+              -print0 | sort -zV
+          )
+          test "${#patch_parts[@]}" -eq 8
+          cat "${patch_parts[@]}" > "$RUNNER_TEMP/alpha17.patch"
+          echo '5a79c91542a8a67d01d48c91020ebbc5d55ff02010e9afe20747c090da9ce094  '"$RUNNER_TEMP/alpha17.patch" | sha256sum -c -
+          cd cubical-create-alpha17
+          patch -p4 --batch < "$RUNNER_TEMP/alpha17.patch"
+          grep -q '0.2.2-alpha.17' engine/engine_cli.py
+          grep -q 'render_output_frame' engine/ccengine/exporter.py
+          grep -q 'ID_PLAY' native/windows/main.cpp
+          grep -q 'play_button' native/linux-gtk/main.cpp
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config libgtk-4-dev python3-venv ffmpeg patch
+
+      - name: Test and bundle rendering engine
+        working-directory: cubical-create-alpha17
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r engine/requirements.txt pyinstaller pytest
+          PYTHONPATH=engine pytest -q
+          cd engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec
+          ./dist/cubical-create-engine self-test --directory "$RUNNER_TEMP/engine-self-test"
+
+      - name: Compile and integration-test native GTK application
+        working-directory: cubical-create-alpha17
+        run: |
+          cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-linux --parallel 2
+          CUBICAL_CREATE_ENGINE="$PWD/engine/dist/cubical-create-engine" ./build-linux/CubicalCreate --self-test
+
+      - name: Package DEB and portable archive
+        working-directory: cubical-create-alpha17
+        run: |
+          VERSION=0.2.2-alpha17
+          rm -rf stage-linux portable-linux
+          mkdir -p stage-linux/DEBIAN stage-linux/opt/cubical-create stage-linux/usr/bin stage-linux/usr/share/applications
+          cp packaging/linux/control stage-linux/DEBIAN/control
+          cp build-linux/CubicalCreate stage-linux/opt/cubical-create/CubicalCreate
+          cp engine/dist/cubical-create-engine stage-linux/opt/cubical-create/cubical-create-engine
+          cp README.md stage-linux/opt/cubical-create/README.md
+          cp packaging/linux/cubical-create.desktop stage-linux/usr/share/applications/cubical-create.desktop
+          ln -s /opt/cubical-create/CubicalCreate stage-linux/usr/bin/cubical-create
+          chmod 0755 stage-linux/opt/cubical-create/CubicalCreate stage-linux/opt/cubical-create/cubical-create-engine
+          dpkg-deb --root-owner-group --build stage-linux "Cubical-Create-${VERSION}-linux-amd64.deb"
+          mkdir -p "portable-linux/Cubical-Create-${VERSION}-linux-amd64"
+          cp build-linux/CubicalCreate "portable-linux/Cubical-Create-${VERSION}-linux-amd64/"
+          cp engine/dist/cubical-create-engine "portable-linux/Cubical-Create-${VERSION}-linux-amd64/"
+          cp README.md "portable-linux/Cubical-Create-${VERSION}-linux-amd64/"
+          tar -C portable-linux -czf "Cubical-Create-${VERSION}-linux-amd64.tar.gz" "Cubical-Create-${VERSION}-linux-amd64"
+          sha256sum "Cubical-Create-${VERSION}-linux-amd64.deb" "Cubical-Create-${VERSION}-linux-amd64.tar.gz" > SHA256SUMS-linux.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.2-alpha17-Linux-amd64
+          path: |
+            cubical-create-alpha17/Cubical-Create-0.2.2-alpha17-linux-amd64.deb
+            cubical-create-alpha17/Cubical-Create-0.2.2-alpha17-linux-amd64.tar.gz
+            cubical-create-alpha17/SHA256SUMS-linux.txt
+
+  windows:
+    name: Windows x64 native player
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Alpha 16 and apply reviewed Alpha 17 patch
+        shell: pwsh
+        run: |
+          Remove-Item cubical-create-alpha17 -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path cubical-create-alpha17 -Force | Out-Null
+
+          $sourceParts = Get-ChildItem cubical-create-alpha16-source.b64.part* |
+            Where-Object { $_.Name -match '^cubical-create-alpha16-source\.b64\.part\d+$' } |
+            Sort-Object { [int]([regex]::Match($_.Name, 'part(\d+)$').Groups[1].Value) }
+          if ($sourceParts.Count -ne 9) { throw "Expected 9 Alpha 16 chunks, found $($sourceParts.Count)." }
+          $chunks = @($sourceParts | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '\s','' })
+          $encoded = $chunks[0].Substring(0, 9000)
+          for ($index = 1; $index -lt $chunks.Count; $index++) { $encoded += $chunks[$index] }
+          $archive = "$env:RUNNER_TEMP\cubical-create-alpha16.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          $archiveHash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          if ($archiveHash -ne 'f47872950de2c740764babe5e0d00d220be3734310d81d5f9e6e754a7351930b') { throw "Alpha 16 source checksum mismatch: $archiveHash" }
+          Expand-Archive $archive cubical-create-alpha17 -Force
+
+          $patchParts = Get-ChildItem alpha17-patch.part* |
+            Where-Object { $_.Name -match '^alpha17-patch\.part\d+$' } |
+            Sort-Object { [int]([regex]::Match($_.Name, 'part(\d+)$').Groups[1].Value) }
+          if ($patchParts.Count -ne 8) { throw "Expected 8 Alpha 17 patch chunks, found $($patchParts.Count)." }
+          $patchPath = "$env:RUNNER_TEMP\alpha17.patch"
+          $patchText = ($patchParts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllText($patchPath, $patchText, [Text.UTF8Encoding]::new($false))
+          $patchHash = (Get-FileHash $patchPath -Algorithm SHA256).Hash.ToLower()
+          if ($patchHash -ne '5a79c91542a8a67d01d48c91020ebbc5d55ff02010e9afe20747c090da9ce094') { throw "Alpha 17 patch checksum mismatch: $patchHash" }
+          $patchExe = Join-Path $env:ProgramFiles 'Git\usr\bin\patch.exe'
+          if (-not (Test-Path $patchExe)) { throw "GNU patch was not found at $patchExe" }
+          Push-Location cubical-create-alpha17
+          & $patchExe -p4 --batch -i $patchPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Quiet -Path engine\engine_cli.py -Pattern '0.2.2-alpha.17')) { throw 'Version marker missing after patch.' }
+          if (-not (Select-String -Quiet -Path engine\ccengine\exporter.py -Pattern 'render_output_frame')) { throw 'WYSIWYG renderer marker missing.' }
+          Pop-Location
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test and bundle rendering engine
+        working-directory: cubical-create-alpha17
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r engine/requirements.txt pyinstaller pytest
+          $env:PYTHONPATH = "$PWD\engine"
+          pytest -q
+          Push-Location engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec
+          & .\dist\cubical-create-engine.exe self-test --directory "$env:RUNNER_TEMP\engine-self-test"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Compile and integration-test native Windows application
+        working-directory: cubical-create-alpha17
+        shell: pwsh
+        run: |
+          cmake -S . -B build-windows -A x64
+          cmake --build build-windows --config Release --parallel 2
+          $env:CUBICAL_CREATE_ENGINE = "$PWD\engine\dist\cubical-create-engine.exe"
+          & .\build-windows\Release\CubicalCreate.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package portable ZIP
+        working-directory: cubical-create-alpha17
+        shell: pwsh
+        run: |
+          $version = '0.2.2-alpha17'
+          $root = "Cubical-Create-$version-windows-x64"
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root | Out-Null
+          Copy-Item .\build-windows\Release\CubicalCreate.exe "$root\CubicalCreate.exe"
+          Copy-Item .\engine\dist\cubical-create-engine.exe "$root\cubical-create-engine.exe"
+          Copy-Item .\README.md "$root\README.md"
+          $ffmpegCommand = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+          if (-not $ffmpegCommand) {
+            choco install ffmpeg -y --no-progress
+            $ffmpegCommand = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+          }
+          if (-not $ffmpegCommand) { throw 'Could not locate ffmpeg.exe after checking PATH and Chocolatey.' }
+          Copy-Item $ffmpegCommand.Source "$root\ffmpeg.exe"
+          Compress-Archive -Path $root -DestinationPath "Cubical-Create-$version-windows-x64.zip" -Force
+          (Get-FileHash "Cubical-Create-$version-windows-x64.zip" -Algorithm SHA256).Hash.ToLower() + "  Cubical-Create-$version-windows-x64.zip" | Set-Content SHA256SUMS-windows.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.2-alpha17-Windows-x64
+          path: |
+            cubical-create-alpha17/Cubical-Create-0.2.2-alpha17-windows-x64.zip
+            cubical-create-alpha17/SHA256SUMS-windows.txt
