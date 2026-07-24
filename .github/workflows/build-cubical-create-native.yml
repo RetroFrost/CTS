@@ -1,0 +1,107 @@
+name: Build Cubical Create Native
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cubical-create-native-build
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux GTK 4
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install GTK build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config libgtk-4-dev
+
+      - name: Configure
+        run: cmake -S cubical-create-native -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile
+        run: cmake --build build-linux --parallel 2
+
+      - name: Package DEB and portable binary
+        run: |
+          set -eux
+          strip build-linux/CubicalCreate
+          mkdir -p package/usr/bin package/usr/share/applications
+          install -m 0755 build-linux/CubicalCreate package/usr/bin/cubical-create
+          cat > package/usr/share/applications/network.cubical.Create.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Cubical Create
+          Comment=Create comparison timeline videos
+          Exec=cubical-create
+          Terminal=false
+          Categories=AudioVideo;Video;
+          EOF
+          mkdir -p package/DEBIAN
+          cat > package/DEBIAN/control <<'EOF'
+          Package: cubical-create
+          Version: 0.1.0-alpha14
+          Section: video
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-4-1
+          Maintainer: Cubical Network
+          Description: Cubical Create native GTK preview
+           Native GTK 4 shell for the Cubical Create comparison-video editor.
+          EOF
+          dpkg-deb --build package Cubical-Create-0.1.0-alpha14-linux-amd64.deb
+          mkdir -p dist-linux
+          cp build-linux/CubicalCreate dist-linux/CubicalCreate
+          cp Cubical-Create-0.1.0-alpha14-linux-amd64.deb dist-linux/
+          cp cubical-create-native/README.md dist-linux/README.md
+          tar -C dist-linux -czf Cubical-Create-0.1.0-alpha14-linux-amd64.tar.gz .
+          sha256sum Cubical-Create-0.1.0-alpha14-linux-amd64.deb Cubical-Create-0.1.0-alpha14-linux-amd64.tar.gz > Cubical-Create-linux-SHA256SUMS.txt
+
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-Linux-amd64
+          if-no-files-found: error
+          path: |
+            Cubical-Create-0.1.0-alpha14-linux-amd64.deb
+            Cubical-Create-0.1.0-alpha14-linux-amd64.tar.gz
+            Cubical-Create-linux-SHA256SUMS.txt
+
+  windows:
+    name: Windows x64 native shell
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S cubical-create-native -B build-windows -A x64
+
+      - name: Compile
+        shell: pwsh
+        run: cmake --build build-windows --config Release --parallel 2
+
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-windows | Out-Null
+          Copy-Item build-windows/Release/CubicalCreate.exe dist-windows/CubicalCreate.exe
+          Copy-Item cubical-create-native/README.md dist-windows/README.md
+          Compress-Archive -Path dist-windows/* -DestinationPath Cubical-Create-0.1.0-alpha14-windows-x64.zip -Force
+          (Get-FileHash Cubical-Create-0.1.0-alpha14-windows-x64.zip -Algorithm SHA256).Hash.ToLower() + '  Cubical-Create-0.1.0-alpha14-windows-x64.zip' | Set-Content Cubical-Create-windows-SHA256SUMS.txt
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-Windows-x64
+          if-no-files-found: error
+          path: |
+            Cubical-Create-0.1.0-alpha14-windows-x64.zip
+            Cubical-Create-windows-SHA256SUMS.txt
