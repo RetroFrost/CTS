@@ -1,0 +1,110 @@
+name: Build Cubical Create Alpha 15
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [cubical-create-alpha15-build]
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux GTK 4 amd64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and extract source
+        run: |
+          cat alpha15-source/part* | base64 -d > cubical-create-alpha15-source.tar.xz
+          tar -xJf cubical-create-alpha15-source.tar.xz
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config libgtk-4-dev ffmpeg python3-pip python3-venv fakeroot
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install pyinstaller Pillow openpyxl
+      - name: Build rendering engine
+        working-directory: Cubical-Create-0.2.0-alpha.15/engine
+        run: ../../.venv/bin/pyinstaller --clean --noconfirm cubical-create-engine.spec
+      - name: Build native GTK app
+        run: |
+          cmake -S Cubical-Create-0.2.0-alpha.15 -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-linux --parallel 2
+      - name: Package portable and DEB
+        run: |
+          set -eux
+          mkdir -p out/linux-portable
+          cp build-linux/CubicalCreate out/linux-portable/
+          cp Cubical-Create-0.2.0-alpha.15/engine/dist/cubical-create-engine out/linux-portable/
+          cp Cubical-Create-0.2.0-alpha.15/README.md out/linux-portable/
+          chmod +x out/linux-portable/CubicalCreate out/linux-portable/cubical-create-engine
+          tar -C out/linux-portable -czf out/Cubical-Create-0.2.0-alpha15-linux-amd64.tar.gz .
+
+          mkdir -p deb/DEBIAN deb/opt/cubical-create deb/usr/bin deb/usr/share/applications
+          cp Cubical-Create-0.2.0-alpha.15/packaging/linux/control deb/DEBIAN/control
+          cp build-linux/CubicalCreate Cubical-Create-0.2.0-alpha.15/engine/dist/cubical-create-engine Cubical-Create-0.2.0-alpha.15/README.md deb/opt/cubical-create/
+          cp Cubical-Create-0.2.0-alpha.15/packaging/linux/cubical-create.desktop deb/usr/share/applications/
+          ln -s /opt/cubical-create/CubicalCreate deb/usr/bin/cubical-create
+          chmod +x deb/opt/cubical-create/CubicalCreate deb/opt/cubical-create/cubical-create-engine
+          fakeroot dpkg-deb --build deb out/Cubical-Create-0.2.0-alpha15-linux-amd64.deb
+          sha256sum out/* > out/SHA256SUMS-linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-Alpha15-Linux-amd64
+          path: out/*
+
+  windows:
+    name: Windows x64 native shell
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and extract source
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem alpha15-source/part* | Sort-Object Name
+          $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('cubical-create-alpha15-source.tar.xz', [Convert]::FromBase64String($b64))
+          tar -xf cubical-create-alpha15-source.tar.xz
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller Pillow openpyxl
+      - name: Build rendering engine
+        working-directory: Cubical-Create-0.2.0-alpha.15/engine
+        shell: pwsh
+        run: pyinstaller --clean --noconfirm cubical-create-engine.spec
+      - name: Build native Win32 app
+        shell: pwsh
+        run: |
+          cmake -S Cubical-Create-0.2.0-alpha.15 -B build-windows -A x64
+          cmake --build build-windows --config Release --parallel 2
+      - name: Locate FFmpeg
+        shell: pwsh
+        run: |
+          $ffmpeg = (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue).Source
+          if (-not $ffmpeg) {
+            choco install ffmpeg -y --no-progress
+            $ffmpeg = (Get-Command ffmpeg.exe).Source
+          }
+          "FFMPEG_PATH=$ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out/windows | Out-Null
+          Copy-Item build-windows/Release/CubicalCreate.exe out/windows/
+          Copy-Item Cubical-Create-0.2.0-alpha.15/engine/dist/cubical-create-engine.exe out/windows/
+          Copy-Item $env:FFMPEG_PATH out/windows/ffmpeg.exe
+          Copy-Item Cubical-Create-0.2.0-alpha.15/README.md out/windows/
+          Compress-Archive -Path out/windows/* -DestinationPath out/Cubical-Create-0.2.0-alpha15-windows-x64.zip -Force
+          (Get-FileHash out/Cubical-Create-0.2.0-alpha15-windows-x64.zip -Algorithm SHA256).Hash + '  Cubical-Create-0.2.0-alpha15-windows-x64.zip' | Set-Content out/SHA256SUMS-windows.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-Alpha15-Windows-x64
+          path: |
+            out/Cubical-Create-0.2.0-alpha15-windows-x64.zip
+            out/SHA256SUMS-windows.txt
