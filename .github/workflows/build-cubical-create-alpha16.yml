@@ -24,13 +24,30 @@ jobs:
           set -euo pipefail
           rm -rf cubical-create-alpha16
           mkdir -p cubical-create-alpha16
-          mapfile -d '' parts < <(find . -maxdepth 1 -type f -name 'cubical-create-alpha16-source.b64.part*' -print0 | sort -zV)
-          if [ "${#parts[@]}" -eq 0 ]; then
-            echo 'No source chunks found.' >&2
+
+          mapfile -d '' parts < <(
+            find . -maxdepth 1 -type f \
+              -regextype posix-extended \
+              -regex './cubical-create-alpha16-source\.b64\.part[0-9]+' \
+              -print0 | sort -zV
+          )
+          if [ "${#parts[@]}" -ne 9 ]; then
+            echo "Expected 9 numeric chunks, found ${#parts[@]}." >&2
+            printf '%s\n' "${parts[@]}" >&2
             exit 1
           fi
-          printf 'Restoring source from %s chunks\n' "${#parts[@]}"
-          cat "${parts[@]}" | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/cubical-create-alpha16.zip"
+
+          # part00 contains 10,000 characters, while part01 starts at offset
+          # 9,000. Keep only the first 9,000 characters from part00, then
+          # append part01 through part08 to remove the 1,000-character overlap.
+          {
+            head -c 9000 "${parts[0]}"
+            for part in "${parts[@]:1}"; do
+              cat "$part"
+            done
+          } | tr -d '\r\n' > "$RUNNER_TEMP/cubical-create-alpha16.b64"
+
+          base64 --decode "$RUNNER_TEMP/cubical-create-alpha16.b64" > "$RUNNER_TEMP/cubical-create-alpha16.zip"
           echo 'f47872950de2c740764babe5e0d00d220be3734310d81d5f9e6e754a7351930b  '"$RUNNER_TEMP/cubical-create-alpha16.zip" | sha256sum -c -
           unzip -tq "$RUNNER_TEMP/cubical-create-alpha16.zip"
           unzip -q "$RUNNER_TEMP/cubical-create-alpha16.zip" -d cubical-create-alpha16
@@ -99,14 +116,28 @@ jobs:
         run: |
           Remove-Item cubical-create-alpha16 -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path cubical-create-alpha16 -Force | Out-Null
-          $parts = Get-ChildItem cubical-create-alpha16-source.b64.part* | Sort-Object {
-            $match = [regex]::Match($_.Name, 'part(\d+)$')
-            if (-not $match.Success) { throw "Invalid chunk name: $($_.Name)" }
-            [int]$match.Groups[1].Value
+
+          $parts = Get-ChildItem cubical-create-alpha16-source.b64.part* |
+            Where-Object { $_.Name -match '^cubical-create-alpha16-source\.b64\.part\d+$' } |
+            Sort-Object {
+              [int]([regex]::Match($_.Name, 'part(\d+)$').Groups[1].Value)
+            }
+          if ($parts.Count -ne 9) {
+            throw "Expected 9 numeric chunks, found $($parts.Count)."
           }
-          if ($parts.Count -eq 0) { throw 'No source chunks found.' }
-          Write-Host "Restoring source from $($parts.Count) chunks"
-          $encoded = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '\s','' }) -join ''
+
+          $chunks = @($parts | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '\s','' })
+          if ($chunks[0].Length -lt 9000) {
+            throw "part00 is unexpectedly short: $($chunks[0].Length) characters."
+          }
+
+          # part01 begins at offset 9,000, so discard the overlapping final
+          # 1,000 characters from part00 before appending the remaining chunks.
+          $encoded = $chunks[0].Substring(0, 9000)
+          for ($index = 1; $index -lt $chunks.Count; $index++) {
+            $encoded += $chunks[$index]
+          }
+
           $archive = "$env:RUNNER_TEMP\cubical-create-alpha16.zip"
           [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
