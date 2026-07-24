@@ -18,12 +18,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore source archive
+      - name: Restore and verify source archive
         shell: bash
         run: |
+          set -euo pipefail
           rm -rf cubical-create-alpha16
           mkdir -p cubical-create-alpha16
-          cat cubical-create-alpha16-source.b64.part* | tr -d '\r\n' | base64 -d > "$RUNNER_TEMP/cubical-create-alpha16.zip"
+          mapfile -d '' parts < <(find . -maxdepth 1 -type f -name 'cubical-create-alpha16-source.b64.part*' -print0 | sort -zV)
+          if [ "${#parts[@]}" -eq 0 ]; then
+            echo 'No source chunks found.' >&2
+            exit 1
+          fi
+          printf 'Restoring source from %s chunks\n' "${#parts[@]}"
+          cat "${parts[@]}" | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/cubical-create-alpha16.zip"
+          echo 'f47872950de2c740764babe5e0d00d220be3734310d81d5f9e6e754a7351930b  '"$RUNNER_TEMP/cubical-create-alpha16.zip" | sha256sum -c -
+          unzip -tq "$RUNNER_TEMP/cubical-create-alpha16.zip"
           unzip -q "$RUNNER_TEMP/cubical-create-alpha16.zip" -d cubical-create-alpha16
 
       - name: Install build dependencies
@@ -85,14 +94,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore source archive
+      - name: Restore and verify source archive
         shell: pwsh
         run: |
           Remove-Item cubical-create-alpha16 -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path cubical-create-alpha16 -Force | Out-Null
-          $encoded = (Get-ChildItem cubical-create-alpha16-source.b64.part* | Sort-Object Name | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '\s','' }) -join ''
-          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cubical-create-alpha16.zip", [Convert]::FromBase64String($encoded))
-          Expand-Archive "$env:RUNNER_TEMP\cubical-create-alpha16.zip" cubical-create-alpha16 -Force
+          $parts = Get-ChildItem cubical-create-alpha16-source.b64.part* | Sort-Object {
+            $match = [regex]::Match($_.Name, 'part(\d+)$')
+            if (-not $match.Success) { throw "Invalid chunk name: $($_.Name)" }
+            [int]$match.Groups[1].Value
+          }
+          if ($parts.Count -eq 0) { throw 'No source chunks found.' }
+          Write-Host "Restoring source from $($parts.Count) chunks"
+          $encoded = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\cubical-create-alpha16.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne 'f47872950de2c740764babe5e0d00d220be3734310d81d5f9e6e754a7351930b') {
+            throw "Source archive checksum mismatch: $hash"
+          }
+          Expand-Archive $archive cubical-create-alpha16 -Force
 
       - uses: actions/setup-python@v5
         with:
