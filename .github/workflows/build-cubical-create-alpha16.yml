@@ -1,0 +1,144 @@
+name: Build Cubical Create Alpha 16
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cubical-create-alpha16/**'
+      - '.github/workflows/build-cubical-create-alpha16.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux GTK 4 amd64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore source archive
+        run: |
+          mkdir -p cubical-create-alpha16
+          cat cubical-create-alpha16-source.b64.part* | base64 -d > "$RUNNER_TEMP/cubical-create-alpha16.zip"
+          unzip -q "$RUNNER_TEMP/cubical-create-alpha16.zip" -d cubical-create-alpha16
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config libgtk-4-dev python3-venv ffmpeg
+
+      - name: Test and bundle rendering engine
+        working-directory: cubical-create-alpha16
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r engine/requirements.txt pyinstaller pytest
+          pytest -q
+          cd engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec
+          ./dist/cubical-create-engine/cubical-create-engine self-test --directory "$RUNNER_TEMP/engine-self-test"
+
+      - name: Compile native GTK application
+        working-directory: cubical-create-alpha16
+        run: |
+          cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-linux --parallel 2
+          CUBICAL_CREATE_ENGINE="$PWD/engine/dist/cubical-create-engine/cubical-create-engine" ./build-linux/CubicalCreate --self-test
+
+      - name: Package DEB and portable archive
+        working-directory: cubical-create-alpha16
+        run: |
+          VERSION=0.2.1-alpha16
+          rm -rf stage-linux portable-linux
+          mkdir -p stage-linux/DEBIAN stage-linux/opt/cubical-create/engine stage-linux/usr/bin stage-linux/usr/share/applications
+          cp packaging/linux/control stage-linux/DEBIAN/control
+          cp build-linux/CubicalCreate stage-linux/opt/cubical-create/CubicalCreate
+          cp -a engine/dist/cubical-create-engine/. stage-linux/opt/cubical-create/engine/
+          cp README.md stage-linux/opt/cubical-create/README.md
+          cp packaging/linux/cubical-create.desktop stage-linux/usr/share/applications/cubical-create.desktop
+          ln -s /opt/cubical-create/CubicalCreate stage-linux/usr/bin/cubical-create
+          chmod 0755 stage-linux/opt/cubical-create/CubicalCreate stage-linux/opt/cubical-create/engine/cubical-create-engine
+          dpkg-deb --root-owner-group --build stage-linux "Cubical-Create-${VERSION}-linux-amd64.deb"
+          mkdir -p portable-linux/Cubical-Create-${VERSION}-linux-amd64/engine
+          cp build-linux/CubicalCreate portable-linux/Cubical-Create-${VERSION}-linux-amd64/
+          cp -a engine/dist/cubical-create-engine/. portable-linux/Cubical-Create-${VERSION}-linux-amd64/engine/
+          cp README.md portable-linux/Cubical-Create-${VERSION}-linux-amd64/
+          tar -C portable-linux -czf "Cubical-Create-${VERSION}-linux-amd64.tar.gz" "Cubical-Create-${VERSION}-linux-amd64"
+          sha256sum "Cubical-Create-${VERSION}-linux-amd64.deb" "Cubical-Create-${VERSION}-linux-amd64.tar.gz" > SHA256SUMS-linux.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.1-alpha16-Linux-amd64
+          path: |
+            cubical-create-alpha16/Cubical-Create-0.2.1-alpha16-linux-amd64.deb
+            cubical-create-alpha16/Cubical-Create-0.2.1-alpha16-linux-amd64.tar.gz
+            cubical-create-alpha16/SHA256SUMS-linux.txt
+
+  windows:
+    name: Windows x64 native shell
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore source archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path cubical-create-alpha16 -Force | Out-Null
+          $encoded = (Get-ChildItem cubical-create-alpha16-source.b64.part* | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cubical-create-alpha16.zip", [Convert]::FromBase64String($encoded))
+          Expand-Archive "$env:RUNNER_TEMP\cubical-create-alpha16.zip" cubical-create-alpha16 -Force
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test and bundle rendering engine
+        working-directory: cubical-create-alpha16
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r engine/requirements.txt pyinstaller pytest
+          pytest -q
+          Push-Location engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec
+          & .\dist\cubical-create-engine\cubical-create-engine.exe self-test --directory "$env:RUNNER_TEMP\engine-self-test"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Compile native Windows application
+        working-directory: cubical-create-alpha16
+        shell: pwsh
+        run: |
+          cmake -S . -B build-windows -A x64
+          cmake --build build-windows --config Release --parallel 2
+          $env:CUBICAL_CREATE_ENGINE = "$PWD\engine\dist\cubical-create-engine\cubical-create-engine.exe"
+          & .\build-windows\Release\CubicalCreate.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package portable ZIP
+        working-directory: cubical-create-alpha16
+        shell: pwsh
+        run: |
+          $version = '0.2.1-alpha16'
+          $root = "Cubical-Create-$version-windows-x64"
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path "$root\engine" | Out-Null
+          Copy-Item .\build-windows\Release\CubicalCreate.exe "$root\CubicalCreate.exe"
+          Copy-Item .\engine\dist\cubical-create-engine\* "$root\engine" -Recurse
+          Copy-Item .\README.md "$root\README.md"
+          $ffmpeg = Get-ChildItem "$env:ChocolateyInstall\lib" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.Length -gt 1000000 } | Select-Object -First 1
+          if (-not $ffmpeg) { throw 'Could not locate the GitHub runner FFmpeg binary.' }
+          Copy-Item $ffmpeg.FullName "$root\engine\ffmpeg.exe"
+          Compress-Archive -Path $root -DestinationPath "Cubical-Create-$version-windows-x64.zip" -Force
+          (Get-FileHash "Cubical-Create-$version-windows-x64.zip" -Algorithm SHA256).Hash.ToLower() + "  Cubical-Create-$version-windows-x64.zip" | Set-Content SHA256SUMS-windows.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.1-alpha16-Windows-x64
+          path: |
+            cubical-create-alpha16/Cubical-Create-0.2.1-alpha16-windows-x64.zip
+            cubical-create-alpha16/SHA256SUMS-windows.txt
