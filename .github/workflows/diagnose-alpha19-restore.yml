@@ -16,22 +16,32 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Diagnose source archives
+      - name: Create restore report
         shell: bash
         run: |
-          set -u
+          set +e
+          exec > restore-report.txt 2>&1
           echo 'Alpha 18 chunks:'
           find . -maxdepth 1 -type f -name 'cubical-create-alpha18-source.b64.part*' -printf '%f %s bytes\n' | sort -V
           mapfile -t parts < <(find . -maxdepth 1 -type f -regextype posix-extended -regex './cubical-create-alpha18-source\.b64\.part[0-9]+' | sort -V)
           echo "Alpha 18 numeric count=${#parts[@]}"
           cat "${parts[@]}" | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/alpha18.zip"
+          echo "Alpha 18 decode exit=$?"
           echo "Alpha 18 hash=$(sha256sum "$RUNNER_TEMP/alpha18.zip" | cut -d' ' -f1)"
           unzip -tq "$RUNNER_TEMP/alpha18.zip"
+          echo "Alpha 18 unzip exit=$?"
 
           echo 'Alpha 19 chunks:'
           for f in alpha19-overlay5.part{00,01,02,03,04,05,06,07,08,09,10,11}; do
             printf '%s %s bytes\n' "$f" "$(wc -c < "$f")"
           done
           cat alpha19-overlay5.part{00,01,02,03,04,05,06,07,08,09,10,11} | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/alpha19.zip"
+          echo "Alpha 19 decode exit=$?"
           echo "Alpha 19 hash=$(sha256sum "$RUNNER_TEMP/alpha19.zip" | cut -d' ' -f1)"
           unzip -tq "$RUNNER_TEMP/alpha19.zip"
+          echo "Alpha 19 unzip exit=$?"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Alpha19-restore-report
+          path: restore-report.txt
