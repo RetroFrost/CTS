@@ -1,0 +1,64 @@
+name: Diagnose Alpha 19 Restore
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-alpha19-restore.yml'
+      - 'alpha19-overlay5.part*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct verified Alpha 19 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee restore-report.txt) 2>&1
+
+          mapfile -d '' alpha18_parts < <(
+            find . -maxdepth 1 -type f \
+              -regextype posix-extended \
+              -regex './cubical-create-alpha18-source\.b64\.part[0-9]+' \
+              -print0 | sort -zV
+          )
+          if [ "${#alpha18_parts[@]}" -ne 5 ]; then
+            echo "Expected 5 Alpha 18 source chunks, found ${#alpha18_parts[@]}." >&2
+            exit 1
+          fi
+
+          cat "${alpha18_parts[@]}" | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/alpha18.zip"
+          echo 'f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e  '"$RUNNER_TEMP/alpha18.zip" | sha256sum -c -
+          unzip -tq "$RUNNER_TEMP/alpha18.zip"
+          rm -rf source
+          mkdir source
+          unzip -q "$RUNNER_TEMP/alpha18.zip" -d source
+          python3 alpha18-compiler-fixes.py source
+
+          cat alpha19-overlay5.part{00,01,02,03,04,05,06,07,08,09,10,11} \
+            | tr -d '\r\n' \
+            | base64 --decode > "$RUNNER_TEMP/alpha19-overlay.zip"
+          echo 'da9f2ebe57e55b46466bada594197b110d3a5ac1569e9d4ec7f22bddf906448e  '"$RUNNER_TEMP/alpha19-overlay.zip" | sha256sum -c -
+          unzip -tq "$RUNNER_TEMP/alpha19-overlay.zip"
+          unzip -oq "$RUNNER_TEMP/alpha19-overlay.zip" -d source
+
+          find source -type f -printf '%P\n' | sort > source-tree.txt
+          tar -C source -czf alpha19-reconstructed-source.tar.gz .
+          sha256sum alpha19-reconstructed-source.tar.gz | tee reconstructed-source-sha256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Alpha19-reconstructed-source
+          path: |
+            alpha19-reconstructed-source.tar.gz
+            reconstructed-source-sha256.txt
+            restore-report.txt
+            source-tree.txt
+          retention-days: 3
