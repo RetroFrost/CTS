@@ -1,0 +1,88 @@
+name: Diagnose Cubical Create Alpha 18
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-cubical-create-alpha18.yml'
+      - 'cubical-create-alpha18-source.b64.part*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat cubical-create-alpha18-source.b64.part{00,01,02,03,04} | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/source.zip"
+          echo 'f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e  '"$RUNNER_TEMP/source.zip" | sha256sum -c -
+          mkdir source && unzip -q "$RUNNER_TEMP/source.zip" -d source
+      - name: Install GTK build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake ninja-build pkg-config libgtk-4-dev
+      - name: Configure
+        working-directory: source
+        shell: bash
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release > linux-configure.log 2>&1
+      - name: Build
+        working-directory: source
+        shell: bash
+        run: |
+          set +e
+          cmake --build build --parallel 2 > linux-build.log 2>&1
+          code=$?
+          cat linux-build.log
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Alpha18-Linux-compiler-log
+          path: |
+            source/linux-configure.log
+            source/linux-build.log
+          if-no-files-found: ignore
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore source
+        shell: pwsh
+        run: |
+          $parts = 0..4 | ForEach-Object { 'cubical-create-alpha18-source.b64.part{0:D2}' -f $_ }
+          $encoded = ($parts | ForEach-Object { (Get-Content $_ -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\source.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne 'f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e') { throw "Source checksum mismatch: $hash" }
+          New-Item -ItemType Directory source | Out-Null
+          Expand-Archive $archive source -Force
+      - name: Configure
+        working-directory: source
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A x64 *> windows-configure.log
+          if ($LASTEXITCODE -ne 0) { Get-Content windows-configure.log; exit $LASTEXITCODE }
+      - name: Build
+        working-directory: source
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel 2 *> windows-build.log
+          $code = $LASTEXITCODE
+          Get-Content windows-build.log
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Alpha18-Windows-compiler-log
+          path: |
+            source/windows-configure.log
+            source/windows-build.log
+          if-no-files-found: ignore
