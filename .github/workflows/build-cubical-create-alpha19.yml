@@ -1,0 +1,183 @@
+name: Build Cubical Create Alpha 19
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'alpha19-overlay5.part*'
+      - '.github/workflows/build-cubical-create-alpha19.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux GTK 4 amd64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified Alpha 19 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf source
+          mkdir source
+
+          mapfile -d '' alpha18_parts < <(
+            find . -maxdepth 1 -type f \
+              -regextype posix-extended \
+              -regex './cubical-create-alpha18-source\.b64\.part[0-9]+' \
+              -print0 | sort -zV
+          )
+          if [ "${#alpha18_parts[@]}" -ne 5 ]; then
+            echo "Expected 5 Alpha 18 source chunks, found ${#alpha18_parts[@]}." >&2
+            exit 1
+          fi
+          cat "${alpha18_parts[@]}" | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/alpha18.zip"
+          echo 'f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e  '"$RUNNER_TEMP/alpha18.zip" | sha256sum -c -
+          unzip -tq "$RUNNER_TEMP/alpha18.zip"
+          unzip -q "$RUNNER_TEMP/alpha18.zip" -d source
+          python3 alpha18-compiler-fixes.py source
+
+          cat alpha19-overlay5.part{00,01,02,03,04,05,06,07,08,09,10,11} \
+            | tr -d '\r\n' \
+            | base64 --decode > "$RUNNER_TEMP/alpha19-overlay.zip"
+          echo 'da9f2ebe57e55b46466bada594197b110d3a5ac1569e9d4ec7f22bddf906448e  '"$RUNNER_TEMP/alpha19-overlay.zip" | sha256sum -c -
+          unzip -tq "$RUNNER_TEMP/alpha19-overlay.zip"
+          unzip -oq "$RUNNER_TEMP/alpha19-overlay.zip" -d source
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake ninja-build pkg-config libgtk-4-dev python3-venv ffmpeg fontconfig
+
+      - name: Test and bundle engine
+        working-directory: source
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip -q
+          pip install -q -r engine/requirements.txt pyinstaller pytest
+          PYTHONPATH=engine pytest -q
+          cd engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec >/dev/null
+          ./dist/cubical-create-engine self-test --directory "$RUNNER_TEMP/engine-self-test"
+
+      - name: Compile and self-test GTK application
+        working-directory: source
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 2
+          CUBICAL_CREATE_ENGINE="$PWD/engine/dist/cubical-create-engine" ./build/CubicalCreate --self-test
+
+      - name: Package Linux builds
+        working-directory: source
+        run: |
+          VERSION=0.2.4-alpha19
+          rm -rf stage portable
+          mkdir -p stage/DEBIAN stage/opt/cubical-create stage/usr/bin stage/usr/share/applications
+          sed 's/^Version:.*/Version: 0.2.4~alpha19/' packaging/linux/control > stage/DEBIAN/control
+          cp build/CubicalCreate engine/dist/cubical-create-engine README.md stage/opt/cubical-create/
+          cp packaging/linux/cubical-create.desktop stage/usr/share/applications/
+          ln -s /opt/cubical-create/CubicalCreate stage/usr/bin/cubical-create
+          chmod 0755 stage/opt/cubical-create/CubicalCreate stage/opt/cubical-create/cubical-create-engine
+          dpkg-deb --root-owner-group --build stage "Cubical-Create-${VERSION}-linux-amd64.deb"
+
+          mkdir -p "portable/Cubical-Create-${VERSION}-linux-amd64"
+          cp build/CubicalCreate engine/dist/cubical-create-engine README.md "portable/Cubical-Create-${VERSION}-linux-amd64/"
+          tar -C portable -czf "Cubical-Create-${VERSION}-linux-amd64.tar.gz" "Cubical-Create-${VERSION}-linux-amd64"
+          sha256sum "Cubical-Create-${VERSION}-linux-amd64.deb" "Cubical-Create-${VERSION}-linux-amd64.tar.gz" > SHA256SUMS-linux.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.4-alpha19-Linux-amd64
+          path: |
+            source/Cubical-Create-0.2.4-alpha19-linux-amd64.deb
+            source/Cubical-Create-0.2.4-alpha19-linux-amd64.tar.gz
+            source/SHA256SUMS-linux.txt
+
+  windows:
+    name: Windows x64 native shell
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore verified Alpha 19 source
+        shell: pwsh
+        run: |
+          Remove-Item source -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory source | Out-Null
+
+          $alpha18Parts = Get-ChildItem cubical-create-alpha18-source.b64.part* |
+            Where-Object { $_.Name -match '^cubical-create-alpha18-source\.b64\.part\d+$' } |
+            Sort-Object { [int]([regex]::Match($_.Name, 'part(\d+)$').Groups[1].Value) }
+          if ($alpha18Parts.Count -ne 5) { throw "Expected 5 Alpha 18 source chunks, found $($alpha18Parts.Count)." }
+          $alpha18Encoded = ($alpha18Parts | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '\s','' }) -join ''
+          $alpha18Archive = "$env:RUNNER_TEMP\alpha18.zip"
+          [IO.File]::WriteAllBytes($alpha18Archive, [Convert]::FromBase64String($alpha18Encoded))
+          $alpha18Hash = (Get-FileHash $alpha18Archive -Algorithm SHA256).Hash.ToLower()
+          if ($alpha18Hash -ne 'f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e') { throw "Alpha 18 checksum mismatch: $alpha18Hash" }
+          Expand-Archive $alpha18Archive source -Force
+          python alpha18-compiler-fixes.py source
+
+          $overlayNames = 0..11 | ForEach-Object { 'alpha19-overlay5.part{0:D2}' -f $_ }
+          $overlayEncoded = ($overlayNames | ForEach-Object { (Get-Content $_ -Raw) -replace '\s','' }) -join ''
+          $overlayArchive = "$env:RUNNER_TEMP\alpha19-overlay.zip"
+          [IO.File]::WriteAllBytes($overlayArchive, [Convert]::FromBase64String($overlayEncoded))
+          $overlayHash = (Get-FileHash $overlayArchive -Algorithm SHA256).Hash.ToLower()
+          if ($overlayHash -ne 'da9f2ebe57e55b46466bada594197b110d3a5ac1569e9d4ec7f22bddf906448e') { throw "Alpha 19 overlay checksum mismatch: $overlayHash" }
+          Expand-Archive $overlayArchive source -Force
+
+      - name: Test and bundle engine
+        working-directory: source
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip -q
+          pip install -q -r engine/requirements.txt pyinstaller pytest
+          $env:PYTHONPATH = "$PWD\engine"
+          pytest -q
+          Push-Location engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec | Out-Null
+          & .\dist\cubical-create-engine.exe self-test --directory "$env:RUNNER_TEMP\engine-self-test"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Compile and self-test Windows application
+        working-directory: source
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A x64
+          cmake --build build --config Release --parallel 2
+          $env:CUBICAL_CREATE_ENGINE = "$PWD\engine\dist\cubical-create-engine.exe"
+          & .\build\Release\CubicalCreate.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package Windows build
+        working-directory: source
+        shell: pwsh
+        run: |
+          $version = '0.2.4-alpha19'
+          $root = "Cubical-Create-$version-windows-x64"
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root | Out-Null
+          Copy-Item .\build\Release\CubicalCreate.exe "$root\CubicalCreate.exe"
+          Copy-Item .\engine\dist\cubical-create-engine.exe "$root\cubical-create-engine.exe"
+          Copy-Item .\README.md "$root\README.md"
+          $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+          if (-not $ffmpeg) { choco install ffmpeg -y --no-progress; $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue }
+          if (-not $ffmpeg) { throw 'Could not locate ffmpeg.exe.' }
+          Copy-Item $ffmpeg.Source "$root\ffmpeg.exe"
+          Compress-Archive -Path $root -DestinationPath "Cubical-Create-$version-windows-x64.zip" -Force
+          (Get-FileHash "Cubical-Create-$version-windows-x64.zip" -Algorithm SHA256).Hash.ToLower() + "  Cubical-Create-$version-windows-x64.zip" | Set-Content SHA256SUMS-windows.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.4-alpha19-Windows-x64
+          path: |
+            source/Cubical-Create-0.2.4-alpha19-windows-x64.zip
+            source/SHA256SUMS-windows.txt
