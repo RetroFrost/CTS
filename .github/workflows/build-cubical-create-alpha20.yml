@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'alpha20-overlay.part*'
+      - 'alpha20-fix*.part*'
       - '.github/workflows/build-cubical-create-alpha20.yml'
 
 permissions:
@@ -44,7 +45,8 @@ jobs:
           unzip -tq "$RUNNER_TEMP/alpha19-overlay.zip"
           unzip -oq "$RUNNER_TEMP/alpha19-overlay.zip" -d source
 
-          cat alpha20-overlay.part{00,01,02,03,04} | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/alpha20-overlay.zip"
+          cat alpha20-overlay.part00 alpha20-fix01.part{00,01,02} alpha20-overlay.part02 alpha20-fix03.part{00,01,02} alpha20-overlay.part04 \
+            | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/alpha20-overlay.zip"
           echo '00c7161d0ff5abe872e3d88d9f31667d07a3fba0525f71e1bf21c99f3cef566d  '"$RUNNER_TEMP/alpha20-overlay.zip" | sha256sum -c -
           unzip -tq "$RUNNER_TEMP/alpha20-overlay.zip"
           unzip -oq "$RUNNER_TEMP/alpha20-overlay.zip" -d source
@@ -134,7 +136,13 @@ jobs:
           if ((Get-FileHash $alpha19Archive -Algorithm SHA256).Hash.ToLower() -ne 'da9f2ebe57e55b46466bada594197b110d3a5ac1569e9d4ec7f22bddf906448e') { throw 'Alpha 19 checksum mismatch.' }
           Expand-Archive $alpha19Archive source -Force
 
-          $alpha20Names = 0..4 | ForEach-Object { 'alpha20-overlay.part{0:D2}' -f $_ }
+          $alpha20Names = @(
+            'alpha20-overlay.part00',
+            'alpha20-fix01.part00', 'alpha20-fix01.part01', 'alpha20-fix01.part02',
+            'alpha20-overlay.part02',
+            'alpha20-fix03.part00', 'alpha20-fix03.part01', 'alpha20-fix03.part02',
+            'alpha20-overlay.part04'
+          )
           $alpha20Encoded = ($alpha20Names | ForEach-Object { (Get-Content $_ -Raw) -replace '\s','' }) -join ''
           $alpha20Archive = "$env:RUNNER_TEMP\alpha20-overlay.zip"
           [IO.File]::WriteAllBytes($alpha20Archive, [Convert]::FromBase64String($alpha20Encoded))
