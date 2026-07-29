@@ -7,13 +7,13 @@ import sys
 from pathlib import Path
 
 
-def insert_after_function(text: str, signature: str, addition: str) -> str:
-    start = text.find(signature)
+def insert_after_function(text: str, definition: str, addition: str) -> str:
+    start = text.find(definition)
     if start < 0:
-        raise RuntimeError(f"Could not find function: {signature}")
-    brace = text.find("{", start + len(signature))
+        raise RuntimeError(f"Could not find function definition: {definition}")
+    brace = text.find("{", start)
     if brace < 0:
-        raise RuntimeError(f"Could not find opening brace for: {signature}")
+        raise RuntimeError(f"Could not find opening brace for: {definition}")
 
     depth = 0
     for index in range(brace, len(text)):
@@ -24,7 +24,7 @@ def insert_after_function(text: str, signature: str, addition: str) -> str:
             depth -= 1
             if depth == 0:
                 return text[: index + 1] + addition + text[index + 1 :]
-    raise RuntimeError(f"Could not find closing brace for: {signature}")
+    raise RuntimeError(f"Could not find closing brace for: {definition}")
 
 
 def patch_windows(root: Path) -> None:
@@ -43,7 +43,7 @@ void initialize_player_idle(AppState* s) {
 }
 """
     if "void initialize_player_idle(AppState* s)" not in text:
-        text = insert_after_function(text, "void reset_player(AppState* s)", idle_function)
+        text = insert_after_function(text, "void reset_player(AppState* s) {", idle_function)
 
     startup = "load_project(s);reset_player(s);SetTimer(hwnd,PLAYER_TIMER,100,nullptr);"
     replacement = "load_project(s);initialize_player_idle(s);SetTimer(hwnd,PLAYER_TIMER,100,nullptr);"
@@ -73,7 +73,7 @@ void initialize_player_idle(AppState* s) {
 }
 """
     if "void initialize_player_idle(AppState* s)" not in text:
-        text = insert_after_function(text, "void reset_player(AppState* s)", idle_function)
+        text = insert_after_function(text, "void reset_player(AppState* s) {", idle_function)
 
     startup = "reset_player(static_cast<AppState*>(data));"
     replacement = "initialize_player_idle(static_cast<AppState*>(data));"
