@@ -1,4 +1,4 @@
-name: Build Cubical Create Alpha 20 Idle Fix
+name: Build Cubical Create Alpha 20 Engine Launch Fix
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   windows:
-    name: Windows x64 idle-startup fix
+    name: Windows x64 engine-launch fix
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
@@ -60,8 +60,9 @@ jobs:
           Expand-Archive $archive source -Force
 
           python alpha20-idle-startup-fix.py source
-          Select-String -Path source\native\windows\main.cpp -Pattern 'initialize_player_idle'
-          if (Select-String -Path source\native\windows\main.cpp -SimpleMatch 'load_project(s);reset_player(s);SetTimer') { throw 'Startup renderer call remains.' }
+          Select-String -Path source\native\core\src\process.cpp -Pattern 'CreateProcessW'
+          Select-String -Path source\native\windows\main.cpp -SimpleMatch 'load_project(s);reset_player(s);SetTimer'
+          if (Select-String -Path source\native\windows\main.cpp -SimpleMatch 'load_project(s);initialize_player_idle(s);SetTimer') { throw 'Idle workaround remains.' }
 
       - name: Install FFmpeg and engine dependencies
         shell: pwsh
@@ -88,7 +89,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Pop-Location
 
-      - name: Compile patched Windows application
+      - name: Compile and test direct engine launch
         working-directory: source
         shell: pwsh
         run: |
@@ -98,11 +99,11 @@ jobs:
           & .\build\Release\CubicalCreate.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Package patched build and source
+      - name: Package fixed build and source
         working-directory: source
         shell: pwsh
         run: |
-          $version = '0.2.5-alpha20-idle-fix'
+          $version = '0.2.5-alpha20-engine-launch-fix'
           $root = "Cubical-Create-$version-windows-x64"
           New-Item -ItemType Directory -Path $root -Force | Out-Null
           Copy-Item .\build\Release\CubicalCreate.exe "$root\CubicalCreate.exe"
@@ -114,7 +115,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Create-0.2.5-alpha20-idle-fix-Windows-x64
+          name: Cubical-Create-0.2.5-alpha20-engine-launch-fix-Windows-x64
           path: |
-            source/Cubical-Create-0.2.5-alpha20-idle-fix-windows-x64.zip
-            source/Cubical-Create-0.2.5-alpha20-idle-fix-source.zip
+            source/Cubical-Create-0.2.5-alpha20-engine-launch-fix-windows-x64.zip
+            source/Cubical-Create-0.2.5-alpha20-engine-launch-fix-source.zip
