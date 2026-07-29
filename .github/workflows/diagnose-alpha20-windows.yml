@@ -1,0 +1,115 @@
+name: Diagnose Alpha 20 Windows
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-alpha20-windows.yml'
+      - 'alpha20-fix*.part*'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory source -Force | Out-Null
+
+          $alpha18Parts = Get-ChildItem cubical-create-alpha18-source.b64.part* |
+            Where-Object { $_.Name -match '^cubical-create-alpha18-source\.b64\.part\d+$' } |
+            Sort-Object { [int]([regex]::Match($_.Name, 'part(\d+)$').Groups[1].Value) }
+          $encoded = ($alpha18Parts | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\alpha18.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          Expand-Archive $archive source -Force
+          python alpha18-compiler-fixes.py source
+
+          $names19 = 0..11 | ForEach-Object { 'alpha19-overlay5.part{0:D2}' -f $_ }
+          $encoded = ($names19 | ForEach-Object { (Get-Content $_ -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\alpha19.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          Expand-Archive $archive source -Force
+
+          $names20 = @(
+            'alpha20-overlay.part00',
+            'alpha20-fix01.part00', 'alpha20-fix01.part01', 'alpha20-fix01.part02',
+            'alpha20-overlay.part02',
+            'alpha20-fix03.part00', 'alpha20-fix03.part01', 'alpha20-fix03.part02',
+            'alpha20-overlay.part04'
+          )
+          $encoded = ($names20 | ForEach-Object { (Get-Content $_ -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\alpha20.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          Expand-Archive $archive source -Force
+
+      - name: Run diagnostic
+        shell: pwsh
+        working-directory: source
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $report = Join-Path $PWD 'windows-engine-report.txt'
+          Start-Transcript -Path $report -Force
+
+          Write-Host '=== Python ==='
+          python --version
+          python -m pip install --upgrade pip -q
+          pip install -q -r engine/requirements.txt pyinstaller pytest
+
+          Write-Host '=== FFmpeg discovery ==='
+          $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+          if (-not $ffmpeg) {
+            choco install ffmpeg -y --no-progress
+            $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
+            $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+          }
+          $ffmpeg | Format-List *
+          if ($ffmpeg) { & $ffmpeg.Source -version }
+
+          Write-Host '=== Pytest ==='
+          $env:PYTHONPATH = "$PWD\engine"
+          pytest -q
+          Write-Host "pytest_exit=$LASTEXITCODE"
+
+          Write-Host '=== PyInstaller ==='
+          Push-Location engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec
+          Write-Host "pyinstaller_exit=$LASTEXITCODE"
+          Get-ChildItem -Recurse dist | Select-Object FullName,Length
+
+          if ($ffmpeg) {
+            New-Item -ItemType Directory dist -Force | Out-Null
+            Copy-Item $ffmpeg.Source .\dist\ffmpeg.exe -Force
+          }
+
+          Write-Host '=== Engine self-test ==='
+          $engine = Get-ChildItem -Recurse dist -Filter 'cubical-create-engine.exe' | Select-Object -First 1
+          $engine | Format-List *
+          if ($engine) {
+            & $engine.FullName self-test --directory "$env:RUNNER_TEMP\engine-self-test"
+            Write-Host "self_test_exit=$LASTEXITCODE"
+            Get-ChildItem -Recurse "$env:RUNNER_TEMP\engine-self-test" | Select-Object FullName,Length
+          }
+          Pop-Location
+
+          Stop-Transcript
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Alpha20-Windows-engine-diagnostic
+          path: |
+            source/windows-engine-report.txt
+            source/engine/dist/**
+          retention-days: 3

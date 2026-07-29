@@ -1,0 +1,41 @@
+name: Diagnose Alpha 20 Overlay
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'alpha20-overlay.part*'
+      - '.github/workflows/diagnose-alpha20-overlay.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect overlay chunks
+        shell: bash
+        run: |
+          set +e
+          exec > alpha20-report.txt 2>&1
+          echo 'Chunks:'
+          for f in alpha20-overlay.part{00,01,02,03,04}; do
+            printf '%s %s bytes %s\n' "$f" "$(wc -c < "$f")" "$(sha256sum "$f" | cut -d' ' -f1)"
+          done
+          cat alpha20-overlay.part{00,01,02,03,04} | tr -d '\r\n' | base64 --decode > alpha20-overlay.zip
+          echo "decode_exit=$?"
+          echo "decoded_size=$(wc -c < alpha20-overlay.zip)"
+          echo "decoded_sha256=$(sha256sum alpha20-overlay.zip | cut -d' ' -f1)"
+          unzip -t alpha20-overlay.zip
+          echo "unzip_exit=$?"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Alpha20-overlay-diagnostic
+          path: |
+            alpha20-report.txt
+            alpha20-overlay.zip
+          retention-days: 3

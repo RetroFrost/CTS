@@ -1,0 +1,137 @@
+name: Build Cubical Create Alpha 18 Fixed
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cubical-create-alpha18-source.b64.part*'
+      - 'alpha18-compiler-fixes.py'
+      - '.github/workflows/build-cubical-create-alpha18-fixed.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux GTK 4 amd64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore and patch Alpha 18 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat cubical-create-alpha18-source.b64.part{00,01,02,03,04} | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/source.zip"
+          echo 'f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e  '"$RUNNER_TEMP/source.zip" | sha256sum -c -
+          mkdir source && unzip -q "$RUNNER_TEMP/source.zip" -d source
+          python3 alpha18-compiler-fixes.py source
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake ninja-build pkg-config libgtk-4-dev python3-venv ffmpeg fontconfig
+      - name: Test and bundle engine
+        working-directory: source
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip -q
+          pip install -q -r engine/requirements.txt pyinstaller pytest
+          PYTHONPATH=engine pytest -q
+          cd engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec >/dev/null
+          ./dist/cubical-create-engine self-test --directory "$RUNNER_TEMP/engine-self-test"
+      - name: Compile and self-test GTK app
+        working-directory: source
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 2
+          CUBICAL_CREATE_ENGINE="$PWD/engine/dist/cubical-create-engine" ./build/CubicalCreate --self-test
+      - name: Package Linux builds
+        working-directory: source
+        run: |
+          VERSION=0.2.3-alpha18
+          rm -rf stage portable
+          mkdir -p stage/DEBIAN stage/opt/cubical-create stage/usr/bin stage/usr/share/applications
+          sed 's/^Version:.*/Version: 0.2.3~alpha18/' packaging/linux/control > stage/DEBIAN/control
+          cp build/CubicalCreate engine/dist/cubical-create-engine README.md stage/opt/cubical-create/
+          cp packaging/linux/cubical-create.desktop stage/usr/share/applications/
+          ln -s /opt/cubical-create/CubicalCreate stage/usr/bin/cubical-create
+          chmod 0755 stage/opt/cubical-create/CubicalCreate stage/opt/cubical-create/cubical-create-engine
+          dpkg-deb --root-owner-group --build stage "Cubical-Create-${VERSION}-linux-amd64.deb"
+          mkdir -p "portable/Cubical-Create-${VERSION}-linux-amd64"
+          cp build/CubicalCreate engine/dist/cubical-create-engine README.md "portable/Cubical-Create-${VERSION}-linux-amd64/"
+          tar -C portable -czf "Cubical-Create-${VERSION}-linux-amd64.tar.gz" "Cubical-Create-${VERSION}-linux-amd64"
+          sha256sum "Cubical-Create-${VERSION}-linux-amd64.deb" "Cubical-Create-${VERSION}-linux-amd64.tar.gz" > SHA256SUMS-linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.3-alpha18-Linux-amd64
+          path: |
+            source/Cubical-Create-0.2.3-alpha18-linux-amd64.deb
+            source/Cubical-Create-0.2.3-alpha18-linux-amd64.tar.gz
+            source/SHA256SUMS-linux.txt
+
+  windows:
+    name: Windows x64 native shell
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore and patch Alpha 18 source
+        shell: pwsh
+        run: |
+          $parts = 0..4 | ForEach-Object { 'cubical-create-alpha18-source.b64.part{0:D2}' -f $_ }
+          $encoded = ($parts | ForEach-Object { (Get-Content $_ -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\source.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne 'f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e') { throw "Source checksum mismatch: $hash" }
+          New-Item -ItemType Directory source | Out-Null
+          Expand-Archive $archive source -Force
+          python alpha18-compiler-fixes.py source
+      - name: Test and bundle engine
+        working-directory: source
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip -q
+          pip install -q -r engine/requirements.txt pyinstaller pytest
+          $env:PYTHONPATH = "$PWD\engine"
+          pytest -q
+          Push-Location engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec | Out-Null
+          & .\dist\cubical-create-engine.exe self-test --directory "$env:RUNNER_TEMP\engine-self-test"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+      - name: Compile and self-test Windows app
+        working-directory: source
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A x64
+          cmake --build build --config Release --parallel 2
+          $env:CUBICAL_CREATE_ENGINE = "$PWD\engine\dist\cubical-create-engine.exe"
+          & .\build\Release\CubicalCreate.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package Windows build
+        working-directory: source
+        shell: pwsh
+        run: |
+          $version = '0.2.3-alpha18'
+          $root = "Cubical-Create-$version-windows-x64"
+          New-Item -ItemType Directory -Path $root | Out-Null
+          Copy-Item .\build\Release\CubicalCreate.exe "$root\CubicalCreate.exe"
+          Copy-Item .\engine\dist\cubical-create-engine.exe "$root\cubical-create-engine.exe"
+          Copy-Item .\README.md "$root\README.md"
+          $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+          if (-not $ffmpeg) { choco install ffmpeg -y --no-progress; $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue }
+          if (-not $ffmpeg) { throw 'Could not locate ffmpeg.exe.' }
+          Copy-Item $ffmpeg.Source "$root\ffmpeg.exe"
+          Compress-Archive -Path $root -DestinationPath "Cubical-Create-$version-windows-x64.zip" -Force
+          (Get-FileHash "Cubical-Create-$version-windows-x64.zip" -Algorithm SHA256).Hash.ToLower() + "  Cubical-Create-$version-windows-x64.zip" | Set-Content SHA256SUMS-windows.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.3-alpha18-Windows-x64
+          path: |
+            source/Cubical-Create-0.2.3-alpha18-windows-x64.zip
+            source/SHA256SUMS-windows.txt
