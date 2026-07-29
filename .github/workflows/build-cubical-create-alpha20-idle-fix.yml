@@ -1,0 +1,121 @@
+name: Build Cubical Create Alpha 20 Engine Launch Fix
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'alpha20-idle-startup-fix.py'
+      - '.github/workflows/build-cubical-create-alpha20-idle-fix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows x64 engine-launch fix
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore verified Alpha 20 source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item source -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory source | Out-Null
+
+          $alpha18Parts = Get-ChildItem cubical-create-alpha18-source.b64.part* |
+            Where-Object { $_.Name -match '^cubical-create-alpha18-source\.b64\.part\d+$' } |
+            Sort-Object { [int]([regex]::Match($_.Name, 'part(\d+)$').Groups[1].Value) }
+          if ($alpha18Parts.Count -ne 5) { throw "Expected 5 Alpha 18 chunks, found $($alpha18Parts.Count)." }
+          $encoded = ($alpha18Parts | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\alpha18.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne 'f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e') { throw 'Alpha 18 checksum mismatch.' }
+          Expand-Archive $archive source -Force
+          python alpha18-compiler-fixes.py source
+
+          $names = 0..11 | ForEach-Object { 'alpha19-overlay5.part{0:D2}' -f $_ }
+          $encoded = ($names | ForEach-Object { (Get-Content $_ -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\alpha19-overlay.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne 'da9f2ebe57e55b46466bada594197b110d3a5ac1569e9d4ec7f22bddf906448e') { throw 'Alpha 19 checksum mismatch.' }
+          Expand-Archive $archive source -Force
+
+          $names = @(
+            'alpha20-overlay.part00',
+            'alpha20-fix01.part00', 'alpha20-fix01.part01', 'alpha20-fix01.part02',
+            'alpha20-overlay.part02',
+            'alpha20-fix03.part00', 'alpha20-fix03.part01', 'alpha20-fix03.part02',
+            'alpha20-overlay.part04'
+          )
+          $encoded = ($names | ForEach-Object { (Get-Content $_ -Raw) -replace '\s','' }) -join ''
+          $archive = "$env:RUNNER_TEMP\alpha20-overlay.zip"
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne '00c7161d0ff5abe872e3d88d9f31667d07a3fba0525f71e1bf21c99f3cef566d') { throw 'Alpha 20 checksum mismatch.' }
+          Expand-Archive $archive source -Force
+
+          python alpha20-idle-startup-fix.py source
+          Select-String -Path source\native\core\src\process.cpp -Pattern 'CreateProcessW'
+          Select-String -Path source\native\windows\main.cpp -SimpleMatch 'load_project(s);reset_player(s);SetTimer'
+          if (Select-String -Path source\native\windows\main.cpp -SimpleMatch 'load_project(s);initialize_player_idle(s);SetTimer') { throw 'Idle workaround remains.' }
+
+      - name: Install FFmpeg and engine dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install ffmpeg -y --no-progress
+          $ffmpeg = Get-ChildItem 'C:\ProgramData\chocolatey\lib' -Recurse -File -Filter 'ffmpeg.exe' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Length -gt 1000000 } | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $ffmpeg) { throw 'Could not locate the real FFmpeg executable.' }
+          "FFMPEG_PATH=$($ffmpeg.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          python -m pip install --upgrade pip -q
+          pip install -q -r source\engine\requirements.txt pyinstaller pytest
+
+      - name: Test and bundle engine
+        working-directory: source
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "$PWD\engine"
+          pytest -q
+          Push-Location engine
+          pyinstaller --noconfirm --clean cubical-create-engine.spec | Out-Null
+          Copy-Item $env:FFMPEG_PATH .\dist\ffmpeg.exe -Force
+          & .\dist\cubical-create-engine.exe self-test --directory "$env:RUNNER_TEMP\engine-self-test"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Compile and test direct engine launch
+        working-directory: source
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A x64
+          cmake --build build --config Release --parallel 2
+          $env:CUBICAL_CREATE_ENGINE = "$PWD\engine\dist\cubical-create-engine.exe"
+          & .\build\Release\CubicalCreate.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package fixed build and source
+        working-directory: source
+        shell: pwsh
+        run: |
+          $version = '0.2.5-alpha20-engine-launch-fix'
+          $root = "Cubical-Create-$version-windows-x64"
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          Copy-Item .\build\Release\CubicalCreate.exe "$root\CubicalCreate.exe"
+          Copy-Item .\engine\dist\cubical-create-engine.exe "$root\cubical-create-engine.exe"
+          Copy-Item .\engine\dist\ffmpeg.exe "$root\ffmpeg.exe"
+          Copy-Item .\README.md "$root\README.md"
+          Compress-Archive -Path $root -DestinationPath "Cubical-Create-$version-windows-x64.zip" -Force
+          Compress-Archive -Path @('native','engine','tests','packaging','CMakeLists.txt','README.md') -DestinationPath "Cubical-Create-$version-source.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Create-0.2.5-alpha20-engine-launch-fix-Windows-x64
+          path: |
+            source/Cubical-Create-0.2.5-alpha20-engine-launch-fix-windows-x64.zip
+            source/Cubical-Create-0.2.5-alpha20-engine-launch-fix-source.zip
