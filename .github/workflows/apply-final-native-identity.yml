@@ -57,19 +57,30 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
-      - name: Update Windows assembly identity
+      - name: Update Windows identity
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('native/windows/CubicalCompare.manifest')
-          text = path.read_text(encoding='utf-8')
-          text = text.replace(
+
+          manifest = Path('native/windows/CubicalCompare.manifest')
+          manifest_text = manifest.read_text(encoding='utf-8')
+          manifest_text = manifest_text.replace(
               'version="0.2.0.15" processorArchitecture="*" name="Cubical.Create"',
               'version="1.0.0.0" processorArchitecture="*" name="Cubical.Compare"',
           )
-          if 'name="Cubical.Compare"' not in text or 'version="1.0.0.0"' not in text:
+          if 'name="Cubical.Compare"' not in manifest_text or 'version="1.0.0.0"' not in manifest_text:
               raise SystemExit('Windows assembly identity was not updated.')
-          path.write_text(text, encoding='utf-8')
+          manifest.write_text(manifest_text, encoding='utf-8')
+
+          source = Path('native/windows/main.cpp')
+          source_text = source.read_text(encoding='utf-8')
+          old = 'cubical::temporary_path("cubical-create",".ccx")'
+          new = 'cubical::temporary_path("cubical-compare",".ccx")'
+          if old in source_text:
+              source_text = source_text.replace(old, new, 1)
+          elif new not in source_text:
+              raise SystemExit('Windows temporary project identity was not found.')
+          source.write_text(source_text, encoding='utf-8')
           PY
 
       - name: Verify legacy native identities are absent
@@ -86,7 +97,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add native/linux-gtk/main.cpp native/windows/CubicalCompare.manifest
+          git add native/linux-gtk/main.cpp native/windows/main.cpp native/windows/CubicalCompare.manifest
           if git diff --cached --quiet; then
             exit 0
           fi
