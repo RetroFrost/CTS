@@ -47,6 +47,16 @@ class VideoExporter:
 
     @staticmethod
     def ffmpeg_path() -> str:
+        configured = os.environ.get("CUBICAL_COMPARE_FFMPEG", "").strip()
+        if configured:
+            candidate = Path(configured).expanduser()
+            if not candidate.is_file():
+                raise RuntimeError(
+                    "CUBICAL_COMPARE_FFMPEG points to a missing file: "
+                    f"{candidate}"
+                )
+            return str(candidate.resolve())
+
         executable = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
         candidates: list[Path] = []
         if getattr(sys, "frozen", False):
@@ -56,12 +66,13 @@ class VideoExporter:
             candidates.append(Path(bundle_root) / executable)
         candidates.append(Path(__file__).resolve().parent.parent / executable)
         for candidate in candidates:
-            if candidate.exists():
-                return str(candidate)
+            if candidate.is_file():
+                return str(candidate.resolve())
         found = shutil.which(executable)
         if not found:
             raise RuntimeError(
-                "FFmpeg was not found. Install FFmpeg or place it beside Cubical Compare before exporting."
+                "FFmpeg was not found. Install FFmpeg, set CUBICAL_COMPARE_FFMPEG, "
+                "or place FFmpeg inside the private Cubical Compare engine bundle."
             )
         return found
 
@@ -238,9 +249,6 @@ class VideoExporter:
                     static_hold_payload = payload
                 return payload
 
-            # Custom renderers (including tests) stay serial. The production renderer
-            # uses a bounded thread pool, which lets Pillow compose several frames while
-            # FFmpeg encodes the previous frame without unbounded RAM growth.
             if self._custom_renderer or frame_count < 8:
                 for frame_number in range(frame_count):
                     if self.cancelled or (cancel_check is not None and cancel_check()):
@@ -259,79 +267,63 @@ class VideoExporter:
                     frame = local.renderer.render_output_frame(project, seconds)
                     return self._frame_bytes(frame, width, height)
 
-                first_hold: int | None = None
-                for number in range(frame_count):
-                    segment, _, _ = locate_segment(project, number / fps)
-                    if segment is not None and segment.kind == "end_hold":
-                        first_hold = number
-                        break
-
-                with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="cubical-render") as pool:
-                    window = workers * 2
-                    futures: dict[int, Future[bytes]] = {}
-                    next_to_schedule = 0
-
-                    def schedule(number: int) -> None:
-                        if first_hold is not None and number > first_hold:
-                            segment, _, _ = locate_segment(project, number / fps)
-                            if segment is not None and segment.kind == "end_hold":
-                                return
-                        futures[number] = pool.submit(render_number, number)
-
-                    while next_to_schedule < min(frame_count, window):
-                        schedule(next_to_schedule)
-                        next_to_schedule += 1
-
-                    for frame_number in range(frame_count):
+                pending: dict[int, Future[bytes]] = {}
+                next_submit = 0
+                next_write = 0
+                max_pending = workers * 2
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    while next_write < frame_count:
+                        while next_submit < frame_count and len(pending) < max_pending:
+                            pending[next_submit] = pool.submit(render_number, next_submit)
+                            next_submit += 1
                         if self.cancelled or (cancel_check is not None and cancel_check()):
                             raise ExportCancelled("Export cancelled.")
-                        segment, _, _ = locate_segment(project, frame_number / fps)
-                        if segment is not None and segment.kind == "end_hold" and static_hold_payload is not None:
-                            payload = static_hold_payload
-                        else:
-                            future = futures.pop(frame_number, None)
-                            if future is None:
-                                future = pool.submit(render_number, frame_number)
-                            payload = future.result()
-                            if segment is not None and segment.kind == "end_hold":
-                                static_hold_payload = payload
+                        payload = pending.pop(next_write).result()
                         self._write_payload(process, payload, cancel_check)
-                        if next_to_schedule < frame_count:
-                            schedule(next_to_schedule)
-                            next_to_schedule += 1
+                        next_write += 1
                         if progress:
-                            progress(frame_number + 1, frame_count)
+                            progress(next_write, frame_count)
 
-            assert process.stdin is not None
-            process.stdin.close()
+            if process.stdin is not None:
+                process.stdin.close()
             return_code = process.wait()
-            cancel_stop.set()
-            stderr_done.wait(5)
-            error_output = b"".join(stderr_parts).decode("utf-8", errors="replace").strip()
-            if self.cancelled:
+            stderr_done.wait(timeout=5.0)
+            stderr_text = b"".join(stderr_parts).decode("utf-8", errors="replace").strip()
+            if self.cancelled or (cancel_check is not None and cancel_check()):
                 raise ExportCancelled("Export cancelled.")
             if return_code != 0:
-                raise RuntimeError(error_output or "FFmpeg could not encode the video.")
-
+                raise RuntimeError(
+                    f"FFmpeg exited with code {return_code}."
+                    + (f"\n{stderr_text}" if stderr_text else "")
+                )
             self._verify_mp4(temporary)
             os.replace(temporary, output)
-            self._verify_mp4(output)
-        except BrokenPipeError as exc:
-            cancel_stop.set()
-            stderr_done.wait(2)
-            error_output = b"".join(stderr_parts).decode("utf-8", errors="replace").strip()
-            raise RuntimeError(error_output or "FFmpeg stopped while encoding the video.") from exc
-        except Exception:
-            try:
-                if process.stdin is not None:
-                    process.stdin.close()
-            except Exception:
-                pass
+        except (BrokenPipeError, OSError) as exc:
             if process.poll() is None:
-                process.kill()
-            process.wait()
-            temporary.unlink(missing_ok=True)
-            raise
+                process.terminate()
+            return_code = process.wait()
+            stderr_done.wait(timeout=5.0)
+            stderr_text = b"".join(stderr_parts).decode("utf-8", errors="replace").strip()
+            if self.cancelled or (cancel_check is not None and cancel_check()):
+                raise ExportCancelled("Export cancelled.") from exc
+            raise RuntimeError(
+                f"FFmpeg stopped while receiving frames (exit code {return_code})."
+                + (f"\n{stderr_text}" if stderr_text else "")
+            ) from exc
         finally:
             cancel_stop.set()
+            cancel_thread.join(timeout=1.0)
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5.0)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            if process.stdin is not None and not process.stdin.closed:
+                process.stdin.close()
+            if process.stderr is not None:
+                process.stderr.close()
+            stderr_thread.join(timeout=1.0)
             self._process = None
+            temporary.unlink(missing_ok=True)
