@@ -1,0 +1,65 @@
+name: Cubical Compare Flatpak metadata
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/flatpak/**'
+      - '.github/workflows/cubical-compare-flatpak-metadata.yml'
+  push:
+    branches:
+      - 'release/cubical-compare-1.0'
+    paths:
+      - 'packaging/flatpak/**'
+      - '.github/workflows/cubical-compare-flatpak-metadata.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install metadata validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y appstream desktop-file-utils python3-yaml
+
+      - name: Validate AppStream and desktop metadata
+        run: |
+          appstreamcli validate --no-net packaging/flatpak/io.github.retrofrost.CubicalCompare.metainfo.xml
+          desktop-file-validate packaging/flatpak/io.github.retrofrost.CubicalCompare.desktop
+          python3 - <<'PY'
+          import pathlib
+          import yaml
+
+          manifest_path = pathlib.Path('packaging/flatpak/io.github.retrofrost.CubicalCompare.yml')
+          manifest = yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
+          assert manifest['app-id'] == 'io.github.retrofrost.CubicalCompare'
+          assert manifest['command'] == 'cubical-compare'
+
+          args = set(manifest.get('finish-args', []))
+          forbidden = {
+              '--filesystem=home',
+              '--filesystem=host',
+              '--socket=session-bus',
+              '--socket=system-bus',
+              '--talk-name=org.freedesktop.Flatpak',
+          }
+          present = sorted(forbidden & args)
+          assert not present, f'Forbidden broad permissions: {present}'
+
+          engine = '--env=CUBICAL_COMPARE_ENGINE=/app/libexec/cubical-compare/engine/cubical-compare-engine'
+          assert engine in args, 'Private engine path is not fixed inside /app/libexec'
+
+          text = manifest_path.read_text(encoding='utf-8')
+          assert 'flatpak-spawn --host' not in text
+          assert '/app/bin/cubical-compare' in text or "command: cubical-compare" in text
+          PY
+
+      - name: Confirm only one desktop application is exported
+        run: |
+          test "$(find packaging/flatpak -maxdepth 1 -name '*.desktop' | wc -l)" -eq 1
+          ! grep -R --line-number 'Exec=.*engine' packaging/flatpak/*.desktop
