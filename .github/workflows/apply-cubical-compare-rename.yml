@@ -1,0 +1,94 @@
+name: Apply Cubical Compare rename
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-cubical-compare-rename.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rename:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Rename product identifiers without changing CCX compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          roots = [Path('native'), Path('engine'), Path('tests'), Path('packaging')]
+          files = [Path('CMakeLists.txt'), Path('README.md')]
+          for root in roots:
+              for path in root.rglob('*'):
+                  if path.is_file() and path.suffix.lower() in {
+                      '.cpp', '.hpp', '.h', '.py', '.spec', '.json', '.md', '.txt',
+                      '.cmake', '.xml', '.desktop', '.yml', '.yaml', '.manifest'
+                  }:
+                      files.append(path)
+
+          replacements = [
+              ('CUBICAL_CREATE_ENGINE', 'CUBICAL_COMPARE_ENGINE'),
+              ('cubical-create-engine', 'cubical-compare-engine'),
+              ('CubicalCreate', 'CubicalCompare'),
+              ('Cubical Create', 'Cubical Compare'),
+              ('cubical-create-', 'cubical-compare-'),
+              ('cubical_create_', 'cubical_compare_'),
+          ]
+
+          changed = []
+          for path in sorted(set(files)):
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              updated = text
+              for old, new in replacements:
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+                  changed.append(str(path))
+
+          print('Updated files:')
+          print('\n'.join(changed))
+          PY
+
+          if [[ -f engine/cubical-create-engine.spec ]]; then
+            git mv engine/cubical-create-engine.spec engine/cubical-compare-engine.spec
+          fi
+          if [[ -f native/windows/CubicalCreate.manifest ]]; then
+            git mv native/windows/CubicalCreate.manifest native/windows/CubicalCompare.manifest
+          fi
+
+          grep -R --line-number --exclude-dir=.git \
+            -E 'Cubical Create|cubical-create-engine|CUBICAL_CREATE_ENGINE|CubicalCreate' \
+            native engine tests packaging CMakeLists.txt README.md && {
+              echo 'Legacy product identifiers remain.' >&2
+              exit 1
+            } || true
+
+          grep -R --line-number 'CCX1' native engine tests >/dev/null
+
+      - name: Commit rename
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add native engine tests packaging CMakeLists.txt README.md
+          if git diff --cached --quiet; then
+            echo 'Rename already applied.'
+            exit 0
+          fi
+          git commit -m 'Rename native application and private engine to Cubical Compare'
+          git push origin HEAD:release/cubical-compare-1.0
