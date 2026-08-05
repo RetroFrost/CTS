@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.retrofrost.CubicalCompare</id>
+  <name>Cubical Compare</name>
+  <summary>Create animated comparison videos</summary>
+  <developer id="io.github.retrofrost">
+    <name>RetroFrost</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>Cubical Compare is a native desktop editor for creating animated comparison videos from structured data, images, and music.</p>
+    <p>The Flatpak includes its rendering engine privately inside the application sandbox. Users install and launch only Cubical Compare.</p>
+  </description>
+  <launchable type="desktop-id">io.github.retrofrost.CubicalCompare.desktop</launchable>
+  <provides>
+    <binary>cubical-compare</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Graphics</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <url type="homepage">https://github.com/RetroFrost/CTS</url>
+  <url type="bugtracker">https://github.com/RetroFrost/CTS/issues</url>
+  <url type="vcs-browser">https://github.com/RetroFrost/CTS</url>
+  <releases>
+    <release version="1.0.0" date="2026-08-05">
+      <description><p>First stable Cubical Compare desktop release.</p></description>
+    </release>
+  </releases>
+</component>
