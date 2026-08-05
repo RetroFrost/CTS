@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Cubical Create
+Comment=Create animated comparison videos
+Exec=/opt/cubical-create/CubicalCreate
+Icon=cubical-create
+Terminal=false
+Categories=AudioVideo;Video;Graphics;
+StartupWMClass=network.cubical.Create

@@ -1,0 +1,10 @@
+Package: cubical-create
+Version: 0.2.2~alpha17
+Section: video
+Priority: optional
+Architecture: amd64
+Maintainer: Cubical Network
+Depends: libgtk-4-1, ffmpeg
+Description: Native comparison-video creator
+ Cubical Create imports spreadsheets and image sheets, edits every visible
+ value, mixes looping soundtracks, and exports animated MP4 videos.
