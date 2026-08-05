@@ -320,7 +320,7 @@ class VideoExporter:
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-            if process.stdin is not None and not process.stdin.closed:
+            if process.stdin is not None and not getattr(process.stdin, "closed", False):
                 process.stdin.close()
             if process.stderr is not None:
                 process.stderr.close()
