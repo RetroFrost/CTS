@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Cubical Compare
+Comment=Create animated comparison videos
+Exec=cubical-compare %F
+Icon=io.github.retrofrost.CubicalCompare
+Categories=AudioVideo;Video;Graphics;
+MimeType=application/x-cubical-compare;
+StartupNotify=true
+Terminal=false
