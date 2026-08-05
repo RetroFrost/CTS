@@ -17,14 +17,15 @@ def test_native_product_identity_is_final() -> None:
         for path in (ROOT / "native").rglob("*")
         if path.is_file()
     )
-    for legacy in (
-        "Cubical Create",
-        "CubicalCreate",
-        "Cubical.Create",
-        "network.cubical.Create",
-        "cubical-create",
-        "CUBICAL_CREATE_ENGINE",
-    ):
+    legacy_values = (
+        "Cubical" + " Create",
+        "Cubical" + "Create",
+        "Cubical" + ".Create",
+        "network.cubical" + ".Create",
+        "cubical" + "-create",
+        "CUBICAL" + "_CREATE_ENGINE",
+    )
+    for legacy in legacy_values:
         assert legacy not in native_text
 
     assert APP_ID in read("native/linux-gtk/main.cpp")
