@@ -1,0 +1,55 @@
+app-id: io.github.retrofrost.CubicalCompare
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: cubical-compare
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '25.08'
+    add-ld-path: .
+    no-autodownload: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --env=PATH=/app/lib/ffmpeg:/app/bin:/usr/bin
+  - --env=CUBICAL_COMPARE_ENGINE=/app/libexec/cubical-compare/engine/cubical-compare-engine
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/pkgconfig
+  - '*.a'
+  - '*.la'
+  - __pycache__
+  - '*.pyc'
+
+modules:
+  # This manifest intentionally targets the canonical source tree described in
+  # packaging/flatpak/README.md. Until the archive overlays are normalised into
+  # native/, engine/, tests/ and CMakeLists.txt, use the release preparation
+  # workflow to materialise that tree before running flatpak-builder.
+  - name: cubical-compare
+    buildsystem: simple
+    build-commands:
+      - cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DCUBICAL_COMPARE_ENGINE_PATH=/app/libexec/cubical-compare/engine/cubical-compare-engine
+      - cmake --build build --parallel
+      - cmake --install build
+      - python3 -m pip install --no-index --no-deps --no-build-isolation --prefix=/app/libexec/cubical-compare/engine -r engine/requirements.txt
+      - python3 -m PyInstaller --noconfirm --clean --distpath /app/libexec/cubical-compare/engine --workpath /tmp/cubical-compare-pyinstaller engine/cubical-compare-engine.spec
+      - install -Dm644 packaging/flatpak/io.github.retrofrost.CubicalCompare.desktop /app/share/applications/io.github.retrofrost.CubicalCompare.desktop
+      - install -Dm644 packaging/flatpak/io.github.retrofrost.CubicalCompare.metainfo.xml /app/share/metainfo/io.github.retrofrost.CubicalCompare.metainfo.xml
+      - install -Dm644 packaging/flatpak/io.github.retrofrost.CubicalCompare.svg /app/share/icons/hicolor/scalable/apps/io.github.retrofrost.CubicalCompare.svg
+      - install -Dm644 LICENSE /app/share/licenses/io.github.retrofrost.CubicalCompare/LICENSE
+      - test -x /app/bin/cubical-compare
+      - test -x /app/libexec/cubical-compare/engine/cubical-compare-engine
+    sources:
+      - type: dir
+        path: ../..
