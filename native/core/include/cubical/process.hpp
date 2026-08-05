@@ -1,6 +1,8 @@
 #pragma once
+
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cubical {
@@ -14,4 +16,4 @@ std::filesystem::path engine_path();
 std::filesystem::path temporary_path(const std::string& stem, const std::string& extension);
 ProcessResult run_process(const std::filesystem::path& executable, const std::vector<std::string>& args);
 ProcessResult run_engine(const std::vector<std::string>& args);
-}
+} // namespace cubical
