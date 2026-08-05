@@ -51,16 +51,16 @@ install(TARGETS cubical_compare_app
 )
 
 if(UNIX AND NOT APPLE)
-  install(FILES packaging/flatpak/io.github.retrofrost.CubicalCompare.desktop
+  install(FILES packaging/flatpak/io.github.retrofrost.CTS.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
   )
-  install(FILES packaging/flatpak/io.github.retrofrost.CubicalCompare.metainfo.xml
+  install(FILES packaging/flatpak/io.github.retrofrost.CTS.metainfo.xml
     DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
   )
-  install(FILES packaging/flatpak/io.github.retrofrost.CubicalCompare.svg
+  install(FILES packaging/flatpak/io.github.retrofrost.CTS.svg
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
   )
   install(FILES LICENSE
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/io.github.retrofrost.CubicalCompare
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/io.github.retrofrost.CTS
   )
 endif()

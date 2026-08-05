@@ -1,4 +1,4 @@
-app-id: io.github.retrofrost.CubicalCompare
+app-id: io.github.retrofrost.CTS
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
