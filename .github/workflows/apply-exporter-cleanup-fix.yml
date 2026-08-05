@@ -1,0 +1,50 @@
+name: Apply exporter cleanup fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-exporter-cleanup-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Make stream cleanup compatible with test and real streams
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('engine/ccengine/exporter.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'if process.stdin is not None and not process.stdin.closed:'
+          new = 'if process.stdin is not None and not getattr(process.stdin, "closed", False):'
+          if old not in text:
+              if new in text:
+                  print('Exporter cleanup fix already applied.')
+              else:
+                  raise SystemExit('Expected exporter cleanup line was not found.')
+          else:
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add engine/ccengine/exporter.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Make exporter stream cleanup defensive'
+          git push origin HEAD:release/cubical-compare-1.0
