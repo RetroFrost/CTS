@@ -1,0 +1,196 @@
+name: Materialize Cubical Compare source
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/materialize-cubical-compare-source.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-cubical-compare-source
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: release/cubical-compare-1.0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Reconstruct verified final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf source .materialize-work
+          mkdir -p .materialize-work source
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import re
+          import subprocess
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          root = Path.cwd()
+          work = root / ".materialize-work"
+          destination = root / "source"
+
+          def numeric_parts(pattern: str) -> list[Path]:
+              paths = list(root.glob(pattern))
+              def number(path: Path) -> int:
+                  match = re.search(r"part(\d+)$", path.name)
+                  if not match:
+                      raise RuntimeError(f"Invalid chunk name: {path}")
+                  return int(match.group(1))
+              return sorted(paths, key=number)
+
+          def restore(name: str, parts: list[Path], expected_sha256: str) -> None:
+              if not parts:
+                  raise RuntimeError(f"No chunks found for {name}")
+              encoded = "".join("".join(path.read_text().split()) for path in parts)
+              archive = base64.b64decode(encoded, validate=True)
+              actual = hashlib.sha256(archive).hexdigest()
+              if actual != expected_sha256:
+                  raise RuntimeError(
+                      f"{name} checksum mismatch: expected {expected_sha256}, got {actual}"
+                  )
+              archive_path = work / f"{name}.zip"
+              archive_path.write_bytes(archive)
+              with zipfile.ZipFile(archive_path) as bundle:
+                  bundle.extractall(destination)
+              print(f"Restored {name} from {len(parts)} chunks ({actual})")
+
+          alpha18 = numeric_parts("cubical-create-alpha18-source.b64.part*")
+          if len(alpha18) != 5:
+              raise RuntimeError(f"Expected 5 Alpha 18 chunks, found {len(alpha18)}")
+          restore(
+              "alpha18",
+              alpha18,
+              "f77790798c92e8a75dfdc84281aeb1addfb6332b887a45bb0e321d8ff4a5b48e",
+          )
+          subprocess.run([sys.executable, "alpha18-compiler-fixes.py", "source"], check=True)
+
+          alpha19 = [root / f"alpha19-overlay5.part{index:02d}" for index in range(12)]
+          missing = [str(path) for path in alpha19 if not path.is_file()]
+          if missing:
+              raise RuntimeError(f"Missing Alpha 19 chunks: {missing}")
+          restore(
+              "alpha19",
+              alpha19,
+              "da9f2ebe57e55b46466bada594197b110d3a5ac1569e9d4ec7f22bddf906448e",
+          )
+
+          alpha20_names = [
+              "alpha20-overlay.part00",
+              "alpha20-fix01.part00",
+              "alpha20-fix01.part01",
+              "alpha20-fix01.part02",
+              "alpha20-overlay.part02",
+              "alpha20-fix03.part00",
+              "alpha20-fix03.part01",
+              "alpha20-fix03.part02",
+              "alpha20-overlay.part04",
+          ]
+          alpha20 = [root / name for name in alpha20_names]
+          missing = [str(path) for path in alpha20 if not path.is_file()]
+          if missing:
+              raise RuntimeError(f"Missing Alpha 20 chunks: {missing}")
+          restore(
+              "alpha20",
+              alpha20,
+              "00c7161d0ff5abe872e3d88d9f31667d07a3fba0525f71e1bf21c99f3cef566d",
+          )
+          subprocess.run([sys.executable, "alpha20-idle-startup-fix.py", "source"], check=True)
+
+          alpha21 = [root / f"alpha21-overlay.b64.part{index:02d}" for index in range(4)]
+          missing = [str(path) for path in alpha21 if not path.is_file()]
+          if missing:
+              raise RuntimeError(f"Missing Alpha 21 chunks: {missing}")
+          restore(
+              "alpha21",
+              alpha21,
+              "49a92733bb2ba5622b42b746a065aeabdbf0095ca23c42600c12cfdda38513be",
+          )
+
+          final_parts = numeric_parts("final-overlay.b64.part*")
+          restore(
+              "final",
+              final_parts,
+              "5f40c8ff03e534f928b5de5287c66cedb0555b247963bc36647fb5739eca9c9b",
+          )
+
+          required = [
+              destination / "CMakeLists.txt",
+              destination / "native/core/src/process.cpp",
+              destination / "native/windows/main.cpp",
+              destination / "engine/engine_cli.py",
+              destination / "engine/ccengine/exporter.py",
+              destination / "engine/ccengine/renderer.py",
+              destination / "engine/cubical-create-engine.spec",
+              destination / "tests",
+          ]
+          missing = [str(path.relative_to(root)) for path in required if not path.exists()]
+          if missing:
+              raise RuntimeError(f"Materialized source is incomplete: {missing}")
+
+          checks = {
+              destination / "engine/engine_cli.py": ['VERSION = "1.0.0"'],
+              destination / "native/windows/main.cpp": [
+                  "Music",
+                  "Automatic video length",
+                  "save-portable",
+              ],
+              destination / "engine/ccengine/exporter.py": ["ThreadPoolExecutor"],
+              destination / "engine/ccengine/renderer.py": ["OrderedDict"],
+              destination / "native/core/src/process.cpp": ["CreateProcessW"],
+          }
+          for path, needles in checks.items():
+              text = path.read_text(encoding="utf-8", errors="replace")
+              for needle in needles:
+                  if needle not in text:
+                      raise RuntimeError(f"Missing expected final-state marker {needle!r} in {path}")
+          PY
+
+      - name: Install canonical source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf native engine tests
+          cp -a source/native native
+          cp -a source/engine engine
+          cp -a source/tests tests
+          cp source/CMakeLists.txt CMakeLists.txt
+          cp source/README.md README.md
+          mkdir -p packaging
+          cp -a source/packaging/. packaging/
+          printf '%s\n' 'The canonical source tree was reconstructed from the verified final overlays.' > .materialized-source
+          rm -rf source .materialize-work
+
+      - name: Commit canonical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add CMakeLists.txt README.md native engine tests packaging .materialized-source
+          if git diff --cached --quiet; then
+            echo 'Canonical source is already materialized.'
+            exit 0
+          fi
+          git commit -m 'Materialize canonical Cubical Compare source tree'
+          git push origin HEAD:release/cubical-compare-1.0
