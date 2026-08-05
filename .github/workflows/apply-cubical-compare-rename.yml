@@ -30,12 +30,7 @@ jobs:
           roots = [Path('native'), Path('engine'), Path('tests'), Path('packaging')]
           files = [Path('CMakeLists.txt'), Path('README.md')]
           for root in roots:
-              for path in root.rglob('*'):
-                  if path.is_file() and path.suffix.lower() in {
-                      '.cpp', '.hpp', '.h', '.py', '.spec', '.json', '.md', '.txt',
-                      '.cmake', '.xml', '.desktop', '.yml', '.yaml', '.manifest'
-                  }:
-                      files.append(path)
+              files.extend(path for path in root.rglob('*') if path.is_file())
 
           replacements = [
               ('CUBICAL_CREATE_ENGINE', 'CUBICAL_COMPARE_ENGINE'),
@@ -50,7 +45,7 @@ jobs:
           for path in sorted(set(files)):
               try:
                   text = path.read_text(encoding='utf-8')
-              except UnicodeDecodeError:
+              except (UnicodeDecodeError, OSError):
                   continue
               updated = text
               for old, new in replacements:
@@ -70,12 +65,12 @@ jobs:
             git mv native/windows/CubicalCreate.manifest native/windows/CubicalCompare.manifest
           fi
 
-          grep -R --line-number --exclude-dir=.git \
+          if grep -R --line-number --exclude-dir=.git \
             -E 'Cubical Create|cubical-create-engine|CUBICAL_CREATE_ENGINE|CubicalCreate' \
-            native engine tests packaging CMakeLists.txt README.md && {
-              echo 'Legacy product identifiers remain.' >&2
-              exit 1
-            } || true
+            native engine tests packaging CMakeLists.txt README.md; then
+            echo 'Legacy product identifiers remain.' >&2
+            exit 1
+          fi
 
           grep -R --line-number 'CCX1' native engine tests >/dev/null
 
