@@ -57,7 +57,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            dbus-x11 ffmpeg flatpak flatpak-builder xauth xvfb
+            dbus-x11 elfutils ffmpeg flatpak flatpak-builder xauth xvfb
           flatpak remote-add --user --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive flathub org.flatpak.Builder
