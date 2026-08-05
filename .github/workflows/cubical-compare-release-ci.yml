@@ -254,7 +254,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $root = "dist\Cubical-Compare-$env:VERSION-windows-x64"
+          $version = $env:VERSION
+          $root = "dist\Cubical-Compare-${version}-windows-x64"
+          $archive = "dist\Cubical-Compare-${version}-windows-x64.zip"
           Remove-Item dist -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path "$root\libexec\engine" -Force | Out-Null
           Copy-Item '.\build-windows\Release\CubicalCompare.exe' "$root\CubicalCompare.exe"
@@ -267,9 +269,10 @@ jobs:
           & "$root\CubicalCompare.exe" --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          Compress-Archive -Path $root -DestinationPath "dist\Cubical-Compare-$env:VERSION-windows-x64.zip" -Force
-          $hash = (Get-FileHash "dist\Cubical-Compare-$env:VERSION-windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  Cubical-Compare-$env:VERSION-windows-x64.zip" | Set-Content dist\SHA256SUMS-windows.txt
+          Compress-Archive -Path $root -DestinationPath $archive -Force
+          if (-not (Test-Path $archive)) { throw "Windows archive was not created: $archive" }
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          "$hash  Cubical-Compare-${version}-windows-x64.zip" | Set-Content dist\SHA256SUMS-windows.txt
 
       - uses: actions/upload-artifact@v7
         with:
