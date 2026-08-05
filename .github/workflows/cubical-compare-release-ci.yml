@@ -53,7 +53,7 @@ jobs:
           test -f engine/cubical-compare-engine.spec
           test -f native/linux-gtk/main.cpp
           test -f native/windows/main.cpp
-          test -f packaging/flatpak/io.github.retrofrost.CubicalCompare.metainfo.xml
+          test -f packaging/flatpak/io.github.retrofrost.CTS.metainfo.xml
           if grep -R --line-number --exclude-dir=.git \
             -E 'Cubical Create|cubical-create-engine|CUBICAL_CREATE_ENGINE|CubicalCreate' \
             native engine tests packaging CMakeLists.txt README.md; then
@@ -61,8 +61,8 @@ jobs:
             exit 1
           fi
           grep -R --line-number 'CCX1' native engine tests >/dev/null
-          desktop-file-validate packaging/flatpak/io.github.retrofrost.CubicalCompare.desktop
-          appstreamcli validate --no-net packaging/flatpak/io.github.retrofrost.CubicalCompare.metainfo.xml
+          desktop-file-validate packaging/flatpak/io.github.retrofrost.CTS.desktop
+          appstreamcli validate --no-net packaging/flatpak/io.github.retrofrost.CTS.metainfo.xml
 
       - name: Test Python rendering engine
         env:
