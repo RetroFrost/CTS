@@ -23,6 +23,7 @@ struct AppState {
     bool loading{false};
     bool busy{false};
     bool task_is_export{false};
+    bool close_after_task{false};
     GtkWidget* window{};
     GtkWidget* status{};
     GtkWidget* card_list{};
@@ -557,6 +558,10 @@ void finish_task(AppState* s, const std::string& status) {
     s->busy = false;
     s->task_is_export = false;
     set_status(s, status);
+    if (s->close_after_task && s->window) {
+        s->close_after_task = false;
+        gtk_window_destroy(GTK_WINDOW(s->window));
+    }
 }
 
 static gboolean task_ready(gpointer data) {
@@ -843,6 +848,7 @@ void activate(GtkApplication* app, gpointer data) {
     g_signal_connect(s->window, "close-request", G_CALLBACK(+[](GtkWindow*, gpointer data) -> gboolean {
         auto* state = static_cast<AppState*>(data);
         if (!state->busy) return FALSE;
+        state->close_after_task = true;
         std::ofstream(state->task_cancel_path) << "cancel";
         set_status(state, "Cancelling the current operation before closing…");
         return TRUE;
@@ -876,9 +882,9 @@ int main(int argc, char** argv) {
         return result.exit_code;
     }
     auto state = std::make_unique<AppState>();
-    state->working_ccx = cubical::temporary_path("cubical-create", ".ccx");
+    state->working_ccx = cubical::temporary_path("cubical-compare", ".ccx");
     state->preview_path.clear();
-    GtkApplication* app = gtk_application_new("network.cubical.Create", G_APPLICATION_DEFAULT_FLAGS);
+    GtkApplication* app = gtk_application_new("io.github.retrofrost.CTS", G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(app, "activate", G_CALLBACK(activate), state.get());
     int result = g_application_run(G_APPLICATION(app), argc, argv);
     std::error_code ec; fs::remove(state->working_ccx, ec); fs::remove(state->preview_path, ec);
