@@ -1,10 +1,11 @@
-Package: cubical-create
-Version: 0.2.2~alpha17
+Package: cubical-compare
+Version: 1.0.0
 Section: video
 Priority: optional
 Architecture: amd64
-Maintainer: Cubical Network
+Maintainer: RetroFrost
 Depends: libgtk-4-1, ffmpeg
-Description: Native comparison-video creator
- Cubical Compare imports spreadsheets and image sheets, edits every visible
- value, mixes looping soundtracks, and exports animated MP4 videos.
+Description: Native comparison-video editor
+ Cubical Compare imports spreadsheet data and image sheets, edits comparison
+ cards, mixes soundtracks, and exports animated MP4 videos through its
+ privately bundled rendering engine.
