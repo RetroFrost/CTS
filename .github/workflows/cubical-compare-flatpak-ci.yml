@@ -42,10 +42,10 @@ jobs:
 
       - name: Lint manifest and metadata
         run: |
-          flatpak run --user --filesystem="$GITHUB_WORKSPACE:ro" \
+          flatpak run --user --filesystem="$GITHUB_WORKSPACE" \
             --command=flatpak-builder-lint org.flatpak.Builder \
             manifest "$GITHUB_WORKSPACE/$MANIFEST"
-          flatpak run --user --filesystem="$GITHUB_WORKSPACE:ro" \
+          flatpak run --user --filesystem="$GITHUB_WORKSPACE" \
             --command=flatpak-builder-lint org.flatpak.Builder \
             appstream "$GITHUB_WORKSPACE/packaging/flatpak/$APP_ID.metainfo.xml"
 
@@ -59,7 +59,7 @@ jobs:
 
       - name: Lint built repository
         run: |
-          flatpak run --user --filesystem="$RUNNER_TEMP/cubical-flatpak-repo:ro" \
+          flatpak run --user --filesystem="$RUNNER_TEMP/cubical-flatpak-repo" \
             --command=flatpak-builder-lint org.flatpak.Builder \
             repo "$RUNNER_TEMP/cubical-flatpak-repo"
 
@@ -97,6 +97,8 @@ jobs:
             -show_entries stream=codec_name,width,height \
             -of default=noprint_wrappers=1 \
             "$HOME/.var/app/$APP_ID/data/ci-self-test/self-test.mp4"
+          cp "$HOME/.var/app/$APP_ID/data/ci-self-test/self-test.mp4" \
+            flatpak-self-test.mp4
 
       - name: Create single-file Flatpak bundle
         run: |
@@ -113,5 +115,5 @@ jobs:
             Cubical-Compare-1.0.0-x86_64.flatpak
             SHA256SUMS-flatpak.txt
             flatpak-permissions.txt
-            ~/.var/app/io.github.retrofrost.CubicalCompare/data/ci-self-test/self-test.mp4
+            flatpak-self-test.mp4
           if-no-files-found: error
