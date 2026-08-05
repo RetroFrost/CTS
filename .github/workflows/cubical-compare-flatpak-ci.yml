@@ -1,0 +1,117 @@
+name: Cubical Compare Flatpak CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - CMakeLists.txt
+      - native/**
+      - engine/**
+      - tests/**
+      - packaging/flatpak/**
+      - .github/workflows/cubical-compare-flatpak-ci.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cubical-compare-flatpak-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ID: io.github.retrofrost.CubicalCompare
+  MANIFEST: packaging/flatpak/io.github.retrofrost.CubicalCompare.yml
+
+jobs:
+  flatpak:
+    name: Build, sandbox-test and lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dbus-x11 ffmpeg flatpak flatpak-builder xauth xvfb
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.flatpak.Builder
+
+      - name: Lint manifest and metadata
+        run: |
+          flatpak run --user --filesystem="$GITHUB_WORKSPACE:ro" \
+            --command=flatpak-builder-lint org.flatpak.Builder \
+            manifest "$GITHUB_WORKSPACE/$MANIFEST"
+          flatpak run --user --filesystem="$GITHUB_WORKSPACE:ro" \
+            --command=flatpak-builder-lint org.flatpak.Builder \
+            appstream "$GITHUB_WORKSPACE/packaging/flatpak/$APP_ID.metainfo.xml"
+
+      - name: Build Flatpak without networked build steps
+        run: |
+          rm -rf "$RUNNER_TEMP/cubical-flatpak-build" "$RUNNER_TEMP/cubical-flatpak-repo"
+          flatpak-builder --user --force-clean \
+            --install-deps-from=flathub \
+            --repo="$RUNNER_TEMP/cubical-flatpak-repo" \
+            "$RUNNER_TEMP/cubical-flatpak-build" "$MANIFEST"
+
+      - name: Lint built repository
+        run: |
+          flatpak run --user --filesystem="$RUNNER_TEMP/cubical-flatpak-repo:ro" \
+            --command=flatpak-builder-lint org.flatpak.Builder \
+            repo "$RUNNER_TEMP/cubical-flatpak-repo"
+
+      - name: Install Flatpak and verify permissions
+        run: |
+          flatpak remote-add --user --if-not-exists --no-gpg-verify \
+            cubical-compare-ci "$RUNNER_TEMP/cubical-flatpak-repo"
+          flatpak install --user --noninteractive cubical-compare-ci "$APP_ID"
+          flatpak info --user --show-permissions "$APP_ID" | tee flatpak-permissions.txt
+          if grep -E '^filesystems=.*(home|host)' flatpak-permissions.txt; then
+            echo 'Flatpak has a forbidden broad filesystem permission.' >&2
+            exit 1
+          fi
+          flatpak run --user --command=sh "$APP_ID" -c '
+            test -x /app/bin/cubical-compare
+            test -x /app/libexec/cubical-compare/engine/cubical-compare-engine
+            test -d /app/libexec/cubical-compare/engine/_internal
+            test -x /app/lib/ffmpeg/ffmpeg
+          '
+
+      - name: Run native GUI and private engine self-tests in sandbox
+        run: |
+          dbus-run-session -- xvfb-run -a \
+            flatpak run --user "$APP_ID" --self-test
+
+          rm -rf "$HOME/.var/app/$APP_ID/data/ci-self-test"
+          flatpak run --user --command=sh "$APP_ID" -c '
+            /app/libexec/cubical-compare/engine/cubical-compare-engine \
+              self-test --directory "$XDG_DATA_HOME/ci-self-test"
+          '
+          test -s "$HOME/.var/app/$APP_ID/data/ci-self-test/self-test.mp4"
+          test -s "$HOME/.var/app/$APP_ID/data/ci-self-test/self-test.png"
+          test -s "$HOME/.var/app/$APP_ID/data/ci-self-test/self-test.bmp"
+          ffprobe -v error -select_streams v:0 \
+            -show_entries stream=codec_name,width,height \
+            -of default=noprint_wrappers=1 \
+            "$HOME/.var/app/$APP_ID/data/ci-self-test/self-test.mp4"
+
+      - name: Create single-file Flatpak bundle
+        run: |
+          flatpak build-bundle \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            "$RUNNER_TEMP/cubical-flatpak-repo" \
+            "Cubical-Compare-1.0.0-x86_64.flatpak" "$APP_ID"
+          sha256sum Cubical-Compare-1.0.0-x86_64.flatpak > SHA256SUMS-flatpak.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Cubical-Compare-1.0.0-Flatpak-x86_64
+          path: |
+            Cubical-Compare-1.0.0-x86_64.flatpak
+            SHA256SUMS-flatpak.txt
+            flatpak-permissions.txt
+            ~/.var/app/io.github.retrofrost.CubicalCompare/data/ci-self-test/self-test.mp4
+          if-no-files-found: error
