@@ -320,10 +320,12 @@ class VideoExporter:
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-            if process.stdin is not None and not getattr(process.stdin, "closed", False):
-                process.stdin.close()
-            if process.stderr is not None:
-                process.stderr.close()
+            close_stdin = getattr(process.stdin, "close", None)
+            if callable(close_stdin) and not getattr(process.stdin, "closed", False):
+                close_stdin()
+            close_stderr = getattr(process.stderr, "close", None)
+            if callable(close_stderr):
+                close_stderr()
             stderr_thread.join(timeout=1.0)
             self._process = None
             temporary.unlink(missing_ok=True)
