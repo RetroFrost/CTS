@@ -43,7 +43,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             appstream cmake desktop-file-utils dpkg-dev ffmpeg g++ \
-            libgtk-4-dev ninja-build pkg-config xvfb
+            libgtk-4-dev ninja-build pkg-config xauth xvfb
           python -m pip install --upgrade pip
           python -m pip install -r engine/requirements-build.txt
 
@@ -121,7 +121,6 @@ jobs:
           test -x stage-linux/bin/cubical-compare
           test -x stage-linux/libexec/cubical-compare/engine/cubical-compare-engine
 
-          rm -rf staged-self-test
           CUBICAL_COMPARE_FFMPEG=/usr/bin/ffmpeg \
             xvfb-run -a stage-linux/bin/cubical-compare --self-test
 
@@ -192,16 +191,24 @@ jobs:
           $ErrorActionPreference = 'Stop'
           choco install ffmpeg -y --no-progress
           python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -r engine/requirements-build.txt
-          $ffmpeg = Get-Command ffmpeg.exe -ErrorAction Stop
-          "CUBICAL_COMPARE_FFMPEG=$($ffmpeg.Source)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $ffmpeg = Get-ChildItem 'C:\ProgramData\chocolatey\lib\ffmpeg' -Recurse -File -Filter ffmpeg.exe |
+            Where-Object { $_.Length -gt 1000000 } |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+          if (-not $ffmpeg) { throw 'Could not locate the real FFmpeg executable.' }
+          "CUBICAL_COMPARE_FFMPEG=$($ffmpeg.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Test Python rendering engine
         shell: pwsh
         run: |
           $env:PYTHONPATH = "$PWD\engine"
           pytest -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m compileall -q engine
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build private one-directory engine
         working-directory: engine
@@ -209,6 +216,7 @@ jobs:
         run: |
           $env:PYTHONPATH = "$PWD"
           pyinstaller --noconfirm --clean cubical-compare-engine.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $engine = '.\dist\cubical-compare-engine\cubical-compare-engine.exe'
           if (-not (Test-Path $engine)) { throw 'Private engine executable was not produced.' }
           if (-not (Test-Path '.\dist\cubical-compare-engine\_internal')) { throw 'Private engine runtime directory was not produced.' }
@@ -218,18 +226,19 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item engine-self-test -Recurse -Force -ErrorAction SilentlyContinue
-          & .\engine\dist\cubical-compare-engine\cubical-compare-engine.exe \
-            self-test --directory engine-self-test
+          & .\engine\dist\cubical-compare-engine\cubical-compare-engine.exe self-test --directory engine-self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path engine-self-test\self-test.mp4)) { throw 'Engine self-test MP4 is missing.' }
-          ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height \
-            -of default=noprint_wrappers=1 engine-self-test\self-test.mp4
+          ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 engine-self-test\self-test.mp4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build native Windows application
         shell: pwsh
         run: |
           cmake -S . -B build-windows -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build build-windows --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path '.\build-windows\Release\CubicalCompare.exe')) {
             throw 'CubicalCompare.exe was not produced.'
           }
@@ -254,14 +263,13 @@ jobs:
           Copy-Item LICENSE "$root\LICENSE.txt"
 
           $env:CUBICAL_COMPARE_ENGINE = "$PWD\$root\libexec\engine\cubical-compare-engine.exe"
+          $env:CUBICAL_COMPARE_FFMPEG = "$PWD\$root\libexec\engine\ffmpeg.exe"
           & "$root\CubicalCompare.exe" --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          Compress-Archive -Path $root \
-            -DestinationPath "dist\Cubical-Compare-$env:VERSION-windows-x64.zip" -Force
+          Compress-Archive -Path $root -DestinationPath "dist\Cubical-Compare-$env:VERSION-windows-x64.zip" -Force
           $hash = (Get-FileHash "dist\Cubical-Compare-$env:VERSION-windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  Cubical-Compare-$env:VERSION-windows-x64.zip" | \
-            Set-Content dist\SHA256SUMS-windows.txt
+          "$hash  Cubical-Compare-$env:VERSION-windows-x64.zip" | Set-Content dist\SHA256SUMS-windows.txt
 
       - uses: actions/upload-artifact@v7
         with:
