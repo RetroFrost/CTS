@@ -1,0 +1,59 @@
+name: Generate Flatpak Python sources
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - packaging/flatpak/requirements-flatpak.txt
+      - .github/workflows/generate-flatpak-python-sources.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: generate-flatpak-python-sources
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Install generator requirements and GNOME 50 SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak python3-pip
+          flatpak remote-add --if-not-exists --user flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.gnome.Sdk//50
+          python3 -m pip install --user requirements-parser
+
+      - name: Generate offline dependency manifest
+        run: |
+          git clone --filter=blob:none --no-checkout \
+            https://github.com/flatpak/flatpak-builder-tools.git generator-tools
+          git -C generator-tools checkout 737c0085912f9f7dabf9341d4608e2a77a51a73a -- pip
+          python3 generator-tools/pip/flatpak-pip-generator.py \
+            --runtime=org.gnome.Sdk//50 \
+            --requirements-file=packaging/flatpak/requirements-flatpak.txt \
+            --output=packaging/flatpak/python3-cubical-compare-engine
+          python3 -m json.tool \
+            packaging/flatpak/python3-cubical-compare-engine.json >/dev/null
+
+      - name: Commit generated sources
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packaging/flatpak/python3-cubical-compare-engine.json
+          if git diff --cached --quiet; then
+            echo 'Flatpak Python sources are already current.'
+            exit 0
+          fi
+          git commit -m 'Generate checksum-pinned Flatpak Python sources'
+          git push origin HEAD:release/cubical-compare-1.0
