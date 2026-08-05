@@ -61,7 +61,7 @@ class VideoExporter:
         found = shutil.which(executable)
         if not found:
             raise RuntimeError(
-                "FFmpeg was not found. Install FFmpeg or place it beside Cubical Create before exporting."
+                "FFmpeg was not found. Install FFmpeg or place it beside Cubical Compare before exporting."
             )
         return found
 

@@ -433,12 +433,12 @@ def format_crop_for_cts(
     mode: str = "cts_card",
     target_size: tuple[int, int] = (480, 830),
 ) -> Image.Image:
-    """Convert a mathematically correct cell into spectator-safe Cubical Create artwork.
+    """Convert a mathematically correct cell into spectator-safe Cubical Compare artwork.
 
     Generated sheets often contain square cells, while the card artwork area is
     tall. A raw cover-fit cuts away most of the subject. The default keeps the
     complete panel, places it over a soft full-frame background, and emits the
-    exact artwork aspect used by Cubical Create. No labels or recognition markers are added.
+    exact artwork aspect used by Cubical Compare. No labels or recognition markers are added.
     """
     crop = crop.convert("RGB")
     if mode == "original":

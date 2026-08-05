@@ -24,7 +24,7 @@ It is not added to `PATH`, exported as a desktop application, or installed as a 
 
 ## Current migration state
 
-The `cubical-create-1.0-final` code is still reconstructed from historical Base64 archive overlays by its Windows workflow. The release branch must first materialise that final state into the canonical repository tree:
+The `cubical-compare-1.0-final` code is still reconstructed from historical Base64 archive overlays by its Windows workflow. The release branch must first materialise that final state into the canonical repository tree:
 
 - `native/`
 - `engine/`

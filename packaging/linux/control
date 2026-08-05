@@ -6,5 +6,5 @@ Architecture: amd64
 Maintainer: Cubical Network
 Depends: libgtk-4-1, ffmpeg
 Description: Native comparison-video creator
- Cubical Create imports spreadsheets and image sheets, edits every visible
+ Cubical Compare imports spreadsheets and image sheets, edits every visible
  value, mixes looping soundtracks, and exports animated MP4 videos.

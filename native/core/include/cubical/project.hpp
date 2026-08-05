@@ -35,9 +35,9 @@ struct Settings {
     bool credits_enabled{true};
     std::string credits_top_text{"Values are estimates and may vary."};
     std::string credits_heading{"Credits"};
-    std::string credits_project_name{"Cubical Create"};
+    std::string credits_project_name{"Cubical Compare"};
     std::string credits_created_with_label{"Created with"};
-    std::string credits_created_with_value{"Cubical Create"};
+    std::string credits_created_with_value{"Cubical Compare"};
     std::string credits_design_label{"Design & Rendering"};
     std::string credits_design_value{"Cubical"};
     std::string credits_footer{"CREDITS ARE OPTIONAL"};
@@ -45,7 +45,7 @@ struct Settings {
     std::string end_best_label{"BEST VIDEO FOR YOU"};
     std::string end_newest_label{"NEWEST VIDEO"};
     std::string end_credit_label{"Video Made By"};
-    std::string end_credit_value{"Cubical Create"};
+    std::string end_credit_value{"Cubical Compare"};
 
     std::string soundtrack;
     double soundtrack_volume{0.75};

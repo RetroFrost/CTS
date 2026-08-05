@@ -1,6 +1,6 @@
-# Cubical Create 1.0 Final
+# Cubical Compare 1.0 Final
 
-Cubical Create is the final native comparison-video editor for Windows, backed by the same deterministic rendering engine used for preview and MP4 export.
+Cubical Compare is the final native comparison-video editor for Windows, backed by the same deterministic rendering engine used for preview and MP4 export.
 
 ## Normal workflow
 
@@ -32,10 +32,10 @@ The **Manual editor** remains available for direct card editing, free image tran
 
 ## Windows package
 
-Extract the complete ZIP into a fresh folder and run `CubicalCreate.exe`. Keep these files together:
+Extract the complete ZIP into a fresh folder and run `CubicalCompare.exe`. Keep these files together:
 
-- `CubicalCreate.exe`
-- `cubical-create-engine.exe`
+- `CubicalCompare.exe`
+- `cubical-compare-engine.exe`
 - `ffmpeg.exe`
 
 ## Build from source

@@ -387,8 +387,8 @@ void start_preview_render(AppState* s, double requested_time) {
         return;
     }
     s->preview_rendering = true;
-    const auto snapshot = cubical::temporary_path("cubical-create-preview-project", ".ccx");
-    const auto output = cubical::temporary_path("cubical-create-preview", ".png");
+    const auto snapshot = cubical::temporary_path("cubical-compare-preview-project", ".ccx");
+    const auto output = cubical::temporary_path("cubical-compare-preview", ".png");
     std::error_code copy_error;
     fs::copy_file(s->working_ccx, snapshot, fs::copy_options::overwrite_existing, copy_error);
     if (copy_error) {
@@ -517,8 +517,8 @@ bool begin_task(AppState* s, bool export_task, const char* title, const char* me
     s->task_is_export = export_task;
     s->playing = false;
     update_player_ui(s);
-    s->task_progress_path = cubical::temporary_path("cubical-create-progress", ".txt");
-    s->task_cancel_path = cubical::temporary_path("cubical-create-cancel", ".flag");
+    s->task_progress_path = cubical::temporary_path("cubical-compare-progress", ".txt");
+    s->task_cancel_path = cubical::temporary_path("cubical-compare-cancel", ".flag");
     std::ofstream(s->task_progress_path) << 0;
     s->task_window = gtk_window_new();
     gtk_window_set_title(GTK_WINDOW(s->task_window), title);
@@ -635,7 +635,7 @@ void pick_response(GtkNativeDialog* dialog, int response, gpointer data) {
         std::error_code ec; fs::remove(out, ec);
     } else if (ctx->action == PickAction::ImportSheet) {
         auto out = cubical::temporary_path("cubical-sheet", ".ccx");
-        auto assets = cubical::temporary_path("cubical-create-sheet-assets", "");
+        auto assets = cubical::temporary_path("cubical-compare-sheet-assets", "");
         int rows = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->sheet_rows));
         int columns = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->sheet_columns));
         int start = std::max(0, gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->sheet_start)) - 1);
@@ -671,8 +671,8 @@ void choose(AppState* s, PickAction action, GtkFileChooserAction chooser_action,
     gtk_native_dialog_show(GTK_NATIVE_DIALOG(chooser));
 }
 
-void choose_open(GtkButton*, gpointer data) { choose(static_cast<AppState*>(data), PickAction::OpenProject, GTK_FILE_CHOOSER_ACTION_OPEN, "Open Cubical Create project"); }
-void choose_save(GtkButton*, gpointer data) { choose(static_cast<AppState*>(data), PickAction::SaveProject, GTK_FILE_CHOOSER_ACTION_SAVE, "Save Cubical Create project"); }
+void choose_open(GtkButton*, gpointer data) { choose(static_cast<AppState*>(data), PickAction::OpenProject, GTK_FILE_CHOOSER_ACTION_OPEN, "Open Cubical Compare project"); }
+void choose_save(GtkButton*, gpointer data) { choose(static_cast<AppState*>(data), PickAction::SaveProject, GTK_FILE_CHOOSER_ACTION_SAVE, "Save Cubical Compare project"); }
 void choose_data(GtkButton*, gpointer data) { choose(static_cast<AppState*>(data), PickAction::ImportData, GTK_FILE_CHOOSER_ACTION_OPEN, "Insert spreadsheet data"); }
 void choose_sheet(GtkButton*, gpointer data) { choose(static_cast<AppState*>(data), PickAction::ImportSheet, GTK_FILE_CHOOSER_ACTION_OPEN, "Import image sheet"); }
 void choose_image(GtkButton*, gpointer data) { choose(static_cast<AppState*>(data), PickAction::CardImage, GTK_FILE_CHOOSER_ACTION_OPEN, "Choose card image"); }
@@ -731,7 +731,7 @@ GtkWidget* make_scrolled(GtkWidget* child) {
 void activate(GtkApplication* app, gpointer data) {
     auto* s = static_cast<AppState*>(data);
     s->window = gtk_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(s->window), "Cubical Create");
+    gtk_window_set_title(GTK_WINDOW(s->window), "Cubical Compare");
     gtk_window_set_default_size(GTK_WINDOW(s->window), 1180, 660);
     gtk_widget_set_size_request(s->window, 900, 580);
 
@@ -869,7 +869,7 @@ int main(int argc, char** argv) {
             || deletion_project.cards.size() != 2
             || deletion_project.cards[0].title != "First"
             || deletion_project.cards[1].title != "Third") return 4;
-        const auto directory = cubical::temporary_path("cubical-create-native-self-test", "");
+        const auto directory = cubical::temporary_path("cubical-compare-native-self-test", "");
         const auto result = cubical::run_engine({"self-test", "--directory", directory.string()});
         std::cout << result.output;
         std::error_code ignored; fs::remove_all(directory, ignored);

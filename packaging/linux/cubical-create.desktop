@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Cubical Create
+Name=Cubical Compare
 Comment=Create animated comparison videos
-Exec=/opt/cubical-create/CubicalCreate
+Exec=/opt/cubical-create/CubicalCompare
 Icon=cubical-create
 Terminal=false
 Categories=AudioVideo;Video;Graphics;

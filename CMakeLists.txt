@@ -27,7 +27,7 @@ endif()
 if(WIN32)
   add_executable(cubical_compare_app WIN32
     native/windows/main.cpp
-    native/windows/CubicalCreate.manifest
+    native/windows/CubicalCompare.manifest
   )
   set_target_properties(cubical_compare_app PROPERTIES OUTPUT_NAME CubicalCompare)
   target_compile_definitions(cubical_compare_app PRIVATE

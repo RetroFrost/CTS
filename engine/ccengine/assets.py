@@ -33,7 +33,7 @@ def remote_cache_directory() -> Path:
         root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
     else:
         root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    path = root / "Cubical Create" / "remote-assets"
+    path = root / "Cubical Compare" / "remote-assets"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

@@ -105,7 +105,7 @@ def read_ccx(path: str | Path) -> Project:
     values: dict[str, str] = {}
     lines = Path(path).read_text(encoding="utf-8").splitlines()
     if not lines or lines[0].strip() != "CCX1":
-        raise ValueError("Not a Cubical Create interchange file.")
+        raise ValueError("Not a Cubical Compare interchange file.")
     for line in lines[1:]:
         if "=" not in line:
             continue
@@ -435,7 +435,7 @@ def command_self_test(args: argparse.Namespace) -> int:
     return 0
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="cubical-create-engine")
+    p = argparse.ArgumentParser(prog="cubical-compare-engine")
     p.add_argument("--version", action="version", version=VERSION)
     sub = p.add_subparsers(dest="command", required=True)
 

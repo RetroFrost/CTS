@@ -67,9 +67,9 @@ class ProjectSettings:
     credits_enabled: bool = True
     credits_top_text: str = "Values are estimates and may vary."
     credits_heading: str = "Credits"
-    credits_project_name: str = "Cubical Create"
+    credits_project_name: str = "Cubical Compare"
     credits_created_with_label: str = "Created with"
-    credits_created_with_value: str = "Cubical Create"
+    credits_created_with_value: str = "Cubical Compare"
     credits_design_label: str = "Design & Rendering"
     credits_design_value: str = "Cubical"
     credits_footer: str = "CREDITS ARE OPTIONAL"
@@ -78,7 +78,7 @@ class ProjectSettings:
     end_best_label: str = "BEST VIDEO FOR YOU"
     end_newest_label: str = "NEWEST VIDEO"
     end_credit_label: str = "Video Made By"
-    end_credit_value: str = "Cubical Create"
+    end_credit_value: str = "Cubical Compare"
 
     auto_length: bool = True
     custom_length_seconds: float = 60.0
@@ -95,7 +95,7 @@ class ProjectSettings:
     encoder_preset: str = "faster"
     encoder_crf: int = 18
 
-    # Optional custom installed font files. Blank means Cubical Create chooses
+    # Optional custom installed font files. Blank means Cubical Compare chooses
     # a condensed system font close to the reference video.
     font_title: str = ""
     font_description: str = ""
@@ -110,11 +110,11 @@ class ProjectSettings:
     credits_subtitle: str = ""
 
     def migrate_legacy(self) -> None:
-        if self.credits_title and self.credits_project_name == "Cubical Create":
+        if self.credits_title and self.credits_project_name == "Cubical Compare":
             self.credits_project_name = self.credits_title
         if self.credits_subtitle and self.credits_top_text == "Values are estimates and may vary.":
             self.credits_top_text = self.credits_subtitle
-        if self.credits_title and self.end_credit_value == "Cubical Create":
+        if self.credits_title and self.end_credit_value == "Cubical Compare":
             self.end_credit_value = self.credits_title
 
 

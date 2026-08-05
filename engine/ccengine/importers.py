@@ -105,7 +105,7 @@ def load_spreadsheet(path: str | Path) -> list[Card]:
             )
         finally:
             workbook.close()
-    raise ValueError("Cubical Create supports CSV, XLSX and XLSM files.")
+    raise ValueError("Cubical Compare supports CSV, XLSX and XLSM files.")
 
 
 def parse_pasted_data(text: str) -> list[Card]:
