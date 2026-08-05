@@ -1,0 +1,94 @@
+name: Apply final native identity cleanup
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-final-native-identity.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Update Linux identity and close behaviour
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('native/linux-gtk/main.cpp')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  '    bool task_is_export{false};\n',
+                  '    bool task_is_export{false};\n    bool close_after_task{false};\n',
+              ),
+              (
+                  '    s->busy = false;\n    s->task_is_export = false;\n    set_status(s, status);\n',
+                  '    s->busy = false;\n    s->task_is_export = false;\n    set_status(s, status);\n    if (s->close_after_task && s->window) {\n        s->close_after_task = false;\n        gtk_window_destroy(GTK_WINDOW(s->window));\n    }\n',
+              ),
+              (
+                  '        if (!state->busy) return FALSE;\n        std::ofstream(state->task_cancel_path) << "cancel";\n',
+                  '        if (!state->busy) return FALSE;\n        state->close_after_task = true;\n        std::ofstream(state->task_cancel_path) << "cancel";\n',
+              ),
+              (
+                  '    state->working_ccx = cubical::temporary_path("cubical-create", ".ccx");\n',
+                  '    state->working_ccx = cubical::temporary_path("cubical-compare", ".ccx");\n',
+              ),
+              (
+                  '    GtkApplication* app = gtk_application_new("network.cubical.Create", G_APPLICATION_DEFAULT_FLAGS);\n',
+                  '    GtkApplication* app = gtk_application_new("io.github.retrofrost.CTS", G_APPLICATION_DEFAULT_FLAGS);\n',
+              ),
+          ]
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'Expected Linux source fragment was not found:\n{old}')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Update Windows assembly identity
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('native/windows/CubicalCompare.manifest')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'version="0.2.0.15" processorArchitecture="*" name="Cubical.Create"',
+              'version="1.0.0.0" processorArchitecture="*" name="Cubical.Compare"',
+          )
+          if 'name="Cubical.Compare"' not in text or 'version="1.0.0.0"' not in text:
+              raise SystemExit('Windows assembly identity was not updated.')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify legacy native identities are absent
+        run: |
+          if grep -R --line-number -E 'network\.cubical\.Create|Cubical\.Create|cubical-create' native; then
+            echo 'Legacy native identity remains.' >&2
+            exit 1
+          fi
+          grep -q 'io.github.retrofrost.CTS' native/linux-gtk/main.cpp
+          grep -q 'close_after_task' native/linux-gtk/main.cpp
+          grep -q 'name="Cubical.Compare"' native/windows/CubicalCompare.manifest
+
+      - name: Commit cleanup
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add native/linux-gtk/main.cpp native/windows/CubicalCompare.manifest
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Finalize native Cubical Compare identities and close handling'
+          git push origin HEAD:release/cubical-compare-1.0
