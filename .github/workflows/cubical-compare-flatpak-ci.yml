@@ -31,6 +31,24 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Validate final Flatpak identity and offline inputs
+        run: |
+          test -f "$MANIFEST"
+          test -f "packaging/flatpak/$APP_ID.desktop"
+          test -f "packaging/flatpak/$APP_ID.metainfo.xml"
+          test -f "packaging/flatpak/$APP_ID.svg"
+          test "$(find packaging/flatpak -maxdepth 1 -name '*.desktop' | wc -l)" -eq 1
+          test "$(find packaging/flatpak -maxdepth 1 -name '*.metainfo.xml' | wc -l)" -eq 1
+          grep -q '^app-id: io.github.retrofrost.CTS$' "$MANIFEST"
+          grep -q '<id>io.github.retrofrost.CTS</id>' "packaging/flatpak/$APP_ID.metainfo.xml"
+          grep -q 'python3-pybind11' packaging/flatpak/python3-cubical-compare-engine.json
+          grep -q 'pybind11==3.0.4' packaging/flatpak/python3-cubical-compare-engine.json
+          grep -q '/app/libexec/cubical-compare/engine/cubical-compare-engine' "$MANIFEST"
+          if grep -R --line-number -E 'io\.github\.retrofrost\.CubicalCompare|--filesystem=(home|host)' packaging/flatpak; then
+            echo 'Legacy app ID or broad filesystem permission remains.' >&2
+            exit 1
+          fi
+
       - name: Install Flatpak tooling
         run: |
           sudo apt-get update
@@ -78,6 +96,7 @@ jobs:
             test -x /app/libexec/cubical-compare/engine/cubical-compare-engine
             test -d /app/libexec/cubical-compare/engine/_internal
             test -x /app/lib/ffmpeg/ffmpeg
+            test "$(find /app/share/applications -maxdepth 1 -name '*.desktop' | wc -l)" -eq 1
           '
 
       - name: Run native GUI and private engine self-tests in sandbox
