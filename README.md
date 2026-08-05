@@ -72,7 +72,7 @@ The package does not request broad home-directory or host-filesystem access. Use
 
 ## Project compatibility
 
-Cubical Compare 1.0 preserves the `CCX1` project format used by the final Cubical Create development builds. Portable project saves collect referenced images, soundtrack files, and fonts into a relative asset directory.
+Cubical Compare 1.0 preserves the `CCX1` project format used by the final pre-1.0 development builds. Portable project saves collect referenced images, soundtrack files, and fonts into a relative asset directory.
 
 ## Reliability work in 1.0
 
