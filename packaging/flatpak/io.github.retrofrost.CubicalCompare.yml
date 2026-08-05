@@ -10,6 +10,7 @@ add-extensions:
     version: '25.08'
     add-ld-path: .
     no-autodownload: false
+    autodelete: false
 
 finish-args:
   - --share=ipc
@@ -20,36 +21,44 @@ finish-args:
   - --device=dri
   - --env=PATH=/app/lib/ffmpeg:/app/bin:/usr/bin
   - --env=CUBICAL_COMPARE_ENGINE=/app/libexec/cubical-compare/engine/cubical-compare-engine
+  - --env=CUBICAL_COMPARE_FFMPEG=/app/lib/ffmpeg/ffmpeg
+
+cleanup-commands:
+  - mkdir -p /app/lib/ffmpeg
 
 cleanup:
   - /include
   - /lib/pkgconfig
+  - /lib/python*/site-packages
   - /share/man
   - /share/pkgconfig
+  - /bin/pyinstaller
+  - /bin/pytest
   - '*.a'
   - '*.la'
   - __pycache__
   - '*.pyc'
 
 modules:
-  # This manifest intentionally targets the canonical source tree described in
-  # packaging/flatpak/README.md. Until the archive overlays are normalised into
-  # native/, engine/, tests/ and CMakeLists.txt, use the release preparation
-  # workflow to materialise that tree before running flatpak-builder.
+  - python3-cubical-compare-engine.json
+
   - name: cubical-compare
     buildsystem: simple
+    build-options:
+      env:
+        PYTHONPATH: /app/lib/python3.14/site-packages
     build-commands:
-      - cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DCUBICAL_COMPARE_ENGINE_PATH=/app/libexec/cubical-compare/engine/cubical-compare-engine
-      - cmake --build build --parallel
-      - cmake --install build
-      - python3 -m pip install --no-index --no-deps --no-build-isolation --prefix=/app/libexec/cubical-compare/engine -r engine/requirements.txt
-      - python3 -m PyInstaller --noconfirm --clean --distpath /app/libexec/cubical-compare/engine --workpath /tmp/cubical-compare-pyinstaller engine/cubical-compare-engine.spec
-      - install -Dm644 packaging/flatpak/io.github.retrofrost.CubicalCompare.desktop /app/share/applications/io.github.retrofrost.CubicalCompare.desktop
-      - install -Dm644 packaging/flatpak/io.github.retrofrost.CubicalCompare.metainfo.xml /app/share/metainfo/io.github.retrofrost.CubicalCompare.metainfo.xml
-      - install -Dm644 packaging/flatpak/io.github.retrofrost.CubicalCompare.svg /app/share/icons/hicolor/scalable/apps/io.github.retrofrost.CubicalCompare.svg
-      - install -Dm644 LICENSE /app/share/licenses/io.github.retrofrost.CubicalCompare/LICENSE
+      - python3 -m pytest -q
+      - python3 -m compileall -q engine
+      - cd engine && python3 -m PyInstaller --noconfirm --clean --distpath=/tmp/cubical-compare-engine-dist --workpath=/tmp/cubical-compare-engine-build cubical-compare-engine.spec
+      - install -d /app/libexec/cubical-compare/engine
+      - cp -a /tmp/cubical-compare-engine-dist/cubical-compare-engine/. /app/libexec/cubical-compare/engine/
+      - cmake -S . -B build-flatpak -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DCUBICAL_COMPARE_ENGINE_PATH=/app/libexec/cubical-compare/engine/cubical-compare-engine
+      - cmake --build build-flatpak --parallel 2
+      - cmake --install build-flatpak
       - test -x /app/bin/cubical-compare
       - test -x /app/libexec/cubical-compare/engine/cubical-compare-engine
+      - test -d /app/libexec/cubical-compare/engine/_internal
     sources:
       - type: dir
         path: ../..
