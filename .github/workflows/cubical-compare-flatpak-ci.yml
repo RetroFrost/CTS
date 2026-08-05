@@ -21,8 +21,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_ID: io.github.retrofrost.CubicalCompare
-  MANIFEST: packaging/flatpak/io.github.retrofrost.CubicalCompare.yml
+  APP_ID: io.github.retrofrost.CTS
+  MANIFEST: packaging/flatpak/io.github.retrofrost.CTS.yml
 
 jobs:
   flatpak:
