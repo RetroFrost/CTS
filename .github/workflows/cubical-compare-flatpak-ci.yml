@@ -44,8 +44,12 @@ jobs:
           grep -q 'python3-pybind11' packaging/flatpak/python3-cubical-compare-engine.json
           grep -q 'pybind11==3.0.4' packaging/flatpak/python3-cubical-compare-engine.json
           grep -q '/app/libexec/cubical-compare/engine/cubical-compare-engine' "$MANIFEST"
-          if grep -R --line-number -E 'io\.github\.retrofrost\.CubicalCompare|--filesystem=(home|host)' packaging/flatpak; then
-            echo 'Legacy app ID or broad filesystem permission remains.' >&2
+          if grep -R --line-number 'io\.github\.retrofrost\.CubicalCompare' packaging/flatpak; then
+            echo 'The superseded Flatpak application ID remains.' >&2
+            exit 1
+          fi
+          if grep --line-number -E -- '--filesystem=(home|host)' "$MANIFEST"; then
+            echo 'A broad filesystem permission remains in the manifest.' >&2
             exit 1
           fi
 
