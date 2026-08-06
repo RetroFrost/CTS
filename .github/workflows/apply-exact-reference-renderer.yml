@@ -2,6 +2,11 @@ name: Build full Cubical Compare 1.0.1 app
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/apply-exact-reference-renderer.yml
   pull_request:
     branches:
       - main
