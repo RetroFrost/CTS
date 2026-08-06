@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import math
-from typing import Iterable
 
+from .model_registry import get_model, normalize_model_id
 from .models import Project
 
 ENCODER_PRESETS: tuple[str, ...] = (
@@ -46,18 +46,27 @@ def validate_encoder_preset(value: object, fallback: str = "faster") -> str:
 
 
 def normalize_project(project: Project, *, reject_excess_cards: bool = True) -> Project:
-    """Clamp unsafe/corrupt project values before native preview or export.
+    """Normalise content while preserving the selected model exactly.
 
-    This deliberately normalises odd dimensions to the next legal yuv420p size so a
-    value accepted by the editor cannot fail later inside FFmpeg.
+    Cubical Compare 1.0 models are not animation presets. They are locked
+    reproduction contracts. Resolution, frame rate, cadence and model revision
+    therefore come from the registry and cannot be stretched by project data.
     """
     if reject_excess_cards and len(project.cards) > MAX_CARDS:
         raise ValueError(f"Projects are limited to {MAX_CARDS} cards.")
 
     settings = project.settings
-    settings.width = normalize_even_dimension(settings.width, 1920, 64, MAX_WIDTH)
-    settings.height = normalize_even_dimension(settings.height, 1080, 64, MAX_HEIGHT)
-    settings.fps = _bounded_int(settings.fps, 60, 1, MAX_FPS)
+    settings.model_id = normalize_model_id(settings.model_id)
+    model = get_model(settings.model_id)
+    settings.model_revision = model.revision
+
+    # Locked model-owned values. Legacy projects may contain different values,
+    # but loading them into 1.0 must not mutate the canonical output mechanics.
+    settings.width = model.width
+    settings.height = model.height
+    settings.fps = model.fps
+    settings.auto_length = True
+
     settings.encoder_crf = _bounded_int(settings.encoder_crf, 18, 0, 51)
     settings.encoder_preset = validate_encoder_preset(settings.encoder_preset)
     settings.soundtrack_volume = max(0.0, min(1.0, _finite(settings.soundtrack_volume, 0.75)))
