@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from functools import lru_cache
-import math
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 
 INTRO_FRAME_COUNT = 374
+INTRO_OVERLAY_END_FRAME = 550
 INTRO_REFERENCE_SIZE = (1920, 1080)
 INTRO_TEXT = "Infinite\nComparison"
 
@@ -46,7 +46,6 @@ def _draw_multistroke_arc(
 ) -> None:
     """Draw the layered metallic/neon tube used by the canonical intro mark."""
     draw = ImageDraw.Draw(image)
-    # Wide warm outer rim, black bevel, white tube and coloured inner light.
     strokes = (
         (28, (64, 47, 18, 150)),
         (23, (8, 8, 8, 255)),
@@ -60,15 +59,13 @@ def _draw_multistroke_arc(
 
 def _final_mark_layer() -> Image.Image:
     layer = Image.new("RGBA", INTRO_REFERENCE_SIZE, (0, 0, 0, 0))
-    # Measured final coloured bounds: approximately x=589..1318,
-    # y=353..687 in the 1920x1080 source.
+    # Final source bounds measured from frames 150..373.
     left_box = (585, 347, 937, 699)
     right_box = (983, 347, 1335, 699)
     _draw_multistroke_arc(layer, left_box, 43, 317, (198, 233, 0, 255))
     _draw_multistroke_arc(layer, right_box, 223, 497, (238, 91, 127, 255))
 
     draw = ImageDraw.Draw(layer)
-    # Thin crossed connectors visible inside both open loops.
     draw.line((914, 405, 1007, 637), fill=(64, 72, 73, 255), width=4)
     draw.line((913, 637, 1007, 405), fill=(76, 82, 84, 255), width=4)
     draw.line((915, 406, 1005, 635), fill=(153, 159, 159, 125), width=1)
@@ -88,25 +85,35 @@ def _mark_with_glow() -> Image.Image:
     return result
 
 
-def _transform_mark(frame_index: int) -> Image.Image:
-    final = _mark_with_glow().copy()
-    frame = max(0, min(INTRO_FRAME_COUNT - 1, int(frame_index)))
+def _tail_opacity(frame: int) -> float:
+    # Reference evidence: the completed logo remains fully visible while the
+    # first card starts entering (frames 374..450), then fades while the card
+    # and credits continue underneath. It is gone by approximately frame 550.
+    if frame < 450:
+        return 1.0
+    if frame >= INTRO_OVERLAY_END_FRAME:
+        return 0.0
+    return 1.0 - smoothstep((frame - 450) / (INTRO_OVERLAY_END_FRAME - 450))
 
-    # Source measurements: the loops start far outside their final bounds,
-    # converge rapidly through frames 20..105, then settle near frame 150.
-    if frame < 18:
+
+def _transform_mark(frame_index: int) -> Image.Image:
+    frame = max(0, int(frame_index))
+    shape_frame = min(frame, INTRO_FRAME_COUNT - 1)
+    final = _mark_with_glow().copy()
+
+    if shape_frame < 18:
         opacity = 0.0
         scale = 2.55
         rotation = -19.0
         offset_y = -45.0
-    elif frame < 92:
-        progress = ease_out_cubic((frame - 18) / 74.0)
-        opacity = smoothstep((frame - 18) / 18.0)
+    elif shape_frame < 92:
+        progress = ease_out_cubic((shape_frame - 18) / 74.0)
+        opacity = smoothstep((shape_frame - 18) / 18.0)
         scale = lerp(2.55, 1.22, progress)
         rotation = lerp(-19.0, 4.5, progress)
         offset_y = lerp(-45.0, 7.0, progress)
-    elif frame < 151:
-        progress = smoothstep((frame - 92) / 59.0)
+    elif shape_frame < 151:
+        progress = smoothstep((shape_frame - 92) / 59.0)
         opacity = 1.0
         scale = lerp(1.22, 1.0, progress)
         rotation = lerp(4.5, 0.0, progress)
@@ -117,11 +124,10 @@ def _transform_mark(frame_index: int) -> Image.Image:
         rotation = 0.0
         offset_y = 0.0
 
+    opacity *= _tail_opacity(frame)
     if opacity <= 0.0:
         return Image.new("RGBA", INTRO_REFERENCE_SIZE, (0, 0, 0, 0))
 
-    # Crop around the logo before scaling so the opening enlargement actually
-    # pushes the loops outside the frame like the supplied reference.
     crop = final.crop((520, 285, 1400, 755))
     scaled = crop.resize(
         (max(1, round(crop.width * scale)), max(1, round(crop.height * scale))),
@@ -141,48 +147,51 @@ def _transform_mark(frame_index: int) -> Image.Image:
 
 def _text_layer(frame_index: int) -> Image.Image:
     layer = Image.new("RGBA", INTRO_REFERENCE_SIZE, (0, 0, 0, 0))
-    frame = max(0, min(INTRO_FRAME_COUNT - 1, int(frame_index)))
-    if frame < 240:
+    frame = max(0, int(frame_index))
+    shape_frame = min(frame, INTRO_FRAME_COUNT - 1)
+    if shape_frame < 240 or frame >= INTRO_OVERLAY_END_FRAME:
         return layer
 
-    # The reference reveals characters left-to-right from roughly frame 240
-    # through frame 330, then holds the completed two-line name.
-    character_progress = clamp((frame - 240) / 90.0)
+    character_progress = clamp((shape_frame - 240) / 90.0)
     visible_count = round(len(INTRO_TEXT.replace("\n", "")) * character_progress)
     first = "Infinite"
     second = "Comparison"
     first_visible = first[: min(len(first), visible_count)]
-    second_count = max(0, visible_count - len(first))
-    second_visible = second[:second_count]
+    second_visible = second[: max(0, visible_count - len(first))]
+    opacity = _tail_opacity(frame)
+    colour = (245, 245, 245, round(255 * opacity))
 
     draw = ImageDraw.Draw(layer)
     font = _font(52)
-    colour = (245, 245, 245, 255)
     if first_visible:
         draw.text((960, 701), first_visible, font=font, fill=colour, anchor="ma")
     if second_visible:
         draw.text((960, 758), second_visible, font=font, fill=colour, anchor="ma")
-
-    # A narrow dark wipe tracks the typing edge, reproducing the clipped final
-    # glyphs visible during the source reveal rather than fading the full word.
     return layer
 
 
-def render_relationships_intro(frame_index: int) -> Image.Image:
-    """Render one canonical 1920x1080 brand-intro frame.
+def render_relationships_intro_overlay(frame_index: int) -> Image.Image:
+    """Return the transparent identity layer for a source-frame index.
 
-    This scene is intentionally addressed by integer frame index. The caller
-    must never time-stretch it or interpolate its frame count.
+    The layer intentionally remains valid after the nominal 374-frame lead-in,
+    because the canonical reference overlaps it with the first card and credits
+    animation through frame 549.
     """
+    frame = max(0, int(frame_index))
+    overlay = Image.new("RGBA", INTRO_REFERENCE_SIZE, (0, 0, 0, 0))
+    if frame == 0 or frame >= INTRO_OVERLAY_END_FRAME:
+        return overlay
+    overlay.alpha_composite(_transform_mark(frame))
+    overlay.alpha_composite(_text_layer(frame))
+    return overlay
+
+
+def render_relationships_intro(frame_index: int) -> Image.Image:
+    """Render one full 1920x1080 lead-in frame before card content begins."""
     frame = max(0, min(INTRO_FRAME_COUNT - 1, int(frame_index)))
     base = Image.new("RGB", INTRO_REFERENCE_SIZE, (9, 9, 9))
-    if frame == 0:
-        return base
-
-    mark = _transform_mark(frame)
-    base.paste(mark.convert("RGB"), (0, 0), mark.getchannel("A"))
-    text = _text_layer(frame)
-    base.paste(text.convert("RGB"), (0, 0), text.getchannel("A"))
+    overlay = render_relationships_intro_overlay(frame)
+    base.paste(overlay.convert("RGB"), (0, 0), overlay.getchannel("A"))
     return base
 
 
