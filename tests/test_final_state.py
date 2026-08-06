@@ -115,8 +115,11 @@ def test_missing_soundtrack_is_an_export_error(tmp_path: Path) -> None:
 def test_native_windows_exposes_complete_workflow_and_async_import() -> None:
     source = (Path(__file__).parents[1] / "native/windows/main.cpp").read_text(encoding="utf-8")
     assert 'L"Music",ID_MUSIC' in source
-    assert 'L"Length",ID_LENGTH' in source
-    assert 'Automatic video length' in source
+    assert 'L"Model",ID_MODEL' in source
+    assert 'What Males Learn At Each Age' in source
+    assert 'Types Of Relationships' in source
+    assert 'Automatic video length' not in source
+    assert 'Fixed length (seconds)' not in source
     assert 'TaskKind::ImportData' in source
     assert 'save-portable' in source
     assert '"--create-extra"' in source
