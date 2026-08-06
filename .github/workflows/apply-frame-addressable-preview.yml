@@ -1,0 +1,160 @@
+name: Apply frame-addressable preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-frame-addressable-preview.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Patch exact-frame preview and validation output
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('engine/engine_cli.py')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  'from ccengine.timing import total_duration\n',
+                  'from ccengine.timing import frame_to_seconds, total_duration, total_frame_count\n',
+              ),
+              (
+                  'def command_render_preview(args: argparse.Namespace) -> int:\n'
+                  '    project = read_ccx(args.input)\n'
+                  '    renderer = FrameRenderer()\n'
+                  '    if args.width > 0 and args.height > 0:\n'
+                  '        frame = renderer.render(project, max(0.0, args.time), (args.width, args.height))\n'
+                  '    else:\n'
+                  '        # WYSIWYG preview: use the exact output-frame path used by MP4 export.\n'
+                  '        frame = renderer.render_output_frame(project, max(0.0, args.time))\n',
+                  'def command_render_preview(args: argparse.Namespace) -> int:\n'
+                  '    project = read_ccx(args.input)\n'
+                  '    renderer = FrameRenderer()\n'
+                  '    source_frame = int(getattr(args, "frame", -1))\n'
+                  '    seconds = (\n'
+                  '        frame_to_seconds(project, source_frame)\n'
+                  '        if source_frame >= 0\n'
+                  '        else max(0.0, args.time)\n'
+                  '    )\n'
+                  '    if args.width > 0 and args.height > 0:\n'
+                  '        # Display scaling is allowed; it does not alter model output geometry.\n'
+                  '        frame = renderer.render(project, seconds, (args.width, args.height))\n'
+                  '    else:\n'
+                  '        # WYSIWYG preview: use the exact output-frame path used by MP4 export.\n'
+                  '        frame = renderer.render_output_frame(project, seconds)\n',
+              ),
+              (
+                  '    if args.vaio:\n'
+                  '        project.settings.width = 1280\n'
+                  '        project.settings.height = 720\n'
+                  '        project.settings.fps = 30\n'
+                  '        project.settings.encoder_crf = 23\n'
+                  '        project.settings.encoder_preset = "veryfast"\n',
+                  '',
+              ),
+              (
+                  '        "duration": total_duration(project),\n'
+                  '        "soundtrack": bool(project.settings.soundtrack),\n',
+                  '        "duration": total_duration(project),\n'
+                  '        "frame_count": total_frame_count(project),\n'
+                  '        "soundtrack": bool(project.settings.soundtrack),\n',
+              ),
+              (
+                  '    s.add_argument("--time", type=float, default=0.0)\n'
+                  '    s.add_argument("--width", type=int, default=0)\n',
+                  '    frame_group = s.add_mutually_exclusive_group()\n'
+                  '    frame_group.add_argument("--time", type=float, default=0.0)\n'
+                  '    frame_group.add_argument("--frame", type=int, default=-1)\n'
+                  '    s.add_argument("--width", type=int, default=0)\n',
+              ),
+              (
+                  '    s.add_argument("--vaio", action="store_true")\n',
+                  '',
+              ),
+          ]
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new and new not in text:
+                  raise SystemExit(f'Expected engine CLI fragment was not found:\n{old}')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Add exact-frame CLI tests
+        run: |
+          cat > tests/test_frame_addressing.py <<'PY'
+          from __future__ import annotations
+
+          from argparse import Namespace
+          from pathlib import Path
+
+          from PIL import Image, ImageChops
+
+          from ccengine.models import Card, Project
+          from ccengine.renderer import FrameRenderer
+          from ccengine.timing import frame_to_seconds, seconds_to_frame, total_frame_count
+          from engine_cli import command_render_preview, command_validate, write_ccx
+
+
+          def test_frame_seconds_conversion_is_stable_at_60_fps() -> None:
+              project = Project(cards=[Card("One", "1")])
+              for frame in (0, 1, 59, 60, 119, 120, total_frame_count(project) - 1):
+                  assert seconds_to_frame(project, frame_to_seconds(project, frame)) == frame
+
+
+          def test_render_preview_can_address_exact_source_frame(tmp_path: Path) -> None:
+              project = Project(cards=[Card("One", "1"), Card("Two", "2")])
+              source = tmp_path / "project.ccx"
+              output = tmp_path / "frame-120.png"
+              write_ccx(project, source)
+
+              command_render_preview(Namespace(
+                  input=str(source),
+                  output=str(output),
+                  time=0.0,
+                  frame=120,
+                  width=0,
+                  height=0,
+              ))
+
+              expected = FrameRenderer().render_output_frame(project, 2.0)
+              with Image.open(output) as actual:
+                  actual = actual.convert("RGB")
+                  assert actual.size == (1920, 1080)
+                  assert ImageChops.difference(actual, expected).getbbox() is None
+          PY
+
+      - name: Verify CLI no longer offers model-breaking export geometry
+        run: |
+          python3 -m compileall -q engine
+          grep -q -- '--frame' engine/engine_cli.py
+          grep -q 'frame_count' engine/engine_cli.py
+          if grep -q -- '--vaio' engine/engine_cli.py; then
+            echo 'Legacy model-breaking VAIO export option remains.' >&2
+            exit 1
+          fi
+
+      - name: Commit frame addressing
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add engine/engine_cli.py tests/test_frame_addressing.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Make preview and validation frame-addressable'
+          git push origin HEAD:release/cubical-compare-1.0
