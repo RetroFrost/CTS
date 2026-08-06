@@ -93,7 +93,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ffmpeg flatpak flatpak-builder xauth xvfb
+            elfutils ffmpeg flatpak flatpak-builder xauth xvfb
           flatpak remote-add --user --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y --noninteractive flathub \
