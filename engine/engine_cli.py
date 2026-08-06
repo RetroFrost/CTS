@@ -21,7 +21,7 @@ from ccengine.model_registry import (
     DEFAULT_MODEL_ID, get_model, list_models, model_manifest, normalize_model_id,
 )
 from ccengine.renderer import FrameRenderer
-from ccengine.timing import total_duration
+from ccengine.timing import frame_to_seconds, total_duration, total_frame_count
 from ccengine.validation import normalize_project
 
 VERSION = "1.0.0"
@@ -316,11 +316,18 @@ def command_import_sheet(args: argparse.Namespace) -> int:
 def command_render_preview(args: argparse.Namespace) -> int:
     project = read_ccx(args.input)
     renderer = FrameRenderer()
+    source_frame = int(getattr(args, "frame", -1))
+    seconds = (
+        frame_to_seconds(project, source_frame)
+        if source_frame >= 0
+        else max(0.0, args.time)
+    )
     if args.width > 0 and args.height > 0:
-        frame = renderer.render(project, max(0.0, args.time), (args.width, args.height))
+        # Display scaling is allowed; it does not alter model output geometry.
+        frame = renderer.render(project, seconds, (args.width, args.height))
     else:
         # WYSIWYG preview: use the exact output-frame path used by MP4 export.
-        frame = renderer.render_output_frame(project, max(0.0, args.time))
+        frame = renderer.render_output_frame(project, seconds)
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     frame.save(args.output)
     return 0
@@ -329,12 +336,6 @@ def command_render_preview(args: argparse.Namespace) -> int:
 def command_export(args: argparse.Namespace) -> int:
     project = read_ccx(args.input)
     if args.fast:
-        project.settings.encoder_preset = "veryfast"
-    if args.vaio:
-        project.settings.width = 1280
-        project.settings.height = 720
-        project.settings.fps = 30
-        project.settings.encoder_crf = 23
         project.settings.encoder_preset = "veryfast"
     exporter = VideoExporter()
     duration = total_duration(project)
@@ -385,6 +386,7 @@ def command_validate(args: argparse.Namespace) -> int:
         "model": model_manifest(project.model),
         "cards": len(project.cards),
         "duration": total_duration(project),
+        "frame_count": total_frame_count(project),
         "soundtrack": bool(project.settings.soundtrack),
         "soundtrack_loop": project.settings.soundtrack_loop,
         "resolution": [project.settings.width, project.settings.height],
@@ -519,7 +521,9 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("render-preview")
     s.add_argument("input")
     s.add_argument("output")
-    s.add_argument("--time", type=float, default=0.0)
+    frame_group = s.add_mutually_exclusive_group()
+    frame_group.add_argument("--time", type=float, default=0.0)
+    frame_group.add_argument("--frame", type=int, default=-1)
     s.add_argument("--width", type=int, default=0)
     s.add_argument("--height", type=int, default=0)
     s.set_defaults(func=command_render_preview)
@@ -528,7 +532,6 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("input")
     s.add_argument("output")
     s.add_argument("--fast", action="store_true")
-    s.add_argument("--vaio", action="store_true")
     s.add_argument("--progress-file", default="")
     s.add_argument("--cancel-file", default="")
     s.set_defaults(func=command_export)
