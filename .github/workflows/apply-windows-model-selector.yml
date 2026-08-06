@@ -1,0 +1,112 @@
+name: Apply Windows locked model selector
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-windows-model-selector.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Replace Windows alpha length controls with locked model selector
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('native/windows/main.cpp')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('ID_MUSIC, ID_LENGTH,', 'ID_MUSIC, ID_MODEL,')
+          text = text.replace('id==ID_LENGTH', 'id==ID_MODEL')
+          text = text.replace('{L"Length",ID_LENGTH,70}', '{L"Model",ID_MODEL,70}')
+
+          replacements = [
+              (
+                  '    HWND project_name{}, credits_enabled{};\n',
+                  '    HWND project_name{}, model{}, credits_enabled{};\n',
+              ),
+              (
+                  '    HWND width{}, height{}, fps{}, preset{}, crf{}, auto_length{}, custom_length{}, fit_mode{};\n',
+                  '    HWND width{}, height{}, fps{}, preset{}, crf{}, fit_mode{};\n',
+              ),
+              (
+                  'void load_controls(ControlsState* c){auto& p=c->app->project;auto& s=p.settings;set_text(c->project_name,p.name);SendMessageW(c->credits_enabled,BM_SETCHECK,s.credits_enabled?BST_CHECKED:BST_UNCHECKED,0);',
+                  'void load_controls(ControlsState* c){auto& p=c->app->project;auto& s=p.settings;set_text(c->project_name,p.name);SendMessageW(c->model,CB_SETCURSEL,s.model_id=="types-of-relationships"?1:0,0);SendMessageW(c->credits_enabled,BM_SETCHECK,s.credits_enabled?BST_CHECKED:BST_UNCHECKED,0);',
+              ),
+              (
+                  'SetWindowTextW(c->fade,std::to_wstring(s.soundtrack_fade_out_seconds).c_str());SendMessageW(c->auto_length,BM_SETCHECK,s.auto_length?BST_CHECKED:BST_UNCHECKED,0);SetWindowTextW(c->custom_length,std::to_wstring(s.custom_length_seconds).c_str());SetWindowTextW(c->width,std::to_wstring(s.width).c_str());',
+                  'SetWindowTextW(c->fade,std::to_wstring(s.soundtrack_fade_out_seconds).c_str());SetWindowTextW(c->width,L"1920");',
+              ),
+              (
+                  'void apply_controls(ControlsState* c){auto& p=c->app->project;auto& s=p.settings;p.name=utf8(text(c->project_name));s.credits_enabled=',
+                  'void apply_controls(ControlsState* c){auto& p=c->app->project;auto& s=p.settings;p.name=utf8(text(c->project_name));const int model_selection=static_cast<int>(SendMessageW(c->model,CB_GETCURSEL,0,0));s.model_id=model_selection==1?"types-of-relationships":"what-males-learn-at-each-age";s.model_revision=1;s.credits_enabled=',
+              ),
+              (
+                  's.soundtrack_fade_out_seconds=std::max(0.0,to_double(c->fade,.75));s.auto_length=SendMessageW(c->auto_length,BM_GETCHECK,0,0)==BST_CHECKED;s.custom_length_seconds=std::max(0.0,to_double(c->custom_length,60.0));s.width=std::clamp(to_int(c->width,1920),64,7680);if(s.width%2)++s.width;s.height=std::clamp(to_int(c->height,1080),64,4320);if(s.height%2)++s.height;s.fps=std::clamp(to_int(c->fps,60),1,120);',
+                  's.soundtrack_fade_out_seconds=std::max(0.0,to_double(c->fade,.75));s.auto_length=true;s.width=1920;s.height=1080;s.fps=60;',
+              ),
+              (
+                  's.image_fit_mode=utf8(text(c->fit_mode))=="contain"?"contain":"cover";if(!s.auto_length){const bool old=s.auto_length;s.auto_length=true;const double minimum=cubical::timeline_duration(p);s.auto_length=old;s.custom_length_seconds=std::max(s.custom_length_seconds,minimum);}s.font_title=',
+                  's.image_fit_mode=utf8(text(c->fit_mode))=="contain"?"contain":"cover";s.font_title=',
+              ),
+              (
+                  'y=70;c->auto_length=ccheck(c,L"Automatic video length",y,c->page_output);y+=34;c->custom_length=cedit(c,L"Fixed length (seconds)",y,c->page_output);y+=34;c->fit_mode=cedit(c,L"Image fit (cover / contain)",y,c->page_output);y+=34;c->width=cedit(c,L"Width (even)",y,c->page_output);y+=34;c->height=cedit(c,L"Height (even)",y,c->page_output);y+=34;c->fps=cedit(c,L"FPS",y,c->page_output);y+=34;c->preset=cedit(c,L"Encoder preset",y,c->page_output);y+=34;c->crf=cedit(c,L"CRF",y,c->page_output);y+=34;\n',
+                  'y=70;{HWND label=make_control(c->app,WC_STATICW,L"Official model",0,18,y,190,22,hwnd);c->model=make_control(c->app,WC_COMBOBOXW,L"",CBS_DROPDOWNLIST|WS_VSCROLL,215,y-3,540,160,hwnd);SendMessageW(c->model,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"What Males Learn At Each Age"));SendMessageW(c->model,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"Types Of Relationships"));c->page_output.push_back(label);c->page_output.push_back(c->model);}y+=36;{HWND note=make_control(c->app,WC_STATICW,L"The selected model locks every animation, transition, layout, 1920×1080 geometry and 60 FPS timing.",SS_LEFT,18,y,737,42,hwnd);c->page_output.push_back(note);}y+=48;c->fit_mode=cedit(c,L"Image fit (cover / contain)",y,c->page_output);y+=34;c->width=cedit(c,L"Width (model locked)",y,c->page_output);EnableWindow(c->width,FALSE);y+=34;c->height=cedit(c,L"Height (model locked)",y,c->page_output);EnableWindow(c->height,FALSE);y+=34;c->fps=cedit(c,L"FPS (model locked)",y,c->page_output);EnableWindow(c->fps,FALSE);y+=34;c->preset=cedit(c,L"Encoder preset",y,c->page_output);y+=34;c->crf=cedit(c,L"CRF",y,c->page_output);y+=34;\n',
+              ),
+          ]
+
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'Expected Windows source fragment was not found:\n{old}')
+
+          if 'ID_LENGTH' in text or 'Automatic video length' in text or 'Fixed length (seconds)' in text:
+              raise SystemExit('Legacy Windows length controls remain.')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Update Windows workflow contract test
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_final_state.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              "    assert 'L\"Length\",ID_LENGTH' in source\n    assert 'Automatic video length' in source\n",
+              "    assert 'L\"Model\",ID_MODEL' in source\n    assert 'What Males Learn At Each Age' in source\n    assert 'Types Of Relationships' in source\n    assert 'Automatic video length' not in source\n    assert 'Fixed length (seconds)' not in source\n",
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify locked Windows controls
+        run: |
+          grep -q 'L"Model",ID_MODEL' native/windows/main.cpp
+          grep -q 'What Males Learn At Each Age' native/windows/main.cpp
+          grep -q 'Types Of Relationships' native/windows/main.cpp
+          grep -q 's.auto_length=true;s.width=1920;s.height=1080;s.fps=60' native/windows/main.cpp
+          if grep -q -E 'ID_LENGTH|Automatic video length|Fixed length \(seconds\)' native/windows/main.cpp; then
+            exit 1
+          fi
+
+      - name: Commit Windows selector
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add native/windows/main.cpp tests/test_final_state.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Expose only locked official models in Windows editor'
+          git push origin HEAD:release/cubical-compare-1.0
