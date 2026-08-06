@@ -1,22 +1,16 @@
 name: Build full Cubical Compare 1.0.1 app
 
 on:
-  pull_request_target:
-    branches:
-      - main
-    types:
-      - opened
-      - synchronize
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-full-app:
-    if: github.event.pull_request.head.ref == 'trigger-full-app-1.0.1'
     runs-on: ubuntu-24.04
-    env:
-      VERSION: 1.0.1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,176 +30,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r engine/requirements-build.txt
 
-      - name: Apply tested renderer, UI and bug-fix bundle
-        shell: bash
-        run: |
-          cat .migration-data/exact-renderer-part0* | base64 -d > /tmp/exact-renderer-changes.tar.gz
-          tar -xzf /tmp/exact-renderer-changes.tar.gz
-
-      - name: Mark the complete native rebuild as 1.0.1
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_required(path_name: str, old: str, new: str) -> None:
-              path = Path(path_name)
-              text = path.read_text()
-              if old not in text:
-                  raise SystemExit(f'Missing expected text in {path_name}: {old}')
-              path.write_text(text.replace(old, new))
-
-          replace_required('CMakeLists.txt',
-                           'project(CubicalCompare VERSION 1.0.0',
-                           'project(CubicalCompare VERSION 1.0.1')
-          replace_required('native/windows/CubicalCompare.manifest',
-                           'version="1.0.0.0"', 'version="1.0.1.0"')
-          replace_required('tests/test_release_identity.py',
-                           'version="1.0.0.0"', 'version="1.0.1.0"')
-          replace_required('packaging/flatpak/io.github.retrofrost.CTS.metainfo.xml',
-                           '<release version="1.0.0" date="2026-08-05">',
-                           '<release version="1.0.1" date="2026-08-06">')
-
-          control = Path('packaging/linux/control')
-          if control.exists():
-              text = control.read_text()
-              if 'Version: 1.0.0' in text:
-                  control.write_text(text.replace('Version: 1.0.0', 'Version: 1.0.1'))
-
-          release_ci = Path('.github/workflows/cubical-compare-release-ci.yml')
-          text = release_ci.read_text()
-          if '  VERSION: 1.0.0' in text:
-              text = text.replace('  VERSION: 1.0.0', '  VERSION: 1.0.1')
-          if '      - v1.0.0*' in text:
-              text = text.replace('      - v1.0.0*', '      - v1.0.*')
-          release_ci.write_text(text)
-
-          changelog = Path('CHANGELOG.md')
-          entry = '''# Cubical Compare 1.0.1
-
-- Rebuilt the GTK and Windows interfaces from the same source as the renderer.
-- Included the official model selector, locked output controls, UI bug fixes and exact-frame duration fixes.
-- Embedded build commit and version markers in Linux packages.
-
-'''
-          current = changelog.read_text()
-          if not current.startswith('# Cubical Compare 1.0.1'):
-              changelog.write_text(entry + current)
-          PY
-
-      - name: Verify all corrected source
-        shell: bash
-        run: |
-          PYTHONPATH=engine CUBICAL_COMPARE_FFMPEG=/usr/bin/ffmpeg pytest -q
-          python -m compileall -q engine
-          g++ -std=c++20 -I native/core/include -c native/core/src/project.cpp -o /tmp/project.o
-          grep -F 'Official model' native/linux-gtk/main.cpp
-          grep -F 'Click to Insert Data' native/linux-gtk/main.cpp
-          grep -F 'What Males Learn At Each Age' native/linux-gtk/main.cpp
-          grep -F 'Types Of Relationships' native/linux-gtk/main.cpp
-
-      - name: Commit complete source to release branch
-        shell: bash
-        run: |
-          rm -rf .migration-data .github/workflows/apply-exact-reference-renderer.yml
-          git config user.name RetroFrost
-          git config user.email routerifter@gmail.com
-          git add -A
-          git commit -m "Rebuild full Cubical Compare 1.0.1 app"
-          BUILD_COMMIT="$(git rev-parse HEAD)"
-          echo "BUILD_COMMIT=$BUILD_COMMIT" >> "$GITHUB_ENV"
-          git push origin HEAD:release/cubical-compare-1.0
-
-      - name: Build private rendering engine
-        working-directory: engine
-        env:
-          PYTHONPATH: ${{ github.workspace }}/engine
-        run: |
-          pyinstaller --noconfirm --clean cubical-compare-engine.spec
-          test -x dist/cubical-compare-engine/cubical-compare-engine
-          test -d dist/cubical-compare-engine/_internal
-
-      - name: Run corrected engine self-test
-        env:
-          CUBICAL_COMPARE_FFMPEG: /usr/bin/ffmpeg
-        run: |
-          rm -rf engine-self-test
-          engine/dist/cubical-compare-engine/cubical-compare-engine \
-            self-test --directory engine-self-test
-          test -s engine-self-test/self-test.mp4
-          ffprobe -v error -select_streams v:0 \
-            -show_entries stream=codec_name,width,height,r_frame_rate,nb_frames \
-            -of default=noprint_wrappers=1 engine-self-test/self-test.mp4
-
-      - name: Compile the new GTK interface
-        run: |
-          cmake -S . -B build-linux -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr
-          cmake --build build-linux --parallel 2
-          test -x build-linux/cubical-compare
-          strings build-linux/cubical-compare | grep -F 'Official model'
-          strings build-linux/cubical-compare | grep -F 'Click to Insert Data'
-          strings build-linux/cubical-compare | grep -F 'What Males Learn At Each Age'
-          strings build-linux/cubical-compare | grep -F 'Types Of Relationships'
-
-      - name: Run the newly compiled native app
-        env:
-          CUBICAL_COMPARE_ENGINE: ${{ github.workspace }}/engine/dist/cubical-compare-engine/cubical-compare-engine
-          CUBICAL_COMPARE_FFMPEG: /usr/bin/ffmpeg
-        run: |
-          xvfb-run -a ./build-linux/cubical-compare --self-test
-
-      - name: Stage and verify the complete application
-        run: |
-          rm -rf stage-linux dist deb-root
-          cmake --install build-linux --prefix "$PWD/stage-linux"
-          install -d stage-linux/libexec/cubical-compare/engine
-          cp -a engine/dist/cubical-compare-engine/. \
-            stage-linux/libexec/cubical-compare/engine/
-          install -Dm644 README.md stage-linux/share/doc/cubical-compare/README.md
-          printf '%s\n' "$BUILD_COMMIT" > stage-linux/share/doc/cubical-compare/BUILD-COMMIT
-          printf '%s\n' "$VERSION" > stage-linux/share/doc/cubical-compare/BUILD-VERSION
-
-          test -x stage-linux/bin/cubical-compare
-          test -x stage-linux/libexec/cubical-compare/engine/cubical-compare-engine
-          strings stage-linux/bin/cubical-compare | grep -F 'Official model'
-          strings stage-linux/bin/cubical-compare | grep -F 'Click to Insert Data'
-
-          CUBICAL_COMPARE_ENGINE="$PWD/stage-linux/libexec/cubical-compare/engine/cubical-compare-engine" \
-          CUBICAL_COMPARE_FFMPEG=/usr/bin/ffmpeg \
-            xvfb-run -a stage-linux/bin/cubical-compare --self-test
-
-      - name: Build the verified Debian package
-        run: |
-          mkdir -p deb-root/DEBIAN deb-root/usr
-          cp -a stage-linux/. deb-root/usr/
-          cat > deb-root/DEBIAN/control <<EOF
-          Package: cubical-compare
-          Version: ${VERSION}
-          Section: video
-          Priority: optional
-          Architecture: amd64
-          Maintainer: RetroFrost
-          Depends: ffmpeg, libgtk-4-1
-          Description: Native comparison-video editor
-           Cubical Compare imports spreadsheet data, edits comparison cards,
-           previews the exact model animation and exports MP4 video through its
-           privately bundled rendering engine.
-          EOF
-          mkdir -p dist
-          dpkg-deb --build --root-owner-group deb-root \
-            dist/Cubical-Compare-${VERSION}-linux-amd64.deb
-          dpkg-deb --info dist/Cubical-Compare-${VERSION}-linux-amd64.deb
-          rm -rf /tmp/deb-check
-          dpkg-deb -x dist/Cubical-Compare-${VERSION}-linux-amd64.deb /tmp/deb-check
-          test "$(cat /tmp/deb-check/usr/share/doc/cubical-compare/BUILD-VERSION)" = "$VERSION"
-          test "$(cat /tmp/deb-check/usr/share/doc/cubical-compare/BUILD-COMMIT)" = "$BUILD_COMMIT"
-          strings /tmp/deb-check/usr/bin/cubical-compare | grep -F 'Official model'
-          strings /tmp/deb-check/usr/bin/cubical-compare | grep -F 'Click to Insert Data'
-          strings /tmp/deb-check/usr/bin/cubical-compare | grep -F 'What Males Learn At Each Age'
-          strings /tmp/deb-check/usr/bin/cubical-compare | grep -F 'Types Of Relationships'
-          sha256sum dist/Cubical-Compare-${VERSION}-linux-amd64.deb > dist/SHA256SUMS.txt
+      - name: Build and verify complete application
+        run: bash tools/build_full_app_1_0_1.sh
 
       - uses: actions/upload-artifact@v7
         with:
