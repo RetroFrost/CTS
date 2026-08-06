@@ -13,7 +13,10 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from .models import Card, Project
 from .assets import materialize_remote_asset
-from .brand_intro import render_relationships_intro
+from .brand_intro import (
+    INTRO_OVERLAY_END_FRAME, render_relationships_intro,
+    render_relationships_intro_overlay,
+)
 from .timing import (
     card_start_times, content_duration, locate_segment, seconds_to_frame, total_duration,
 )
@@ -1204,6 +1207,13 @@ class FrameRenderer:
                 starts,
                 segment.duration,
             )
+            global_frame = seconds_to_frame(project, seconds)
+            if (
+                project.settings.model_id == "types-of-relationships"
+                and global_frame < INTRO_OVERLAY_END_FRAME
+            ):
+                identity = render_relationships_intro_overlay(global_frame)
+                base.paste(identity.convert("RGB"), (0, 0), identity.getchannel("A"))
 
         elif segment.kind == "end_wipe":
             final_time = content_duration(project)
