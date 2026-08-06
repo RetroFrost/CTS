@@ -7,6 +7,14 @@ ROOT="$(pwd)"
 cat .migration-data/exact-renderer-part0* | base64 -d > /tmp/exact-renderer-changes.tar.gz
 tar -xzf /tmp/exact-renderer-changes.tar.gz
 
+if compgen -G '.migration-data/dashboard-part*' >/dev/null; then
+  cat .migration-data/dashboard-part* | base64 -d > /tmp/dashboard-changes.tar.gz
+  tar -xzf /tmp/dashboard-changes.tar.gz
+else
+  echo 'Dashboard source payload is missing.' >&2
+  exit 1
+fi
+
 python - <<'PY'
 from pathlib import Path
 
@@ -27,10 +35,21 @@ PYTHONPATH=engine CUBICAL_COMPARE_FFMPEG=/usr/bin/ffmpeg pytest -q
 python -m compileall -q engine
 g++ -std=c++20 -I native/core/include -c native/core/src/project.cpp -o /tmp/project.o
 
-grep -F 'Official model' native/linux-gtk/main.cpp
-grep -F 'Click to Insert Data' native/linux-gtk/main.cpp
-grep -F 'What Males Learn At Each Age' native/linux-gtk/main.cpp
-grep -F 'Types Of Relationships' native/linux-gtk/main.cpp
+UI_MARKERS=(
+  'Official model'
+  'Click to Insert Data'
+  'What Males Learn At Each Age'
+  'Types Of Relationships'
+  'Comparison Cards'
+  'Card Content'
+  'Live Preview'
+  'Imported Data'
+  'Soundtrack'
+  'Model & Export'
+)
+for marker in "${UI_MARKERS[@]}"; do
+  grep -F "$marker" native/linux-gtk/main.cpp
+done
 
 rm -rf engine/build engine/dist
 (
@@ -49,7 +68,7 @@ rm -rf build-linux
 cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build build-linux --parallel 2
 test -x build-linux/cubical-compare
-for marker in 'Official model' 'Click to Insert Data' 'What Males Learn At Each Age' 'Types Of Relationships'; do
+for marker in "${UI_MARKERS[@]}"; do
   strings build-linux/cubical-compare | grep -F "$marker"
 done
 
@@ -64,6 +83,7 @@ cp -a engine/dist/cubical-compare-engine/. stage-linux/libexec/cubical-compare/e
 install -Dm644 README.md stage-linux/share/doc/cubical-compare/README.md
 printf '%s\n' "$(git rev-parse HEAD)" > stage-linux/share/doc/cubical-compare/BUILD-COMMIT
 printf '%s\n' "$VERSION" > stage-linux/share/doc/cubical-compare/BUILD-VERSION
+printf '%s\n' 'approved-dashboard-v1' > stage-linux/share/doc/cubical-compare/UI-VARIANT
 
 CUBICAL_COMPARE_ENGINE="$ROOT/stage-linux/libexec/cubical-compare/engine/cubical-compare-engine" \
 CUBICAL_COMPARE_FFMPEG=/usr/bin/ffmpeg \
@@ -88,8 +108,9 @@ EOF
 dpkg-deb --build --root-owner-group deb-root "dist/Cubical-Compare-${VERSION}-linux-amd64.deb"
 rm -rf /tmp/cubical-deb-check
 dpkg-deb -x "dist/Cubical-Compare-${VERSION}-linux-amd64.deb" /tmp/cubical-deb-check
-for marker in 'Official model' 'Click to Insert Data' 'What Males Learn At Each Age' 'Types Of Relationships'; do
+for marker in "${UI_MARKERS[@]}"; do
   strings /tmp/cubical-deb-check/usr/bin/cubical-compare | grep -F "$marker"
 done
 test "$(cat /tmp/cubical-deb-check/usr/share/doc/cubical-compare/BUILD-VERSION)" = "$VERSION"
+test "$(cat /tmp/cubical-deb-check/usr/share/doc/cubical-compare/UI-VARIANT)" = 'approved-dashboard-v1'
 sha256sum "dist/Cubical-Compare-${VERSION}-linux-amd64.deb" > dist/SHA256SUMS.txt
