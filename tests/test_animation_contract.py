@@ -7,14 +7,14 @@ from ccengine.renderer import badge_entry_affine, body_progress, post_badge_fall
 from ccengine.timing import card_start_times, reference_duration, total_duration
 
 
-def test_alpha13_timing_contract_is_unchanged() -> None:
+def test_locked_model_timing_contract_is_unchanged() -> None:
     project = Project(cards=[Card(str(index), str(index)) for index in range(8)])
     assert card_start_times(project) == pytest.approx([0.0, 2.0, 4.0, 6.0, 9.0, 12.4, 15.8, 19.2])
     assert total_duration(project) == pytest.approx(28.75)
-    assert reference_duration(8) == pytest.approx(28.75)
+    assert reference_duration(project) == pytest.approx(28.75)
 
 
-def test_alpha13_body_motion_samples_are_unchanged() -> None:
+def test_body_motion_samples_are_unchanged() -> None:
     expected = {
         0.0: 0.0,
         0.1: 0.027910783211230757,
@@ -26,7 +26,7 @@ def test_alpha13_body_motion_samples_are_unchanged() -> None:
         assert body_progress(timestamp) == pytest.approx(value, abs=1e-12)
 
 
-def test_alpha13_opening_badge_transform_is_unchanged() -> None:
+def test_opening_badge_transform_is_unchanged() -> None:
     expected = {
         0.0: (0.32, 0.04, -0.43, 1.05, -230.0, -220.0),
         0.4: (0.36, 0.036, -0.43, 1.05, -154.0, -107.0),
@@ -39,7 +39,7 @@ def test_alpha13_opening_badge_transform_is_unchanged() -> None:
         assert badge_entry_affine(timestamp) == pytest.approx(values, abs=1e-10)
 
 
-def test_alpha13_continuous_badge_fall_is_unchanged() -> None:
+def test_continuous_badge_fall_is_unchanged() -> None:
     expected = {
         0.0: (1.12, 0.0, 0.0, 1.12, -29.22, -444.42),
         0.55: (1.112, 0.0, 0.0, 1.112, -27.272, -314.792),
