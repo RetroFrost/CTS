@@ -13,7 +13,10 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from .models import Card, Project
 from .assets import materialize_remote_asset
-from .timing import card_start_times, content_duration, locate_segment, total_duration
+from .brand_intro import render_relationships_intro
+from .timing import (
+    card_start_times, content_duration, locate_segment, seconds_to_frame, total_duration,
+)
 
 
 REFERENCE_WIDTH = 1920
@@ -1185,7 +1188,13 @@ class FrameRenderer:
             return ImageOps.pad(base, output_size, method=Image.Resampling.LANCZOS, color=self.theme.background) if output_size else base
         p = clamp(progress)
 
-        if segment.kind == "card_cycle":
+        if segment.kind == "brand_intro":
+            # The Relationships opening owns frames 0..373.
+            # It is rendered from the exact source-frame index,
+            # never from an independently eased percentage.
+            base = render_relationships_intro(seconds_to_frame(project, seconds))
+
+        elif segment.kind == "card_cycle":
             self._render_content(
                 base,
                 project,
