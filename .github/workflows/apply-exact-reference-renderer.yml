@@ -1,0 +1,65 @@
+name: Apply exact reference renderer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/apply-exact-reference-renderer.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r engine/requirements.txt pytest
+
+      - name: Apply tested source bundle
+        shell: bash
+        run: |
+          cat .migration-data/exact-renderer-part0* | base64 -d > /tmp/exact-renderer-changes.tar.gz
+          tar -xzf /tmp/exact-renderer-changes.tar.gz
+
+      - name: Verify engine and native timing
+        shell: bash
+        run: |
+          PYTHONPATH=engine python -m pytest -q
+          g++ -std=c++20 -I native/core/include -c native/core/src/project.cpp -o /tmp/project.o
+
+      - name: Commit exact renderer to release branch
+        shell: bash
+        run: |
+          rm -rf .migration-data .github/workflows/apply-exact-reference-renderer.yml
+          git config user.name RetroFrost
+          git config user.email routerifter@gmail.com
+          git add -A
+          git commit -m "Match canonical model frame contracts"
+          git push origin HEAD:release/cubical-compare-1.0
+
+      - name: Remove migration workflow from main
+        if: always()
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          rm -f .github/workflows/apply-exact-reference-renderer.yml
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Remove exact renderer migration workflow"
+            git push origin HEAD:main
+          fi
