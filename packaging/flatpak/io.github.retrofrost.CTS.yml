@@ -3,6 +3,7 @@ runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
 command: cubical-compare
+default-branch: stable
 
 add-extensions:
   org.freedesktop.Platform.ffmpeg-full:
