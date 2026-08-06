@@ -39,6 +39,7 @@ struct AppState {
     GtkWidget* description{};
     GtkWidget* image{};
     GtkWidget* project_name{};
+    GtkWidget* model{};
     GtkWidget* credits_enabled{};
     std::vector<GtkWidget*> text_fields;
     GtkWidget* soundtrack{};
@@ -137,6 +138,13 @@ void sync_project_from_ui(AppState* s) {
     }
     s->project.name = entry_text(s->project_name);
     auto& st = s->project.settings;
+    if (s->model) {
+        const guint selected_model = gtk_drop_down_get_selected(GTK_DROP_DOWN(s->model));
+        st.model_id = selected_model == 1
+            ? "types-of-relationships"
+            : "what-males-learn-at-each-age";
+        st.model_revision = 1;
+    }
     st.credits_enabled = gtk_check_button_get_active(GTK_CHECK_BUTTON(s->credits_enabled));
     const std::vector<std::string*> text_targets = {
         &st.credits_top_text, &st.credits_heading, &st.credits_project_name,
@@ -150,9 +158,11 @@ void sync_project_from_ui(AppState* s) {
     st.soundtrack_volume = gtk_spin_button_get_value(GTK_SPIN_BUTTON(s->volume)) / 100.0;
     st.soundtrack_offset_seconds = gtk_spin_button_get_value(GTK_SPIN_BUTTON(s->offset));
     st.soundtrack_fade_out_seconds = gtk_spin_button_get_value(GTK_SPIN_BUTTON(s->fade));
-    st.width = static_cast<std::uint32_t>(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->width)));
-    st.height = static_cast<std::uint32_t>(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->height)));
-    st.fps = static_cast<std::uint32_t>(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->fps)));
+    // Model geometry and frame rate are immutable in Cubical Compare 1.0.
+    st.width = 1920;
+    st.height = 1080;
+    st.fps = 60;
+    st.auto_length = true;
     st.encoder_preset = entry_text(s->preset);
     st.encoder_crf = static_cast<std::uint32_t>(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->crf)));
     st.font_title = entry_text(s->font_fields[0]);
@@ -207,6 +217,12 @@ void load_project_ui(AppState* s) {
     s->loading = true;
     set_entry(s->project_name, s->project.name);
     auto& st = s->project.settings;
+    if (s->model) {
+        gtk_drop_down_set_selected(
+            GTK_DROP_DOWN(s->model),
+            st.model_id == "types-of-relationships" ? 1U : 0U
+        );
+    }
     gtk_check_button_set_active(GTK_CHECK_BUTTON(s->credits_enabled), st.credits_enabled);
     const std::vector<const std::string*> values = {
         &st.credits_top_text, &st.credits_heading, &st.credits_project_name,
@@ -279,6 +295,25 @@ GtkWidget* form_entry(GtkWidget* grid, int row, const char* label, AppState* s, 
 }
 
 void reset_player(AppState* s);
+
+void model_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<AppState*>(data);
+    if (s->loading || !s->model) return;
+    const guint selected_model = gtk_drop_down_get_selected(GTK_DROP_DOWN(s->model));
+    s->project.settings.model_id = selected_model == 1
+        ? "types-of-relationships"
+        : "what-males-learn-at-each-age";
+    s->project.settings.model_revision = 1;
+    s->project.settings.width = 1920;
+    s->project.settings.height = 1080;
+    s->project.settings.fps = 60;
+    s->project.settings.auto_length = true;
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(s->width), 1920);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(s->height), 1080);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(s->fps), 60);
+    reset_player(s);
+    set_status(s, cubical::summary(s->project));
+}
 
 GtkWidget* spin(GtkWidget* grid, int row, const char* label, double min, double max, double step) {
     GtkWidget* l = gtk_label_new(label); gtk_label_set_xalign(GTK_LABEL(l), 0.0f);
@@ -829,12 +864,36 @@ void activate(GtkApplication* app, gpointer data) {
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), make_scrolled(audio_grid), gtk_label_new("Soundtrack"));
 
     GtkWidget* out_grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(out_grid), 8); gtk_grid_set_column_spacing(GTK_GRID(out_grid), 8); gtk_widget_set_margin_top(out_grid, 10); gtk_widget_set_margin_start(out_grid, 10); gtk_widget_set_margin_end(out_grid, 10);
-    s->width = spin(out_grid, 0, "Width", 640, 7680, 1); s->height = spin(out_grid, 1, "Height", 360, 4320, 1); s->fps = spin(out_grid, 2, "FPS", 24, 60, 1);
-    s->preset = form_entry(out_grid, 3, "Encoder preset", s); s->crf = spin(out_grid, 4, "CRF", 0, 51, 1);
+    GtkWidget* model_label = gtk_label_new("Official model");
+    gtk_label_set_xalign(GTK_LABEL(model_label), 0.0f);
+    gtk_grid_attach(GTK_GRID(out_grid), model_label, 0, 0, 1, 1);
+    const char* model_names[] = {
+        "What Males Learn At Each Age",
+        "Types Of Relationships",
+        nullptr
+    };
+    GtkStringList* model_list = gtk_string_list_new(model_names);
+    s->model = gtk_drop_down_new(G_LIST_MODEL(model_list), nullptr);
+    g_object_unref(model_list);
+    gtk_widget_set_hexpand(s->model, TRUE);
+    gtk_grid_attach(GTK_GRID(out_grid), s->model, 1, 0, 1, 1);
+    g_signal_connect(s->model, "notify::selected", G_CALLBACK(model_changed), s);
+    GtkWidget* model_note = gtk_label_new("Layout, timing, easing, animation count, 1920×1080 and 60 FPS are locked by the selected model.");
+    gtk_label_set_wrap(GTK_LABEL(model_note), TRUE);
+    gtk_label_set_xalign(GTK_LABEL(model_note), 0.0f);
+    gtk_widget_add_css_class(model_note, "dim-label");
+    gtk_grid_attach(GTK_GRID(out_grid), model_note, 0, 1, 2, 1);
+    s->width = spin(out_grid, 2, "Width (model locked)", 1920, 1920, 1);
+    s->height = spin(out_grid, 3, "Height (model locked)", 1080, 1080, 1);
+    s->fps = spin(out_grid, 4, "FPS (model locked)", 60, 60, 1);
+    gtk_widget_set_sensitive(s->width, FALSE);
+    gtk_widget_set_sensitive(s->height, FALSE);
+    gtk_widget_set_sensitive(s->fps, FALSE);
+    s->preset = form_entry(out_grid, 5, "Encoder preset", s); s->crf = spin(out_grid, 6, "CRF", 0, 51, 1);
     const char* font_labels[] = {"Title font (file or family)", "Description font (file or family)", "Badge font (file or family)", "Credits font (file or family)"};
     for (int i = 0; i < 4; ++i) {
-        GtkWidget* label = gtk_label_new(font_labels[i]); gtk_label_set_xalign(GTK_LABEL(label), 0.0f); gtk_grid_attach(GTK_GRID(out_grid), label, 0, 5 + i, 1, 1);
-        GtkWidget* entry = gtk_entry_new(); gtk_widget_set_hexpand(entry, TRUE); gtk_grid_attach(GTK_GRID(out_grid), entry, 1, 5 + i, 1, 1); g_signal_connect(entry, "changed", G_CALLBACK(fields_changed), s); s->font_fields.push_back(entry);
+        GtkWidget* label = gtk_label_new(font_labels[i]); gtk_label_set_xalign(GTK_LABEL(label), 0.0f); gtk_grid_attach(GTK_GRID(out_grid), label, 0, 7 + i, 1, 1);
+        GtkWidget* entry = gtk_entry_new(); gtk_widget_set_hexpand(entry, TRUE); gtk_grid_attach(GTK_GRID(out_grid), entry, 1, 7 + i, 1, 1); g_signal_connect(entry, "changed", G_CALLBACK(fields_changed), s); s->font_fields.push_back(entry);
         GtkWidget* list = gtk_button_new_with_label("List system fonts…"); g_object_set_data(G_OBJECT(list), "font-index", GINT_TO_POINTER(i)); g_signal_connect(list, "clicked", G_CALLBACK(list_system_fonts), s); gtk_grid_attach(GTK_GRID(out_grid), list, 2, 5 + i, 1, 1);
     }
     GtkWidget* reuse = gtk_button_new_with_label("Reuse title font for all fields"); g_signal_connect(reuse, "clicked", G_CALLBACK(reuse_title_font), s); gtk_grid_attach(GTK_GRID(out_grid), reuse, 1, 9, 2, 1);
