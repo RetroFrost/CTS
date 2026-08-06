@@ -1,6 +1,12 @@
 name: Apply full Cubical Compare 1.0.1 source
 
 on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
   push:
     branches:
       - main
@@ -12,6 +18,7 @@ permissions:
 
 jobs:
   apply:
+    if: github.event_name == 'push' || github.event.pull_request.head.ref == 'trigger-full-app-1.0.1'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
