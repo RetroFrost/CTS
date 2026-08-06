@@ -7,10 +7,11 @@ from PIL import Image, ImageChops
 
 from ccengine.models import Card, Project
 from ccengine.renderer import FrameRenderer
+from ccengine.validation import normalize_project
 from engine_cli import command_render_preview, write_ccx
 
 
-def test_preview_uses_exact_export_frame_path(tmp_path: Path) -> None:
+def test_preview_uses_exact_export_frame_path_and_model_geometry(tmp_path: Path) -> None:
     project = Project(cards=[
         Card("One", "1", "First", ""),
         Card("Two", "2", "Second", ""),
@@ -18,8 +19,11 @@ def test_preview_uses_exact_export_frame_path(tmp_path: Path) -> None:
         Card("Four", "4", "Fourth", ""),
         Card("Five", "5", "Continuous", ""),
     ])
+    # Legacy or manipulated project dimensions cannot alter official model
+    # geometry. Preview and export must both render the canonical frame.
     project.settings.width = 1280
     project.settings.height = 720
+    normalize_project(project)
 
     source = tmp_path / "project.ccx"
     preview = tmp_path / "preview.png"
@@ -36,5 +40,5 @@ def test_preview_uses_exact_export_frame_path(tmp_path: Path) -> None:
     expected = FrameRenderer().render_output_frame(project, 9.75)
     with Image.open(preview) as actual:
         actual = actual.convert("RGB")
-        assert actual.size == (1280, 720)
+        assert actual.size == (1920, 1080)
         assert ImageChops.difference(actual, expected).getbbox() is None
