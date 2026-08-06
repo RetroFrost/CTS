@@ -6,7 +6,14 @@ from typing import Literal
 from .models import Project
 
 
-SegmentKind = Literal["card_cycle", "end_wipe", "end_rise", "end_hold", "fade"]
+SegmentKind = Literal[
+    "brand_intro",
+    "card_cycle",
+    "end_wipe",
+    "end_rise",
+    "end_hold",
+    "fade",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,125 +21,177 @@ class Segment:
     kind: SegmentKind
     duration: float
     card_index: int = -1
+    frame_count: int = 0
 
 
-# Cadence measured from the supplied 60 FPS reference:
-# Cards 1-4 start at 0, 2, 4 and 6 seconds. Card four gets a three-second
-# handoff; from card 5 onward the strip advances continuously, with each new
-# vertical badge fall happening while the conveyor is still moving.
-OPENING_INTERVAL = 2.00
-FOURTH_INTERVAL = 3.00
-MAIN_INTERVAL = 3.40
-END_WIPE_SECONDS = 0.42
-END_RISE_SECONDS = 0.38
-END_HOLD_SECONDS = 4.55
-FADE_SECONDS = 0.80
+# Cadence measured from the supplied 60 FPS references. These remain integer
+# frame counts so preview and export cannot disagree through float rounding.
+OPENING_INTERVAL_FRAMES = 120
+FOURTH_INTERVAL_FRAMES = 180
+MAIN_INTERVAL_FRAMES = 204
+END_WIPE_FRAMES = 25
+END_RISE_FRAMES = 23
+END_HOLD_FRAMES = 273
+FADE_FRAMES = 48
 
 
-def _reference_cycle_durations(card_count: int) -> list[float]:
+def _seconds(frames: int, fps: int) -> float:
+    return frames / max(1, fps)
+
+
+def intro_frame_count(project: Project) -> int:
+    return project.model.reference.first_content_frame if project.model.has_brand_intro else 0
+
+
+def intro_duration(project: Project) -> float:
+    return _seconds(intro_frame_count(project), project.settings.fps)
+
+
+def _reference_cycle_frame_counts(card_count: int) -> list[int]:
     if card_count <= 0:
         return []
 
-    durations: list[float] = []
+    frames: list[int] = []
     for index in range(card_count):
-        # Cards one through three arrive on the two-second opening beat. Card
-        # four gets a three-second handoff so its badge can finish before the
-        # conveyor begins. Every later card advances one continuous card-width
-        # interval while its falling badge animation overlaps that movement.
         if index == card_count - 1:
-            durations.append(FOURTH_INTERVAL if index <= 3 else MAIN_INTERVAL)
+            frames.append(FOURTH_INTERVAL_FRAMES if index <= 3 else MAIN_INTERVAL_FRAMES)
         elif index < 3:
-            durations.append(OPENING_INTERVAL)
+            frames.append(OPENING_INTERVAL_FRAMES)
         elif index == 3:
-            durations.append(FOURTH_INTERVAL)
+            frames.append(FOURTH_INTERVAL_FRAMES)
         else:
-            durations.append(MAIN_INTERVAL)
-    return durations
+            frames.append(MAIN_INTERVAL_FRAMES)
+    return frames
 
 
-def outro_duration() -> float:
-    return END_WIPE_SECONDS + END_RISE_SECONDS + END_HOLD_SECONDS + FADE_SECONDS
-
-
-def reference_duration(card_count: int) -> float:
-    if card_count <= 0:
-        return 0.0
-    return sum(_reference_cycle_durations(card_count)) + outro_duration()
-
-
-def minimum_duration(card_count: int) -> float:
-    """Shortest valid duration while preserving the source-video cadence."""
-    return reference_duration(card_count)
+def cycle_frame_counts(project: Project) -> list[int]:
+    # Locked models never stretch or truncate animation to meet a requested
+    # duration. The card count changes how many canonical cycles are emitted;
+    # every cycle itself remains byte-for-byte deterministic in timing.
+    return _reference_cycle_frame_counts(len(project.cards))
 
 
 def cycle_durations(project: Project) -> list[float]:
-    count = len(project.cards)
-    if count <= 0:
-        return []
-
-    base = _reference_cycle_durations(count)
-    if project.settings.auto_length:
-        return base
-
-    minimum = minimum_duration(count)
-    # Native controls and the Python engine share the same rule: fixed length can
-    # extend the source cadence, but never truncate an unfinished animation.
-    custom = max(float(project.settings.custom_length_seconds), minimum)
-    project.settings.custom_length_seconds = custom
-
-    extra = custom - minimum
-    extra_per_card = extra / count
-    return [duration + extra_per_card for duration in base]
+    fps = project.settings.fps
+    return [_seconds(frames, fps) for frames in cycle_frame_counts(project)]
 
 
-def card_start_times(project: Project) -> list[float]:
-    starts: list[float] = []
-    cursor = 0.0
-    for duration in cycle_durations(project):
+def outro_frame_count() -> int:
+    return END_WIPE_FRAMES + END_RISE_FRAMES + END_HOLD_FRAMES + FADE_FRAMES
+
+
+def outro_duration(project: Project) -> float:
+    return _seconds(outro_frame_count(), project.settings.fps)
+
+
+def reference_frame_count(project: Project) -> int:
+    return intro_frame_count(project) + sum(cycle_frame_counts(project)) + outro_frame_count()
+
+
+def reference_duration(project: Project) -> float:
+    return _seconds(reference_frame_count(project), project.settings.fps)
+
+
+def minimum_duration(project: Project) -> float:
+    return reference_duration(project)
+
+
+def card_start_frames(project: Project) -> list[int]:
+    starts: list[int] = []
+    cursor = intro_frame_count(project)
+    for frames in cycle_frame_counts(project):
         starts.append(cursor)
-        cursor += duration
+        cursor += frames
     return starts
 
 
+def card_start_times(project: Project) -> list[float]:
+    fps = project.settings.fps
+    return [_seconds(frame, fps) for frame in card_start_frames(project)]
+
+
+def card_content_frame_count(project: Project) -> int:
+    return sum(cycle_frame_counts(project))
+
+
+def card_content_duration(project: Project) -> float:
+    return _seconds(card_content_frame_count(project), project.settings.fps)
+
+
+def content_frame_count(project: Project) -> int:
+    return intro_frame_count(project) + card_content_frame_count(project)
+
+
 def content_duration(project: Project) -> float:
-    return sum(cycle_durations(project))
+    return _seconds(content_frame_count(project), project.settings.fps)
 
 
 def build_timeline(project: Project) -> list[Segment]:
     if not project.cards:
         return []
 
-    timeline = [
-        Segment("card_cycle", duration, index)
-        for index, duration in enumerate(cycle_durations(project))
-    ]
+    fps = project.settings.fps
+    timeline: list[Segment] = []
+    intro_frames = intro_frame_count(project)
+    if intro_frames:
+        timeline.append(
+            Segment("brand_intro", _seconds(intro_frames, fps), frame_count=intro_frames)
+        )
+
+    timeline.extend(
+        Segment("card_cycle", _seconds(frames, fps), index, frames)
+        for index, frames in enumerate(cycle_frame_counts(project))
+    )
     timeline.extend(
         [
-            Segment("end_wipe", END_WIPE_SECONDS),
-            Segment("end_rise", END_RISE_SECONDS),
-            Segment("end_hold", END_HOLD_SECONDS),
-            Segment("fade", FADE_SECONDS),
+            Segment("end_wipe", _seconds(END_WIPE_FRAMES, fps), frame_count=END_WIPE_FRAMES),
+            Segment("end_rise", _seconds(END_RISE_FRAMES, fps), frame_count=END_RISE_FRAMES),
+            Segment("end_hold", _seconds(END_HOLD_FRAMES, fps), frame_count=END_HOLD_FRAMES),
+            Segment("fade", _seconds(FADE_FRAMES, fps), frame_count=FADE_FRAMES),
         ]
     )
     return timeline
 
 
+def total_frame_count(project: Project) -> int:
+    return sum(segment.frame_count for segment in build_timeline(project))
+
+
 def total_duration(project: Project) -> float:
-    return sum(segment.duration for segment in build_timeline(project))
+    return _seconds(total_frame_count(project), project.settings.fps)
+
+
+def frame_to_seconds(project: Project, frame_index: int) -> float:
+    return max(0, int(frame_index)) / project.settings.fps
+
+
+def seconds_to_frame(project: Project, seconds: float) -> int:
+    # Frame selection always floors to the frame whose presentation interval
+    # contains the requested timestamp. This keeps preview/export deterministic.
+    return max(0, int(max(0.0, float(seconds)) * project.settings.fps + 1e-9))
+
+
+def locate_frame(project: Project, frame_index: int) -> tuple[Segment | None, int, int]:
+    timeline = build_timeline(project)
+    if not timeline:
+        return None, 0, 0
+
+    frame = max(0, int(frame_index))
+    cursor = 0
+    for segment in timeline:
+        end = cursor + segment.frame_count
+        if frame < end or segment is timeline[-1]:
+            local = min(max(frame - cursor, 0), max(0, segment.frame_count - 1))
+            return segment, local, cursor
+        cursor = end
+    return timeline[-1], max(0, timeline[-1].frame_count - 1), cursor
 
 
 def locate_segment(project: Project, seconds: float) -> tuple[Segment | None, float, float]:
-    timeline = build_timeline(project)
-    if not timeline:
+    frame = seconds_to_frame(project, seconds)
+    segment, local_frame, start_frame = locate_frame(project, frame)
+    if segment is None:
         return None, 0.0, 0.0
-
-    elapsed = max(0.0, seconds)
-    cursor = 0.0
-    for segment in timeline:
-        end = cursor + segment.duration
-        if elapsed < end or segment is timeline[-1]:
-            local = min(max(elapsed - cursor, 0.0), segment.duration)
-            progress = 1.0 if segment.duration <= 0 else local / segment.duration
-            return segment, progress, cursor
-        cursor = end
-    return timeline[-1], 1.0, cursor
+    denominator = max(1, segment.frame_count - 1)
+    progress = local_frame / denominator
+    return segment, progress, _seconds(start_frame, project.settings.fps)
