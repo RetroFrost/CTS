@@ -43,8 +43,57 @@ jobs:
             --runtime=org.gnome.Sdk//50 \
             --requirements-file=packaging/flatpak/requirements-flatpak.txt \
             --output=packaging/flatpak/python3-cubical-compare-engine
+
+          # The generic generator selects the PyInstaller source archive for
+          # GNOME 50. That unnecessarily rebuilds PyInstaller's bootloader and
+          # fails the Flatpak link probes for dl, pthread and m. PyInstaller
+          # publishes an official manylinux2014 x86_64 wheel with its supported
+          # precompiled Linux bootloader, so pin that exact wheel instead.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('packaging/flatpak/python3-cubical-compare-engine.json')
+          payload = json.loads(path.read_text(encoding='utf-8'))
+          wheel_url = (
+              'https://files.pythonhosted.org/packages/9f/09/'
+              '51b8905714b733bac66dbc041a7821372d70d888d273ae474c4037d4202d/'
+              'pyinstaller-6.21.0-py3-none-manylinux2014_x86_64.whl'
+          )
+          wheel_sha256 = '605169523a6b5ace39f13dfbff21add9f2bc43df99c7daf9394fefb2c45e8b6f'
+          replaced = False
+          for module in payload.get('modules', []):
+              if module.get('name') != 'python3-PyInstaller':
+                  continue
+              for source in module.get('sources', []):
+                  url = source.get('url', '')
+                  if url.endswith('pyinstaller-6.21.0.tar.gz'):
+                      source['url'] = wheel_url
+                      source['sha256'] = wheel_sha256
+                      replaced = True
+              module['build-commands'] = [
+                  command.replace(
+                      '"PyInstaller==6.21.0" --no-build-isolation',
+                      '"PyInstaller==6.21.0" --only-binary=PyInstaller --no-build-isolation',
+                  )
+                  for command in module.get('build-commands', [])
+              ]
+          if not replaced:
+              raise SystemExit('Generated PyInstaller source archive was not found.')
+          path.write_text(json.dumps(payload, indent=4) + '\n', encoding='utf-8')
+          PY
+
           python3 -m json.tool \
             packaging/flatpak/python3-cubical-compare-engine.json >/dev/null
+          grep -q 'pyinstaller-6.21.0-py3-none-manylinux2014_x86_64.whl' \
+            packaging/flatpak/python3-cubical-compare-engine.json
+          grep -q '605169523a6b5ace39f13dfbff21add9f2bc43df99c7daf9394fefb2c45e8b6f' \
+            packaging/flatpak/python3-cubical-compare-engine.json
+          if grep -q 'pyinstaller-6.21.0.tar.gz' \
+            packaging/flatpak/python3-cubical-compare-engine.json; then
+            echo 'PyInstaller source archive remains in generated manifest.' >&2
+            exit 1
+          fi
 
       - name: Commit generated sources
         run: |
