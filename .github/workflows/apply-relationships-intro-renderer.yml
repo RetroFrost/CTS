@@ -1,0 +1,139 @@
+name: Apply Relationships intro renderer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-relationships-intro-renderer.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Connect frame-indexed intro scene
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('engine/ccengine/renderer.py')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  'from .models import Card, Project\n'
+                  'from .assets import materialize_remote_asset\n'
+                  'from .timing import card_start_times, content_duration, locate_segment, total_duration\n',
+                  'from .models import Card, Project\n'
+                  'from .assets import materialize_remote_asset\n'
+                  'from .brand_intro import render_relationships_intro\n'
+                  'from .timing import (\n'
+                  '    card_start_times, content_duration, locate_segment, seconds_to_frame, total_duration,\n'
+                  ')\n',
+              ),
+              (
+                  '        if segment.kind == "card_cycle":\n'
+                  '            self._render_content(\n',
+                  '        if segment.kind == "brand_intro":\n'
+                  '            # The Relationships opening owns frames 0..373.\n'
+                  '            # It is rendered from the exact source-frame index,\n'
+                  '            # never from an independently eased percentage.\n'
+                  '            base = render_relationships_intro(seconds_to_frame(project, seconds))\n\n'
+                  '        elif segment.kind == "card_cycle":\n'
+                  '            self._render_content(\n',
+              ),
+          ]
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'Expected renderer fragment was not found:\n{old}')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Add intro dispatch tests
+        run: |
+          cat > tests/test_relationships_intro.py <<'PY'
+          from __future__ import annotations
+
+          from PIL import ImageChops
+
+          from ccengine.brand_intro import INTRO_FRAME_COUNT, intro_signature, render_relationships_intro
+          from ccengine.model_registry import MODEL_TYPES_OF_RELATIONSHIPS, MODEL_WHAT_MALES_LEARN
+          from ccengine.models import Card, Project, ProjectSettings
+          from ccengine.renderer import FrameRenderer
+          from ccengine.timing import frame_to_seconds
+          from ccengine.validation import normalize_project
+
+
+          def project(model_id: str) -> Project:
+              value = Project(
+                  cards=[Card("First", "1")],
+                  settings=ProjectSettings(model_id=model_id),
+              )
+              return normalize_project(value)
+
+
+          def test_intro_has_exact_locked_frame_count() -> None:
+              assert INTRO_FRAME_COUNT == 374
+
+
+          def test_intro_key_phases_are_deterministic() -> None:
+              assert intro_signature(0) == ((1920, 1080), None)
+              for frame in (30, 60, 90, 150, 240, 270, 330, 373):
+                  size, bounds = intro_signature(frame)
+                  assert size == (1920, 1080)
+                  assert bounds is not None
+
+
+          def test_relationships_uses_intro_while_age_model_starts_cards() -> None:
+              renderer = FrameRenderer()
+              relationships = project(MODEL_TYPES_OF_RELATIONSHIPS)
+              ages = project(MODEL_WHAT_MALES_LEARN)
+
+              relationship_frame = renderer.render_output_frame(
+                  relationships, frame_to_seconds(relationships, 120)
+              )
+              expected_intro = render_relationships_intro(120)
+              assert ImageChops.difference(relationship_frame, expected_intro).getbbox() is None
+
+              age_frame = renderer.render_output_frame(ages, 0.0)
+              assert ImageChops.difference(age_frame, render_relationships_intro(0)).getbbox() is not None
+
+
+          def test_first_relationship_card_begins_only_after_intro() -> None:
+              renderer = FrameRenderer()
+              relationships = project(MODEL_TYPES_OF_RELATIONSHIPS)
+              before = renderer.render_output_frame(
+                  relationships, frame_to_seconds(relationships, 373)
+              )
+              first_card = renderer.render_output_frame(
+                  relationships, frame_to_seconds(relationships, 374)
+              )
+              assert ImageChops.difference(before, first_card).getbbox() is not None
+          PY
+
+      - name: Verify intro renderer integration
+        run: |
+          python3 -m compileall -q engine
+          grep -q 'segment.kind == "brand_intro"' engine/ccengine/renderer.py
+          grep -q 'render_relationships_intro' engine/ccengine/renderer.py
+
+      - name: Commit intro integration
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add engine/ccengine/renderer.py tests/test_relationships_intro.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Render the locked Relationships opening scene'
+          git push origin HEAD:release/cubical-compare-1.0
