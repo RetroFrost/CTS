@@ -67,9 +67,12 @@ jobs:
           assert not present, f'Forbidden broad permissions: {present}'
 
           engine = '--env=CUBICAL_COMPARE_ENGINE=/app/libexec/cubical-compare/engine/cubical-compare-engine'
+          ffmpeg = '--env=CUBICAL_COMPARE_FFMPEG=/usr/bin/ffmpeg'
           assert engine in args, 'Private engine path is not fixed inside /app/libexec'
+          assert ffmpeg in args, 'Flatpak must use the runtime FFmpeg binary'
 
           text = manifest_path.read_text(encoding='utf-8')
+          assert 'org.freedesktop.Platform.ffmpeg-full' not in text
           assert 'flatpak-spawn --host' not in text
           assert '/app/bin/cubical-compare' in text or 'command: cubical-compare' in text
           PY
@@ -89,12 +92,13 @@ jobs:
       - name: Install Flatpak tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder xauth xvfb
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg flatpak flatpak-builder xauth xvfb
+          flatpak remote-add --user --if-not-exists flathub \
+            https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y --noninteractive flathub \
             org.gnome.Sdk//50 \
-            org.gnome.Platform//50 \
-            org.freedesktop.Platform.ffmpeg-full//25.08
+            org.gnome.Platform//50
 
       - name: Build application in the GNOME SDK
         run: |
@@ -106,26 +110,43 @@ jobs:
           test -x flatpak-build/files/libexec/cubical-compare/engine/cubical-compare-engine
           test -d flatpak-build/files/libexec/cubical-compare/engine/_internal
 
-      - name: Run sandbox smoke tests
-        run: |
-          rm -rf flatpak-engine-self-test
-          flatpak-builder --run flatpak-build \
-            packaging/flatpak/io.github.retrofrost.CTS.yml \
-            /app/libexec/cubical-compare/engine/cubical-compare-engine \
-            self-test --directory /run/build/cubical-compare/flatpak-engine-self-test
-          xvfb-run -a flatpak-builder --run flatpak-build \
-            packaging/flatpak/io.github.retrofrost.CTS.yml \
-            /app/bin/cubical-compare --self-test
-
-      - name: Create installable bundle
+      - name: Create and install test bundle
         run: |
           flatpak build-bundle flatpak-repo \
             Cubical-Compare-1.0.0-x86_64.flatpak \
             io.github.retrofrost.CTS stable
           test -s Cubical-Compare-1.0.0-x86_64.flatpak
-          flatpak info --show-metadata \
-            Cubical-Compare-1.0.0-x86_64.flatpak >/dev/null 2>&1 || true
-          sha256sum Cubical-Compare-1.0.0-x86_64.flatpak > SHA256SUMS-flatpak.txt
+          flatpak install --user -y --noninteractive \
+            ./Cubical-Compare-1.0.0-x86_64.flatpak
+
+      - name: Run installed sandbox smoke tests
+        run: |
+          rm -rf flatpak-engine-self-test
+          mkdir -p flatpak-engine-self-test
+          flatpak run --user \
+            --filesystem="$PWD/flatpak-engine-self-test:create" \
+            --command=/app/libexec/cubical-compare/engine/cubical-compare-engine \
+            io.github.retrofrost.CTS \
+            self-test --directory "$PWD/flatpak-engine-self-test"
+          test -s flatpak-engine-self-test/self-test.mp4
+          test -s flatpak-engine-self-test/self-test.png
+          test -s flatpak-engine-self-test/self-test.bmp
+          ffprobe -v error -select_streams v:0 \
+            -show_entries stream=codec_name,width,height \
+            -of default=noprint_wrappers=1 \
+            flatpak-engine-self-test/self-test.mp4
+          xvfb-run -a flatpak run --user \
+            io.github.retrofrost.CTS --self-test
+
+      - name: Verify exported sandbox contract
+        run: |
+          metadata="$(flatpak info --user --show-metadata io.github.retrofrost.CTS)"
+          grep -F 'shared=network;ipc;' <<<"$metadata"
+          grep -F 'sockets=x11;wayland;pulseaudio;' <<<"$metadata"
+          ! grep -F 'filesystems=home' <<<"$metadata"
+          ! grep -F 'filesystems=host' <<<"$metadata"
+          sha256sum Cubical-Compare-1.0.0-x86_64.flatpak \
+            > SHA256SUMS-flatpak.txt
 
       - uses: actions/upload-artifact@v7
         with:
