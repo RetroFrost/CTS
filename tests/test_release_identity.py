@@ -5,6 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.retrofrost.CTS"
+PYINSTALLER_WHEEL = "pyinstaller-6.21.0-py3-none-manylinux2014_x86_64.whl"
+PYINSTALLER_WHEEL_SHA256 = "605169523a6b5ace39f13dfbff21add9f2bc43df99c7daf9394fefb2c45e8b6f"
 
 
 def read(relative: str) -> str:
@@ -62,7 +64,16 @@ def test_flatpak_python_sources_are_offline_and_pinned() -> None:
     assert "pybind11==3.0.4" in generated
     assert "Pillow==12.3.0" in generated
     assert "openpyxl==3.1.5" in generated
+    assert "hatchling==1.31.0" in generated
     assert "PyInstaller==6.21.0" in generated
     assert "pytest==9.1.1" in generated
     assert '"sha256"' in generated
     assert "--no-index" in generated
+
+
+def test_flatpak_uses_official_pyinstaller_bootloader_wheel() -> None:
+    generated = read("packaging/flatpak/python3-cubical-compare-engine.json")
+    assert PYINSTALLER_WHEEL in generated
+    assert PYINSTALLER_WHEEL_SHA256 in generated
+    assert "--only-binary=PyInstaller" in generated
+    assert "pyinstaller-6.21.0.tar.gz" not in generated
