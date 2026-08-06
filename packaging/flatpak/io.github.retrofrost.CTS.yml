@@ -5,14 +5,6 @@ sdk: org.gnome.Sdk
 command: cubical-compare
 default-branch: stable
 
-add-extensions:
-  org.freedesktop.Platform.ffmpeg-full:
-    directory: lib/ffmpeg
-    version: '25.08'
-    add-ld-path: .
-    no-autodownload: false
-    autodelete: false
-
 finish-args:
   - --share=ipc
   - --share=network
@@ -20,12 +12,9 @@ finish-args:
   - --socket=fallback-x11
   - --socket=pulseaudio
   - --device=dri
-  - --env=PATH=/app/lib/ffmpeg:/app/bin:/usr/bin
+  - --env=PATH=/app/bin:/usr/bin
   - --env=CUBICAL_COMPARE_ENGINE=/app/libexec/cubical-compare/engine/cubical-compare-engine
-  - --env=CUBICAL_COMPARE_FFMPEG=/app/lib/ffmpeg/ffmpeg
-
-cleanup-commands:
-  - mkdir -p /app/lib/ffmpeg
+  - --env=CUBICAL_COMPARE_FFMPEG=/usr/bin/ffmpeg
 
 cleanup:
   - /include
