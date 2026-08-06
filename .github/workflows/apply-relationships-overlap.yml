@@ -39,28 +39,31 @@ jobs:
           elif new_import not in text:
               raise SystemExit('Brand intro import was not found.')
 
-          old_block = '''        elif segment.kind == "card_cycle":
-            self._render_content(
-                base,
-                project,
-                segment.card_index,
-                seconds - segment_start,
-                seconds,
-                starts,
-                segment.duration,
-            )
-'''
-          new_block = old_block + '''            global_frame = seconds_to_frame(project, seconds)
-            if (
-                project.settings.model_id == "types-of-relationships"
-                and global_frame < INTRO_OVERLAY_END_FRAME
-            ):
-                identity = render_relationships_intro_overlay(global_frame)
-                base.paste(identity.convert("RGB"), (0, 0), identity.getchannel("A"))
-'''
+          old_block = (
+              '        elif segment.kind == "card_cycle":\n'
+              '            self._render_content(\n'
+              '                base,\n'
+              '                project,\n'
+              '                segment.card_index,\n'
+              '                seconds - segment_start,\n'
+              '                seconds,\n'
+              '                starts,\n'
+              '                segment.duration,\n'
+              '            )\n'
+          )
+          overlap_block = (
+              '            global_frame = seconds_to_frame(project, seconds)\n'
+              '            if (\n'
+              '                project.settings.model_id == "types-of-relationships"\n'
+              '                and global_frame < INTRO_OVERLAY_END_FRAME\n'
+              '            ):\n'
+              '                identity = render_relationships_intro_overlay(global_frame)\n'
+              '                base.paste(identity.convert("RGB"), (0, 0), identity.getchannel("A"))\n'
+          )
+          new_block = old_block + overlap_block
           if old_block in text:
               text = text.replace(old_block, new_block, 1)
-          elif new_block not in text:
+          elif overlap_block not in text:
               raise SystemExit('Card-cycle render block was not found.')
 
           path.write_text(text, encoding='utf-8')
