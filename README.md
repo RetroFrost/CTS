@@ -145,3 +145,5 @@ See [Platform parity](docs/platform-parity.md) for contribution rules.
 ## License
 
 CTS is released under [CC0 1.0 Universal](LICENSE).
+
+<!-- Full Cubical Compare 1.0.1 native rebuild trigger -->
