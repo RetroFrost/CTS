@@ -4,15 +4,31 @@ Cubical Compare is a native desktop editor for creating animated comparison vide
 
 The Windows and Linux applications use the same deterministic rendering engine for preview and MP4 export. That engine is bundled privately inside every package: users install and launch only Cubical Compare.
 
+## Official 1.0 models
+
+Cubical Compare 1.0 contains two locked reproduction models:
+
+- **What Males Learn At Each Age**
+- **Types Of Relationships**
+
+The supplied reference videos are the source of truth. These models are not approximate themes or editable animation presets. Their scene order, frame count per motion, card geometry, badge deformation, text reveal, shine, credits movement, conveyor motion, outro, 1920×1080 output, and 60 FPS clock are model-owned and immutable.
+
+Users replace the content carried by the model—titles, values, descriptions, images, card order, music, credits text, and end-screen text. They cannot add, remove, reorder, shorten, lengthen, or restyle model animation.
+
+Projects persist a model ID and revision lock. Legacy project values that attempt to change model geometry, frame rate, cadence, or revision are normalised back to the selected official model.
+
+The **Types Of Relationships** model also contains its dedicated 374-frame opening identity scene. **What Males Learn At Each Age** begins directly with the first card and credits motion on frame zero.
+
 ## Workflow
 
-1. **Click to Insert Data** — import CSV or XLSX data and replace the active cards.
-2. **Image Sheet** — split a continuous or gridded sheet into durable per-card assets.
-3. **Music** — select a soundtrack and configure looping, volume, offset, and fade-out.
-4. **Length** — use automatic timing or set a fixed total duration.
-5. **Export MP4** — export with visible progress, cancellation, validation, and atomic output replacement.
+1. **Choose an official model** — the selected model locks all animation mechanics.
+2. **Click to Insert Data** — import CSV or XLSX data and replace the active cards.
+3. **Image Sheet** — split a continuous or gridded sheet into durable per-card assets.
+4. **Music** — select a soundtrack and configure looping, volume, offset, and fade-out.
+5. **Preview** — inspect the same integer source frames used by export.
+6. **Export MP4** — export with visible progress, cancellation, validation, and atomic output replacement.
 
-The manual editor supports direct card editing, image transforms, credits, fonts, fit modes, and output settings.
+The manual editor supports direct card editing, image transforms, credits, fonts, fit modes, and encoding settings. Model timing and layout remain read-only.
 
 ## Packages
 
@@ -72,23 +88,22 @@ The package does not request broad home-directory or host-filesystem access. Use
 
 ## Project compatibility
 
-Cubical Compare 1.0 preserves the `CCX1` project format used by the final pre-1.0 development builds. Portable project saves collect referenced images, soundtrack files, and fonts into a relative asset directory.
+Cubical Compare 1.0 preserves the `CCX1` project format used by the final pre-1.0 development builds and adds a locked model identity and revision. Portable project saves collect referenced images, soundtrack files, and fonts into a relative asset directory.
 
 ## Reliability work in 1.0
 
+- Preview and export use the same integer 60 FPS frame clock.
+- Exact source frames can be rendered through the private engine CLI.
 - Spreadsheet imports apply immediately and run outside the interface thread.
 - Numeric zero and Boolean false survive import; header detection does not delete a valid first card.
 - Relative spreadsheet image paths resolve from the spreadsheet directory.
 - Image-sheet assets use durable storage and preserve per-card transforms.
-- Music and video-length controls are directly available from the main toolbar.
 - Portable saves collect images, soundtrack files, and fonts.
-- Output dimensions are normalised to legal even values.
 - Encoder presets are validated and respected.
 - Missing soundtrack files stop export with a readable error.
 - Export uses bounded parallel rendering, bounded caches, continuously drained FFmpeg diagnostics, and responsive cancellation.
 - Closing the editor terminates its private engine and FFmpeg children.
 - Existing output files are replaced only after a successful export.
-- Non-16:9 output is letterboxed rather than stretched.
 - Corrupt project data and unsafe numeric values are rejected or safely normalised.
 
 ## Build from source
@@ -116,6 +131,18 @@ pytest -q
 
 On Linux, use `export PYTHONPATH=engine` instead.
 
+List the built-in models:
+
+```text
+python engine/engine_cli.py list-models
+```
+
+Render one exact model frame:
+
+```text
+python engine/engine_cli.py render-preview project.ccx frame.png --frame 374
+```
+
 Build the private engine:
 
 ```text
@@ -142,7 +169,8 @@ cmake --build build --config Release
 
 The release workflows verify:
 
-- all engine unit tests
+- all engine and model-lock tests
+- frame-addressable preview/export parity
 - the frozen private engine
 - native Windows and GTK builds
 - native GUI self-tests
@@ -152,3 +180,5 @@ The release workflows verify:
 - Flatpak manifest and repository linting
 - installation and execution inside the Flatpak sandbox
 - absence of broad home or host filesystem permissions
+
+See `engine/models/README.md` for the frame-level model conformance process.
