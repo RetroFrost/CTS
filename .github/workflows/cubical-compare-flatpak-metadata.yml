@@ -29,15 +29,15 @@ jobs:
 
       - name: Validate AppStream and desktop metadata
         run: |
-          appstreamcli validate --no-net packaging/flatpak/io.github.retrofrost.CubicalCompare.metainfo.xml
-          desktop-file-validate packaging/flatpak/io.github.retrofrost.CubicalCompare.desktop
+          appstreamcli validate --no-net packaging/flatpak/io.github.retrofrost.CTS.metainfo.xml
+          desktop-file-validate packaging/flatpak/io.github.retrofrost.CTS.desktop
           python3 - <<'PY'
           import pathlib
           import yaml
 
-          manifest_path = pathlib.Path('packaging/flatpak/io.github.retrofrost.CubicalCompare.yml')
+          manifest_path = pathlib.Path('packaging/flatpak/io.github.retrofrost.CTS.yml')
           manifest = yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
-          assert manifest['app-id'] == 'io.github.retrofrost.CubicalCompare'
+          assert manifest['app-id'] == 'io.github.retrofrost.CTS'
           assert manifest['command'] == 'cubical-compare'
 
           args = set(manifest.get('finish-args', []))
@@ -56,7 +56,7 @@ jobs:
 
           text = manifest_path.read_text(encoding='utf-8')
           assert 'flatpak-spawn --host' not in text
-          assert '/app/bin/cubical-compare' in text or "command: cubical-compare" in text
+          assert '/app/bin/cubical-compare' in text or 'command: cubical-compare' in text
           PY
 
       - name: Confirm only one desktop application is exported
