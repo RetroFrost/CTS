@@ -1,0 +1,210 @@
+name: Apply locked model IO
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-locked-model-io.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Patch Python engine CLI model IO
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('engine/engine_cli.py')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  'from ccengine.models import Card, Project, ProjectSettings\n',
+                  'from ccengine.models import Card, Project, ProjectSettings\n'
+                  'from ccengine.model_registry import (\n'
+                  '    DEFAULT_MODEL_ID, get_model, list_models, model_manifest, normalize_model_id,\n'
+                  ')\n',
+              ),
+              (
+                  '    puts("project.name", project.name)\n'
+                  '    put("project.width", s.width)\n',
+                  '    puts("project.name", project.name)\n'
+                  '    puts("project.model_id", s.model_id)\n'
+                  '    put("project.model_revision", s.model_revision)\n'
+                  '    put("project.width", s.width)\n',
+              ),
+              (
+                  '    s = ProjectSettings()\n'
+                  '    s.width = geti("project.width", s.width)\n',
+                  '    s = ProjectSettings()\n'
+                  '    s.model_id = normalize_model_id(gets("project.model_id", s.model_id))\n'
+                  '    s.model_revision = geti("project.model_revision", get_model(s.model_id).revision)\n'
+                  '    s.width = geti("project.width", s.width)\n',
+              ),
+              (
+                  'def make_default_project() -> Project:\n'
+                  '    return Project(\n'
+                  '        name="",\n'
+                  '        cards=[Card("Card 1", "1", "", "")],\n'
+                  '    )\n',
+                  'def make_default_project(model_id: str = DEFAULT_MODEL_ID) -> Project:\n'
+                  '    model = get_model(model_id)\n'
+                  '    return Project(\n'
+                  '        name="",\n'
+                  '        cards=[Card("Card 1", "1", "", "")],\n'
+                  '        settings=ProjectSettings(\n'
+                  '            model_id=model.id,\n'
+                  '            model_revision=model.revision,\n'
+                  '            width=model.width,\n'
+                  '            height=model.height,\n'
+                  '            fps=model.fps,\n'
+                  '        ),\n'
+                  '    )\n',
+              ),
+              (
+                  'def command_new(args: argparse.Namespace) -> int:\n'
+                  '    write_ccx(make_default_project(), args.output)\n'
+                  '    return 0\n',
+                  'def command_new(args: argparse.Namespace) -> int:\n'
+                  '    write_ccx(make_default_project(args.model), args.output)\n'
+                  '    return 0\n\n\n'
+                  'def command_list_models(args: argparse.Namespace) -> int:\n'
+                  '    del args\n'
+                  '    print(json.dumps([model_manifest(model) for model in list_models()], indent=2))\n'
+                  '    return 0\n',
+              ),
+              (
+                  '        "version": VERSION,\n'
+                  '        "cards": len(project.cards),\n',
+                  '        "version": VERSION,\n'
+                  '        "model": model_manifest(project.model),\n'
+                  '        "cards": len(project.cards),\n',
+              ),
+              (
+                  '    s = sub.add_parser("new")\n'
+                  '    s.add_argument("output")\n'
+                  '    s.set_defaults(func=command_new)\n',
+                  '    s = sub.add_parser("new")\n'
+                  '    s.add_argument("output")\n'
+                  '    s.add_argument("--model", default=DEFAULT_MODEL_ID)\n'
+                  '    s.set_defaults(func=command_new)\n\n'
+                  '    s = sub.add_parser("list-models")\n'
+                  '    s.set_defaults(func=command_list_models)\n',
+              ),
+          ]
+
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'Expected engine_cli fragment was not found:\n{old}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Patch native project model IO
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          header = Path('native/core/include/cubical/project.hpp')
+          text = header.read_text(encoding='utf-8')
+          old = 'struct Settings {\n    std::uint32_t width{1920};\n'
+          new = (
+              'struct Settings {\n'
+              '    std::string model_id{"what-males-learn-at-each-age"};\n'
+              '    std::uint32_t model_revision{1};\n'
+              '    std::uint32_t width{1920};\n'
+          )
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('Native Settings insertion point was not found.')
+          header.write_text(text, encoding='utf-8')
+
+          source = Path('native/core/src/project.cpp')
+          text = source.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  'double timeline_duration(const Project& project) {\n'
+                  '    if (project.cards.empty()) return 0.0;\n',
+                  'double timeline_duration(const Project& project) {\n'
+                  '    if (project.cards.empty()) return 0.0;\n'
+                  '    constexpr double relationships_intro = 374.0 / 60.0;\n',
+              ),
+              (
+                  '    const double minimum = content + outro;\n',
+                  '    const double intro = project.settings.model_id == "types-of-relationships"\n'
+                  '        ? relationships_intro : 0.0;\n'
+                  '    const double minimum = intro + content + outro;\n',
+              ),
+              (
+                  '    puts(out, "project.name", project.name);\n'
+                  '    put(out, "project.width", std::to_string(s.width));\n',
+                  '    puts(out, "project.name", project.name);\n'
+                  '    puts(out, "project.model_id", s.model_id);\n'
+                  '    put(out, "project.model_revision", std::to_string(s.model_revision));\n'
+                  '    put(out, "project.width", std::to_string(s.width));\n',
+              ),
+              (
+                  '    loaded.name = decoded(values, "project.name", loaded.name);\n'
+                  '    s.width = number(values, "project.width", s.width);\n',
+                  '    loaded.name = decoded(values, "project.name", loaded.name);\n'
+                  '    s.model_id = decoded(values, "project.model_id", s.model_id);\n'
+                  '    if (s.model_id != "types-of-relationships" &&\n'
+                  '        s.model_id != "what-males-learn-at-each-age") {\n'
+                  '        s.model_id = "what-males-learn-at-each-age";\n'
+                  '    }\n'
+                  '    s.model_revision = number(values, "project.model_revision", std::uint32_t{1});\n'
+                  '    s.model_revision = 1;\n'
+                  '    s.width = number(values, "project.width", s.width);\n',
+              ),
+              (
+                  '    s.width = even_dimension(s.width, 1920, 7680);\n'
+                  '    s.height = even_dimension(s.height, 1080, 4320);\n'
+                  '    s.fps = std::clamp(s.fps, std::uint32_t{1}, std::uint32_t{120});\n',
+                  '    // Model-owned output values are immutable in 1.0.\n'
+                  '    s.width = 1920;\n'
+                  '    s.height = 1080;\n'
+                  '    s.fps = 60;\n'
+                  '    s.auto_length = true;\n',
+              ),
+          ]
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'Expected native source fragment was not found:\n{old}')
+          source.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify model IO integration
+        run: |
+          grep -q 'project.model_id' engine/engine_cli.py
+          grep -q 'list-models' engine/engine_cli.py
+          grep -q 'types-of-relationships' native/core/src/project.cpp
+          grep -q 'what-males-learn-at-each-age' native/core/include/cubical/project.hpp
+          python3 -m compileall -q engine
+
+      - name: Commit integration
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add engine/engine_cli.py native/core/include/cubical/project.hpp native/core/src/project.cpp
+          if git diff --cached --quiet; then
+            echo 'Locked model IO is already integrated.'
+            exit 0
+          fi
+          git commit -m 'Persist locked model identity across engine and native project IO'
+          git push origin HEAD:release/cubical-compare-1.0
