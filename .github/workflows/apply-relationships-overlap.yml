@@ -1,0 +1,84 @@
+name: Apply Relationships overlap
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-relationships-overlap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Composite the identity tail over first-card content
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('engine/ccengine/renderer.py')
+          text = path.read_text(encoding='utf-8')
+          old_import = 'from .brand_intro import render_relationships_intro\n'
+          new_import = (
+              'from .brand_intro import (\n'
+              '    INTRO_OVERLAY_END_FRAME, render_relationships_intro,\n'
+              '    render_relationships_intro_overlay,\n'
+              ')\n'
+          )
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+          elif new_import not in text:
+              raise SystemExit('Brand intro import was not found.')
+
+          old_block = '''        elif segment.kind == "card_cycle":
+            self._render_content(
+                base,
+                project,
+                segment.card_index,
+                seconds - segment_start,
+                seconds,
+                starts,
+                segment.duration,
+            )
+'''
+          new_block = old_block + '''            global_frame = seconds_to_frame(project, seconds)
+            if (
+                project.settings.model_id == "types-of-relationships"
+                and global_frame < INTRO_OVERLAY_END_FRAME
+            ):
+                identity = render_relationships_intro_overlay(global_frame)
+                base.paste(identity.convert("RGB"), (0, 0), identity.getchannel("A"))
+'''
+          if old_block in text:
+              text = text.replace(old_block, new_block, 1)
+          elif new_block not in text:
+              raise SystemExit('Card-cycle render block was not found.')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify overlap dispatch
+        run: |
+          python3 -m compileall -q engine
+          grep -q 'render_relationships_intro_overlay' engine/ccengine/renderer.py
+          grep -q 'global_frame < INTRO_OVERLAY_END_FRAME' engine/ccengine/renderer.py
+
+      - name: Commit overlap
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add engine/ccengine/renderer.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Overlap Relationships identity with first card entrance'
+          git push origin HEAD:release/cubical-compare-1.0
