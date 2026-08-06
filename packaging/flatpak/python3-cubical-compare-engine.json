@@ -83,7 +83,7 @@
             "name": "python3-PyInstaller",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"PyInstaller==6.21.0\" --no-build-isolation"
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"PyInstaller==6.21.0\" --only-binary=PyInstaller --no-build-isolation"
             ],
             "sources": [
                 {
@@ -93,8 +93,8 @@
                 },
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/d5/4d/ec706c3fcf39e26888c35b39615ff4d5865d184069666c47492cff1fbe50/pyinstaller-6.21.0.tar.gz",
-                    "sha256": "bb9fab705983e393a2d1cac77d6972513057ad800215fd861dc15ff5272e98fd"
+                    "url": "https://files.pythonhosted.org/packages/9f/09/51b8905714b733bac66dbc041a7821372d70d888d273ae474c4037d4202d/pyinstaller-6.21.0-py3-none-manylinux2014_x86_64.whl",
+                    "sha256": "605169523a6b5ace39f13dfbff21add9f2bc43df99c7daf9394fefb2c45e8b6f"
                 },
                 {
                     "type": "file",
