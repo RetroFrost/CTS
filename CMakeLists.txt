@@ -60,6 +60,9 @@ if(UNIX AND NOT APPLE)
   install(FILES packaging/flatpak/io.github.retrofrost.CTS.svg
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
   )
+  install(FILES packaging/flatpak/io.github.retrofrost.CTS-symbolic.svg
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/symbolic/apps
+  )
   install(FILES LICENSE
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/io.github.retrofrost.CTS
   )
