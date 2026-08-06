@@ -7,6 +7,8 @@ import json
 import uuid
 import math
 
+from .model_registry import DEFAULT_MODEL_ID, LockedModel, get_model
+
 
 def _safe_float(value: Any, fallback: float) -> float:
     try:
@@ -24,9 +26,8 @@ class Card:
     image: str = ""
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
-    # Per-card free transform. Coordinates are reference-card pixels (480x1080),
-    # scale is multiplicative, crops are normalized fractions, and the layer
-    # decides whether artwork sits behind or in front of card text/bands.
+    # Per-card content transform. Model layout and animation remain locked;
+    # these values only alter the user-supplied artwork inside its fixed slot.
     image_x: float = 0.0
     image_y: float = 0.0
     image_scale: float = 1.0
@@ -59,11 +60,17 @@ class Card:
 
 @dataclass(slots=True)
 class ProjectSettings:
+    # The selected model is immutable in its animation, layout, output frame
+    # rate and reference geometry. Users edit content, never model mechanics.
+    model_id: str = DEFAULT_MODEL_ID
+    model_revision: int = 1
+
     width: int = 1920
     height: int = 1080
     fps: int = 60
 
-    # Opening credits. Every visible string is project-editable.
+    # Opening credits. The strings are content fields; position, motion and
+    # timing are owned by the selected locked model.
     credits_enabled: bool = True
     credits_top_text: str = "Values are estimates and may vary."
     credits_heading: str = "Credits"
@@ -74,38 +81,32 @@ class ProjectSettings:
     credits_design_value: str = "Cubical"
     credits_footer: str = "CREDITS ARE OPTIONAL"
 
-    # End-screen labels are editable too.
     end_best_label: str = "BEST VIDEO FOR YOU"
     end_newest_label: str = "NEWEST VIDEO"
     end_credit_label: str = "Video Made By"
     end_credit_value: str = "Cubical Compare"
 
+    # Retained for legacy project parsing. Locked 1.0 models force exact model
+    # cadence and ignore custom stretching during validation and export.
     auto_length: bool = True
     custom_length_seconds: float = 60.0
 
-    # Soundtrack controls.
     soundtrack: str = ""
     soundtrack_volume: float = 0.75
     soundtrack_loop: bool = True
     soundtrack_offset_seconds: float = 0.0
     soundtrack_fade_out_seconds: float = 0.75
 
-    # Export controls. "faster" keeps the requested resolution/FPS/CRF while
-    # reducing encoder work compared with the former medium preset.
     encoder_preset: str = "faster"
     encoder_crf: int = 18
 
-    # Optional custom installed font files. Blank means Cubical Compare chooses
-    # a condensed system font close to the reference video.
     font_title: str = ""
     font_description: str = ""
     font_badge: str = ""
     font_credits: str = ""
 
-    # How ordinary, non-sheet images fit the artwork area.
-    image_fit_mode: str = "cover"  # cover | contain
+    image_fit_mode: str = "cover"
 
-    # Compatibility aliases for projects saved by CTS Alpha 1–13.
     credits_title: str = ""
     credits_subtitle: str = ""
 
@@ -125,17 +126,31 @@ class Project:
     settings: ProjectSettings = field(default_factory=ProjectSettings)
     path: str = ""
 
+    @property
+    def model(self) -> LockedModel:
+        return get_model(self.settings.model_id)
+
     def to_dict(self) -> dict[str, Any]:
         return {
-            "version": 2,
+            "version": 3,
             "name": self.name,
             "cards": [asdict(card) for card in self.cards],
             "settings": asdict(self.settings),
+            "model_lock": {
+                "id": self.model.id,
+                "revision": self.model.revision,
+                "renderer_profile": self.model.renderer_profile,
+            },
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Project":
-        settings_data = data.get("settings", {})
+        settings_data = dict(data.get("settings", {}))
+        model_lock = data.get("model_lock", {})
+        if "model_id" not in settings_data and isinstance(model_lock, dict):
+            settings_data["model_id"] = model_lock.get("id", DEFAULT_MODEL_ID)
+        if "model_revision" not in settings_data and isinstance(model_lock, dict):
+            settings_data["model_revision"] = model_lock.get("revision", 1)
         settings = ProjectSettings(**{
             key: value
             for key, value in settings_data.items()
