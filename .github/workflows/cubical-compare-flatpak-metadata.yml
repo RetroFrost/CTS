@@ -1,20 +1,32 @@
-name: Cubical Compare Flatpak metadata
+name: Cubical Compare Flatpak
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
+      - 'CMakeLists.txt'
+      - 'native/**'
+      - 'engine/**'
+      - 'tests/**'
       - 'packaging/flatpak/**'
       - '.github/workflows/cubical-compare-flatpak-metadata.yml'
   push:
     branches:
       - 'release/cubical-compare-1.0'
     paths:
+      - 'CMakeLists.txt'
+      - 'native/**'
+      - 'engine/**'
+      - 'tests/**'
       - 'packaging/flatpak/**'
       - '.github/workflows/cubical-compare-flatpak-metadata.yml'
 
 permissions:
   contents: read
+
+concurrency:
+  group: cubical-compare-flatpak-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -27,7 +39,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y appstream desktop-file-utils python3-yaml
 
-      - name: Validate AppStream and desktop metadata
+      - name: Validate AppStream, desktop and manifest metadata
         run: |
           appstreamcli validate --no-net packaging/flatpak/io.github.retrofrost.CTS.metainfo.xml
           desktop-file-validate packaging/flatpak/io.github.retrofrost.CTS.desktop
@@ -39,6 +51,9 @@ jobs:
           manifest = yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
           assert manifest['app-id'] == 'io.github.retrofrost.CTS'
           assert manifest['command'] == 'cubical-compare'
+          assert manifest['default-branch'] == 'stable'
+          assert manifest['runtime'] == 'org.gnome.Platform'
+          assert str(manifest['runtime-version']) == '50'
 
           args = set(manifest.get('finish-args', []))
           forbidden = {
@@ -63,3 +78,59 @@ jobs:
         run: |
           test "$(find packaging/flatpak -maxdepth 1 -name '*.desktop' | wc -l)" -eq 1
           ! grep -R --line-number 'Exec=.*engine' packaging/flatpak/*.desktop
+
+  build:
+    name: Build sandboxed Flatpak
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder xauth xvfb
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub \
+            org.gnome.Sdk//50 \
+            org.gnome.Platform//50 \
+            org.freedesktop.Platform.ffmpeg-full//25.08
+
+      - name: Build application in the GNOME SDK
+        run: |
+          flatpak-builder --user --force-clean \
+            --repo=flatpak-repo \
+            flatpak-build \
+            packaging/flatpak/io.github.retrofrost.CTS.yml
+          test -x flatpak-build/files/bin/cubical-compare
+          test -x flatpak-build/files/libexec/cubical-compare/engine/cubical-compare-engine
+          test -d flatpak-build/files/libexec/cubical-compare/engine/_internal
+
+      - name: Run sandbox smoke tests
+        run: |
+          rm -rf flatpak-engine-self-test
+          flatpak-builder --run flatpak-build \
+            packaging/flatpak/io.github.retrofrost.CTS.yml \
+            /app/libexec/cubical-compare/engine/cubical-compare-engine \
+            self-test --directory /run/build/cubical-compare/flatpak-engine-self-test
+          xvfb-run -a flatpak-builder --run flatpak-build \
+            packaging/flatpak/io.github.retrofrost.CTS.yml \
+            /app/bin/cubical-compare --self-test
+
+      - name: Create installable bundle
+        run: |
+          flatpak build-bundle flatpak-repo \
+            Cubical-Compare-1.0.0-x86_64.flatpak \
+            io.github.retrofrost.CTS stable
+          test -s Cubical-Compare-1.0.0-x86_64.flatpak
+          flatpak info --show-metadata \
+            Cubical-Compare-1.0.0-x86_64.flatpak >/dev/null 2>&1 || true
+          sha256sum Cubical-Compare-1.0.0-x86_64.flatpak > SHA256SUMS-flatpak.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Cubical-Compare-1.0.0-Flatpak-x86_64
+          path: |
+            Cubical-Compare-1.0.0-x86_64.flatpak
+            SHA256SUMS-flatpak.txt
+          if-no-files-found: error
