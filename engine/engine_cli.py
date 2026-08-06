@@ -17,6 +17,9 @@ from ccengine.exporter import VideoExporter
 from ccengine.image_sheet_core import ImageSheetProcessor, export_sheet_crops, inset_detection
 from ccengine.importers import load_spreadsheet
 from ccengine.models import Card, Project, ProjectSettings
+from ccengine.model_registry import (
+    DEFAULT_MODEL_ID, get_model, list_models, model_manifest, normalize_model_id,
+)
 from ccengine.renderer import FrameRenderer
 from ccengine.timing import total_duration
 from ccengine.validation import normalize_project
@@ -62,6 +65,8 @@ def write_ccx(project: Project, path: str | Path) -> None:
         put(key, b64e(value or ""))
 
     puts("project.name", project.name)
+    puts("project.model_id", s.model_id)
+    put("project.model_revision", s.model_revision)
     put("project.width", s.width)
     put("project.height", s.height)
     put("project.fps", s.fps)
@@ -131,6 +136,8 @@ def read_ccx(path: str | Path) -> Project:
         return bool(geti(key, int(default)))
 
     s = ProjectSettings()
+    s.model_id = normalize_model_id(gets("project.model_id", s.model_id))
+    s.model_revision = geti("project.model_revision", get_model(s.model_id).revision)
     s.width = geti("project.width", s.width)
     s.height = geti("project.height", s.height)
     s.fps = geti("project.fps", s.fps)
@@ -179,10 +186,18 @@ def read_ccx(path: str | Path) -> Project:
     return project
 
 
-def make_default_project() -> Project:
+def make_default_project(model_id: str = DEFAULT_MODEL_ID) -> Project:
+    model = get_model(model_id)
     return Project(
         name="",
         cards=[Card("Card 1", "1", "", "")],
+        settings=ProjectSettings(
+            model_id=model.id,
+            model_revision=model.revision,
+            width=model.width,
+            height=model.height,
+            fps=model.fps,
+        ),
     )
 
 
@@ -191,7 +206,13 @@ def resolve_asset_paths(project: Project, base: Path) -> Project:
 
 
 def command_new(args: argparse.Namespace) -> int:
-    write_ccx(make_default_project(), args.output)
+    write_ccx(make_default_project(args.model), args.output)
+    return 0
+
+
+def command_list_models(args: argparse.Namespace) -> int:
+    del args
+    print(json.dumps([model_manifest(model) for model in list_models()], indent=2))
     return 0
 
 
@@ -361,6 +382,7 @@ def command_validate(args: argparse.Namespace) -> int:
     project = read_ccx(args.input)
     result = {
         "version": VERSION,
+        "model": model_manifest(project.model),
         "cards": len(project.cards),
         "duration": total_duration(project),
         "soundtrack": bool(project.settings.soundtrack),
@@ -441,7 +463,11 @@ def parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("new")
     s.add_argument("output")
+    s.add_argument("--model", default=DEFAULT_MODEL_ID)
     s.set_defaults(func=command_new)
+
+    s = sub.add_parser("list-models")
+    s.set_defaults(func=command_list_models)
 
     s = sub.add_parser("project-to-ccx")
     s.add_argument("project")

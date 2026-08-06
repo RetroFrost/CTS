@@ -26,6 +26,8 @@ struct Card {
 };
 
 struct Settings {
+    std::string model_id{"what-males-learn-at-each-age"};
+    std::uint32_t model_revision{1};
     std::uint32_t width{1920};
     std::uint32_t height{1080};
     std::uint32_t fps{60};

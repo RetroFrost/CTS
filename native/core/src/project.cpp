@@ -74,6 +74,7 @@ std::uint32_t even_dimension(std::uint32_t value, std::uint32_t fallback, std::u
 
 double timeline_duration(const Project& project) {
     if (project.cards.empty()) return 0.0;
+    constexpr double relationships_intro = 374.0 / 60.0;
     constexpr double opening_interval = 2.0;
     constexpr double fourth_interval = 3.0;
     constexpr double main_interval = 3.4;
@@ -86,7 +87,9 @@ double timeline_duration(const Project& project) {
         else if (index == 3) content += fourth_interval;
         else content += main_interval;
     }
-    const double minimum = content + outro;
+    const double intro = project.settings.model_id == "types-of-relationships"
+        ? relationships_intro : 0.0;
+    const double minimum = intro + content + outro;
     if (!project.settings.auto_length) return std::max(finite_number(project.settings.custom_length_seconds, minimum), minimum);
     return minimum;
 }
@@ -142,6 +145,8 @@ bool save_ccx(const Project& project, const std::filesystem::path& path, std::st
     const auto& s = project.settings;
     out << "CCX1\n";
     puts(out, "project.name", project.name);
+    puts(out, "project.model_id", s.model_id);
+    put(out, "project.model_revision", std::to_string(s.model_revision));
     put(out, "project.width", std::to_string(s.width));
     put(out, "project.height", std::to_string(s.height));
     put(out, "project.fps", std::to_string(s.fps));
@@ -203,6 +208,13 @@ bool load_ccx(Project& project, const std::filesystem::path& path, std::string* 
     Project loaded;
     auto& s = loaded.settings;
     loaded.name = decoded(values, "project.name", loaded.name);
+    s.model_id = decoded(values, "project.model_id", s.model_id);
+    if (s.model_id != "types-of-relationships" &&
+        s.model_id != "what-males-learn-at-each-age") {
+        s.model_id = "what-males-learn-at-each-age";
+    }
+    s.model_revision = number(values, "project.model_revision", std::uint32_t{1});
+    s.model_revision = 1;
     s.width = number(values, "project.width", s.width);
     s.height = number(values, "project.height", s.height);
     s.fps = number(values, "project.fps", s.fps);
@@ -222,9 +234,11 @@ bool load_ccx(Project& project, const std::filesystem::path& path, std::string* 
     s.soundtrack_offset_seconds = number(values, "project.soundtrack_offset_seconds", s.soundtrack_offset_seconds);
     s.soundtrack_fade_out_seconds = number(values, "project.soundtrack_fade_out_seconds", s.soundtrack_fade_out_seconds);
     s.encoder_crf = number(values, "project.encoder_crf", s.encoder_crf);
-    s.width = even_dimension(s.width, 1920, 7680);
-    s.height = even_dimension(s.height, 1080, 4320);
-    s.fps = std::clamp(s.fps, std::uint32_t{1}, std::uint32_t{120});
+    // Model-owned output values are immutable in 1.0.
+    s.width = 1920;
+    s.height = 1080;
+    s.fps = 60;
+    s.auto_length = true;
     s.encoder_crf = std::clamp(s.encoder_crf, std::uint32_t{0}, std::uint32_t{51});
     const std::array<std::string,9> presets{"ultrafast","superfast","veryfast","faster","fast","medium","slow","slower","veryslow"};
     if (std::find(presets.begin(), presets.end(), s.encoder_preset) == presets.end()) s.encoder_preset = "faster";
