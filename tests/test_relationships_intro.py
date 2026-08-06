@@ -68,6 +68,26 @@ def test_first_card_begins_at_frame_374_without_cutting_away_logo() -> None:
     assert overlay.getchannel("A").getbbox() is not None
 
 
+def test_renderer_composites_logo_tail_over_equivalent_first_card_frame() -> None:
+    renderer = FrameRenderer()
+    relationships = project(MODEL_TYPES_OF_RELATIONSHIPS)
+    ages = project(MODEL_WHAT_MALES_LEARN)
+
+    relationship_frame_number = 420
+    equivalent_card_frame = relationship_frame_number - INTRO_FRAME_COUNT
+    underlying = renderer.render_output_frame(
+        ages, frame_to_seconds(ages, equivalent_card_frame)
+    )
+    identity = render_relationships_intro_overlay(relationship_frame_number)
+    expected = underlying.copy()
+    expected.paste(identity.convert("RGB"), (0, 0), identity.getchannel("A"))
+
+    actual = renderer.render_output_frame(
+        relationships, frame_to_seconds(relationships, relationship_frame_number)
+    )
+    assert ImageChops.difference(actual, expected).getbbox() is None
+
+
 def test_logo_tail_holds_then_fades_over_first_card() -> None:
     full = render_relationships_intro_overlay(420).getchannel("A")
     fading = render_relationships_intro_overlay(520).getchannel("A")
