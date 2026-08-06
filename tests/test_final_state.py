@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-import csv
 import math
-import shutil
 
 import pytest
 from PIL import Image
@@ -16,7 +14,7 @@ from ccengine.models import Card, Project
 from ccengine.renderer import FrameRenderer
 from ccengine.timing import minimum_duration, total_duration
 from ccengine.validation import normalize_project
-from engine_cli import read_ccx, write_ccx
+from engine_cli import read_ccx
 
 
 def test_csv_preserves_zero_false_and_first_data_row(tmp_path: Path) -> None:
@@ -51,12 +49,17 @@ def test_image_sheet_preserves_transform_and_creates_extra(tmp_path: Path) -> No
     assert cards[0].image_layer == "front"
 
 
-def test_custom_length_is_shared_and_never_truncates_animation() -> None:
+def test_custom_length_cannot_stretch_or_truncate_locked_model() -> None:
     project = Project(cards=[Card("One", "1")])
     project.settings.auto_length = False
     project.settings.custom_length_seconds = 1
-    assert total_duration(project) == pytest.approx(minimum_duration(1))
-    assert project.settings.custom_length_seconds == pytest.approx(minimum_duration(1))
+    normalize_project(project)
+
+    assert project.settings.auto_length is True
+    assert total_duration(project) == pytest.approx(minimum_duration(project))
+    # The legacy value may survive as unused project data, but it cannot alter
+    # a locked model's integer-frame timeline.
+    assert project.settings.custom_length_seconds == pytest.approx(1.0)
 
 
 def test_corrupt_or_unsafe_project_is_rejected_or_normalized(tmp_path: Path) -> None:
@@ -71,6 +74,7 @@ def test_corrupt_or_unsafe_project_is_rejected_or_normalized(tmp_path: Path) -> 
     project.settings.encoder_preset = "typo"
     normalize_project(project)
     assert (project.settings.width, project.settings.height) == (1920, 1080)
+    assert project.settings.fps == 60
     assert project.settings.encoder_preset == "faster"
     assert project.cards[0].image_scale == 8
     assert math.isfinite(project.cards[0].image_x)
@@ -103,9 +107,6 @@ def test_renderer_caches_are_bounded(tmp_path: Path) -> None:
 
 def test_missing_soundtrack_is_an_export_error(tmp_path: Path) -> None:
     project = Project(cards=[Card("One", "1")])
-    project.settings.width = 64
-    project.settings.height = 64
-    project.settings.fps = 1
     project.settings.soundtrack = str(tmp_path / "missing.mp3")
     with pytest.raises(FileNotFoundError):
         VideoExporter().export(project, tmp_path / "out.mp4")
