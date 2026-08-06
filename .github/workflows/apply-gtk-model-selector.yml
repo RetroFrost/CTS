@@ -1,0 +1,165 @@
+name: Apply GTK locked model selector
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/cubical-compare-1.0
+    paths:
+      - .github/workflows/apply-gtk-model-selector.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/cubical-compare-1.0
+          fetch-depth: 0
+
+      - name: Patch GTK model selector
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('native/linux-gtk/main.cpp')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  '    GtkWidget* project_name{};\n'
+                  '    GtkWidget* credits_enabled{};\n',
+                  '    GtkWidget* project_name{};\n'
+                  '    GtkWidget* model{};\n'
+                  '    GtkWidget* credits_enabled{};\n',
+              ),
+              (
+                  '    auto& st = s->project.settings;\n'
+                  '    st.credits_enabled = gtk_check_button_get_active(GTK_CHECK_BUTTON(s->credits_enabled));\n',
+                  '    auto& st = s->project.settings;\n'
+                  '    if (s->model) {\n'
+                  '        const guint selected_model = gtk_drop_down_get_selected(GTK_DROP_DOWN(s->model));\n'
+                  '        st.model_id = selected_model == 1\n'
+                  '            ? "types-of-relationships"\n'
+                  '            : "what-males-learn-at-each-age";\n'
+                  '        st.model_revision = 1;\n'
+                  '    }\n'
+                  '    st.credits_enabled = gtk_check_button_get_active(GTK_CHECK_BUTTON(s->credits_enabled));\n',
+              ),
+              (
+                  '    st.width = static_cast<std::uint32_t>(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->width)));\n'
+                  '    st.height = static_cast<std::uint32_t>(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->height)));\n'
+                  '    st.fps = static_cast<std::uint32_t>(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(s->fps)));\n',
+                  '    // Model geometry and frame rate are immutable in Cubical Compare 1.0.\n'
+                  '    st.width = 1920;\n'
+                  '    st.height = 1080;\n'
+                  '    st.fps = 60;\n'
+                  '    st.auto_length = true;\n',
+              ),
+              (
+                  '    auto& st = s->project.settings;\n'
+                  '    gtk_check_button_set_active(GTK_CHECK_BUTTON(s->credits_enabled), st.credits_enabled);\n',
+                  '    auto& st = s->project.settings;\n'
+                  '    if (s->model) {\n'
+                  '        gtk_drop_down_set_selected(\n'
+                  '            GTK_DROP_DOWN(s->model),\n'
+                  '            st.model_id == "types-of-relationships" ? 1U : 0U\n'
+                  '        );\n'
+                  '    }\n'
+                  '    gtk_check_button_set_active(GTK_CHECK_BUTTON(s->credits_enabled), st.credits_enabled);\n',
+              ),
+              (
+                  'void reset_player(AppState* s);\n\n'
+                  'GtkWidget* spin(GtkWidget* grid, int row, const char* label, double min, double max, double step) {\n',
+                  'void reset_player(AppState* s);\n\n'
+                  'void model_changed(GObject*, GParamSpec*, gpointer data) {\n'
+                  '    auto* s = static_cast<AppState*>(data);\n'
+                  '    if (s->loading || !s->model) return;\n'
+                  '    const guint selected_model = gtk_drop_down_get_selected(GTK_DROP_DOWN(s->model));\n'
+                  '    s->project.settings.model_id = selected_model == 1\n'
+                  '        ? "types-of-relationships"\n'
+                  '        : "what-males-learn-at-each-age";\n'
+                  '    s->project.settings.model_revision = 1;\n'
+                  '    s->project.settings.width = 1920;\n'
+                  '    s->project.settings.height = 1080;\n'
+                  '    s->project.settings.fps = 60;\n'
+                  '    s->project.settings.auto_length = true;\n'
+                  '    gtk_spin_button_set_value(GTK_SPIN_BUTTON(s->width), 1920);\n'
+                  '    gtk_spin_button_set_value(GTK_SPIN_BUTTON(s->height), 1080);\n'
+                  '    gtk_spin_button_set_value(GTK_SPIN_BUTTON(s->fps), 60);\n'
+                  '    reset_player(s);\n'
+                  '    set_status(s, cubical::summary(s->project));\n'
+                  '}\n\n'
+                  'GtkWidget* spin(GtkWidget* grid, int row, const char* label, double min, double max, double step) {\n',
+              ),
+              (
+                  '    GtkWidget* out_grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(out_grid), 8); gtk_grid_set_column_spacing(GTK_GRID(out_grid), 8); gtk_widget_set_margin_top(out_grid, 10); gtk_widget_set_margin_start(out_grid, 10); gtk_widget_set_margin_end(out_grid, 10);\n'
+                  '    s->width = spin(out_grid, 0, "Width", 640, 7680, 1); s->height = spin(out_grid, 1, "Height", 360, 4320, 1); s->fps = spin(out_grid, 2, "FPS", 24, 60, 1);\n'
+                  '    s->preset = form_entry(out_grid, 3, "Encoder preset", s); s->crf = spin(out_grid, 4, "CRF", 0, 51, 1);\n'
+                  '    const char* font_labels[] = {"Title font (file or family)", "Description font (file or family)", "Badge font (file or family)", "Credits font (file or family)"};\n'
+                  '    for (int i = 0; i < 4; ++i) {\n'
+                  '        GtkWidget* label = gtk_label_new(font_labels[i]); gtk_label_set_xalign(GTK_LABEL(label), 0.0f); gtk_grid_attach(GTK_GRID(out_grid), label, 0, 5 + i, 1, 1);\n'
+                  '        GtkWidget* entry = gtk_entry_new(); gtk_widget_set_hexpand(entry, TRUE); gtk_grid_attach(GTK_GRID(out_grid), entry, 1, 5 + i, 1, 1); g_signal_connect(entry, "changed", G_CALLBACK(fields_changed), s); s->font_fields.push_back(entry);\n',
+                  '    GtkWidget* out_grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(out_grid), 8); gtk_grid_set_column_spacing(GTK_GRID(out_grid), 8); gtk_widget_set_margin_top(out_grid, 10); gtk_widget_set_margin_start(out_grid, 10); gtk_widget_set_margin_end(out_grid, 10);\n'
+                  '    GtkWidget* model_label = gtk_label_new("Official model");\n'
+                  '    gtk_label_set_xalign(GTK_LABEL(model_label), 0.0f);\n'
+                  '    gtk_grid_attach(GTK_GRID(out_grid), model_label, 0, 0, 1, 1);\n'
+                  '    const char* model_names[] = {\n'
+                  '        "What Males Learn At Each Age",\n'
+                  '        "Types Of Relationships",\n'
+                  '        nullptr\n'
+                  '    };\n'
+                  '    GtkStringList* model_list = gtk_string_list_new(model_names);\n'
+                  '    s->model = gtk_drop_down_new(G_LIST_MODEL(model_list), nullptr);\n'
+                  '    g_object_unref(model_list);\n'
+                  '    gtk_widget_set_hexpand(s->model, TRUE);\n'
+                  '    gtk_grid_attach(GTK_GRID(out_grid), s->model, 1, 0, 1, 1);\n'
+                  '    g_signal_connect(s->model, "notify::selected", G_CALLBACK(model_changed), s);\n'
+                  '    GtkWidget* model_note = gtk_label_new("Layout, timing, easing, animation count, 1920×1080 and 60 FPS are locked by the selected model.");\n'
+                  '    gtk_label_set_wrap(GTK_LABEL(model_note), TRUE);\n'
+                  '    gtk_label_set_xalign(GTK_LABEL(model_note), 0.0f);\n'
+                  '    gtk_widget_add_css_class(model_note, "dim-label");\n'
+                  '    gtk_grid_attach(GTK_GRID(out_grid), model_note, 0, 1, 2, 1);\n'
+                  '    s->width = spin(out_grid, 2, "Width (model locked)", 1920, 1920, 1);\n'
+                  '    s->height = spin(out_grid, 3, "Height (model locked)", 1080, 1080, 1);\n'
+                  '    s->fps = spin(out_grid, 4, "FPS (model locked)", 60, 60, 1);\n'
+                  '    gtk_widget_set_sensitive(s->width, FALSE);\n'
+                  '    gtk_widget_set_sensitive(s->height, FALSE);\n'
+                  '    gtk_widget_set_sensitive(s->fps, FALSE);\n'
+                  '    s->preset = form_entry(out_grid, 5, "Encoder preset", s); s->crf = spin(out_grid, 6, "CRF", 0, 51, 1);\n'
+                  '    const char* font_labels[] = {"Title font (file or family)", "Description font (file or family)", "Badge font (file or family)", "Credits font (file or family)"};\n'
+                  '    for (int i = 0; i < 4; ++i) {\n'
+                  '        GtkWidget* label = gtk_label_new(font_labels[i]); gtk_label_set_xalign(GTK_LABEL(label), 0.0f); gtk_grid_attach(GTK_GRID(out_grid), label, 0, 7 + i, 1, 1);\n'
+                  '        GtkWidget* entry = gtk_entry_new(); gtk_widget_set_hexpand(entry, TRUE); gtk_grid_attach(GTK_GRID(out_grid), entry, 1, 7 + i, 1, 1); g_signal_connect(entry, "changed", G_CALLBACK(fields_changed), s); s->font_fields.push_back(entry);\n',
+              ),
+          ]
+
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'Expected GTK source fragment was not found:\n{old}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify GTK model selector
+        run: |
+          grep -q 'Official model' native/linux-gtk/main.cpp
+          grep -q 'gtk_drop_down_new' native/linux-gtk/main.cpp
+          grep -q 'types-of-relationships' native/linux-gtk/main.cpp
+          grep -q 'What Males Learn At Each Age' native/linux-gtk/main.cpp
+
+      - name: Commit selector
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add native/linux-gtk/main.cpp
+          if git diff --cached --quiet; then
+            echo 'GTK model selector already applied.'
+            exit 0
+          fi
+          git commit -m 'Expose locked official models in GTK editor'
+          git push origin HEAD:release/cubical-compare-1.0
