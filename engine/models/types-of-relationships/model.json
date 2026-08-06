@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "types-of-relationships",
+  "revision": 1,
+  "display_name": "Types Of Relationships",
+  "locked": true,
+  "renderer_profile": "infinite-comparison-v1",
+  "output": {
+    "width": 1920,
+    "height": 1080,
+    "fps_numerator": 60,
+    "fps_denominator": 1
+  },
+  "reference": {
+    "filename": "Comparison： Types Of Relationships.mp4",
+    "sha256": "ca16b2301cf4c8b35e0957ed612a5894f0ac469485461359ed80c71e1842e6fd",
+    "frame_count": 11130,
+    "visual_duration_seconds": 185.5,
+    "first_content_frame": 374
+  },
+  "sequence": [
+    "brand_intro",
+    "opening_cards_with_credits",
+    "continuous_card_conveyor",
+    "end_wipe",
+    "end_rise",
+    "end_hold",
+    "fade"
+  ],
+  "editable": [
+    "project.name",
+    "cards.order",
+    "card.title",
+    "card.value",
+    "card.description",
+    "card.image",
+    "card.image_transform",
+    "soundtrack",
+    "credits.text",
+    "end_screen.text"
+  ],
+  "immutable": [
+    "output",
+    "sequence",
+    "layout",
+    "timing",
+    "easing",
+    "card_animation",
+    "badge_animation",
+    "text_animation",
+    "shine_animation",
+    "credits_animation",
+    "outro_animation"
+  ]
+}
