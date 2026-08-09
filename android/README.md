@@ -23,16 +23,14 @@ Implemented now:
 - open/save `.cts.json`
 - desktop-compatible spreadsheet/settings project payload
 - migration support for CTS transform metadata
+- on-device XLSX import
+- soundtrack selection, looping, volume, AAC bitrate, and encoder selection
+- native H.264/HEVC MP4 export
+- foreground WorkManager export with persistent progress, cancellation, and cleanup of incomplete output
 - unit tests for timeline timing
 - GitHub Actions debug APK build
 
-Not implemented yet:
-
-- MediaCodec MP4 export
-- soundtrack editor and audio mixing
-- XLSX import on-device
-
-The renderer and editor are deliberately being validated before the MP4 encoder is attached. The Android architecture does **not** reuse the desktop monitor-overlay transform stack. Each image is a child subcard owned by exactly one parent card.
+The Android preview and background exporter use the same timing engine. Each image is a child subcard owned by exactly one parent card, so its crop, position, and size remain attached to the card during animation and export.
 
 ## Build on Ubuntu
 
@@ -71,4 +69,4 @@ CTS Android writes the desktop `spreadsheet`, `settings`, `transform_overrides`,
 - Application ID: `io.github.retrofrost.cts.android`
 - Visible name: `CTS Android`
 - Developer branding: `StarterFreaks`
-- Version: `0.1.0-alpha1`
+- Version: `0.3.0-alpha3`
