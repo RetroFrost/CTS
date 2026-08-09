@@ -444,23 +444,11 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
                 errors.append(f"Android adapter is missing sample value {value!r}")
 
     monitor = PROGRAM_MONITOR_PATH.read_text(encoding="utf-8")
-    # Exact-reference badges are rendered by ReferenceBadgePainter from measured
-    # source-space geometry, shared by preview and export. ProgramMonitor still
-    # owns only the card body frames, so validate those here.
-    for key, class_name in {
-        "image_frame": "ImageFrame",
-        "title_frame": "TitleFrame",
-        "description_frame": "DescriptionFrame",
-    }.items():
-        match = re.search(rf"private val {class_name}\s*=\s*NormalizedRect\(([^)]+)\)", monitor)
-        actual = None
-        if match:
-            actual = tuple(
-                float(value.strip().rstrip("fF")) for value in match.group(1).split(",")
-            )
-        expected = tuple(float(value) for value in layout[key])
-        if actual != expected:
-            errors.append(f"Android ProgramMonitor {class_name} does not match the shared layout")
+    # Exact-reference card frames are model-specific and owned by CardContentLayout;
+    # its unit tests lock the measured Males and Relationships geometry. Keep this
+    # integration check here so preview cannot silently return to duplicated frames.
+    if "CardContentLayout.frames(model, card)" not in monitor:
+        errors.append("Android ProgramMonitor does not use the canonical card content layout")
     monitor_upper = monitor.upper()
     for name, value in spec["colors"].items():
         if name.startswith("badge_"):

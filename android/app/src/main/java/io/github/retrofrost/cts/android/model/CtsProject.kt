@@ -102,9 +102,9 @@ data class SoundtrackSettings(
 
 /** Device encoder selections and quality controls used by the background exporter. */
 data class ExportSettings(
-    val width: Int = 1280,
-    val height: Int = 720,
-    val fps: Int = 30,
+    val width: Int = 1920,
+    val height: Int = 1080,
+    val fps: Int = 60,
     val videoBitrate: Int = 6_000_000,
     val videoMime: String = MediaFormat.MIMETYPE_VIDEO_AVC,
     val videoEncoderName: String? = null,
@@ -147,13 +147,21 @@ data class CtsProject(
     val soundtrack: SoundtrackSettings = SoundtrackSettings(),
     val export: ExportSettings = ExportSettings(),
 ) {
-    fun normalized(): CtsProject = copy(
-        version = SharedContract.PROJECT_VERSION,
-        cards = cards.map { it.withOwnedImageSubcard() },
-        customDurationSeconds = DurationRuntime.normalizeProjectValue(customDurationSeconds),
-        soundtrack = soundtrack.normalized(),
-        export = export.normalized(),
-    )
+    fun normalized(): CtsProject {
+        val safeExport = export.normalized()
+        val modelExport = if (modelMode == ModelMode.ExactReference) {
+            safeExport.copy(width = 1920, height = 1080, fps = 60)
+        } else {
+            safeExport
+        }
+        return copy(
+            version = SharedContract.PROJECT_VERSION,
+            cards = cards.map { it.withOwnedImageSubcard() },
+            customDurationSeconds = DurationRuntime.normalizeProjectValue(customDurationSeconds),
+            soundtrack = soundtrack.normalized(),
+            export = modelExport,
+        )
+    }
 
     fun updateCard(cardId: String, update: (CtsCard) -> CtsCard): CtsProject = copy(
         cards = cards.map { card ->

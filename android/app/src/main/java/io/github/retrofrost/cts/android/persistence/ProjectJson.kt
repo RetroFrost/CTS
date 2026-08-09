@@ -212,9 +212,9 @@ object ProjectJson {
             loop = firstAudio?.optBoolean("loop", true) ?: true,
         )
         val export = ExportSettings(
-            width = settings.optInt("width", 1280),
-            height = settings.optInt("height", 720),
-            fps = settings.optInt("fps", 30),
+            width = settings.optInt("width", 1920),
+            height = settings.optInt("height", 1080),
+            fps = settings.optInt("fps", 60),
             videoBitrate = android?.optInt("video_bitrate", 6_000_000) ?: 6_000_000,
             videoMime = android?.optString("video_mime")
                 ?.takeIf { it == MediaFormat.MIMETYPE_VIDEO_HEVC }
@@ -324,9 +324,9 @@ object ProjectJson {
                 loop = firstAudio?.optBoolean("loop", true) ?: true,
             ),
             export = ExportSettings(
-                width = settings.optInt("width", 1280),
-                height = settings.optInt("height", 720),
-                fps = settings.optInt("fps", 30),
+                width = settings.optInt("width", 1920),
+                height = settings.optInt("height", 1080),
+                fps = settings.optInt("fps", 60),
                 videoBitrate = android?.optInt("video_bitrate", 6_000_000) ?: 6_000_000,
                 videoMime = android?.optString("video_mime")
                     ?.takeIf { it == MediaFormat.MIMETYPE_VIDEO_HEVC }

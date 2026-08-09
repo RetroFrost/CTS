@@ -81,6 +81,8 @@ import androidx.core.content.ContextCompat
 import io.github.retrofrost.cts.android.export.CodecCatalog
 import io.github.retrofrost.cts.android.export.EncoderChoice
 import io.github.retrofrost.cts.android.export.ExportWorker
+import io.github.retrofrost.cts.android.importer.CardStripImporter
+import io.github.retrofrost.cts.android.importer.StripAxis
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
@@ -89,7 +91,9 @@ import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.persistence.ProjectJson
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 private enum class WorkspaceSection(val label: String) {
@@ -110,6 +114,7 @@ fun CtsAndroidAppV2() {
     var isPlaying by remember { mutableStateOf(false) }
     var section by remember { mutableStateOf(WorkspaceSection.Data) }
     var showInsertDialog by remember { mutableStateOf(false) }
+    var isImportingCardStrip by remember { mutableStateOf(false) }
     var pendingExportPermission by remember { mutableStateOf(false) }
     val duration = TimelineEngine.duration(project)
 
@@ -146,6 +151,45 @@ fun CtsAndroidAppV2() {
             card.copy(imageSubcard = card.imageSubcard.copy(source = uri.toString()))
         }
         message("Image attached")
+    }
+
+    val cardStripPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        if (project.cards.isEmpty()) {
+            message("Add or paste cards before importing their image strip.")
+            return@rememberLauncherForActivityResult
+        }
+        isImportingCardStrip = true
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    CardStripImporter.importStrip(
+                        context = context,
+                        source = uri,
+                        cardCount = project.cards.size,
+                        model = project.model,
+                    )
+                }
+            }.onSuccess { result ->
+                applyProject(
+                    project.copy(
+                        cards = project.cards.mapIndexed { index, card ->
+                            card.copy(
+                                imageSubcard = card.imageSubcard.copy(
+                                    source = result.sources[index],
+                                    transform = NormalizedRect.Full,
+                                ),
+                            )
+                        },
+                    ),
+                )
+                val order = if (result.axis == StripAxis.Horizontal) "left to right" else "top to bottom"
+                message("Imported ${result.sources.size} card images $order")
+            }.onFailure { error ->
+                message(error.message ?: "Could not divide that image into cards")
+            }
+            isImportingCardStrip = false
+        }
     }
 
     val soundtrackPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -323,6 +367,8 @@ fun CtsAndroidAppV2() {
                         onProjectChanged = ::applyProject,
                         onUpdateSelectedCard = ::updateSelectedCard,
                         onChooseImage = { imagePicker.launch(arrayOf("image/*")) },
+                        onImportCardStrip = { cardStripPicker.launch(arrayOf("image/*")) },
+                        isImportingCardStrip = isImportingCardStrip,
                         onInsertData = { showInsertDialog = true },
                     )
                     WorkspaceSection.Audio -> AudioWorkspace(
@@ -426,6 +472,8 @@ private fun DataWorkspace(
     onProjectChanged: (CtsProject) -> Unit,
     onUpdateSelectedCard: ((CtsCard) -> CtsCard) -> Unit,
     onChooseImage: () -> Unit,
+    onImportCardStrip: () -> Unit,
+    isImportingCardStrip: Boolean,
     onInsertData: () -> Unit,
 ) {
     val selected = project.cards.firstOrNull { it.id == selectedCardId }
@@ -499,6 +547,24 @@ private fun DataWorkspace(
                 Spacer(Modifier.size(8.dp))
                 Text("Insert or edit all cards", fontWeight = FontWeight.Black)
             }
+        }
+        item {
+            OutlinedButton(
+                onClick = onImportCardStrip,
+                enabled = project.cards.isNotEmpty() && !isImportingCardStrip,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.Image, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text(if (isImportingCardStrip) "Dividing card strip…" else "Import one image for all cards")
+            }
+            Text(
+                "Uses ${project.cards.size} equal ${project.model.label} panels with 2 px separators; " +
+                    "horizontal and vertical strips are detected automatically.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -744,26 +810,36 @@ private fun ExportWorkspace(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        item {
-            Text("Resolution", fontWeight = FontWeight.Bold)
-            ChoiceRow(
-                options = listOf(
-                    (1280 to 720) to "720p",
-                    (1920 to 1080) to "1080p",
-                ),
-                selected = project.export.width to project.export.height,
-                onSelected = { (width, height) ->
-                    onProjectChanged(project.copy(export = project.export.copy(width = width, height = height)))
-                },
-            )
-        }
-        item {
-            Text("Frame rate", fontWeight = FontWeight.Bold)
-            ChoiceRow(
-                options = listOf(24 to "24 fps", 30 to "30 fps", 60 to "60 fps"),
-                selected = project.export.fps,
-                onSelected = { fps -> onProjectChanged(project.copy(export = project.export.copy(fps = fps))) },
-            )
+        if (project.modelMode == ModelMode.ExactReference) {
+            item {
+                Text("Reference format", fontWeight = FontWeight.Bold)
+                Text(
+                    "1920×1080 · 60 fps · 16:9 (locked by Exact Reference)",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            item {
+                Text("Resolution", fontWeight = FontWeight.Bold)
+                ChoiceRow(
+                    options = listOf(
+                        (1280 to 720) to "720p",
+                        (1920 to 1080) to "1080p",
+                    ),
+                    selected = project.export.width to project.export.height,
+                    onSelected = { (width, height) ->
+                        onProjectChanged(project.copy(export = project.export.copy(width = width, height = height)))
+                    },
+                )
+            }
+            item {
+                Text("Frame rate", fontWeight = FontWeight.Bold)
+                ChoiceRow(
+                    options = listOf(24 to "24 fps", 30 to "30 fps", 60 to "60 fps"),
+                    selected = project.export.fps,
+                    onSelected = { fps -> onProjectChanged(project.copy(export = project.export.copy(fps = fps))) },
+                )
+            }
         }
         item {
             Text("Video bitrate", fontWeight = FontWeight.Bold)

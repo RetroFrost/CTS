@@ -18,6 +18,7 @@ Implemented now:
 - touch drag and four-corner resize for image subcards
 - image replacement without resetting the subcard transform
 - local image picker and HTTP(S) image loading
+- one-image card-strip import with model-aware proportions, automatic orientation, and 2 px separators
 - card add, duplicate, delete, and direct text editing
 - timeline play/pause and scrubbing
 - open/save `.cts.json`

@@ -16,7 +16,6 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
 import io.github.retrofrost.cts.android.layout.CardContentLayout
-import io.github.retrofrost.cts.android.layout.CardContentFrames
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.NormalizedRect
@@ -117,19 +116,13 @@ class ReferenceFrameRenderer(
     }
 
     private fun drawCardBody(canvas: Canvas, card: CtsCard, cardWidth: Float, placement: CardPlacement) {
-        val frames = if (project.model == VisualModel.Relationships) {
-            CardContentFrames(
-                image = NormalizedRect(0f, 0f, 475f / 480f, 678f / 1080f),
-                title = NormalizedRect(0f, 678f / 1080f, 475f / 480f, 103f / 1080f),
-                description = NormalizedRect(0f, 789f / 1080f, 475f / 480f, 291f / 1080f),
-            )
-        } else CardContentLayout.frames(card)
+        val frames = CardContentLayout.frames(project.model, card)
         val image = frameRect(frames.image, cardWidth)
         val title = frames.title?.let { frameRect(it, cardWidth) }
         val description = frames.description?.let { frameRect(it, cardWidth) }
 
-        val topColor = if (project.model == VisualModel.Relationships) Color.rgb(18, 167, 160) else Color.rgb(19, 141, 219)
-        val bottomColor = if (project.model == VisualModel.Relationships) Color.rgb(8, 107, 120) else Color.rgb(11, 116, 190)
+        val topColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 105, 211) else Color.rgb(19, 141, 219)
+        val bottomColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 88, 181) else Color.rgb(11, 116, 190)
         paint.shader = LinearGradient(
             image.left,
             image.top,
@@ -165,13 +158,9 @@ class ReferenceFrameRenderer(
             canvas.drawRect(it, paint)
         }
 
-        val divider = max(2f, cardWidth * 0.008f)
         paint.color = Color.rgb(17, 16, 12)
-        canvas.drawRect(0f, 0f, divider, height.toFloat(), paint)
-        canvas.drawRect(cardWidth - divider, 0f, cardWidth, height.toFloat(), paint)
-        title?.let { canvas.drawRect(0f, it.top, cardWidth, it.top + divider, paint) }
-        description?.let { canvas.drawRect(0f, it.top, cardWidth, it.top + divider, paint) }
-        canvas.drawRect(0f, height - divider, cardWidth, height.toFloat(), paint)
+        val bottomRule = frameRect(CardContentLayout.bottomRule(), cardWidth)
+        canvas.drawRect(bottomRule, paint)
 
         val padding = cardWidth * 0.035f
         title?.let {
@@ -180,10 +169,10 @@ class ReferenceFrameRenderer(
                 text = card.title,
                 rect = RectF(it.left + padding, it.top + 2f, it.right - padding, it.bottom - 2f),
                 color = Color.rgb(16, 16, 16),
-                bold = true,
-                maximumSize = height * 0.043f,
-                minimumSize = height * 0.018f,
-                maxLines = 2,
+                bold = project.model != VisualModel.Relationships,
+                maximumSize = height * (if (project.model == VisualModel.Relationships) 0.060f else 0.043f),
+                minimumSize = height * (if (project.model == VisualModel.Relationships) 0.022f else 0.018f),
+                maxLines = if (project.model == VisualModel.Relationships) 1 else 2,
             )
         }
         description?.let {
@@ -197,10 +186,10 @@ class ReferenceFrameRenderer(
                     it.bottom - 2f,
                 ),
                 color = Color.WHITE,
-                bold = true,
-                maximumSize = height * 0.027f,
-                minimumSize = height * 0.014f,
-                maxLines = 3,
+                bold = project.model != VisualModel.Relationships,
+                maximumSize = height * (if (project.model == VisualModel.Relationships) 0.036f else 0.027f),
+                minimumSize = height * (if (project.model == VisualModel.Relationships) 0.018f else 0.014f),
+                maxLines = if (project.model == VisualModel.Relationships) 4 else 3,
             )
         }
 
@@ -228,7 +217,7 @@ class ReferenceFrameRenderer(
                 }
             }
             paint.color = Color.rgb(234, 127, 28)
-            description?.let { canvas.drawRect(0f, it.top - max(2f, cardWidth * 0.0105f), cardWidth, it.top, paint) }
+            canvas.drawRect(frameRect(CardContentLayout.relationshipsRule(), cardWidth), paint)
         }
     }
 

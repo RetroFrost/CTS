@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import io.github.retrofrost.cts.android.layout.CardContentLayout
-import io.github.retrofrost.cts.android.layout.CardContentFrames
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
@@ -69,10 +68,6 @@ import java.io.FileInputStream
 import java.net.URL
 
 private enum class ResizeCorner { NorthWest, NorthEast, SouthWest, SouthEast }
-
-private val ImageFrame = NormalizedRect(0.008f, 0f, 0.984f, 0.807f)
-private val TitleFrame = NormalizedRect(0.008f, 0.807f, 0.984f, 0.088f)
-private val DescriptionFrame = NormalizedRect(0.008f, 0.895f, 0.984f, 0.101f)
 
 @Composable
 fun ProgramMonitor(
@@ -235,15 +230,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
-    val frames = if (model == VisualModel.Relationships) {
-        CardContentFrames(
-            image = NormalizedRect(0f, 0f, 475f / 480f, 678f / 1080f),
-            title = NormalizedRect(0f, 678f / 1080f, 475f / 480f, 103f / 1080f),
-            description = NormalizedRect(0f, 789f / 1080f, 475f / 480f, 291f / 1080f),
-        )
-    } else {
-        CardContentLayout.frames(card)
-    }
+    val frames = CardContentLayout.frames(model, card)
     Frame(
         frames.image,
         Modifier.background(if (model == VisualModel.Relationships) Color(0xFF1F1F1F) else Color.Transparent),
@@ -283,9 +270,9 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
             CardText(
                 text = card.title,
                 color = Color(0xFF101010),
-                fontWeight = FontWeight.Black,
-                fontSize = 8.4.sp,
-                maxLines = 2,
+                fontWeight = if (model == VisualModel.Relationships) FontWeight.Normal else FontWeight.Black,
+                fontSize = if (model == VisualModel.Relationships) 12.sp else 8.4.sp,
+                maxLines = if (model == VisualModel.Relationships) 1 else 2,
             )
         }
     }
@@ -300,35 +287,22 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
             CardText(
                 text = card.description,
                 color = Color.White,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 5.4.sp,
-                maxLines = 3,
+                fontWeight = if (model == VisualModel.Relationships) FontWeight.Normal else FontWeight.SemiBold,
+                fontSize = if (model == VisualModel.Relationships) 6.5.sp else 5.4.sp,
+                maxLines = if (model == VisualModel.Relationships) 4 else 3,
             )
         }
     }
 
-    // Four black separators are visible in the reference at every stage of movement.
-    Box(
-        Modifier
-            .align(Alignment.CenterStart)
-            .width(1.4.dp)
-            .fillMaxHeight()
-            .background(Color(0xFF11100C)),
-    )
-    Box(
-        Modifier
-            .align(Alignment.CenterEnd)
-            .width(1.4.dp)
-            .fillMaxHeight()
-            .background(Color(0xFF11100C)),
-    )
-    Box(
-        Modifier
-            .align(Alignment.BottomCenter)
-            .height(1.4.dp)
-            .width(maxWidth)
-            .background(Color(0xFF11100C)),
-    )
+    if (model == VisualModel.Relationships) {
+        Frame(
+            CardContentLayout.relationshipsRule(),
+            Modifier
+                .background(Color(0xFFEA7F1C))
+                .alpha(descriptionReveal.coerceIn(0f, 1f)),
+        )
+    }
+    Frame(CardContentLayout.bottomRule(), Modifier.background(Color(0xFF11100C)))
 }
 
 @Composable
