@@ -19,17 +19,33 @@ enum class VisualModel(
     val label: String,
     val visibleCards: Int,
 ) {
-    /** The sole model is generated from the same contract as CTS desktop. */
-    Illustrated(
-        SharedContract.MODEL_ID,
-        SharedContract.MODEL_LABEL,
+    Males(
+        "what-males-learn-at-each-age",
+        "What Males Learn at Each Age",
         SharedContract.VISIBLE_CARDS,
+    ),
+    Relationships(
+        "types-of-relationships",
+        "Types of Relationships",
+        4,
     ),
     ;
 
     companion object {
-        /** Every historical model id is intentionally folded into the shared design. */
-        fun fromId(@Suppress("UNUSED_PARAMETER") id: String?): VisualModel = Illustrated
+        fun fromId(id: String?): VisualModel = when (id) {
+            Relationships.id, "relationships", "relationship_reference", "relationships_exact_reference" -> Relationships
+            else -> Males
+        }
+    }
+}
+
+enum class ModelMode(val id: String, val label: String) {
+    ExactReference("exact_reference", "Exact Reference"),
+    Custom("custom", "Custom"),
+    ;
+
+    companion object {
+        fun fromId(id: String?): ModelMode = entries.firstOrNull { it.id == id } ?: ExactReference
     }
 }
 
@@ -118,10 +134,14 @@ data class ExportSettings(
 data class CtsProject(
     val version: Int = SharedContract.PROJECT_VERSION,
     val name: String = "Untitled comparison",
-    val model: VisualModel = VisualModel.Illustrated,
+    val model: VisualModel = VisualModel.Males,
+    val modelMode: ModelMode = ModelMode.ExactReference,
     val cards: List<CtsCard> = sampleCards(),
-    /** Retained only for old project-file compatibility; the canonical badge is always shown. */
+    /** Badge visibility; the historical JSON key is retained for desktop compatibility. */
     val showHexagons: Boolean = true,
+    val showIntro: Boolean = true,
+    val showDisclaimer: Boolean = true,
+    val showOutro: Boolean = true,
     /** Null uses automatic timing; a value retimes only horizontal card scrolling. */
     val customDurationSeconds: Float? = null,
     val soundtrack: SoundtrackSettings = SoundtrackSettings(),
@@ -129,9 +149,7 @@ data class CtsProject(
 ) {
     fun normalized(): CtsProject = copy(
         version = SharedContract.PROJECT_VERSION,
-        model = VisualModel.Illustrated,
         cards = cards.map { it.withOwnedImageSubcard() },
-        showHexagons = true,
         customDurationSeconds = DurationRuntime.normalizeProjectValue(customDurationSeconds),
         soundtrack = soundtrack.normalized(),
         export = export.normalized(),

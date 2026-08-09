@@ -11,6 +11,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -83,7 +84,9 @@ import io.github.retrofrost.cts.android.export.ExportWorker
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
+import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.NormalizedRect
+import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.persistence.ProjectJson
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import kotlinx.coroutines.launch
@@ -433,6 +436,59 @@ private fun DataWorkspace(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Reference model", fontWeight = FontWeight.Black)
+                    VisualModel.entries.forEach { model ->
+                        FilterChip(
+                            selected = project.model == model,
+                            onClick = { onProjectChanged(project.copy(model = model)) },
+                            label = { Text(model.label) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ModelMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = project.modelMode == mode,
+                                onClick = { onProjectChanged(project.copy(modelMode = mode)) },
+                                label = { Text(mode.label) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                    Text(
+                        if (project.modelMode == ModelMode.ExactReference) {
+                            if (project.model == VisualModel.Relationships) {
+                                "Locked source-frame motion · canonical 40-card timeline is 11,130 frames at 60 FPS"
+                            } else {
+                                "Locked reference motion · content remains editable"
+                            }
+                        } else {
+                            "Custom mode unlocks timing while retaining this model's design."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    ReferenceOption("Intro", project.showIntro) {
+                        onProjectChanged(project.copy(showIntro = it))
+                    }
+                    ReferenceOption("Disclaimer", project.showDisclaimer) {
+                        onProjectChanged(project.copy(showDisclaimer = it))
+                    }
+                    ReferenceOption("Badges", project.showHexagons) {
+                        onProjectChanged(project.copy(showHexagons = it))
+                    }
+                    ReferenceOption("Ending and fade", project.showOutro) {
+                        onProjectChanged(project.copy(showOutro = it))
+                    }
+                }
+            }
+        }
+        item {
             Button(
                 onClick = onInsertData,
                 modifier = Modifier
@@ -563,6 +619,19 @@ private fun DataWorkspace(
             }
             item { Spacer(Modifier.height(10.dp)) }
         }
+    }
+}
+
+@Composable
+private fun ReferenceOption(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onChecked(!checked) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = onChecked)
+        Text(label)
     }
 }
 

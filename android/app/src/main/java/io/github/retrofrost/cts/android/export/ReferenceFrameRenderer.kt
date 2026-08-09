@@ -17,10 +17,13 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
 import io.github.retrofrost.cts.android.layout.CardContentLayout
+import io.github.retrofrost.cts.android.layout.CardContentFrames
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.NormalizedRect
+import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
+import io.github.retrofrost.cts.android.timeline.CardPlacement
 import java.io.File
 import java.io.FileInputStream
 import java.net.URL
@@ -47,26 +50,56 @@ class ReferenceFrameRenderer(
         if (TimelineEngine.introCreditsVisible(project, outputTimeSeconds)) {
             ReferenceOverlayRenderer.drawIntroCredits(canvas, width, height, paint)
         }
-
         TimelineEngine.placements(project, outputTimeSeconds).forEach { placement ->
             val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
             val cardX = cardWidth * placement.xInCards
             canvas.save()
             canvas.translate(cardX, 0f)
-            canvas.clipRect(0f, 0f, cardWidth * placement.bodyReveal.coerceIn(0f, 1f), height.toFloat())
-            drawCardBody(canvas, card, cardWidth)
+            if (project.model == VisualModel.Relationships) {
+                canvas.saveLayerAlpha(
+                    0f,
+                    0f,
+                    cardWidth,
+                    height.toFloat(),
+                    (255 * placement.bodyReveal.coerceIn(0f, 1f)).toInt(),
+                )
+            } else {
+                canvas.clipRect(0f, 0f, cardWidth * placement.bodyReveal.coerceIn(0f, 1f), height.toFloat())
+            }
+            drawCardBody(canvas, card, cardWidth, placement)
+            if (project.model == VisualModel.Relationships) canvas.restore()
             canvas.restore()
-            if (placement.badgeVisible) drawBadge(canvas, card, cardX, cardWidth, placement.badgeSettle)
+            if (project.showHexagons && placement.badgeVisible) {
+                drawBadge(canvas, card, cardX, cardWidth, placement)
+            }
         }
 
-        ReferenceOverlayRenderer.drawOutro(
-            canvas,
-            width,
-            height,
-            TimelineEngine.outroCoverProgress(project, outputTimeSeconds),
-            TimelineEngine.outroContentAlpha(project, outputTimeSeconds),
-            paint,
-        )
+        if (project.model == VisualModel.Relationships) {
+            ReferenceOverlayRenderer.drawRelationshipsPrelude(
+                canvas,
+                width,
+                height,
+                TimelineEngine.relationshipsSourceFrame(project, outputTimeSeconds),
+                TimelineEngine.relationshipsDisclaimerAlpha(project, outputTimeSeconds),
+                project.showIntro,
+                paint,
+            )
+        }
+
+        val cover = TimelineEngine.outroCoverProgress(project, outputTimeSeconds)
+        val content = TimelineEngine.outroContentAlpha(project, outputTimeSeconds)
+        if (project.model == VisualModel.Relationships) {
+            ReferenceOverlayRenderer.drawRelationshipsOutro(
+                canvas,
+                width,
+                height,
+                TimelineEngine.relationshipsOutroLocalFrame(project, outputTimeSeconds),
+                content,
+                paint,
+            )
+        } else {
+            ReferenceOverlayRenderer.drawOutro(canvas, width, height, cover, content, paint)
+        }
 
         val fade = TimelineEngine.fadeAlpha(project, outputTimeSeconds).coerceIn(0f, 1f)
         if (fade < 0.999f) {
@@ -83,18 +116,26 @@ class ReferenceFrameRenderer(
         imageCache.clear()
     }
 
-    private fun drawCardBody(canvas: Canvas, card: CtsCard, cardWidth: Float) {
-        val frames = CardContentLayout.frames(card)
+    private fun drawCardBody(canvas: Canvas, card: CtsCard, cardWidth: Float, placement: CardPlacement) {
+        val frames = if (project.model == VisualModel.Relationships) {
+            CardContentFrames(
+                image = NormalizedRect(0f, 0f, 475f / 480f, 678f / 1080f),
+                title = NormalizedRect(0f, 678f / 1080f, 475f / 480f, 103f / 1080f),
+                description = NormalizedRect(0f, 789f / 1080f, 475f / 480f, 291f / 1080f),
+            )
+        } else CardContentLayout.frames(card)
         val image = frameRect(frames.image, cardWidth)
         val title = frames.title?.let { frameRect(it, cardWidth) }
         val description = frames.description?.let { frameRect(it, cardWidth) }
 
+        val topColor = if (project.model == VisualModel.Relationships) Color.rgb(18, 167, 160) else Color.rgb(19, 141, 219)
+        val bottomColor = if (project.model == VisualModel.Relationships) Color.rgb(8, 107, 120) else Color.rgb(11, 116, 190)
         paint.shader = LinearGradient(
             image.left,
             image.top,
             image.left,
             image.bottom,
-            intArrayOf(Color.rgb(19, 141, 219), Color.rgb(19, 141, 219), Color.rgb(11, 116, 190)),
+            intArrayOf(topColor, topColor, bottomColor),
             floatArrayOf(0f, 0.72f, 1f),
             Shader.TileMode.CLAMP,
         )
@@ -116,11 +157,11 @@ class ReferenceFrameRenderer(
         }
 
         title?.let {
-            paint.color = Color.rgb(240, 240, 240)
+            paint.color = if (project.model == VisualModel.Relationships) Color.rgb(245, 245, 243) else Color.rgb(240, 240, 240)
             canvas.drawRect(it, paint)
         }
         description?.let {
-            paint.color = Color.rgb(98, 95, 86)
+            paint.color = if (project.model == VisualModel.Relationships) Color.rgb(47, 47, 47) else Color.rgb(98, 95, 86)
             canvas.drawRect(it, paint)
         }
 
@@ -162,6 +203,33 @@ class ReferenceFrameRenderer(
                 maxLines = 3,
             )
         }
+
+        if (project.model == VisualModel.Relationships) {
+            if (placement.artworkReveal < 1f) {
+                paint.color = Color.rgb(31, 31, 31)
+                canvas.drawRect(
+                    image.left,
+                    image.top + image.height() * placement.artworkReveal.coerceIn(0f, 1f),
+                    image.right,
+                    image.bottom,
+                    paint,
+                )
+            }
+            if (placement.titleReveal < 1f) {
+                title?.let {
+                    paint.color = Color.rgb(245, 245, 243)
+                    canvas.drawRect(it, paint)
+                }
+            }
+            if (placement.descriptionReveal < 1f) {
+                description?.let {
+                    paint.color = Color.rgb(47, 47, 47)
+                    canvas.drawRect(it, paint)
+                }
+            }
+            paint.color = Color.rgb(234, 127, 28)
+            description?.let { canvas.drawRect(0f, it.top - max(2f, cardWidth * 0.0105f), cardWidth, it.top, paint) }
+        }
     }
 
     private fun drawBadge(
@@ -169,10 +237,10 @@ class ReferenceFrameRenderer(
         card: CtsCard,
         cardX: Float,
         cardWidth: Float,
-        settleProgress: Float,
+        placement: CardPlacement,
     ) {
-        val settle = settleProgress.coerceIn(0f, 1f)
-        val base = frameRect(BADGE_FRAME, cardWidth).apply { offset(cardX, 0f) }
+        val settle = placement.badgeSettle.coerceIn(0f, 1.25f)
+        val base = frameRect(placement.badgeRect ?: BADGE_FRAME, cardWidth).apply { offset(cardX, 0f) }
         val scale = 1.42f - 0.42f * settle
         val translation = -base.height() * 0.42f * (1f - settle)
         val cx = base.centerX()
@@ -183,6 +251,10 @@ class ReferenceFrameRenderer(
             cx + base.width() * scale / 2f,
             cy + base.height() * scale / 2f,
         )
+        if (project.model == VisualModel.Relationships) {
+            drawRelationshipsBadge(canvas, card, base, placement.badgeTextAlpha)
+            return
+        }
         val path = hexagon(badge)
 
         paint.shader = null
@@ -259,6 +331,68 @@ class ReferenceFrameRenderer(
                 2,
             )
         }
+    }
+
+    private fun drawRelationshipsBadge(canvas: Canvas, card: CtsCard, badge: RectF, textAlpha: Float) {
+        val path = Path().apply {
+            moveTo(badge.centerX(), badge.top)
+            lineTo(badge.left + badge.width() * 0.87f, badge.top + badge.height() * 0.18f)
+            lineTo(badge.right, badge.top + badge.height() * 0.64f)
+            lineTo(badge.left + badge.width() * 0.80f, badge.bottom)
+            lineTo(badge.left + badge.width() * 0.20f, badge.bottom)
+            lineTo(badge.left, badge.top + badge.height() * 0.64f)
+            lineTo(badge.left + badge.width() * 0.13f, badge.top + badge.height() * 0.18f)
+            close()
+        }
+        paint.shader = null
+        paint.color = Color.rgb(224, 17, 27)
+        canvas.drawPath(path, paint)
+        paint.shader = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = max(1f, badge.width() * 0.006f)
+        paint.color = Color.rgb(239, 194, 72)
+        canvas.drawPath(path, paint)
+        paint.style = Paint.Style.FILL
+        val textColor = Color.argb((255 * textAlpha.coerceIn(0f, 1f)).toInt(), 255, 255, 255)
+        val number = relationshipNumber(card.badgePrimary)
+        drawTextBlock(
+            canvas,
+            "1 in",
+            RectF(badge.left + badge.width() * 0.10f, badge.top + badge.height() * 0.10f, badge.right - badge.width() * 0.10f, badge.top + badge.height() * 0.34f),
+            textColor,
+            true,
+            badge.width() * 0.13f,
+            badge.width() * 0.06f,
+            1,
+        )
+        drawTextBlock(
+            canvas,
+            number,
+            RectF(badge.left + badge.width() * 0.08f, badge.top + badge.height() * 0.27f, badge.right - badge.width() * 0.08f, badge.top + badge.height() * 0.72f),
+            textColor,
+            true,
+            badge.width() * 0.30f,
+            badge.width() * 0.12f,
+            1,
+        )
+        drawTextBlock(
+            canvas,
+            "People",
+            RectF(badge.left + badge.width() * 0.10f, badge.top + badge.height() * 0.70f, badge.right - badge.width() * 0.10f, badge.bottom - badge.height() * 0.08f),
+            textColor,
+            true,
+            badge.width() * 0.12f,
+            badge.width() * 0.055f,
+            1,
+        )
+    }
+
+    private fun relationshipNumber(value: String): String {
+        val words = value.replace('\n', ' ').split(' ').filter { it.isNotBlank() }
+        val inIndex = words.indexOfFirst { it.equals("in", ignoreCase = true) }
+        return words.getOrNull(inIndex + 1)
+            ?: words.firstOrNull { word -> word.any { it.isDigit() } }
+            ?: value.ifBlank { "?" }
     }
 
     private fun frameRect(rect: NormalizedRect, cardWidth: Float): RectF = RectF(

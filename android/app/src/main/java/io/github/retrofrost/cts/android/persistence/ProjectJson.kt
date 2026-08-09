@@ -5,6 +5,7 @@ import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ExportSettings
 import io.github.retrofrost.cts.android.model.ImageSubcard
+import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.SoundtrackSettings
 import io.github.retrofrost.cts.android.model.VisualModel
@@ -60,6 +61,7 @@ object ProjectJson {
             .put("fps", normalized.export.fps)
             .put("custom_duration", normalized.customDurationSeconds ?: JSONObject.NULL)
             .put("model_id", normalized.model.id)
+            .put("model_mode", normalized.modelMode.id)
             .put("visible_cards", 0)
             .put("field_mapping", JSONObject().apply {
                 put("badge_primary", "Value")
@@ -71,6 +73,9 @@ object ProjectJson {
             .put("soundtrack_master_volume", normalized.soundtrack.volume)
             .put("hexagons_bounce", true)
             .put("show_hexagons", normalized.showHexagons)
+            .put("show_intro", normalized.showIntro)
+            .put("show_disclaimer", normalized.showDisclaimer)
+            .put("show_outro", normalized.showOutro)
 
         val audioTracks = JSONArray()
         normalized.soundtrack.uri?.takeIf { it.isNotBlank() }?.let { uri ->
@@ -223,8 +228,12 @@ object ProjectJson {
             name = android?.optString("project_name")?.takeIf { it.isNotBlank() }
                 ?: "Imported comparison",
             model = VisualModel.fromId(settings.optString("model_id")),
+            modelMode = ModelMode.fromId(settings.optString("model_mode")),
             cards = cards,
             showHexagons = settings.optBoolean("show_hexagons", true),
+            showIntro = settings.optBoolean("show_intro", true),
+            showDisclaimer = settings.optBoolean("show_disclaimer", true),
+            showOutro = settings.optBoolean("show_outro", true),
             customDurationSeconds = customDuration,
             soundtrack = soundtrack,
             export = export,
@@ -290,11 +299,20 @@ object ProjectJson {
             model = VisualModel.fromId(
                 settings.optString("model_id", root.optString("model")),
             ),
+            modelMode = ModelMode.fromId(
+                settings.optString("model_mode", root.optString("model_mode")),
+            ),
             cards = cards,
             showHexagons = settings.optBoolean(
                 "show_hexagons",
                 root.optBoolean("show_hexagons", true),
             ),
+            showIntro = settings.optBoolean("show_intro", root.optBoolean("show_intro", true)),
+            showDisclaimer = settings.optBoolean(
+                "show_disclaimer",
+                root.optBoolean("show_disclaimer", true),
+            ),
+            showOutro = settings.optBoolean("show_outro", root.optBoolean("show_outro", true)),
             customDurationSeconds = settings
                 .optDouble("custom_duration", Double.NaN)
                 .takeIf { !it.isNaN() }

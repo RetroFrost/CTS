@@ -1,7 +1,9 @@
 package io.github.retrofrost.cts.android.timeline
 
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.DurationRuntime
+import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.VisualModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,14 +15,15 @@ class TimelineEngineTest {
     @Before fun resetDurationChoice() = DurationRuntime.resetForTests()
 
     @Test
-    fun androidExposesOnlyTheCanonicalFourCardModel() {
-        assertEquals(listOf(VisualModel.Illustrated), VisualModel.entries)
-        assertEquals(4, VisualModel.Illustrated.visibleCards)
+    fun androidExposesBothIndependentReferenceModels() {
+        assertEquals(listOf(VisualModel.Males, VisualModel.Relationships), VisualModel.entries)
+        assertEquals(4, VisualModel.Males.visibleCards)
+        assertEquals(4, VisualModel.Relationships.visibleCards)
     }
 
     @Test
     fun automaticDurationIncludesTheFullReferenceOutro() {
-        val project = CtsProject(model = VisualModel.Illustrated)
+        val project = CtsProject(model = VisualModel.Males)
         val expected = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS + SCROLL_SECONDS +
             END_HOLD_SECONDS + OUTRO_COVER_SECONDS + OUTRO_CONTENT_DELAY_SECONDS +
             OUTRO_HOLD_SECONDS + FADE_SECONDS
@@ -29,7 +32,7 @@ class TimelineEngineTest {
 
     @Test
     fun customLengthChangesOnlySecondsPerScrollingCard() {
-        val automaticProject = CtsProject(model = VisualModel.Illustrated)
+        val automaticProject = CtsProject(model = VisualModel.Males, modelMode = ModelMode.Custom)
         val automaticDuration = TimelineEngine.automaticDuration(automaticProject)
         val customProject = automaticProject.copy(customDurationSeconds = automaticDuration + 6f)
         val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
@@ -40,7 +43,7 @@ class TimelineEngineTest {
 
     @Test
     fun firstCardSlidesFromOneSlotLeftInsteadOfBeingWiped() {
-        val project = CtsProject(model = VisualModel.Illustrated)
+        val project = CtsProject(model = VisualModel.Males)
         val first = TimelineEngine.placements(project, 0f).first()
         assertEquals(-1f, first.xInCards, 0.001f)
         assertEquals(1f, first.bodyReveal, 0.001f)
@@ -55,7 +58,7 @@ class TimelineEngineTest {
 
     @Test
     fun scrollingMovesEachCompleteParentByOneCardWidthWithEasing() {
-        val project = CtsProject(model = VisualModel.Illustrated)
+        val project = CtsProject(model = VisualModel.Males)
         val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
         val before = TimelineEngine.placements(project, scrollStart)
         val halfway = TimelineEngine.placements(project, scrollStart + SCROLL_SECONDS / 2f)
@@ -71,7 +74,7 @@ class TimelineEngineTest {
 
     @Test
     fun incomingBadgeBeginsBeforeTheCardFinishesArriving() {
-        val project = CtsProject(model = VisualModel.Illustrated)
+        val project = CtsProject(model = VisualModel.Males)
         val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
         val beforeLead = TimelineEngine.placements(
             project,
@@ -88,7 +91,7 @@ class TimelineEngineTest {
 
     @Test
     fun outroCoversOnlyTheFirstThreeColumnsAndThenShowsContent() {
-        val project = CtsProject(model = VisualModel.Illustrated)
+        val project = CtsProject(model = VisualModel.Males)
         val scrollEnd = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS + SCROLL_SECONDS
         assertEquals(0f, TimelineEngine.outroCoverProgress(project, scrollEnd), 0.001f)
         assertTrue(TimelineEngine.outroCoverProgress(project, scrollEnd + END_HOLD_SECONDS + OUTRO_COVER_SECONDS) > 0.99f)
@@ -101,5 +104,31 @@ class TimelineEngineTest {
         val finalPlacement = TimelineEngine.placements(project, scrollEnd + END_HOLD_SECONDS).last()
         assertEquals(4, finalPlacement.cardIndex)
         assertEquals(3f, finalPlacement.xInCards, 0.001f)
+    }
+
+    @Test
+    fun relationshipsExactReferenceLocksTheMeasuredFrameDuration() {
+        val project = CtsProject(
+            model = VisualModel.Relationships,
+            modelMode = ModelMode.ExactReference,
+            cards = List(40) { CtsCard(title = "Relationship $it") },
+            customDurationSeconds = 42f,
+        )
+        assertEquals(
+            TimelineEngine.RELATIONSHIPS_REFERENCE_FRAMES /
+                TimelineEngine.RELATIONSHIPS_REFERENCE_FPS.toFloat(),
+            TimelineEngine.duration(project),
+            0.0001f,
+        )
+        assertEquals(185.5f, TimelineEngine.duration(project), 0.0001f)
+    }
+
+    @Test
+    fun relationshipsPreludeHasSeparateInfinityAndDisclaimerPhases() {
+        val project = CtsProject(model = VisualModel.Relationships)
+        assertTrue(TimelineEngine.relationshipsInfinityProgress(project, 187f / 60f) in 0.49f..0.51f)
+        assertTrue(TimelineEngine.relationshipsDisclaimerAlpha(project, 8.2f) > 0.9f)
+        assertTrue(TimelineEngine.placements(project, 6.1f).isEmpty())
+        assertTrue(TimelineEngine.placements(project, 6.3f).isNotEmpty())
     }
 }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -59,10 +60,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import io.github.retrofrost.cts.android.layout.CardContentLayout
+import io.github.retrofrost.cts.android.layout.CardContentFrames
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
 import io.github.retrofrost.cts.android.model.NormalizedRect
+import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import io.github.retrofrost.cts.android.ui.theme.CtsPurple
 import kotlinx.coroutines.Dispatchers
@@ -81,6 +84,17 @@ private val ReferenceHexagonShape = GenericShape { size, _ ->
     lineTo(size.width * 0.5f, size.height)
     lineTo(0f, size.height * 0.78f)
     lineTo(0f, size.height * 0.22f)
+    close()
+}
+
+private val RelationshipsOctagonShape = GenericShape { size, _ ->
+    moveTo(size.width * 0.50f, 0f)
+    lineTo(size.width * 0.87f, size.height * 0.18f)
+    lineTo(size.width, size.height * 0.64f)
+    lineTo(size.width * 0.80f, size.height)
+    lineTo(size.width * 0.20f, size.height)
+    lineTo(0f, size.height * 0.64f)
+    lineTo(size.width * 0.13f, size.height * 0.18f)
     close()
 }
 
@@ -103,6 +117,9 @@ fun ProgramMonitor(
     val showIntroCredits = TimelineEngine.introCreditsVisible(project, positionSeconds)
     val outroCover = TimelineEngine.outroCoverProgress(project, positionSeconds)
     val outroContent = TimelineEngine.outroContentAlpha(project, positionSeconds)
+    val relationshipsFrame = TimelineEngine.relationshipsSourceFrame(project, positionSeconds)
+    val disclaimerAlpha = TimelineEngine.relationshipsDisclaimerAlpha(project, positionSeconds)
+    val relationshipsOutroFrame = TimelineEngine.relationshipsOutroLocalFrame(project, positionSeconds)
 
     Surface(modifier = modifier, color = Color.Black, shadowElevation = 4.dp) {
         BoxWithConstraints(
@@ -113,14 +130,26 @@ fun ProgramMonitor(
         ) {
             val cardWidth = maxWidth / 4
             if (showIntroCredits) ReferenceIntroCreditsPanel(cardWidth)
+            if (project.model == VisualModel.Relationships && project.showIntro &&
+                relationshipsFrame in 1 until TimelineEngine.RELATIONSHIPS_INTRO_OVERLAY_END_FRAME
+            ) {
+                RelationshipsInfinityIntro(relationshipsFrame)
+            }
+            if (disclaimerAlpha > 0f) RelationshipsDisclaimer(disclaimerAlpha, cardWidth)
 
             placements.forEach { placement ->
                 val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
                 ReferenceParentCard(
                     card = card,
+                    model = project.model,
                     bodyReveal = placement.bodyReveal,
-                    badgeVisible = placement.badgeVisible,
+                    artworkReveal = placement.artworkReveal,
+                    titleReveal = placement.titleReveal,
+                    descriptionReveal = placement.descriptionReveal,
+                    badgeVisible = project.showHexagons && placement.badgeVisible,
                     badgeSettle = placement.badgeSettle,
+                    badgeRect = placement.badgeRect,
+                    badgeTextAlpha = placement.badgeTextAlpha,
                     selected = selectedCardId == card.id,
                     onSelect = { onSelectCard(card.id) },
                     onImageTransformChanged = { onImageTransformChanged(card.id, it) },
@@ -132,7 +161,11 @@ fun ProgramMonitor(
                 )
             }
 
-            ReferenceOutroOverlay(cardWidth, outroCover, outroContent)
+            if (project.model == VisualModel.Relationships) {
+                RelationshipsOutroOverlay(cardWidth, relationshipsOutroFrame, outroContent)
+            } else {
+                ReferenceOutroOverlay(cardWidth, outroCover, outroContent)
+            }
             if (fadeAlpha < 0.999f) {
                 Box(
                     Modifier
@@ -148,9 +181,15 @@ fun ProgramMonitor(
 @Composable
 private fun ReferenceParentCard(
     card: CtsCard,
+    model: VisualModel,
     bodyReveal: Float,
+    artworkReveal: Float,
+    titleReveal: Float,
+    descriptionReveal: Float,
     badgeVisible: Boolean,
     badgeSettle: Float,
+    badgeRect: NormalizedRect?,
+    badgeTextAlpha: Float,
     selected: Boolean,
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
@@ -169,8 +208,9 @@ private fun ReferenceParentCard(
         // stretches, so text, artwork, and dividers remain exactly where they settle.
         Box(
             modifier = Modifier
-                .width(fullCardWidth * reveal)
+                .width(if (model == VisualModel.Relationships) fullCardWidth else fullCardWidth * reveal)
                 .fillMaxHeight()
+                .alpha(if (model == VisualModel.Relationships) reveal else 1f)
                 .clipToBounds(),
         ) {
             Box(
@@ -180,6 +220,10 @@ private fun ReferenceParentCard(
             ) {
                 cardLayoutScope.ReferenceCardBody(
                     card = card,
+                    model = model,
+                    artworkReveal = artworkReveal,
+                    titleReveal = titleReveal,
+                    descriptionReveal = descriptionReveal,
                     selected = selected,
                     onSelect = onSelect,
                     onImageTransformChanged = onImageTransformChanged,
@@ -190,10 +234,12 @@ private fun ReferenceParentCard(
         // Badges are a separate child layer. This lets the oversized entrance extend
         // above the card while the parent card and its image continue to move together.
         if (badgeVisible) {
-            Frame(BadgeFrame) {
+            Frame(badgeRect ?: BadgeFrame) {
                 ReferenceBadge(
                     card = card,
+                    model = model,
                     settleProgress = badgeSettle,
+                    textAlpha = badgeTextAlpha,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -212,32 +258,59 @@ private fun ReferenceParentCard(
 @Composable
 private fun BoxWithConstraintsScope.ReferenceCardBody(
     card: CtsCard,
+    model: VisualModel,
+    artworkReveal: Float,
+    titleReveal: Float,
+    descriptionReveal: Float,
     selected: Boolean,
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
-    val frames = CardContentLayout.frames(card)
+    val frames = if (model == VisualModel.Relationships) {
+        CardContentFrames(
+            image = NormalizedRect(0f, 0f, 475f / 480f, 678f / 1080f),
+            title = NormalizedRect(0f, 678f / 1080f, 475f / 480f, 103f / 1080f),
+            description = NormalizedRect(0f, 789f / 1080f, 475f / 480f, 291f / 1080f),
+        )
+    } else {
+        CardContentLayout.frames(card)
+    }
     Frame(
         frames.image,
-        Modifier.background(
-            Brush.verticalGradient(
-                0f to Color(0xFF138DDB),
-                0.72f to Color(0xFF138DDB),
-                1f to Color(0xFF0B74BE),
-            ),
-        ),
+        Modifier.background(if (model == VisualModel.Relationships) Color(0xFF1F1F1F) else Color.Transparent),
     ) {
-        ImageSubcardFrame(
-            card.imageSubcard,
-            selected,
-            ContentScale.Crop,
-            onSelect,
-            onImageTransformChanged,
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(artworkReveal.coerceIn(0f, 1f))
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        if (model == VisualModel.Relationships) {
+                            listOf(Color(0xFF0069D3), Color(0xFF0058B5))
+                        } else {
+                            listOf(Color(0xFF138DDB), Color(0xFF0B74BE))
+                        },
+                    ),
+                ),
+        ) {
+            ImageSubcardFrame(
+                card.imageSubcard,
+                selected,
+                ContentScale.Crop,
+                onSelect,
+                onImageTransformChanged,
+            )
+        }
     }
 
     frames.title?.let { titleFrame ->
-        Frame(titleFrame, Modifier.background(Color(0xFFF0F0F0))) {
+        Frame(
+            titleFrame,
+            Modifier
+                .background(if (model == VisualModel.Relationships) Color(0xFFF5F5F3) else Color(0xFFF0F0F0))
+                .alpha(titleReveal.coerceIn(0f, 1f)),
+        ) {
             CardText(
                 text = card.title,
                 color = Color(0xFF101010),
@@ -249,7 +322,12 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     }
 
     frames.description?.let { descriptionFrame ->
-        Frame(descriptionFrame, Modifier.background(Color(0xFF625F56))) {
+        Frame(
+            descriptionFrame,
+            Modifier
+                .background(if (model == VisualModel.Relationships) Color(0xFF2F2F2F) else Color(0xFF625F56))
+                .alpha(descriptionReveal.coerceIn(0f, 1f)),
+        ) {
             CardText(
                 text = card.description,
                 color = Color.White,
@@ -287,15 +365,18 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
 @Composable
 private fun ReferenceBadge(
     card: CtsCard,
+    model: VisualModel,
     settleProgress: Float,
+    textAlpha: Float,
     modifier: Modifier = Modifier,
 ) {
     val settle = settleProgress.coerceIn(0f, 1f)
     val density = LocalDensity.current
 
     BoxWithConstraints(modifier = modifier) {
+        val badgeShape = if (model == VisualModel.Relationships) RelationshipsOctagonShape else ReferenceHexagonShape
         val translation = with(density) { (-maxHeight * 0.42f * (1f - settle)).toPx() }
-        val scale = 1.42f - 0.42f * settle
+        val scale = if (model == VisualModel.Relationships) 1f else 1.42f - 0.42f * settle
         val primarySize = (maxWidth.value * 0.22f).sp
         val secondarySize = (maxWidth.value * 0.105f).sp
 
@@ -305,21 +386,25 @@ private fun ReferenceBadge(
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
-                    translationY = translation
+                    translationY = if (model == VisualModel.Relationships) 0f else translation
                     transformOrigin = TransformOrigin.Center
                 }
-                .shadow(7.dp, ReferenceHexagonShape, clip = false)
-                .clip(ReferenceHexagonShape)
+                .shadow(7.dp, badgeShape, clip = false)
+                .clip(badgeShape)
                 .background(
                     Brush.verticalGradient(
-                        listOf(
-                            Color(0xFFEB0909),
-                            Color(0xFFE00000),
-                            Color(0xFFD50000),
-                        ),
+                        if (model == VisualModel.Relationships) {
+                            listOf(Color(0xFFE0111B), Color(0xFFC80812))
+                        } else {
+                            listOf(Color(0xFFEB0909), Color(0xFFE00000), Color(0xFFD50000))
+                        },
                     ),
                 )
-                .border(0.8.dp, Color(0xFFFF4545), ReferenceHexagonShape),
+                .border(
+                    0.8.dp,
+                    if (model == VisualModel.Relationships) Color(0xFFEFC248) else Color(0xFFFF4545),
+                    badgeShape,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             // A moving diagonal gloss is visible while each large badge settles.
@@ -339,35 +424,52 @@ private fun ReferenceBadge(
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp),
+                modifier = Modifier
+                    .padding(horizontal = 4.dp, vertical = 3.dp)
+                    .alpha(textAlpha.coerceIn(0f, 1f)),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text(
-                    text = card.badgePrimary,
-                    color = Color.White,
-                    fontWeight = FontWeight.Black,
-                    fontSize = primarySize,
-                    lineHeight = primarySize * 0.98f,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (card.badgeSecondary.isNotBlank()) {
+                if (model == VisualModel.Relationships) {
+                    val number = relationshipNumber(card.badgePrimary)
+                    Text("1 in", color = Color.White, fontWeight = FontWeight.Bold, fontSize = secondarySize)
+                    Text(number, color = Color.White, fontWeight = FontWeight.Black, fontSize = primarySize * 1.25f)
+                    Text("People", color = Color.White, fontWeight = FontWeight.Bold, fontSize = secondarySize)
+                } else {
                     Text(
-                        text = card.badgeSecondary,
+                        text = card.badgePrimary,
                         color = Color.White,
                         fontWeight = FontWeight.Black,
-                        fontSize = secondarySize,
-                        lineHeight = secondarySize * 1.02f,
+                        fontSize = primarySize,
+                        lineHeight = primarySize * 0.98f,
                         textAlign = TextAlign.Center,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (card.badgeSecondary.isNotBlank()) {
+                        Text(
+                            text = card.badgeSecondary,
+                            color = Color.White,
+                            fontWeight = FontWeight.Black,
+                            fontSize = secondarySize,
+                            lineHeight = secondarySize * 1.02f,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+private fun relationshipNumber(value: String): String {
+    val words = value.replace('\n', ' ').split(' ').filter { it.isNotBlank() }
+    val inIndex = words.indexOfFirst { it.equals("in", ignoreCase = true) }
+    return words.getOrNull(inIndex + 1)
+        ?: words.firstOrNull { word -> word.any { it.isDigit() } }
+        ?: value.ifBlank { "?" }
 }
 
 @Composable
