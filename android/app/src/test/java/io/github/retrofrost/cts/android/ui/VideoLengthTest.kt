@@ -3,6 +3,7 @@ package io.github.retrofrost.cts.android.ui
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.DurationRuntime
+import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -28,8 +29,11 @@ class VideoLengthTest {
     }
 
     @Test
-    fun customLengthScalesTheWholeTimelineAndPersists() {
-        val project = CtsProject(cards = List(7) { CtsCard(title = "Card $it") })
+    fun customModeLengthRetimesTheConveyorAndPersists() {
+        val project = CtsProject(
+            modelMode = ModelMode.Custom,
+            cards = List(7) { CtsCard(title = "Card $it") },
+        )
         val automatic = TimelineEngine.automaticDuration(project)
 
         DurationRuntime.useAutomatic()

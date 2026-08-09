@@ -35,7 +35,23 @@ data class CardPlacement(
     val descriptionReveal: Float = 1f,
     val badgeRect: NormalizedRect? = null,
     val badgeTextAlpha: Float = 1f,
+    val badgeAgeSeconds: Float = Float.POSITIVE_INFINITY,
+    val badgeAffine: BadgeAffine = BadgeAffine.Identity,
 )
+
+/** Source-space affine used by the measured Males badge renderer (480 x 430). */
+data class BadgeAffine(
+    val m00: Float,
+    val m01: Float,
+    val m10: Float,
+    val m11: Float,
+    val tx: Float,
+    val ty: Float,
+) {
+    companion object {
+        val Identity = BadgeAffine(1f, 0f, 0f, 1f, 0f, 0f)
+    }
+}
 
 private data class TimelineParts(
     val preludeSeconds: Float,
@@ -48,6 +64,54 @@ private data class TimelineParts(
 )
 
 object TimelineEngine {
+    const val MALES_REFERENCE_FRAMES = 16_741
+    const val MALES_REFERENCE_FPS = 60
+    const val MALES_BODY_SECONDS = 1.34f
+    private const val MALES_CONVEYOR_STRIDE = 477f / 480f
+    private const val MALES_PHASE_PULL_START_FRAME = 535
+    private const val MALES_PHASE_PULL_END_FRAME = 620
+    private const val MALES_POST_BADGE_DELAY = 2.06f
+    private const val MALES_POST_BADGE_DURATION = 1.10f
+    private const val MALES_BADGE_ENTRY_END = 2.90f
+    private const val MALES_POST_BADGE_SPEED = MALES_BADGE_ENTRY_END / MALES_POST_BADGE_DURATION
+
+    private val malesBodyProgressKeys = arrayOf(
+        0.000f to 0.000f, 0.033f to 0.000f, 0.083f to 0.019f,
+        0.166f to 0.101f, 0.250f to 0.300f, 0.333f to 0.515f,
+        0.416f to 0.653f, 0.500f to 0.746f, 0.583f to 0.813f,
+        0.666f to 0.864f, 0.750f to 0.901f, 0.833f to 0.931f,
+        0.916f to 0.954f, 1.000f to 0.971f, 1.083f to 0.983f,
+        1.166f to 0.994f, 1.250f to 0.998f, 1.333f to 1.000f,
+    )
+
+    private val malesOpeningBadgeKeys = arrayOf(
+        floatArrayOf(0.00f, 0.3200f, 0.0400f, -0.4300f, 1.0500f, -230.00f, -220.00f),
+        floatArrayOf(0.10f, 0.3300f, 0.0400f, -0.4300f, 1.0500f, -190.00f, -170.00f),
+        floatArrayOf(0.20f, 0.3400f, 0.0400f, -0.4300f, 1.0500f, -185.00f, -130.00f),
+        floatArrayOf(0.30f, 0.3500f, 0.0380f, -0.4300f, 1.0500f, -215.00f, -115.00f),
+        floatArrayOf(0.40f, 0.3600f, 0.0360f, -0.4300f, 1.0500f, -154.00f, -107.00f),
+        floatArrayOf(0.50f, 0.7200f, -0.0300f, -0.7200f, 2.3500f, -160.00f, -454.00f),
+        floatArrayOf(0.65f, 0.9600f, -0.0250f, -0.5400f, 2.0500f, -145.00f, -325.00f),
+        floatArrayOf(0.80f, 1.1818f, -0.0169f, -0.3636f, 1.7548f, -150.25f, -235.22f),
+        floatArrayOf(0.90f, 1.2222f, -0.0181f, -0.2694f, 1.6357f, -141.90f, -203.87f),
+        floatArrayOf(1.00f, 1.2492f, 0.0509f, -0.2054f, 1.5002f, -152.51f, -164.83f),
+        floatArrayOf(1.20f, 1.2559f, 0.0158f, -0.1010f, 1.4099f, -121.12f, -140.77f),
+        floatArrayOf(1.50f, 1.2088f, -0.0758f, -0.0337f, 1.2452f, -56.12f, -83.62f),
+        floatArrayOf(1.80f, 1.1302f, -0.0309f, -0.0064f, 1.1508f, -37.57f, -46.97f),
+        floatArrayOf(2.30f, 1.0808f, 0.0209f, 0.0000f, 1.0698f, -25.80f, -16.16f),
+        floatArrayOf(2.50f, 1.0202f, 0.0110f, 0.0067f, 1.0114f, -9.13f, -1.95f),
+        floatArrayOf(2.70f, 1.0067f, 0.0114f, -0.0067f, 0.9886f, -3.95f, 5.95f),
+        floatArrayOf(2.90f, 1.0000f, 0.0000f, 0.0000f, 1.0000f, 0.00f, 0.00f),
+    )
+
+    private val malesPostBadgeKeys = arrayOf(
+        floatArrayOf(0.00f, 1.120f, -420f), floatArrayOf(0.28f, 1.118f, -376f),
+        floatArrayOf(0.55f, 1.112f, -292f), floatArrayOf(0.82f, 1.102f, -194f),
+        floatArrayOf(1.05f, 1.090f, -105f), floatArrayOf(1.25f, 1.075f, -38f),
+        floatArrayOf(1.42f, 1.058f, 16f), floatArrayOf(1.60f, 1.034f, -9f),
+        floatArrayOf(1.80f, 1.016f, 5f), floatArrayOf(2.02f, 1.005f, -2f),
+        floatArrayOf(2.25f, 1.000f, 0f), floatArrayOf(2.90f, 1.000f, 0f),
+    )
     const val RELATIONSHIPS_REFERENCE_FRAMES = 11_130
     const val RELATIONSHIPS_REFERENCE_FPS = 60
     const val RELATIONSHIPS_REFERENCE_SECONDS = 185.5f
@@ -269,21 +333,29 @@ object TimelineEngine {
         val parts = timelineParts(project)
         val scrollStart = parts.introSeconds
 
+        val lockedMales = project.model == VisualModel.Males && project.modelMode == ModelMode.ExactReference
         if (modelTime < scrollStart) {
             return buildList {
                 for (index in 0 until initialCount) {
                     val localTime = modelTime - parts.preludeSeconds - index * parts.revealSeconds
                     if (localTime < 0f) continue
-                    val slide = materialEase(localTime / BODY_WIPE_SECONDS)
+                    val slide = if (lockedMales) malesBodyProgress(localTime) else {
+                        materialEase(localTime / BODY_WIPE_SECONDS)
+                    }
                     val badgeTime = localTime - BADGE_DELAY_SECONDS
+                    val badgeAge = if (lockedMales) localTime else badgeTime
                     add(
                         CardPlacement(
                             cardIndex = index,
                             // Each opening card comes from exactly one slot to its left.
                             xInCards = index - 1f + slide,
                             bodyReveal = 1f,
-                            badgeVisible = badgeTime >= 0f,
-                            badgeSettle = materialEase(badgeTime / BADGE_SETTLE_SECONDS),
+                            badgeVisible = if (lockedMales) localTime >= 0f else badgeTime >= 0f,
+                            badgeSettle = if (lockedMales) {
+                                (badgeAge / MALES_BADGE_ENTRY_END).coerceIn(0f, 1f)
+                            } else materialEase(badgeTime / BADGE_SETTLE_SECONDS),
+                            badgeAgeSeconds = badgeAge,
+                            badgeAffine = if (lockedMales) malesOpeningBadgeAffine(badgeAge) else BadgeAffine.Identity,
                         ),
                     )
                 }
@@ -295,7 +367,13 @@ object TimelineEngine {
         val rawShift = (scrollElapsed / parts.scrollSeconds).coerceAtMost(maximumShift.toFloat())
         val completedShifts = floor(rawShift).toInt().coerceAtMost(maximumShift)
         val cycleProgress = rawShift - completedShifts
-        val easedShift = if (completedShifts >= maximumShift) {
+        val easedShift = if (lockedMales) {
+            val sourceFrame = (modelTime * MALES_REFERENCE_FPS).toInt()
+            val pull = ((sourceFrame - MALES_PHASE_PULL_START_FRAME) /
+                (MALES_PHASE_PULL_END_FRAME - MALES_PHASE_PULL_START_FRAME).toFloat())
+                .coerceIn(0f, 1f) * (1f - MALES_CONVEYOR_STRIDE)
+            (rawShift * MALES_CONVEYOR_STRIDE + pull).coerceAtMost(maximumShift.toFloat())
+        } else if (completedShifts >= maximumShift) {
             maximumShift.toFloat()
         } else {
             completedShifts + materialEase(cycleProgress)
@@ -313,13 +391,27 @@ object TimelineEngine {
                     scrollStart + (index - initialCount + 1) * parts.scrollSeconds - BADGE_DELAY_SECONDS
                 }
                 val badgeTime = modelTime - badgeStart
+                val exactBadgeAge = if (index < initialCount) {
+                    modelTime - parts.preludeSeconds - index * parts.revealSeconds
+                } else {
+                    val cardStart = scrollStart + (index - initialCount) * parts.scrollSeconds
+                    (modelTime - cardStart - MALES_POST_BADGE_DELAY) * MALES_POST_BADGE_SPEED
+                }
                 add(
                     CardPlacement(
                         cardIndex = index,
                         xInCards = x,
                         bodyReveal = 1f,
-                        badgeVisible = badgeTime >= 0f,
-                        badgeSettle = materialEase(badgeTime / BADGE_SETTLE_SECONDS),
+                        badgeVisible = if (lockedMales) exactBadgeAge >= 0f else badgeTime >= 0f,
+                        badgeSettle = if (lockedMales) {
+                            (exactBadgeAge / MALES_BADGE_ENTRY_END).coerceIn(0f, 1f)
+                        } else materialEase(badgeTime / BADGE_SETTLE_SECONDS),
+                        badgeAgeSeconds = exactBadgeAge,
+                        badgeAffine = if (!lockedMales) BadgeAffine.Identity else if (index < initialCount) {
+                            malesOpeningBadgeAffine(exactBadgeAge)
+                        } else {
+                            malesPostBadgeAffine(exactBadgeAge)
+                        },
                     ),
                 )
             }
@@ -383,6 +475,52 @@ object TimelineEngine {
         }
     }
 
+    private fun malesBodyProgress(localTime: Float): Float {
+        if (localTime <= malesBodyProgressKeys.first().first) return malesBodyProgressKeys.first().second
+        if (localTime >= malesBodyProgressKeys.last().first) return malesBodyProgressKeys.last().second
+        val right = malesBodyProgressKeys.indexOfFirst { localTime <= it.first }
+        val (t0, v0) = malesBodyProgressKeys[right - 1]
+        val (t1, v1) = malesBodyProgressKeys[right]
+        return lerp(v0, v1, smoothStep((localTime - t0) / (t1 - t0)))
+    }
+
+    private fun malesOpeningBadgeAffine(age: Float): BadgeAffine {
+        if (age >= MALES_BADGE_ENTRY_END) return BadgeAffine.Identity
+        if (age <= malesOpeningBadgeKeys.first()[0]) return malesOpeningBadgeKeys.first().toBadgeAffine()
+        val right = malesOpeningBadgeKeys.indexOfFirst { age <= it[0] }
+        val left = malesOpeningBadgeKeys[right - 1]
+        val upper = malesOpeningBadgeKeys[right]
+        val t = smoothStep((age - left[0]) / (upper[0] - left[0]))
+        return BadgeAffine(
+            lerp(left[1], upper[1], t), lerp(left[2], upper[2], t),
+            lerp(left[3], upper[3], t), lerp(left[4], upper[4], t),
+            lerp(left[5], upper[5], t), lerp(left[6], upper[6], t),
+        )
+    }
+
+    private fun FloatArray.toBadgeAffine(): BadgeAffine =
+        BadgeAffine(this[1], this[2], this[3], this[4], this[5], this[6])
+
+    private fun malesPostBadgeAffine(age: Float): BadgeAffine {
+        if (age >= MALES_BADGE_ENTRY_END) return BadgeAffine.Identity
+        val key = when {
+            age <= malesPostBadgeKeys.first()[0] -> malesPostBadgeKeys.first()
+            else -> {
+                val right = malesPostBadgeKeys.indexOfFirst { age <= it[0] }
+                if (right < 1) malesPostBadgeKeys.last() else {
+                    val left = malesPostBadgeKeys[right - 1]
+                    val upper = malesPostBadgeKeys[right]
+                    val t = smoothStep((age - left[0]) / (upper[0] - left[0]))
+                    floatArrayOf(age, lerp(left[1], upper[1], t), lerp(left[2], upper[2], t))
+                }
+            }
+        }
+        val scale = key[1]
+        val cx = 243.5f
+        val cy = 203.5f
+        return BadgeAffine(scale, 0f, 0f, scale, cx * (1f - scale), cy * (1f - scale) + key[2])
+    }
+
     private fun relationshipsPlacement(
         index: Int,
         x: Float,
@@ -407,31 +545,49 @@ object TimelineEngine {
         )
     }
 
+    private val relationshipsBadgeBounds = arrayOf(
+        floatArrayOf(11f, 208f, 170.3f, 256f, 217.7f),
+        floatArrayOf(15f, 144f, 107f, 320f, 281f),
+        floatArrayOf(19f, 88f, 51.6f, 376f, 336.4f),
+        floatArrayOf(23f, 40f, 4.2f, 424f, 383.8f),
+        floatArrayOf(27f, 16f, -19.5f, 448f, 407.5f),
+        floatArrayOf(30f, 32f, -3.7f, 432f, 391.7f),
+        floatArrayOf(33f, 56f, 20f, 408f, 368f),
+        floatArrayOf(36f, 72f, 35.8f, 392f, 352.2f),
+        floatArrayOf(40f, 56f, 20f, 408f, 368f),
+        floatArrayOf(44f, 48f, 12.1f, 416f, 375.9f),
+        floatArrayOf(48f, 48f, 12.1f, 416f, 375.9f),
+        floatArrayOf(50f, 56f, 20f, 408f, 368f),
+        floatArrayOf(60f, 56f, 20f, 408f, 368f),
+    )
+
     private fun relationshipsBadgeScale(localFrame: Int): Float {
-        val keys = arrayOf(
-            10 to 0f, 11 to 12f / 88f, 15 to 44f / 88f, 19 to 72f / 88f,
-            23 to 96f / 88f, 27 to 108f / 88f, 30 to 100f / 88f,
-            33 to 1f, 36 to 80f / 88f, 40 to 1f, 44 to 92f / 88f,
-            48 to 92f / 88f, 50 to 1f, 60 to 1f,
-        )
-        if (localFrame <= keys.first().first) return keys.first().second
-        if (localFrame >= keys.last().first) return keys.last().second
-        val right = keys.indexOfFirst { localFrame <= it.first }
-        val (f0, v0) = keys[right - 1]
-        val (f1, v1) = keys[right]
-        return lerp(v0, v1, (localFrame - f0) / (f1 - f0).toFloat())
+        val rect = relationshipsBadgeRect(localFrame) ?: return 0f
+        return rect.width / (352f / 480f)
     }
 
     private fun relationshipsBadgeRect(localFrame: Int): NormalizedRect? {
         if (localFrame < 11) return null
-        val scale = relationshipsBadgeScale(localFrame)
-        val finalWidth = 352f / 480f
-        val finalHeight = 348f / 1080f
-        val width = finalWidth * scale
-        val height = finalHeight * scale
-        val centerX = 232f / 480f
-        val centerY = 194f / 1080f
-        return NormalizedRect(centerX - width / 2f, centerY - height / 2f, width, height)
+        val values = if (localFrame >= relationshipsBadgeBounds.last()[0]) {
+            relationshipsBadgeBounds.last()
+        } else {
+            val right = relationshipsBadgeBounds.indexOfFirst { localFrame <= it[0] }
+            if (right <= 0) relationshipsBadgeBounds.first() else {
+                val left = relationshipsBadgeBounds[right - 1]
+                val upper = relationshipsBadgeBounds[right]
+                val t = (localFrame - left[0]) / (upper[0] - left[0])
+                floatArrayOf(
+                    localFrame.toFloat(), lerp(left[1], upper[1], t), lerp(left[2], upper[2], t),
+                    lerp(left[3], upper[3], t), lerp(left[4], upper[4], t),
+                )
+            }
+        }
+        return NormalizedRect(
+            values[1] / 480f,
+            values[2] / 1080f,
+            (values[3] - values[1]) / 480f,
+            (values[4] - values[2]) / 1080f,
+        )
     }
 
     private fun lerp(start: Float, end: Float, amount: Float): Float =

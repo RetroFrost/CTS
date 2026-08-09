@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Icon
@@ -36,18 +35,12 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +59,7 @@ import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.VisualModel
+import io.github.retrofrost.cts.android.render.ReferenceBadgePainter
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import io.github.retrofrost.cts.android.ui.theme.CtsPurple
 import kotlinx.coroutines.Dispatchers
@@ -76,32 +70,9 @@ import java.net.URL
 
 private enum class ResizeCorner { NorthWest, NorthEast, SouthWest, SouthEast }
 
-/** Point-up/point-down badge used by the supplied comparison video. */
-private val ReferenceHexagonShape = GenericShape { size, _ ->
-    moveTo(size.width * 0.5f, 0f)
-    lineTo(size.width, size.height * 0.22f)
-    lineTo(size.width, size.height * 0.78f)
-    lineTo(size.width * 0.5f, size.height)
-    lineTo(0f, size.height * 0.78f)
-    lineTo(0f, size.height * 0.22f)
-    close()
-}
-
-private val RelationshipsOctagonShape = GenericShape { size, _ ->
-    moveTo(size.width * 0.50f, 0f)
-    lineTo(size.width * 0.87f, size.height * 0.18f)
-    lineTo(size.width, size.height * 0.64f)
-    lineTo(size.width * 0.80f, size.height)
-    lineTo(size.width * 0.20f, size.height)
-    lineTo(0f, size.height * 0.64f)
-    lineTo(size.width * 0.13f, size.height * 0.18f)
-    close()
-}
-
 private val ImageFrame = NormalizedRect(0.008f, 0f, 0.984f, 0.807f)
 private val TitleFrame = NormalizedRect(0.008f, 0.807f, 0.984f, 0.088f)
 private val DescriptionFrame = NormalizedRect(0.008f, 0.895f, 0.984f, 0.101f)
-private val BadgeFrame = NormalizedRect(0.245f, 0.063f, 0.51f, 0.263f)
 
 @Composable
 fun ProgramMonitor(
@@ -147,9 +118,7 @@ fun ProgramMonitor(
                     titleReveal = placement.titleReveal,
                     descriptionReveal = placement.descriptionReveal,
                     badgeVisible = project.showHexagons && placement.badgeVisible,
-                    badgeSettle = placement.badgeSettle,
-                    badgeRect = placement.badgeRect,
-                    badgeTextAlpha = placement.badgeTextAlpha,
+                    placement = placement,
                     selected = selectedCardId == card.id,
                     onSelect = { onSelectCard(card.id) },
                     onImageTransformChanged = { onImageTransformChanged(card.id, it) },
@@ -187,9 +156,7 @@ private fun ReferenceParentCard(
     titleReveal: Float,
     descriptionReveal: Float,
     badgeVisible: Boolean,
-    badgeSettle: Float,
-    badgeRect: NormalizedRect?,
-    badgeTextAlpha: Float,
+    placement: io.github.retrofrost.cts.android.timeline.CardPlacement,
     selected: Boolean,
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
@@ -234,13 +201,15 @@ private fun ReferenceParentCard(
         // Badges are a separate child layer. This lets the oversized entrance extend
         // above the card while the parent card and its image continue to move together.
         if (badgeVisible) {
-            Frame(badgeRect ?: BadgeFrame) {
-                ReferenceBadge(
+            Canvas(Modifier.fillMaxSize()) {
+                ReferenceBadgePainter.draw(
+                    canvas = drawContext.canvas.nativeCanvas,
                     card = card,
                     model = model,
-                    settleProgress = badgeSettle,
-                    textAlpha = badgeTextAlpha,
-                    modifier = Modifier.fillMaxSize(),
+                    placement = placement,
+                    cardLeft = 0f,
+                    cardWidth = size.width,
+                    frameHeight = size.height,
                 )
             }
         }
@@ -360,116 +329,6 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
             .width(maxWidth)
             .background(Color(0xFF11100C)),
     )
-}
-
-@Composable
-private fun ReferenceBadge(
-    card: CtsCard,
-    model: VisualModel,
-    settleProgress: Float,
-    textAlpha: Float,
-    modifier: Modifier = Modifier,
-) {
-    val settle = settleProgress.coerceIn(0f, 1f)
-    val density = LocalDensity.current
-
-    BoxWithConstraints(modifier = modifier) {
-        val badgeShape = if (model == VisualModel.Relationships) RelationshipsOctagonShape else ReferenceHexagonShape
-        val translation = with(density) { (-maxHeight * 0.42f * (1f - settle)).toPx() }
-        val scale = if (model == VisualModel.Relationships) 1f else 1.42f - 0.42f * settle
-        val primarySize = (maxWidth.value * 0.22f).sp
-        val secondarySize = (maxWidth.value * 0.105f).sp
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationY = if (model == VisualModel.Relationships) 0f else translation
-                    transformOrigin = TransformOrigin.Center
-                }
-                .shadow(7.dp, badgeShape, clip = false)
-                .clip(badgeShape)
-                .background(
-                    Brush.verticalGradient(
-                        if (model == VisualModel.Relationships) {
-                            listOf(Color(0xFFE0111B), Color(0xFFC80812))
-                        } else {
-                            listOf(Color(0xFFEB0909), Color(0xFFE00000), Color(0xFFD50000))
-                        },
-                    ),
-                )
-                .border(
-                    0.8.dp,
-                    if (model == VisualModel.Relationships) Color(0xFFEFC248) else Color(0xFFFF4545),
-                    badgeShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            // A moving diagonal gloss is visible while each large badge settles.
-            Canvas(Modifier.fillMaxSize()) {
-                if (settle < 0.94f) {
-                    val shineProgress = (settle / 0.94f).coerceIn(0f, 1f)
-                    val shineX = -size.width * 0.30f + size.width * 1.65f * shineProgress
-                    val shineAlpha = 0.34f * (1f - settle)
-                    rotate(18f, pivot = Offset(shineX, size.height / 2f)) {
-                        drawRect(
-                            color = Color.White.copy(alpha = shineAlpha),
-                            topLeft = Offset(shineX - size.width * 0.075f, -size.height * 0.20f),
-                            size = Size(size.width * 0.15f, size.height * 1.40f),
-                        )
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .padding(horizontal = 4.dp, vertical = 3.dp)
-                    .alpha(textAlpha.coerceIn(0f, 1f)),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                if (model == VisualModel.Relationships) {
-                    val number = relationshipNumber(card.badgePrimary)
-                    Text("1 in", color = Color.White, fontWeight = FontWeight.Bold, fontSize = secondarySize)
-                    Text(number, color = Color.White, fontWeight = FontWeight.Black, fontSize = primarySize * 1.25f)
-                    Text("People", color = Color.White, fontWeight = FontWeight.Bold, fontSize = secondarySize)
-                } else {
-                    Text(
-                        text = card.badgePrimary,
-                        color = Color.White,
-                        fontWeight = FontWeight.Black,
-                        fontSize = primarySize,
-                        lineHeight = primarySize * 0.98f,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (card.badgeSecondary.isNotBlank()) {
-                        Text(
-                            text = card.badgeSecondary,
-                            color = Color.White,
-                            fontWeight = FontWeight.Black,
-                            fontSize = secondarySize,
-                            lineHeight = secondarySize * 1.02f,
-                            textAlign = TextAlign.Center,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun relationshipNumber(value: String): String {
-    val words = value.replace('\n', ' ').split(' ').filter { it.isNotBlank() }
-    val inIndex = words.indexOfFirst { it.equals("in", ignoreCase = true) }
-    return words.getOrNull(inIndex + 1)
-        ?: words.firstOrNull { word -> word.any { it.isDigit() } }
-        ?: value.ifBlank { "?" }
 }
 
 @Composable

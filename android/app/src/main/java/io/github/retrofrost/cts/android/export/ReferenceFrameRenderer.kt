@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.net.Uri
@@ -22,6 +21,7 @@ import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.VisualModel
+import io.github.retrofrost.cts.android.render.ReferenceBadgePainter
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import io.github.retrofrost.cts.android.timeline.CardPlacement
 import java.io.File
@@ -239,160 +239,15 @@ class ReferenceFrameRenderer(
         cardWidth: Float,
         placement: CardPlacement,
     ) {
-        val settle = placement.badgeSettle.coerceIn(0f, 1.25f)
-        val base = frameRect(placement.badgeRect ?: BADGE_FRAME, cardWidth).apply { offset(cardX, 0f) }
-        val scale = 1.42f - 0.42f * settle
-        val translation = -base.height() * 0.42f * (1f - settle)
-        val cx = base.centerX()
-        val cy = base.centerY() + translation
-        val badge = RectF(
-            cx - base.width() * scale / 2f,
-            cy - base.height() * scale / 2f,
-            cx + base.width() * scale / 2f,
-            cy + base.height() * scale / 2f,
+        ReferenceBadgePainter.draw(
+            canvas = canvas,
+            card = card,
+            model = project.model,
+            placement = placement,
+            cardLeft = cardX,
+            cardWidth = cardWidth,
+            frameHeight = height.toFloat(),
         )
-        if (project.model == VisualModel.Relationships) {
-            drawRelationshipsBadge(canvas, card, base, placement.badgeTextAlpha)
-            return
-        }
-        val path = hexagon(badge)
-
-        paint.shader = null
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(120, 0, 0, 0)
-        paint.setShadowLayer(max(3f, cardWidth * 0.025f), 0f, cardWidth * 0.012f, Color.argb(160, 0, 0, 0))
-        canvas.drawPath(path, paint)
-        paint.clearShadowLayer()
-
-        paint.shader = LinearGradient(
-            badge.left,
-            badge.top,
-            badge.left,
-            badge.bottom,
-            intArrayOf(Color.rgb(235, 9, 9), Color.rgb(224, 0, 0), Color.rgb(213, 0, 0)),
-            null,
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawPath(path, paint)
-        paint.shader = null
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = max(1f, cardWidth * 0.003f)
-        paint.color = Color.rgb(255, 69, 69)
-        canvas.drawPath(path, paint)
-        paint.style = Paint.Style.FILL
-
-        if (settle < 0.94f) {
-            val progress = settle / 0.94f
-            val shineX = badge.left - badge.width() * 0.30f + badge.width() * 1.65f * progress
-            val shine = Path().apply {
-                moveTo(shineX - badge.width() * 0.06f, badge.top)
-                lineTo(shineX + badge.width() * 0.06f, badge.top)
-                lineTo(shineX + badge.width() * 0.22f, badge.bottom)
-                lineTo(shineX + badge.width() * 0.10f, badge.bottom)
-                close()
-            }
-            canvas.save()
-            canvas.clipPath(path)
-            paint.color = Color.argb((86f * (1f - settle)).toInt(), 255, 255, 255)
-            canvas.drawPath(shine, paint)
-            canvas.restore()
-        }
-
-        val primaryHeight = if (card.badgeSecondary.isBlank()) badge.height() * 0.70f else badge.height() * 0.48f
-        drawTextBlock(
-            canvas,
-            card.badgePrimary,
-            RectF(
-                badge.left + badge.width() * 0.08f,
-                badge.centerY() - primaryHeight * 0.62f,
-                badge.right - badge.width() * 0.08f,
-                badge.centerY() + primaryHeight * 0.38f,
-            ),
-            Color.WHITE,
-            true,
-            badge.width() * 0.22f,
-            badge.width() * 0.08f,
-            2,
-        )
-        if (card.badgeSecondary.isNotBlank()) {
-            drawTextBlock(
-                canvas,
-                card.badgeSecondary,
-                RectF(
-                    badge.left + badge.width() * 0.09f,
-                    badge.centerY() + badge.height() * 0.08f,
-                    badge.right - badge.width() * 0.09f,
-                    badge.bottom - badge.height() * 0.12f,
-                ),
-                Color.WHITE,
-                true,
-                badge.width() * 0.105f,
-                badge.width() * 0.055f,
-                2,
-            )
-        }
-    }
-
-    private fun drawRelationshipsBadge(canvas: Canvas, card: CtsCard, badge: RectF, textAlpha: Float) {
-        val path = Path().apply {
-            moveTo(badge.centerX(), badge.top)
-            lineTo(badge.left + badge.width() * 0.87f, badge.top + badge.height() * 0.18f)
-            lineTo(badge.right, badge.top + badge.height() * 0.64f)
-            lineTo(badge.left + badge.width() * 0.80f, badge.bottom)
-            lineTo(badge.left + badge.width() * 0.20f, badge.bottom)
-            lineTo(badge.left, badge.top + badge.height() * 0.64f)
-            lineTo(badge.left + badge.width() * 0.13f, badge.top + badge.height() * 0.18f)
-            close()
-        }
-        paint.shader = null
-        paint.color = Color.rgb(224, 17, 27)
-        canvas.drawPath(path, paint)
-        paint.shader = null
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = max(1f, badge.width() * 0.006f)
-        paint.color = Color.rgb(239, 194, 72)
-        canvas.drawPath(path, paint)
-        paint.style = Paint.Style.FILL
-        val textColor = Color.argb((255 * textAlpha.coerceIn(0f, 1f)).toInt(), 255, 255, 255)
-        val number = relationshipNumber(card.badgePrimary)
-        drawTextBlock(
-            canvas,
-            "1 in",
-            RectF(badge.left + badge.width() * 0.10f, badge.top + badge.height() * 0.10f, badge.right - badge.width() * 0.10f, badge.top + badge.height() * 0.34f),
-            textColor,
-            true,
-            badge.width() * 0.13f,
-            badge.width() * 0.06f,
-            1,
-        )
-        drawTextBlock(
-            canvas,
-            number,
-            RectF(badge.left + badge.width() * 0.08f, badge.top + badge.height() * 0.27f, badge.right - badge.width() * 0.08f, badge.top + badge.height() * 0.72f),
-            textColor,
-            true,
-            badge.width() * 0.30f,
-            badge.width() * 0.12f,
-            1,
-        )
-        drawTextBlock(
-            canvas,
-            "People",
-            RectF(badge.left + badge.width() * 0.10f, badge.top + badge.height() * 0.70f, badge.right - badge.width() * 0.10f, badge.bottom - badge.height() * 0.08f),
-            textColor,
-            true,
-            badge.width() * 0.12f,
-            badge.width() * 0.055f,
-            1,
-        )
-    }
-
-    private fun relationshipNumber(value: String): String {
-        val words = value.replace('\n', ' ').split(' ').filter { it.isNotBlank() }
-        val inIndex = words.indexOfFirst { it.equals("in", ignoreCase = true) }
-        return words.getOrNull(inIndex + 1)
-            ?: words.firstOrNull { word -> word.any { it.isDigit() } }
-            ?: value.ifBlank { "?" }
     }
 
     private fun frameRect(rect: NormalizedRect, cardWidth: Float): RectF = RectF(
@@ -401,16 +256,6 @@ class ReferenceFrameRenderer(
         cardWidth * (rect.x + rect.width),
         height * (rect.y + rect.height),
     )
-
-    private fun hexagon(rect: RectF): Path = Path().apply {
-        moveTo(rect.centerX(), rect.top)
-        lineTo(rect.right, rect.top + rect.height() * 0.22f)
-        lineTo(rect.right, rect.top + rect.height() * 0.78f)
-        lineTo(rect.centerX(), rect.bottom)
-        lineTo(rect.left, rect.top + rect.height() * 0.78f)
-        lineTo(rect.left, rect.top + rect.height() * 0.22f)
-        close()
-    }
 
     private fun drawCenterCrop(canvas: Canvas, bitmap: Bitmap, destination: RectF) {
         if (destination.width() <= 0f || destination.height() <= 0f) return

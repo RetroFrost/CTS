@@ -47,12 +47,12 @@ class TimelineEngineTest {
         val first = TimelineEngine.placements(project, 0f).first()
         assertEquals(-1f, first.xInCards, 0.001f)
         assertEquals(1f, first.bodyReveal, 0.001f)
-        assertFalse(first.badgeVisible)
+        assertTrue(first.badgeVisible)
 
         val entering = TimelineEngine.placements(project, 0.7f).first()
         assertTrue(entering.xInCards in -1f..0f)
         assertTrue(entering.badgeVisible)
-        val settled = TimelineEngine.placements(project, BODY_WIPE_SECONDS).first()
+        val settled = TimelineEngine.placements(project, TimelineEngine.MALES_BODY_SECONDS).first()
         assertEquals(0f, settled.xInCards, 0.001f)
     }
 
@@ -76,17 +76,30 @@ class TimelineEngineTest {
     fun incomingBadgeBeginsBeforeTheCardFinishesArriving() {
         val project = CtsProject(model = VisualModel.Males)
         val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
-        val beforeLead = TimelineEngine.placements(
-            project,
-            scrollStart + SCROLL_SECONDS - BADGE_DELAY_SECONDS - 0.01f,
-        ).first { it.cardIndex == 4 }
+        val beforeLead = TimelineEngine.placements(project, scrollStart + 2.05f)
+            .first { it.cardIndex == 4 }
         assertFalse(beforeLead.badgeVisible)
-        val duringLead = TimelineEngine.placements(
-            project,
-            scrollStart + SCROLL_SECONDS - BADGE_DELAY_SECONDS + 0.01f,
-        ).first { it.cardIndex == 4 }
+        val duringLead = TimelineEngine.placements(project, scrollStart + 2.07f)
+            .first { it.cardIndex == 4 }
         assertTrue(duringLead.badgeVisible)
         assertTrue(duringLead.xInCards > 3f)
+    }
+
+    @Test
+    fun malesExactReferenceUsesMeasuredContinuousConveyorAndAffineBadge() {
+        assertEquals(16_741, TimelineEngine.MALES_REFERENCE_FRAMES)
+        val project = CtsProject(model = VisualModel.Males, modelMode = ModelMode.ExactReference)
+        val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
+        val start = TimelineEngine.placements(project, scrollStart + 2.0f).first { it.cardIndex == 1 }
+        val quarter = TimelineEngine.placements(project, scrollStart + 2.2f)
+            .first { it.cardIndex == 1 }
+        val half = TimelineEngine.placements(project, scrollStart + 2.4f)
+            .first { it.cardIndex == 1 }
+        assertEquals(half.xInCards - start.xInCards, 2f * (quarter.xInCards - start.xInCards), 0.015f)
+
+        val opening = TimelineEngine.placements(project, 0.8f).first()
+        assertTrue(opening.badgeAffine.m00 > 1f)
+        assertTrue(opening.badgeAffine.m10 < 0f)
     }
 
     @Test
@@ -130,5 +143,17 @@ class TimelineEngineTest {
         assertTrue(TimelineEngine.relationshipsDisclaimerAlpha(project, 8.2f) > 0.9f)
         assertTrue(TimelineEngine.placements(project, 6.1f).isEmpty())
         assertTrue(TimelineEngine.placements(project, 6.3f).isNotEmpty())
+    }
+
+    @Test
+    fun relationshipsFrameElevenUsesMeasuredOctagonBounds() {
+        val project = CtsProject(model = VisualModel.Relationships)
+        val sourceFrame = 374 + 11
+        val placement = TimelineEngine.placements(project, sourceFrame / 60f).first()
+        val rect = placement.badgeRect!!
+        assertEquals(208f / 480f, rect.x, 0.0002f)
+        assertEquals(170.3f / 1080f, rect.y, 0.0002f)
+        assertEquals(48f / 480f, rect.width, 0.0002f)
+        assertEquals(47.4f / 1080f, rect.height, 0.0002f)
     }
 }
