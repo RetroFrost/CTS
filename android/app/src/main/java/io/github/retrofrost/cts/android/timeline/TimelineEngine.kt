@@ -531,6 +531,7 @@ object TimelineEngine {
         val title = if (opening) ((localFrame - 96) / 10f).coerceIn(0f, 1f) else 1f
         val description = if (opening) ((localFrame - 105) / 15f).coerceIn(0f, 1f) else 1f
         val textStart = if (opening) 88 else 18
+        val textProgress = ((localFrame - textStart) / 32f).coerceIn(0f, 1f)
         return CardPlacement(
             cardIndex = index,
             xInCards = x,
@@ -541,7 +542,10 @@ object TimelineEngine {
             titleReveal = title,
             descriptionReveal = description,
             badgeRect = relationshipsBadgeRect(localFrame),
-            badgeTextAlpha = ((localFrame - textStart) / 32f).coerceIn(0f, 1f),
+            badgeTextAlpha = textProgress,
+            // The Relationships reference drives its gloss from the same
+            // canonical 0.9..2.3 badge clock used by the desktop renderer.
+            badgeAgeSeconds = 0.9f + textProgress * 1.4f,
         )
     }
 

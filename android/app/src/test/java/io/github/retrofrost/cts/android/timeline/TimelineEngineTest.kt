@@ -156,4 +156,17 @@ class TimelineEngineTest {
         assertEquals(48f / 480f, rect.width, 0.0002f)
         assertEquals(47.4f / 1080f, rect.height, 0.0002f)
     }
+
+    @Test
+    fun relationshipsBadgeUsesCanonicalTextAndShineClock() {
+        val project = CtsProject(model = VisualModel.Relationships)
+        val firstCardStart = TimelineEngine.RELATIONSHIPS_INTRO_FRAMES / 60f
+        val beforeText = TimelineEngine.placements(project, firstCardStart + 87f / 60f).first()
+        val duringShine = TimelineEngine.placements(project, firstCardStart + 107f / 60f).first()
+        val settled = TimelineEngine.placements(project, firstCardStart + 120f / 60f).first()
+
+        assertEquals(0.9f, beforeText.badgeAgeSeconds, 0.001f)
+        assertTrue(duringShine.badgeAgeSeconds in 1.72f..2.24f)
+        assertEquals(2.3f, settled.badgeAgeSeconds, 0.001f)
+    }
 }

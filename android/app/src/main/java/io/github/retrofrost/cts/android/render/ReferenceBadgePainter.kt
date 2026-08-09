@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.render
 
 import android.graphics.Canvas
+import android.graphics.BlurMaskFilter
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Matrix
@@ -15,6 +16,11 @@ import kotlin.math.max
 
 /** One badge implementation shared by the Compose preview and bitmap exporter. */
 object ReferenceBadgePainter {
+    private const val TEXT_START = 0.90f
+    private const val TEXT_LINE_DELAY = 0.10f
+    private const val TEXT_LINE_SECONDS = 0.42f
+    private const val SHINE_START = 1.72f
+    private const val SHINE_SECONDS = 0.52f
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -84,19 +90,27 @@ object ReferenceBadgePainter {
         stroke.strokeWidth = 2f
         canvas.drawPath(path, stroke)
 
+        if (placement.cardIndex < 4) {
+            drawEntryStreak(canvas, path, age = placement.badgeAgeSeconds)
+        }
+
         val age = placement.badgeAgeSeconds
-        val alpha = ((age - 0.90f) / 0.42f).coerceIn(0f, 1f)
-        text.alpha = (255 * alpha).toInt()
-        text.textSize = if (card.badgeSecondary.isBlank()) 72f else 64f
-        canvas.drawText(card.badgePrimary, 243.5f, if (card.badgeSecondary.isBlank()) 220f else 185f, text)
-        if (card.badgeSecondary.isNotBlank()) {
-            text.textSize = 34f
-            val lines = splitLabel(card.badgeSecondary)
-            val firstY = if (lines.size == 1) 255f else 245f
-            lines.take(2).forEachIndexed { index, line ->
-                canvas.drawText(line.uppercase(), 243.5f, firstY + index * 38f, text)
+        val lines = if (card.badgeSecondary.isBlank()) {
+            listOf(Triple(card.badgePrimary, 219f, 72f))
+        } else {
+            val secondary = splitLabel(card.badgeSecondary).take(2)
+            buildList {
+                add(Triple(card.badgePrimary, 168f, 72f))
+                val firstY = if (secondary.size == 1) 250f else 230f
+                secondary.forEachIndexed { index, line ->
+                    add(Triple(line.uppercase(), firstY + index * 40f, 40f))
+                }
             }
         }
+        lines.forEachIndexed { index, (value, targetY, size) ->
+            drawAnimatedText(canvas, value, 243.5f, targetY, size, age, index)
+        }
+        drawShine(canvas, path, age)
         text.alpha = 255
         canvas.restore()
     }
@@ -131,20 +145,144 @@ object ReferenceBadgePainter {
         }
         fill.shader = null
         fill.color = Color.rgb(224, 17, 27)
+        fill.setShadowLayer(max(3f, badge.width() * 0.025f), 0f, badge.width() * 0.012f, Color.argb(160, 0, 0, 0))
         canvas.drawPath(path, fill)
+        fill.clearShadowLayer()
         stroke.color = Color.rgb(239, 194, 72)
         stroke.strokeWidth = max(1f, badge.width() * 0.006f)
         canvas.drawPath(path, stroke)
 
         text.alpha = (255 * placement.badgeTextAlpha.coerceIn(0f, 1f)).toInt()
         text.textSize = badge.width() * 0.13f
+        drawTextShadow(canvas, "1 in", badge.centerX(), badge.top + badge.height() * 0.27f, text)
         canvas.drawText("1 in", badge.centerX(), badge.top + badge.height() * 0.27f, text)
         text.textSize = badge.width() * 0.30f
-        canvas.drawText(relationshipNumber(card.badgePrimary), badge.centerX(), badge.top + badge.height() * 0.62f, text)
+        val number = relationshipNumber(card.badgePrimary)
+        drawTextShadow(canvas, number, badge.centerX(), badge.top + badge.height() * 0.62f, text)
+        canvas.drawText(number, badge.centerX(), badge.top + badge.height() * 0.62f, text)
         text.textSize = badge.width() * 0.12f
+        drawTextShadow(canvas, "People", badge.centerX(), badge.top + badge.height() * 0.86f, text)
         canvas.drawText("People", badge.centerX(), badge.top + badge.height() * 0.86f, text)
+        drawShine(canvas, path, placement.badgeAgeSeconds, badge)
         text.alpha = 255
     }
+
+    private fun drawAnimatedText(
+        canvas: Canvas,
+        value: String,
+        x: Float,
+        targetY: Float,
+        size: Float,
+        age: Float,
+        lineIndex: Int,
+    ) {
+        val progress = ((age - (TEXT_START + lineIndex * TEXT_LINE_DELAY)) / TEXT_LINE_SECONDS)
+            .coerceIn(0f, 1f)
+        if (progress <= 0f) return
+        val eased = 1f - (1f - progress) * (1f - progress) * (1f - progress)
+        val y = targetY + textLandingOffset(age) - (1f - eased) * 112f
+        val alpha = (255f * (progress * 1.75f).coerceIn(0f, 1f)).toInt()
+        text.textSize = size
+
+        if (progress < 0.92f) {
+            val trailLength = (1f - progress) * 76f
+            for (trailIndex in 8 downTo 1) {
+                val fraction = trailIndex / 8f
+                text.alpha = (alpha * (1f - fraction) * 0.18f).toInt()
+                canvas.drawText(value, x, y - trailLength * fraction, text)
+            }
+        }
+        text.alpha = (alpha * 0.42f).toInt()
+        val originalColor = text.color
+        text.color = Color.rgb(20, 20, 20)
+        canvas.drawText(value, x + 3f, y + 5f, text)
+        text.color = originalColor
+        text.alpha = alpha
+        canvas.drawText(value, x, y, text)
+    }
+
+    private fun textLandingOffset(age: Float): Float = when {
+        age < 0.90f -> 0f
+        age < 1.15f -> lerp(0f, 40f, smoothStep((age - 0.90f) / 0.25f))
+        age < 1.55f -> 40f
+        age < 1.85f -> lerp(40f, 18f, smoothStep((age - 1.55f) / 0.30f))
+        age < 2.30f -> lerp(18f, 0f, smoothStep((age - 1.85f) / 0.45f))
+        else -> 0f
+    }
+
+    private fun drawEntryStreak(canvas: Canvas, clip: Path, age: Float) {
+        if (age !in 0.12f..0.82f) return
+        val strength = (smoothStep((age - 0.12f) / 0.16f) *
+            (1f - smoothStep((age - 0.42f) / 0.22f))).coerceIn(0f, 1f)
+        if (strength <= 0f) return
+        val center = lerp(118f, 154f, smoothStep(age / 0.82f))
+        val streak = Path().apply {
+            moveTo(center - 38f, -70f)
+            lineTo(center + 16f, -70f)
+            lineTo(center - 18f, 500f)
+            lineTo(center - 78f, 500f)
+            close()
+        }
+        canvas.save()
+        canvas.clipPath(clip)
+        fill.shader = null
+        fill.color = Color.argb((116f * strength).toInt(), 255, 255, 255)
+        fill.maskFilter = BlurMaskFilter(12f, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawPath(streak, fill)
+        fill.maskFilter = null
+        canvas.restore()
+    }
+
+    private fun drawShine(canvas: Canvas, clip: Path, age: Float, bounds: RectF? = null) {
+        val raw = (age - SHINE_START) / SHINE_SECONDS
+        if (raw <= 0f || raw >= 1f) return
+        val progress = smoothStep(raw)
+        val sourceLeft = bounds?.left ?: 0f
+        val sourceTop = bounds?.top ?: 0f
+        val sourceWidth = bounds?.width() ?: 480f
+        val sourceHeight = bounds?.height() ?: 430f
+        val topX = sourceLeft + sourceWidth * lerp(130f / 480f, 420f / 480f, progress)
+        val bottomX = topX - sourceWidth * (205f / 480f)
+
+        fun band(widthFraction: Float, alpha: Int, blur: Float): Path = Path().apply {
+            val half = sourceWidth * widthFraction
+            moveTo(topX - half, sourceTop - sourceHeight * 0.2f)
+            lineTo(topX + half, sourceTop - sourceHeight * 0.2f)
+            lineTo(bottomX + half, sourceTop + sourceHeight * 1.2f)
+            lineTo(bottomX - half, sourceTop + sourceHeight * 1.2f)
+            close()
+            fill.color = Color.argb(alpha, 255, 255, 255)
+            fill.maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL)
+        }
+
+        canvas.save()
+        canvas.clipPath(clip)
+        fill.shader = null
+        val broad = band(40f / 480f, 48, max(2f, sourceWidth * 12f / 480f))
+        canvas.drawPath(broad, fill)
+        val core = band(5f / 480f, 82, max(1f, sourceWidth * 2.8f / 480f))
+        canvas.drawPath(core, fill)
+        fill.maskFilter = null
+        canvas.restore()
+    }
+
+    private fun drawTextShadow(canvas: Canvas, value: String, x: Float, y: Float, paint: Paint) {
+        val originalColor = paint.color
+        val originalAlpha = paint.alpha
+        paint.color = Color.rgb(20, 20, 20)
+        paint.alpha = (originalAlpha * 0.42f).toInt()
+        canvas.drawText(value, x + paint.textSize * 0.04f, y + paint.textSize * 0.07f, paint)
+        paint.color = originalColor
+        paint.alpha = originalAlpha
+    }
+
+    private fun smoothStep(value: Float): Float {
+        val x = value.coerceIn(0f, 1f)
+        return x * x * (3f - 2f * x)
+    }
+
+    private fun lerp(start: Float, end: Float, amount: Float): Float =
+        start + (end - start) * amount.coerceIn(0f, 1f)
 
     private fun splitLabel(value: String): List<String> {
         val words = value.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
