@@ -70,13 +70,21 @@ class ExportWorker(
                 ),
             )
         } catch (canceled: CancellationException) {
+            deleteIncompleteDestination(destination)
             notifications.canceled(displayName)
             Result.failure(errorData("Export canceled."))
         } catch (error: Throwable) {
+            deleteIncompleteDestination(destination)
             notifications.failed(displayName, error.message ?: "The encoder stopped unexpectedly.")
             Result.failure(errorData(error.message ?: "The encoder stopped unexpectedly."))
         } finally {
             projectFile.delete()
+        }
+    }
+
+    private fun deleteIncompleteDestination(destination: Uri) {
+        runCatching {
+            applicationContext.contentResolver.delete(destination, null, null)
         }
     }
 
@@ -122,6 +130,7 @@ private class ExportNotifications(
 ) {
     private val notificationId = 0x435453 + (workId.hashCode() and 0x0fffffff)
     private val manager = NotificationManagerCompat.from(context)
+    private val cancelIntent = WorkManager.getInstance(context).createCancelPendingIntent(workId)
 
     fun createChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -208,6 +217,11 @@ private class ExportNotifications(
         .setContentText(detail)
         .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
         .setContentIntent(openAppIntent())
+        .addAction(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            "Cancel export",
+            cancelIntent,
+        )
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setProgress(100, percent.coerceIn(0, 100), false)
