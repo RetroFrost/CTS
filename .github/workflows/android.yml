@@ -2,7 +2,7 @@ name: CTS Android
 
 on:
   push:
-    branches: [main]
+    branches: [main, "agent/**"]
     paths:
       - "android/**"
       - "shared/**"
