@@ -444,11 +444,13 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
                 errors.append(f"Android adapter is missing sample value {value!r}")
 
     monitor = PROGRAM_MONITOR_PATH.read_text(encoding="utf-8")
+    # Exact-reference badges are rendered by ReferenceBadgePainter from measured
+    # source-space geometry, shared by preview and export. ProgramMonitor still
+    # owns only the card body frames, so validate those here.
     for key, class_name in {
         "image_frame": "ImageFrame",
         "title_frame": "TitleFrame",
         "description_frame": "DescriptionFrame",
-        "badge_frame": "BadgeFrame",
     }.items():
         match = re.search(rf"private val {class_name}\s*=\s*NormalizedRect\(([^)]+)\)", monitor)
         actual = None
@@ -461,6 +463,8 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
             errors.append(f"Android ProgramMonitor {class_name} does not match the shared layout")
     monitor_upper = monitor.upper()
     for name, value in spec["colors"].items():
+        if name.startswith("badge_"):
+            continue
         if value.upper() in {"#000000", "#FFFFFF"}:
             continue
         compose_hex = ("0xFF" + value.lstrip("#")).upper()
