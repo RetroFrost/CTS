@@ -4,12 +4,14 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -22,9 +24,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -43,6 +48,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
@@ -63,16 +69,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,7 +92,11 @@ import io.github.retrofrost.cts.android.export.CodecCatalog
 import io.github.retrofrost.cts.android.export.EncoderChoice
 import io.github.retrofrost.cts.android.export.ExportWorker
 import io.github.retrofrost.cts.android.importer.CardStripImporter
+import io.github.retrofrost.cts.android.importer.CardStripGeometry
+import io.github.retrofrost.cts.android.importer.CardStripLayout
+import io.github.retrofrost.cts.android.importer.MegaPackImporter
 import io.github.retrofrost.cts.android.importer.StripAxis
+import io.github.retrofrost.cts.android.layout.CardContentLayout
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.ImageSubcard
@@ -102,6 +116,22 @@ private enum class WorkspaceSection(val label: String) {
     Export("Export"),
 }
 
+private enum class StripAxisChoice(val label: String, val axis: StripAxis?) {
+    Auto("Auto", null),
+    Horizontal("Horizontal", StripAxis.Horizontal),
+    Vertical("Vertical", StripAxis.Vertical),
+}
+
+private data class CardStripReviewState(
+    val source: Uri,
+    val imageWidth: Int,
+    val imageHeight: Int,
+    val model: VisualModel,
+    val separatorPx: Int = CardStripGeometry.DEFAULT_SEPARATOR_PX,
+    val axisChoice: StripAxisChoice = StripAxisChoice.Auto,
+    val reverseOrder: Boolean = false,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CtsAndroidAppV2() {
@@ -115,6 +145,9 @@ fun CtsAndroidAppV2() {
     var section by remember { mutableStateOf(WorkspaceSection.Data) }
     var showInsertDialog by remember { mutableStateOf(false) }
     var isImportingCardStrip by remember { mutableStateOf(false) }
+    var cardStripReview by remember { mutableStateOf<CardStripReviewState?>(null) }
+    var cardStripReviewError by remember { mutableStateOf<String?>(null) }
+    var isImportingMegaPack by remember { mutableStateOf(false) }
     var pendingExportPermission by remember { mutableStateOf(false) }
     val duration = TimelineEngine.duration(project)
 
@@ -163,32 +196,48 @@ fun CtsAndroidAppV2() {
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    CardStripImporter.importStrip(
+                    CardStripImporter.inspect(
                         context = context,
                         source = uri,
                         cardCount = project.cards.size,
                         model = project.model,
                     )
                 }
-            }.onSuccess { result ->
-                applyProject(
-                    project.copy(
-                        cards = project.cards.mapIndexed { index, card ->
-                            card.copy(
-                                imageSubcard = card.imageSubcard.copy(
-                                    source = result.sources[index],
-                                    transform = NormalizedRect.Full,
-                                ),
-                            )
-                        },
-                    ),
+            }.onSuccess { inspection ->
+                cardStripReviewError = null
+                cardStripReview = CardStripReviewState(
+                    source = uri,
+                    imageWidth = inspection.imageWidth,
+                    imageHeight = inspection.imageHeight,
+                    model = project.model,
                 )
-                val order = if (result.axis == StripAxis.Horizontal) "left to right" else "top to bottom"
-                message("Imported ${result.sources.size} card images $order")
             }.onFailure { error ->
-                message(error.message ?: "Could not divide that image into cards")
+                message(error.message ?: "Could not inspect that card strip")
             }
             isImportingCardStrip = false
+        }
+    }
+
+    val megaPackPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        isImportingMegaPack = true
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { MegaPackImporter.importPack(context, uri) }
+            }.onSuccess { result ->
+                applyProject(result.project)
+                selectedCardId = result.project.cards.firstOrNull()?.id
+                positionSeconds = 0f
+                isPlaying = false
+                section = WorkspaceSection.Data
+                message(
+                    "MegaPack '${result.packName}' loaded: ${result.project.cards.size} cards and " +
+                        "${result.extractedFiles} media files",
+                )
+            }.onFailure { error ->
+                message(error.message ?: "Could not import that MegaPack")
+            }
+            isImportingMegaPack = false
         }
     }
 
@@ -281,6 +330,64 @@ fun CtsAndroidAppV2() {
         }
     }
 
+    val activeCardStripReview = cardStripReview
+    if (activeCardStripReview != null) {
+        CardStripReviewScreen(
+            state = activeCardStripReview,
+            cards = project.cards,
+            isImporting = isImportingCardStrip,
+            error = cardStripReviewError,
+            onStateChanged = {
+                cardStripReview = it
+                cardStripReviewError = null
+            },
+            onCancel = {
+                cardStripReview = null
+                cardStripReviewError = null
+            },
+            onConfirm = { layout ->
+                isImportingCardStrip = true
+                cardStripReviewError = null
+                scope.launch {
+                    runCatching {
+                        val result = withContext(Dispatchers.IO) {
+                            CardStripImporter.importStrip(
+                                context = context,
+                                source = activeCardStripReview.source,
+                                layout = layout,
+                                reverseOrder = activeCardStripReview.reverseOrder,
+                            )
+                        }
+                        check(result.sources.size == project.cards.size) {
+                            "The detected card count changed before import."
+                        }
+                        result
+                    }.onSuccess { result ->
+                        applyProject(
+                            project.copy(
+                                cards = project.cards.mapIndexed { index, card ->
+                                    card.copy(
+                                        imageSubcard = card.imageSubcard.copy(
+                                            source = result.sources[index],
+                                            transform = NormalizedRect.Full,
+                                        ),
+                                    )
+                                },
+                            ),
+                        )
+                        cardStripReview = null
+                        val order = if (result.axis == StripAxis.Horizontal) "left to right" else "top to bottom"
+                        message("Imported ${result.sources.size} card images $order")
+                    }.onFailure { error ->
+                        cardStripReviewError = error.message ?: "Could not divide that image into cards"
+                    }
+                    isImportingCardStrip = false
+                }
+            },
+        )
+        return
+    }
+
     LaunchedEffect(isPlaying, duration) {
         if (!isPlaying || duration <= 0f) return@LaunchedEffect
         var previous = withFrameNanos { it }
@@ -369,6 +476,12 @@ fun CtsAndroidAppV2() {
                         onChooseImage = { imagePicker.launch(arrayOf("image/*")) },
                         onImportCardStrip = { cardStripPicker.launch(arrayOf("image/*")) },
                         isImportingCardStrip = isImportingCardStrip,
+                        onImportMegaPack = {
+                            megaPackPicker.launch(
+                                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
+                            )
+                        },
+                        isImportingMegaPack = isImportingMegaPack,
                         onInsertData = { showInsertDialog = true },
                     )
                     WorkspaceSection.Audio -> AudioWorkspace(
@@ -398,6 +511,214 @@ fun CtsAndroidAppV2() {
                 showInsertDialog = false
                 message("Inserted ${cards.size} cards")
             },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CardStripReviewScreen(
+    state: CardStripReviewState,
+    cards: List<CtsCard>,
+    isImporting: Boolean,
+    error: String?,
+    onStateChanged: (CardStripReviewState) -> Unit,
+    onCancel: () -> Unit,
+    onConfirm: (CardStripLayout) -> Unit,
+) {
+    val layoutResult = remember(
+        state.imageWidth,
+        state.imageHeight,
+        state.model,
+        state.separatorPx,
+        state.axisChoice,
+        cards.size,
+    ) {
+        runCatching {
+            CardStripGeometry.split(
+                imageWidth = state.imageWidth,
+                imageHeight = state.imageHeight,
+                cardCount = cards.size,
+                targetAspect = CardContentLayout.artworkAspect(state.model),
+                separatorPx = state.separatorPx,
+                axisOverride = state.axisChoice.axis,
+            )
+        }
+    }
+    val layout = layoutResult.getOrNull()
+    val slot = when (state.model) {
+        VisualModel.Males -> "471×872"
+        VisualModel.Relationships -> "475×788"
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Review detected cards", fontWeight = FontWeight.Black) },
+                navigationIcon = {
+                    IconButton(onClick = onCancel, enabled = !isImporting) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Cancel card-strip import")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Text(
+                    "${state.imageWidth}×${state.imageHeight} source · ${cards.size} cards",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    "${state.model.label} artwork uses $slot px at the 1920×1080 reference size.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            item {
+                Text("Strip direction", fontWeight = FontWeight.Bold)
+                ChoiceRow(
+                    options = StripAxisChoice.entries.map { it to it.label },
+                    selected = state.axisChoice,
+                    onSelected = { onStateChanged(state.copy(axisChoice = it)) },
+                    enabled = !isImporting,
+                )
+                layout?.let {
+                    Text(
+                        "Detected as ${it.axis.name.lowercase()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            item {
+                Text("Separator width", fontWeight = FontWeight.Bold)
+                ChoiceRow(
+                    options = listOf(0, 1, 2, 4, 6).map { it to "$it px" },
+                    selected = state.separatorPx,
+                    onSelected = { onStateChanged(state.copy(separatorPx = it)) },
+                    enabled = !isImporting,
+                )
+            }
+            item {
+                Text("Assignment order", fontWeight = FontWeight.Bold)
+                ChoiceRow(
+                    options = listOf(false to "Detected order", true to "Reverse order"),
+                    selected = state.reverseOrder,
+                    onSelected = { onStateChanged(state.copy(reverseOrder = it)) },
+                    enabled = !isImporting,
+                )
+            }
+            item {
+                Text("Detected card preview", fontWeight = FontWeight.Black)
+                Text(
+                    "Each tile shows which destination card will receive it. Artwork is center-cropped to the model slot.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (layout != null) {
+                item {
+                    CardStripPreviewRow(
+                        source = state.source,
+                        layout = layout,
+                        cards = cards,
+                        model = state.model,
+                        reverseOrder = state.reverseOrder,
+                    )
+                }
+            }
+            layoutResult.exceptionOrNull()?.let { problem ->
+                item { Text(problem.message ?: "These split settings are invalid.", color = MaterialTheme.colorScheme.error) }
+            }
+            error?.let { problem ->
+                item { Text(problem, color = MaterialTheme.colorScheme.error) }
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedButton(onClick = onCancel, enabled = !isImporting, modifier = Modifier.weight(1f)) {
+                        Text("Cancel")
+                    }
+                    Button(
+                        onClick = { layout?.let(onConfirm) },
+                        enabled = layout != null && !isImporting,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (isImporting) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("Import ${cards.size} cards")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardStripPreviewRow(
+    source: Uri,
+    layout: CardStripLayout,
+    cards: List<CtsCard>,
+    model: VisualModel,
+    reverseOrder: Boolean,
+) {
+    val context = LocalContext.current
+    val previewResult by produceState<Result<List<Bitmap>>?>(null, source, layout) {
+        value = runCatching {
+            withContext(Dispatchers.IO) {
+                CardStripImporter.decodePreviews(context, source, layout)
+            }
+        }
+    }
+    val previews = previewResult?.getOrNull()
+    DisposableEffect(previews) {
+        onDispose { previews?.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() } }
+    }
+
+    when {
+        previewResult == null -> CircularProgressIndicator()
+        previews != null -> {
+            val ordered = if (reverseOrder) previews.reversed() else previews
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                itemsIndexed(ordered) { destinationIndex, bitmap ->
+                    val sourceIndex = if (reverseOrder) previews.lastIndex - destinationIndex else destinationIndex
+                    Card(modifier = Modifier.width(172.dp)) {
+                        Column {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "Detected card ${sourceIndex + 1}",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(CardContentLayout.artworkAspect(model)),
+                            )
+                            Text(
+                                "Tile ${sourceIndex + 1} → ${destinationIndex + 1}. " +
+                                    cards.getOrNull(destinationIndex)?.title.orEmpty().ifBlank { "Untitled" },
+                                modifier = Modifier.padding(8.dp),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        else -> Text(
+            previewResult?.exceptionOrNull()?.message ?: "Could not preview the detected cards.",
+            color = MaterialTheme.colorScheme.error,
         )
     }
 }
@@ -474,6 +795,8 @@ private fun DataWorkspace(
     onChooseImage: () -> Unit,
     onImportCardStrip: () -> Unit,
     isImportingCardStrip: Boolean,
+    onImportMegaPack: () -> Unit,
+    isImportingMegaPack: Boolean,
     onInsertData: () -> Unit,
 ) {
     val selected = project.cards.firstOrNull { it.id == selectedCardId }
@@ -559,8 +882,25 @@ private fun DataWorkspace(
                 Text(if (isImportingCardStrip) "Dividing card strip…" else "Import one image for all cards")
             }
             Text(
-                "Uses ${project.cards.size} equal ${project.model.label} panels with 2 px separators; " +
-                    "horizontal and vertical strips are detected automatically.",
+                "Detects ${project.cards.size} ${project.model.label} panels, then opens a review screen " +
+                    "for direction, separators, order, and destination previews.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        item {
+            OutlinedButton(
+                onClick = onImportMegaPack,
+                enabled = !isImportingMegaPack && !isImportingCardStrip,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text(if (isImportingMegaPack) "Loading MegaPack…" else "Import MegaPack (.zip)")
+            }
+            Text(
+                "Loads a complete project from megapack.json plus its card images and optional soundtrack.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
@@ -956,12 +1296,14 @@ private fun <T> ChoiceRow(
     options: List<Pair<T, String>>,
     selected: T,
     onSelected: (T) -> Unit,
+    enabled: Boolean = true,
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         items(options) { (value, label) ->
             FilterChip(
                 selected = value == selected,
                 onClick = { onSelected(value) },
+                enabled = enabled,
                 label = { Text(label) },
             )
         }

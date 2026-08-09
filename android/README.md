@@ -18,7 +18,8 @@ Implemented now:
 - touch drag and four-corner resize for image subcards
 - image replacement without resetting the subcard transform
 - local image picker and HTTP(S) image loading
-- one-image card-strip import with model-aware proportions, automatic orientation, and 2 px separators
+- one-image card-strip import with a detected-card review screen, direction/separator/order overrides, and model-aware previews
+- safe MegaPack `.zip` import for a complete model, card dataset, artwork set, and optional soundtrack
 - card add, duplicate, delete, and direct text editing
 - timeline play/pause and scrubbing
 - open/save `.cts.json`
@@ -32,6 +33,35 @@ Implemented now:
 - GitHub Actions debug APK build
 
 The Android preview and background exporter use the same timing engine. Each image is a child subcard owned by exactly one parent card, so its crop, position, and size remain attached to the card during animation and export.
+
+## MegaPack format
+
+A MegaPack is a ZIP with `megapack.json` at its root and referenced media stored inside the archive. Importing it creates a complete project ready for preview and export.
+
+```json
+{
+  "version": 1,
+  "name": "Example comparison",
+  "model": "males",
+  "model_mode": "exact_reference",
+  "cards": [
+    {
+      "badge_primary": "10",
+      "badge_secondary": "SECONDS OLD",
+      "title": "Breathing",
+      "description": "A baby's first breath.",
+      "image": "images/001.png"
+    }
+  ],
+  "soundtrack": {
+    "file": "audio/theme.mp3",
+    "volume": 1.0,
+    "loop": true
+  }
+}
+```
+
+`model` accepts `males` or `relationships`. Soundtrack is optional. Referenced ZIP paths must be relative and the importer enforces entry, file, and expanded-size limits.
 
 ## Build on Ubuntu
 

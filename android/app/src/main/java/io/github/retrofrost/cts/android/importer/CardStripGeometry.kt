@@ -30,6 +30,7 @@ object CardStripGeometry {
         cardCount: Int,
         targetAspect: Float,
         separatorPx: Int = DEFAULT_SEPARATOR_PX,
+        axisOverride: StripAxis? = null,
     ): CardStripLayout {
         require(imageWidth > 0 && imageHeight > 0) { "The selected image has no readable dimensions." }
         require(cardCount > 0) { "Add at least one card before importing a card strip." }
@@ -39,7 +40,7 @@ object CardStripGeometry {
         val verticalPanelHeight = available(imageHeight, cardCount, separatorPx) / cardCount.toFloat()
         val horizontalAspect = horizontalPanelWidth / imageHeight
         val verticalAspect = imageWidth / verticalPanelHeight
-        val axis = if (
+        val axis = axisOverride ?: if (
             aspectDistance(horizontalAspect, targetAspect) <= aspectDistance(verticalAspect, targetAspect)
         ) StripAxis.Horizontal else StripAxis.Vertical
 

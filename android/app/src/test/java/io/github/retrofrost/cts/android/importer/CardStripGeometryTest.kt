@@ -47,4 +47,19 @@ class CardStripGeometryTest {
         assertEquals(1001, layout.regions.sumOf { it.width })
         layout.regions.zipWithNext().forEach { (left, right) -> assertEquals(left.right, right.left) }
     }
+
+    @Test
+    fun detectedOrientationCanBeOverriddenBeforeImport() {
+        val layout = CardStripGeometry.split(
+            imageWidth = 4 * 471 + 3 * 2,
+            imageHeight = 872,
+            cardCount = 4,
+            targetAspect = 471f / 872f,
+            axisOverride = StripAxis.Vertical,
+        )
+
+        assertEquals(StripAxis.Vertical, layout.axis)
+        assertEquals(4, layout.regions.size)
+        assertTrue(layout.regions.all { it.width == layout.regions.first().width })
+    }
 }
