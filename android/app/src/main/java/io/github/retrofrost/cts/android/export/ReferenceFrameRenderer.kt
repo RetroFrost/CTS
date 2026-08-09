@@ -145,7 +145,14 @@ class ReferenceFrameRenderer(
             )
             canvas.save()
             canvas.clipRect(image)
-            drawCenterCrop(canvas, bitmap, destination)
+            drawCenterCrop(
+                canvas = canvas,
+                bitmap = bitmap,
+                destination = destination,
+                focusX = card.imageSubcard.cropFocusX,
+                focusY = card.imageSubcard.cropFocusY,
+                zoom = card.imageSubcard.cropZoom,
+            )
             canvas.restore()
         }
 
@@ -246,15 +253,26 @@ class ReferenceFrameRenderer(
         height * (rect.y + rect.height),
     )
 
-    private fun drawCenterCrop(canvas: Canvas, bitmap: Bitmap, destination: RectF) {
+    private fun drawCenterCrop(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        destination: RectF,
+        focusX: Float,
+        focusY: Float,
+        zoom: Float,
+    ) {
         if (destination.width() <= 0f || destination.height() <= 0f) return
-        val scale = max(destination.width() / bitmap.width, destination.height() / bitmap.height)
+        val scale = max(destination.width() / bitmap.width, destination.height() / bitmap.height) *
+            zoom.coerceIn(1f, 3f)
+        val scaledWidth = bitmap.width * scale
+        val scaledHeight = bitmap.height * scale
+        val translationX = (destination.centerX() - bitmap.width * focusX.coerceIn(0f, 1f) * scale)
+            .coerceIn(destination.right - scaledWidth, destination.left)
+        val translationY = (destination.centerY() - bitmap.height * focusY.coerceIn(0f, 1f) * scale)
+            .coerceIn(destination.bottom - scaledHeight, destination.top)
         val matrix = Matrix().apply {
             postScale(scale, scale)
-            postTranslate(
-                destination.centerX() - bitmap.width * scale / 2f,
-                destination.centerY() - bitmap.height * scale / 2f,
-            )
+            postTranslate(translationX, translationY)
         }
         canvas.drawBitmap(bitmap, matrix, paint)
     }

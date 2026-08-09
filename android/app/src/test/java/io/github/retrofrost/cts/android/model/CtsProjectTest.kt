@@ -27,4 +27,21 @@ class CtsProjectTest {
         assertEquals(720, project.export.height)
         assertEquals(30, project.export.fps)
     }
+
+    @Test
+    fun imageRecognitionCropValuesAreNormalized() {
+        val card = CtsCard(
+            imageSubcard = ImageSubcard(
+                parentCardId = "wrong-parent",
+                cropFocusX = -2f,
+                cropFocusY = Float.NaN,
+                cropZoom = 9f,
+            ),
+        ).withOwnedImageSubcard()
+
+        assertEquals(0f, card.imageSubcard.cropFocusX)
+        assertEquals(0.5f, card.imageSubcard.cropFocusY)
+        assertEquals(3f, card.imageSubcard.cropZoom)
+        assertEquals(card.id, card.imageSubcard.parentCardId)
+    }
 }

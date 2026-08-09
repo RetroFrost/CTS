@@ -62,4 +62,28 @@ class CardStripGeometryTest {
         assertEquals(4, layout.regions.size)
         assertTrue(layout.regions.all { it.width == layout.regions.first().width })
     }
+
+    @Test
+    fun unevenDetectedDividersProduceIndependentCardRegions() {
+        val layout = CardStripGeometry.fromDividers(
+            imageWidth = 1_000,
+            imageHeight = 600,
+            axis = StripAxis.Horizontal,
+            dividerFractions = listOf(0.28f, 0.67f),
+            separatorPx = 4,
+        )
+
+        assertEquals(listOf(278, 386, 328), layout.regions.map { it.width })
+        assertEquals(listOf(0, 282, 672), layout.regions.map { it.left })
+        assertEquals(3, layout.regions.size)
+    }
+
+    @Test
+    fun safeSeparatorLimitProtectsTheSmallestDetectedPanel() {
+        assertEquals(
+            49,
+            CardStripGeometry.maximumSafeSeparator(1_000, listOf(0.05f, 0.67f)),
+        )
+        assertEquals(0, CardStripGeometry.maximumSafeSeparator(1_000, emptyList()))
+    }
 }

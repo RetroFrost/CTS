@@ -18,8 +18,8 @@ Implemented now:
 - touch drag and four-corner resize for image subcards
 - image replacement without resetting the subcard transform
 - local image picker and HTTP(S) image loading
-- one-image card-strip import with a detected-card review screen, direction/separator/order overrides, and model-aware previews
-- safe MegaPack `.zip` import for a complete model, card dataset, artwork set, and optional soundtrack
+- one-image card-strip import with pixel-based orientation and edge recognition, draggable uneven boundaries, blank/duplicate warnings, and per-card focus/zoom previews
+- safe MegaPack `.zip` import for a complete model, card dataset, artwork set, and optional soundtrack, with image validation and quality warnings
 - card add, duplicate, delete, and direct text editing
 - timeline play/pause and scrubbing
 - open/save `.cts.json`
@@ -50,7 +50,10 @@ A MegaPack is a ZIP with `megapack.json` at its root and referenced media stored
       "badge_secondary": "SECONDS OLD",
       "title": "Breathing",
       "description": "A baby's first breath.",
-      "image": "images/001.png"
+      "image": "images/001.png",
+      "crop_focus_x": 0.5,
+      "crop_focus_y": 0.45,
+      "crop_zoom": 1.1
     }
   ],
   "soundtrack": {
@@ -61,7 +64,7 @@ A MegaPack is a ZIP with `megapack.json` at its root and referenced media stored
 }
 ```
 
-`model` accepts `males` or `relationships`. Soundtrack is optional. Referenced ZIP paths must be relative and the importer enforces entry, file, and expanded-size limits.
+`model` accepts `males` or `relationships`. Crop fields are optional: focus values range from 0 to 1 and zoom ranges from 1 to 3. Soundtrack is optional. Referenced ZIP paths must be relative. Limits are 1 GB for the ZIP, 512 MB extracted, 64 MB per file, 1,000 entries, and 500 cards.
 
 ## Build on Ubuntu
 

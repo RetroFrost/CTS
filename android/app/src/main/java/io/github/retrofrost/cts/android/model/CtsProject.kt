@@ -76,6 +76,9 @@ data class ImageSubcard(
     val parentCardId: String,
     val source: String? = null,
     val transform: NormalizedRect = NormalizedRect.Full,
+    val cropFocusX: Float = 0.5f,
+    val cropFocusY: Float = 0.5f,
+    val cropZoom: Float = 1f,
 )
 
 data class CtsCard(
@@ -87,7 +90,15 @@ data class CtsCard(
     val imageSubcard: ImageSubcard = ImageSubcard(parentCardId = id),
 ) {
     fun withOwnedImageSubcard(subcard: ImageSubcard = imageSubcard): CtsCard =
-        copy(imageSubcard = subcard.copy(parentCardId = id, transform = subcard.transform.clamped()))
+        copy(
+            imageSubcard = subcard.copy(
+                parentCardId = id,
+                transform = subcard.transform.clamped(),
+                cropFocusX = subcard.cropFocusX.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0.5f,
+                cropFocusY = subcard.cropFocusY.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0.5f,
+                cropZoom = subcard.cropZoom.takeIf { it.isFinite() }?.coerceIn(1f, 3f) ?: 1f,
+            ),
+        )
 }
 
 /** One soundtrack is enough for the fast CTS workflow and remains desktop compatible. */

@@ -48,6 +48,9 @@ object ProjectJson {
             .put("project_name", normalized.name)
             .put("card_ids", JSONArray(normalized.cards.map { it.id }))
             .put("image_subcard_ids", JSONArray(normalized.cards.map { it.imageSubcard.id }))
+            .put("image_crop_focus_x", JSONArray(normalized.cards.map { it.imageSubcard.cropFocusX }))
+            .put("image_crop_focus_y", JSONArray(normalized.cards.map { it.imageSubcard.cropFocusY }))
+            .put("image_crop_zoom", JSONArray(normalized.cards.map { it.imageSubcard.cropZoom }))
             .put("soundtrack_display_name", normalized.soundtrack.displayName)
             .put("video_mime", normalized.export.videoMime)
             .put("video_encoder_name", normalized.export.videoEncoderName ?: JSONObject.NULL)
@@ -158,6 +161,9 @@ object ProjectJson {
         val android = root.optJSONObject("android")
         val ids = android?.optJSONArray("card_ids")
         val subcardIds = android?.optJSONArray("image_subcard_ids")
+        val cropFocusX = android?.optJSONArray("image_crop_focus_x")
+        val cropFocusY = android?.optJSONArray("image_crop_focus_y")
+        val cropZoom = android?.optJSONArray("image_crop_zoom")
         val transforms = root.optJSONObject("transform_overrides") ?: JSONObject()
 
         fun cell(row: JSONArray, column: Int): String =
@@ -188,6 +194,9 @@ object ProjectJson {
                             parentCardId = cardId,
                             source = cell(row, imageColumn).takeIf { it.isNotBlank() },
                             transform = transform.clamped(),
+                            cropFocusX = cropFocusX?.optDouble(index, 0.5)?.toFloat() ?: 0.5f,
+                            cropFocusY = cropFocusY?.optDouble(index, 0.5)?.toFloat() ?: 0.5f,
+                            cropZoom = cropZoom?.optDouble(index, 1.0)?.toFloat() ?: 1f,
                         ),
                     ),
                 )
@@ -287,6 +296,9 @@ object ProjectJson {
                             parentCardId = cardId,
                             source = imageSource,
                             transform = transform,
+                            cropFocusX = imageObject?.optDouble("crop_focus_x", 0.5)?.toFloat() ?: 0.5f,
+                            cropFocusY = imageObject?.optDouble("crop_focus_y", 0.5)?.toFloat() ?: 0.5f,
+                            cropZoom = imageObject?.optDouble("crop_zoom", 1.0)?.toFloat() ?: 1f,
                         ),
                     ),
                 )

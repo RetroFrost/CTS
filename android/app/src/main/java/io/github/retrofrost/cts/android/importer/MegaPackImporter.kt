@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.importer
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
@@ -19,6 +20,7 @@ data class MegaPackImportResult(
     val project: CtsProject,
     val packName: String,
     val extractedFiles: Int,
+    val warnings: List<String> = emptyList(),
 )
 
 /** Imports a complete, portable CTS project without trusting paths from the ZIP. */
@@ -88,9 +90,14 @@ object MegaPackImporter {
                             parentCardId = cardId,
                             source = imageReference.takeIf { it.isNotBlank() }
                                 ?.let { extract(it, index + 1, "card") },
+                            cropFocusX = item.optDouble("crop_focus_x", 0.5).toFloat(),
+                            cropFocusY = item.optDouble("crop_focus_y", 0.5).toFloat(),
+                            cropZoom = item.optDouble("crop_zoom", 1.0).toFloat(),
                         ),
                     )
                 }
+
+                val warnings = validateCardImages(cards)
 
                 val soundtrackObject = manifest.optJSONObject("soundtrack")
                 val soundtrackReference = if (soundtrackObject != null) {
@@ -122,7 +129,7 @@ object MegaPackImporter {
                     showOutro = manifest.optBoolean("show_outro", true),
                     soundtrack = soundtrack,
                 ).normalized()
-                return MegaPackImportResult(project, packName, extractedImages.size)
+                return MegaPackImportResult(project, packName, extractedImages.size, warnings)
             }
         } catch (error: Throwable) {
             outputDirectory.deleteRecursively()
@@ -208,4 +215,47 @@ object MegaPackImporter {
         .map { key -> optString(key).trim() }
         .firstOrNull { it.isNotBlank() }
         .orEmpty()
+
+    private fun validateCardImages(cards: List<CtsCard>): List<String> {
+        val imageCards = cards.mapIndexedNotNull { cardIndex, card ->
+            card.imageSubcard.source?.let { cardIndex to File(it) }
+        }
+        if (imageCards.isEmpty()) return listOf("This MegaPack has no card images.")
+
+        val rasters = imageCards.asSequence().map { (cardIndex, file) ->
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, bounds)
+            require(bounds.outWidth > 0 && bounds.outHeight > 0) {
+                "MegaPack image for card ${cardIndex + 1} is not a supported image."
+            }
+            var sampleSize = 1
+            while (kotlin.math.max(bounds.outWidth, bounds.outHeight) / sampleSize > 384) sampleSize *= 2
+            val bitmap = BitmapFactory.decodeFile(
+                file.absolutePath,
+                BitmapFactory.Options().apply { inSampleSize = sampleSize },
+            ) ?: error("MegaPack image for card ${cardIndex + 1} could not be decoded.")
+            try {
+                val pixels = IntArray(bitmap.width * bitmap.height)
+                bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                CardRaster(bitmap.width, bitmap.height, pixels)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+        val analyses = CardImageRecognizer.analyze(rasters)
+        return buildList {
+            analyses.forEachIndexed { imageIndex, analysis ->
+                val cardNumber = imageCards[imageIndex].first + 1
+                when {
+                    analysis.blank -> add("Card $cardNumber may contain a blank image.")
+                    analysis.duplicateOf != null -> {
+                        val duplicateCard = imageCards[analysis.duplicateOf].first + 1
+                        add("Card $cardNumber appears to duplicate card $duplicateCard.")
+                    }
+                }
+            }
+            val missing = cards.count { it.imageSubcard.source.isNullOrBlank() }
+            if (missing > 0) add("$missing card${if (missing == 1) " has" else "s have"} no image.")
+        }
+    }
 }

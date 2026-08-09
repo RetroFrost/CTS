@@ -3,7 +3,6 @@ package io.github.retrofrost.cts.android.ui
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,13 +41,14 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -66,6 +66,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.net.URL
+import kotlin.math.max
+import kotlin.math.min
 
 private enum class ResizeCorner { NorthWest, NorthEast, SouthWest, SouthEast }
 
@@ -253,7 +255,6 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
             ImageSubcardFrame(
                 card.imageSubcard,
                 selected,
-                ContentScale.Crop,
                 onSelect,
                 onImageTransformChanged,
             )
@@ -347,7 +348,6 @@ private fun BoxScope.CardText(
 private fun ImageSubcardFrame(
     subcard: ImageSubcard,
     selected: Boolean,
-    contentScale: ContentScale,
     onSelect: () -> Unit,
     onTransformChanged: (NormalizedRect) -> Unit,
 ) {
@@ -387,7 +387,7 @@ private fun ImageSubcardFrame(
                 }
                 .clickable(onClick = onSelect),
         ) {
-            ImageContent(subcard.source, contentScale)
+            ImageContent(subcard)
 
             if (selected) {
                 ResizeHandle(
@@ -470,15 +470,41 @@ private fun BoxScope.ResizeHandle(
 }
 
 @Composable
-private fun BoxScope.ImageContent(source: String?, contentScale: ContentScale) {
-    val bitmap by rememberSourceBitmap(source)
+private fun BoxScope.ImageContent(subcard: ImageSubcard) {
+    val bitmap by rememberSourceBitmap(subcard.source)
     if (bitmap != null) {
-        Image(
-            bitmap = bitmap!!,
-            contentDescription = "Card image",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = contentScale,
-        )
+        val focusX = subcard.cropFocusX.coerceIn(0f, 1f)
+        val focusY = subcard.cropFocusY.coerceIn(0f, 1f)
+        val zoom = subcard.cropZoom.coerceIn(1f, 3f)
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val image = bitmap!!
+            val destinationAspect = size.width / size.height.coerceAtLeast(1f)
+            val sourceAspect = image.width / image.height.toFloat().coerceAtLeast(1f)
+            val baseCropWidth: Float
+            val baseCropHeight: Float
+            if (sourceAspect >= destinationAspect) {
+                baseCropHeight = image.height.toFloat()
+                baseCropWidth = baseCropHeight * destinationAspect
+            } else {
+                baseCropWidth = image.width.toFloat()
+                baseCropHeight = baseCropWidth / destinationAspect.coerceAtLeast(0.0001f)
+            }
+            val cropWidth = (baseCropWidth / zoom).coerceAtLeast(1f)
+            val cropHeight = (baseCropHeight / zoom).coerceAtLeast(1f)
+            val sourceLeft = (image.width * focusX - cropWidth / 2f)
+                .coerceIn(0f, max(0f, image.width - cropWidth))
+            val sourceTop = (image.height * focusY - cropHeight / 2f)
+                .coerceIn(0f, max(0f, image.height - cropHeight))
+            drawImage(
+                image = image,
+                srcOffset = IntOffset(sourceLeft.toInt(), sourceTop.toInt()),
+                srcSize = IntSize(
+                    min(image.width, cropWidth.toInt().coerceAtLeast(1)),
+                    min(image.height, cropHeight.toInt().coerceAtLeast(1)),
+                ),
+                dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
+            )
+        }
     } else {
         Box(
             modifier = Modifier

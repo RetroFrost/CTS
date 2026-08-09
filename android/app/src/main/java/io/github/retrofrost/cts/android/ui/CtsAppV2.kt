@@ -11,7 +11,8 @@ import android.os.Build
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -76,17 +77,22 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.core.content.ContextCompat
 import io.github.retrofrost.cts.android.export.CodecCatalog
 import io.github.retrofrost.cts.android.export.EncoderChoice
@@ -94,6 +100,9 @@ import io.github.retrofrost.cts.android.export.ExportWorker
 import io.github.retrofrost.cts.android.importer.CardStripImporter
 import io.github.retrofrost.cts.android.importer.CardStripGeometry
 import io.github.retrofrost.cts.android.importer.CardStripLayout
+import io.github.retrofrost.cts.android.importer.CardStripRecognition
+import io.github.retrofrost.cts.android.importer.CardImageAnalysis
+import io.github.retrofrost.cts.android.importer.DetectedCardPreview
 import io.github.retrofrost.cts.android.importer.MegaPackImporter
 import io.github.retrofrost.cts.android.importer.StripAxis
 import io.github.retrofrost.cts.android.layout.CardContentLayout
@@ -127,9 +136,19 @@ private data class CardStripReviewState(
     val imageWidth: Int,
     val imageHeight: Int,
     val model: VisualModel,
-    val separatorPx: Int = CardStripGeometry.DEFAULT_SEPARATOR_PX,
+    val recognition: CardStripRecognition,
+    val separatorOverridePx: Int? = null,
     val axisChoice: StripAxisChoice = StripAxisChoice.Auto,
     val reverseOrder: Boolean = false,
+    val manualDividerFractions: List<Float>? = null,
+    val imageAnalyses: List<CardImageAnalysis> = emptyList(),
+    val cropAdjustments: Map<Int, ImageCropAdjustment> = emptyMap(),
+)
+
+private data class ImageCropAdjustment(
+    val focusX: Float = 0.5f,
+    val focusY: Float = 0.5f,
+    val zoom: Float = 1f,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -148,6 +167,7 @@ fun CtsAndroidAppV2() {
     var cardStripReview by remember { mutableStateOf<CardStripReviewState?>(null) }
     var cardStripReviewError by remember { mutableStateOf<String?>(null) }
     var isImportingMegaPack by remember { mutableStateOf(false) }
+    var megaPackWarnings by remember { mutableStateOf<List<String>>(emptyList()) }
     var pendingExportPermission by remember { mutableStateOf(false) }
     val duration = TimelineEngine.duration(project)
 
@@ -210,6 +230,7 @@ fun CtsAndroidAppV2() {
                     imageWidth = inspection.imageWidth,
                     imageHeight = inspection.imageHeight,
                     model = project.model,
+                    recognition = inspection.recognition,
                 )
             }.onFailure { error ->
                 message(error.message ?: "Could not inspect that card strip")
@@ -226,6 +247,7 @@ fun CtsAndroidAppV2() {
                 withContext(Dispatchers.IO) { MegaPackImporter.importPack(context, uri) }
             }.onSuccess { result ->
                 applyProject(result.project)
+                megaPackWarnings = result.warnings
                 selectedCardId = result.project.cards.firstOrNull()?.id
                 positionSeconds = 0f
                 isPlaying = false
@@ -366,10 +388,20 @@ fun CtsAndroidAppV2() {
                         applyProject(
                             project.copy(
                                 cards = project.cards.mapIndexed { index, card ->
+                                    val sourceIndex = if (activeCardStripReview.reverseOrder) {
+                                        project.cards.lastIndex - index
+                                    } else {
+                                        index
+                                    }
+                                    val crop = activeCardStripReview.cropAdjustments[sourceIndex]
+                                        ?: ImageCropAdjustment()
                                     card.copy(
                                         imageSubcard = card.imageSubcard.copy(
                                             source = result.sources[index],
                                             transform = NormalizedRect.Full,
+                                            cropFocusX = crop.focusX,
+                                            cropFocusY = crop.focusY,
+                                            cropZoom = crop.zoom,
                                         ),
                                     )
                                 },
@@ -513,6 +545,24 @@ fun CtsAndroidAppV2() {
             },
         )
     }
+
+    if (megaPackWarnings.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { megaPackWarnings = emptyList() },
+            title = { Text("MegaPack image check") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    megaPackWarnings.take(8).forEach { warning -> Text("• $warning") }
+                    if (megaPackWarnings.size > 8) {
+                        Text("…and ${megaPackWarnings.size - 8} more warnings.")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { megaPackWarnings = emptyList() }) { Text("Review project") }
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -526,22 +576,31 @@ private fun CardStripReviewScreen(
     onCancel: () -> Unit,
     onConfirm: (CardStripLayout) -> Unit,
 ) {
+    val selectedAxis = state.axisChoice.axis ?: state.recognition.selectedAxis
+    val candidate = state.recognition.candidate(selectedAxis)
+    val primaryLength = if (selectedAxis == StripAxis.Horizontal) state.imageWidth else state.imageHeight
+    val safeSeparatorLimit = CardStripGeometry.maximumSafeSeparator(primaryLength, candidate.dividerFractions)
+    val detectedSeparatorPx = (candidate.separatorFraction * primaryLength).toInt()
+        .coerceIn(
+            0,
+            minOf(maxOf(12, primaryLength / cards.size.coerceAtLeast(1) / 10), safeSeparatorLimit),
+        )
+    val separatorPx = state.separatorOverridePx ?: detectedSeparatorPx
+    val dividerFractions = state.manualDividerFractions ?: candidate.dividerFractions
     val layoutResult = remember(
         state.imageWidth,
         state.imageHeight,
-        state.model,
-        state.separatorPx,
-        state.axisChoice,
-        cards.size,
+        selectedAxis,
+        separatorPx,
+        dividerFractions,
     ) {
         runCatching {
-            CardStripGeometry.split(
+            CardStripGeometry.fromDividers(
                 imageWidth = state.imageWidth,
                 imageHeight = state.imageHeight,
-                cardCount = cards.size,
-                targetAspect = CardContentLayout.artworkAspect(state.model),
-                separatorPx = state.separatorPx,
-                axisOverride = state.axisChoice.axis,
+                axis = selectedAxis,
+                dividerFractions = dividerFractions,
+                separatorPx = separatorPx,
             )
         }
     }
@@ -585,25 +644,111 @@ private fun CardStripReviewScreen(
                 ChoiceRow(
                     options = StripAxisChoice.entries.map { it to it.label },
                     selected = state.axisChoice,
-                    onSelected = { onStateChanged(state.copy(axisChoice = it)) },
+                    onSelected = {
+                        onStateChanged(
+                            state.copy(
+                                axisChoice = it,
+                                separatorOverridePx = null,
+                                manualDividerFractions = null,
+                                imageAnalyses = emptyList(),
+                                cropAdjustments = emptyMap(),
+                            ),
+                        )
+                    },
                     enabled = !isImporting,
                 )
-                layout?.let {
-                    Text(
-                        "Detected as ${it.axis.name.lowercase()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    "${selectedAxis.name} confidence: ${(candidate.confidence * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (candidate.confidence < 0.58f) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
             }
             item {
                 Text("Separator width", fontWeight = FontWeight.Bold)
                 ChoiceRow(
-                    options = listOf(0, 1, 2, 4, 6).map { it to "$it px" },
-                    selected = state.separatorPx,
-                    onSelected = { onStateChanged(state.copy(separatorPx = it)) },
+                    options = listOf<Pair<Int?, String>>(
+                        null to "Auto ($detectedSeparatorPx px)",
+                        0 to "0 px",
+                        1 to "1 px",
+                        2 to "2 px",
+                        4 to "4 px",
+                        6 to "6 px",
+                    ),
+                    selected = state.separatorOverridePx,
+                    onSelected = {
+                        onStateChanged(
+                            state.copy(
+                                separatorOverridePx = it,
+                                imageAnalyses = emptyList(),
+                                cropAdjustments = emptyMap(),
+                            ),
+                        )
+                    },
                     enabled = !isImporting,
                 )
+            }
+            item {
+                Text("Card boundaries", fontWeight = FontWeight.Bold)
+                Text(
+                    "Drag the yellow dividers if recognition missed an edge. Uneven card widths are supported.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                CardStripBoundaryEditor(
+                    source = state.source,
+                    sourceWidth = state.imageWidth,
+                    sourceHeight = state.imageHeight,
+                    axis = selectedAxis,
+                    dividerFractions = dividerFractions,
+                    separatorPx = separatorPx,
+                    onDividersChanged = {
+                        onStateChanged(
+                            state.copy(
+                                manualDividerFractions = it,
+                                imageAnalyses = emptyList(),
+                                cropAdjustments = emptyMap(),
+                            ),
+                        )
+                    },
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            onStateChanged(
+                                state.copy(
+                                    manualDividerFractions = null,
+                                    imageAnalyses = emptyList(),
+                                    cropAdjustments = emptyMap(),
+                                ),
+                            )
+                        },
+                        enabled = state.manualDividerFractions != null && !isImporting,
+                    ) { Text("Use detected") }
+                    TextButton(
+                        onClick = {
+                            val equal = (1 until cards.size).map { it / cards.size.toFloat() }
+                            onStateChanged(
+                                state.copy(
+                                    manualDividerFractions = equal,
+                                    imageAnalyses = emptyList(),
+                                    cropAdjustments = emptyMap(),
+                                ),
+                            )
+                        },
+                        enabled = !isImporting,
+                    ) { Text("Equal spacing") }
+                }
+                if (candidate.dividerConfidences.any { it < 0.5f }) {
+                    Text(
+                        "Some boundaries have low confidence; check their yellow handles.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
             item {
                 Text("Assignment order", fontWeight = FontWeight.Bold)
@@ -617,7 +762,7 @@ private fun CardStripReviewScreen(
             item {
                 Text("Detected card preview", fontWeight = FontWeight.Black)
                 Text(
-                    "Each tile shows which destination card will receive it. Artwork is center-cropped to the model slot.",
+                    "Blank and duplicate tiles are flagged. Adjust each card's focus and zoom before importing.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -630,6 +775,29 @@ private fun CardStripReviewScreen(
                         cards = cards,
                         model = state.model,
                         reverseOrder = state.reverseOrder,
+                        cropAdjustments = state.cropAdjustments,
+                        onAnalysesChanged = { analyses ->
+                            if (analyses != state.imageAnalyses) {
+                                val additions = analyses.mapIndexed { index, analysis ->
+                                    index to (state.cropAdjustments[index] ?: ImageCropAdjustment(
+                                        focusX = analysis.suggestedFocusX,
+                                        focusY = analysis.suggestedFocusY,
+                                        zoom = analysis.suggestedZoom,
+                                    ))
+                                }.toMap()
+                                onStateChanged(
+                                    state.copy(
+                                        imageAnalyses = analyses,
+                                        cropAdjustments = additions,
+                                    ),
+                                )
+                            }
+                        },
+                        onCropChanged = { sourceIndex, crop ->
+                            onStateChanged(
+                                state.copy(cropAdjustments = state.cropAdjustments + (sourceIndex to crop)),
+                            )
+                        },
                     )
                 }
             }
@@ -673,9 +841,16 @@ private fun CardStripPreviewRow(
     cards: List<CtsCard>,
     model: VisualModel,
     reverseOrder: Boolean,
+    cropAdjustments: Map<Int, ImageCropAdjustment>,
+    onAnalysesChanged: (List<CardImageAnalysis>) -> Unit,
+    onCropChanged: (Int, ImageCropAdjustment) -> Unit,
 ) {
     val context = LocalContext.current
-    val previewResult by produceState<Result<List<Bitmap>>?>(null, source, layout) {
+    val previewResult by produceState<Result<List<DetectedCardPreview>>?>(
+        null,
+        source,
+        layout,
+    ) {
         value = runCatching {
             withContext(Dispatchers.IO) {
                 CardStripImporter.decodePreviews(context, source, layout)
@@ -684,7 +859,14 @@ private fun CardStripPreviewRow(
     }
     val previews = previewResult?.getOrNull()
     DisposableEffect(previews) {
-        onDispose { previews?.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() } }
+        onDispose {
+            previews?.forEach { preview ->
+                if (!preview.bitmap.isRecycled) preview.bitmap.recycle()
+            }
+        }
+    }
+    LaunchedEffect(previews) {
+        previews?.let { onAnalysesChanged(it.map { preview -> preview.analysis }) }
     }
 
     when {
@@ -692,17 +874,20 @@ private fun CardStripPreviewRow(
         previews != null -> {
             val ordered = if (reverseOrder) previews.reversed() else previews
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                itemsIndexed(ordered) { destinationIndex, bitmap ->
+                itemsIndexed(ordered) { destinationIndex, preview ->
                     val sourceIndex = if (reverseOrder) previews.lastIndex - destinationIndex else destinationIndex
-                    Card(modifier = Modifier.width(172.dp)) {
+                    val suggested = preview.analysis
+                    val crop = cropAdjustments[sourceIndex] ?: ImageCropAdjustment(
+                        suggested.suggestedFocusX,
+                        suggested.suggestedFocusY,
+                        suggested.suggestedZoom,
+                    )
+                    Card(modifier = Modifier.width(224.dp)) {
                         Column {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Detected card ${sourceIndex + 1}",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(CardContentLayout.artworkAspect(model)),
+                            CardCropPreview(
+                                bitmap = preview.bitmap,
+                                crop = crop,
+                                aspect = CardContentLayout.artworkAspect(model),
                             )
                             Text(
                                 "Tile ${sourceIndex + 1} → ${destinationIndex + 1}. " +
@@ -711,6 +896,45 @@ private fun CardStripPreviewRow(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            when {
+                                suggested.blank -> Text(
+                                    "Possible blank tile · ${(suggested.confidence * 100).toInt()}% confidence",
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                                suggested.duplicateOf != null -> Text(
+                                    "Looks like tile ${suggested.duplicateOf + 1}",
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                                else -> Text(
+                                    "Image confidence ${(suggested.confidence * 100).toInt()}%",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                            }
+                            CropSlider("Horizontal focus", crop.focusX, 0f..1f) {
+                                onCropChanged(sourceIndex, crop.copy(focusX = it))
+                            }
+                            CropSlider("Vertical focus", crop.focusY, 0f..1f) {
+                                onCropChanged(sourceIndex, crop.copy(focusY = it))
+                            }
+                            CropSlider("Zoom", crop.zoom, 1f..3f) {
+                                onCropChanged(sourceIndex, crop.copy(zoom = it))
+                            }
+                            TextButton(
+                                onClick = {
+                                    onCropChanged(
+                                        sourceIndex,
+                                        ImageCropAdjustment(
+                                            suggested.suggestedFocusX,
+                                            suggested.suggestedFocusY,
+                                            suggested.suggestedZoom,
+                                        ),
+                                    )
+                                },
+                                modifier = Modifier.padding(horizontal = 4.dp),
+                            ) { Text("Use automatic focus") }
                         }
                     }
                 }
@@ -720,6 +944,205 @@ private fun CardStripPreviewRow(
             previewResult?.exceptionOrNull()?.message ?: "Could not preview the detected cards.",
             color = MaterialTheme.colorScheme.error,
         )
+    }
+}
+
+@Composable
+private fun CardStripBoundaryEditor(
+    source: Uri,
+    sourceWidth: Int,
+    sourceHeight: Int,
+    axis: StripAxis,
+    dividerFractions: List<Float>,
+    separatorPx: Int,
+    onDividersChanged: (List<Float>) -> Unit,
+) {
+    val context = LocalContext.current
+    val latestDividers by rememberUpdatedState(dividerFractions)
+    val latestCallback by rememberUpdatedState(onDividersChanged)
+    var editorDividers by remember(source, axis, dividerFractions) { mutableStateOf(dividerFractions) }
+    val bitmapResult by produceState<Result<Bitmap>?>(null, source) {
+        value = runCatching {
+            withContext(Dispatchers.IO) { CardStripImporter.decodeSheetPreview(context, source) }
+        }
+    }
+    val bitmap = bitmapResult?.getOrNull()
+    DisposableEffect(bitmap) {
+        onDispose { if (bitmap != null && !bitmap.isRecycled) bitmap.recycle() }
+    }
+
+    if (bitmap == null) {
+        if (bitmapResult == null) CircularProgressIndicator()
+        else Text(
+            bitmapResult?.exceptionOrNull()?.message ?: "Could not show the source image.",
+            color = MaterialTheme.colorScheme.error,
+        )
+        return
+    }
+
+    val image = remember(bitmap) { bitmap.asImageBitmap() }
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+            .pointerInput(source, axis, dividerFractions.size) {
+                var activeDivider = -1
+                var workingDividers = latestDividers
+
+                fun displayedBounds(): FloatArray {
+                    val scale = minOf(size.width / sourceWidth.toFloat(), size.height / sourceHeight.toFloat())
+                    val width = sourceWidth * scale
+                    val height = sourceHeight * scale
+                    return floatArrayOf((size.width - width) / 2f, (size.height - height) / 2f, width, height)
+                }
+
+                fun fractionAt(position: Offset): Float {
+                    val bounds = displayedBounds()
+                    return if (axis == StripAxis.Horizontal) {
+                        ((position.x - bounds[0]) / bounds[2]).coerceIn(0f, 1f)
+                    } else {
+                        ((position.y - bounds[1]) / bounds[3]).coerceIn(0f, 1f)
+                    }
+                }
+
+                detectDragGestures(
+                    onDragStart = { position ->
+                        workingDividers = latestDividers
+                        val fraction = fractionAt(position)
+                        val nearest = workingDividers.indices.minByOrNull { index ->
+                            kotlin.math.abs(workingDividers[index] - fraction)
+                        } ?: -1
+                        val bounds = displayedBounds()
+                        val primaryPx = if (axis == StripAxis.Horizontal) bounds[2] else bounds[3]
+                        activeDivider = nearest.takeIf {
+                            it >= 0 && kotlin.math.abs(workingDividers[it] - fraction) * primaryPx <= 36.dp.toPx()
+                        } ?: -1
+                    },
+                    onDragCancel = {
+                        editorDividers = latestDividers
+                        activeDivider = -1
+                    },
+                    onDragEnd = {
+                        if (activeDivider >= 0) latestCallback(workingDividers)
+                        activeDivider = -1
+                    },
+                    onDrag = { change, _ ->
+                        val index = activeDivider
+                        if (index < 0) return@detectDragGestures
+                        change.consume()
+                        val minimum = if (index == 0) 0.02f else workingDividers[index - 1] + 0.02f
+                        val maximum = if (index == workingDividers.lastIndex) {
+                            0.98f
+                        } else {
+                            workingDividers[index + 1] - 0.02f
+                        }
+                        val updated = workingDividers.toMutableList().apply {
+                            this[index] = fractionAt(change.position).coerceIn(minimum, maximum)
+                        }
+                        workingDividers = updated
+                        editorDividers = updated
+                    },
+                )
+            },
+    ) {
+        drawRect(Color(0xFF161616))
+        val scale = minOf(size.width / sourceWidth, size.height / sourceHeight)
+        val displayWidth = sourceWidth * scale
+        val displayHeight = sourceHeight * scale
+        val left = (size.width - displayWidth) / 2f
+        val top = (size.height - displayHeight) / 2f
+        drawImage(
+            image = image,
+            dstOffset = IntOffset(left.toInt(), top.toInt()),
+            dstSize = IntSize(displayWidth.toInt().coerceAtLeast(1), displayHeight.toInt().coerceAtLeast(1)),
+        )
+        editorDividers.forEach { fraction ->
+            val separatorDisplayPx = separatorPx * scale
+            if (axis == StripAxis.Horizontal) {
+                val x = left + displayWidth * fraction
+                drawRect(
+                    color = Color.Black.copy(alpha = 0.45f),
+                    topLeft = Offset(x - separatorDisplayPx / 2f, top),
+                    size = androidx.compose.ui.geometry.Size(separatorDisplayPx.coerceAtLeast(1f), displayHeight),
+                )
+                drawLine(
+                    Color(0xFFFFC928),
+                    Offset(x, top),
+                    Offset(x, top + displayHeight),
+                    strokeWidth = 2.dp.toPx(),
+                )
+                drawCircle(Color(0xFFFFC928), 7.dp.toPx(), Offset(x, top + displayHeight / 2f))
+            } else {
+                val y = top + displayHeight * fraction
+                drawRect(
+                    color = Color.Black.copy(alpha = 0.45f),
+                    topLeft = Offset(left, y - separatorDisplayPx / 2f),
+                    size = androidx.compose.ui.geometry.Size(displayWidth, separatorDisplayPx.coerceAtLeast(1f)),
+                )
+                drawLine(
+                    Color(0xFFFFC928),
+                    Offset(left, y),
+                    Offset(left + displayWidth, y),
+                    strokeWidth = 2.dp.toPx(),
+                )
+                drawCircle(Color(0xFFFFC928), 7.dp.toPx(), Offset(left + displayWidth / 2f, y))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardCropPreview(
+    bitmap: Bitmap,
+    crop: ImageCropAdjustment,
+    aspect: Float,
+) {
+    val image = remember(bitmap) { bitmap.asImageBitmap() }
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(aspect.coerceAtLeast(0.1f)),
+    ) {
+        val destinationAspect = size.width / size.height.coerceAtLeast(1f)
+        val sourceAspect = bitmap.width / bitmap.height.toFloat().coerceAtLeast(1f)
+        val baseCropWidth: Float
+        val baseCropHeight: Float
+        if (sourceAspect >= destinationAspect) {
+            baseCropHeight = bitmap.height.toFloat()
+            baseCropWidth = baseCropHeight * destinationAspect
+        } else {
+            baseCropWidth = bitmap.width.toFloat()
+            baseCropHeight = baseCropWidth / destinationAspect.coerceAtLeast(0.0001f)
+        }
+        val cropWidth = (baseCropWidth / crop.zoom.coerceIn(1f, 3f)).coerceAtLeast(1f)
+        val cropHeight = (baseCropHeight / crop.zoom.coerceIn(1f, 3f)).coerceAtLeast(1f)
+        val left = (bitmap.width * crop.focusX.coerceIn(0f, 1f) - cropWidth / 2f)
+            .coerceIn(0f, kotlin.math.max(0f, bitmap.width - cropWidth))
+        val top = (bitmap.height * crop.focusY.coerceIn(0f, 1f) - cropHeight / 2f)
+            .coerceIn(0f, kotlin.math.max(0f, bitmap.height - cropHeight))
+        drawImage(
+            image = image,
+            srcOffset = IntOffset(left.toInt(), top.toInt()),
+            srcSize = IntSize(cropWidth.toInt().coerceAtLeast(1), cropHeight.toInt().coerceAtLeast(1)),
+            dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
+        )
+    }
+}
+
+@Composable
+private fun CropSlider(
+    label: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChanged: (Float) -> Unit,
+) {
+    Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+        Text(
+            "$label ${"%.2f".format(value)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Slider(value = value.coerceIn(valueRange), onValueChange = onValueChanged, valueRange = valueRange)
     }
 }
 
@@ -900,7 +1323,8 @@ private fun DataWorkspace(
                 Text(if (isImportingMegaPack) "Loading MegaPack…" else "Import MegaPack (.zip)")
             }
             Text(
-                "Loads a complete project from megapack.json plus its card images and optional soundtrack.",
+                "Loads megapack.json, card images, and an optional soundtrack. Limits: 1 GB ZIP, " +
+                    "512 MB extracted, 64 MB per file, and 500 cards. Images are checked before loading.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
