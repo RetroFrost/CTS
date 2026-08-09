@@ -310,7 +310,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
 private fun BoxWithConstraintsScope.Frame(
     rect: NormalizedRect,
     modifier: Modifier = Modifier,
-    content: @Composable BoxScope.() -> Unit,
+    content: @Composable BoxScope.() -> Unit = {},
 ) {
     Box(
         modifier = modifier
