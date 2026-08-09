@@ -64,6 +64,8 @@ private data class TimelineParts(
 )
 
 object TimelineEngine {
+    /** Exact Reference keeps every measured source frame but presents it at half speed. */
+    const val EXACT_REFERENCE_PLAYBACK_RATE = 0.5f
     const val MALES_REFERENCE_FRAMES = 16_741
     const val MALES_REFERENCE_FPS = 60
     const val MALES_BODY_SECONDS = 1.34f
@@ -131,6 +133,12 @@ object TimelineEngine {
     private fun isLockedRelationships(project: CtsProject): Boolean =
         project.model == VisualModel.Relationships && project.modelMode == ModelMode.ExactReference
 
+    private fun playbackRate(project: CtsProject): Float =
+        if (project.modelMode == ModelMode.ExactReference) EXACT_REFERENCE_PLAYBACK_RATE else 1f
+
+    private fun outputDuration(project: CtsProject, modelDurationSeconds: Float): Float =
+        modelDurationSeconds / playbackRate(project)
+
     private fun preludeSeconds(project: CtsProject): Float = when (project.model) {
         VisualModel.Males -> 0f
         VisualModel.Relationships -> if (project.showIntro) RELATIONSHIPS_INTRO_FRAMES / 60f else 0f
@@ -181,7 +189,8 @@ object TimelineEngine {
         if (project.showIntro) 0 else RELATIONSHIPS_INTRO_FRAMES
 
     fun relationshipsSourceFrame(project: CtsProject, outputTimeSeconds: Float): Int =
-        (outputTimeSeconds.coerceAtLeast(0f) * RELATIONSHIPS_REFERENCE_FPS).toInt() +
+        (outputTimeSeconds.coerceAtLeast(0f) * playbackRate(project) *
+            RELATIONSHIPS_REFERENCE_FPS).toInt() +
             relationshipsIntroOffset(project)
 
     fun relationshipsOutroLocalFrame(project: CtsProject, outputTimeSeconds: Float): Int =
@@ -195,10 +204,14 @@ object TimelineEngine {
                 RELATIONSHIPS_END_WIPE_FRAMES + RELATIONSHIPS_END_RISE_FRAMES +
                     RELATIONSHIPS_END_HOLD_FRAMES + RELATIONSHIPS_FADE_FRAMES
             } else 0
-            return (content - relationshipsIntroOffset(project) + outro)
+            val sourceDuration = (content - relationshipsIntroOffset(project) + outro)
                 .coerceAtLeast(0) / RELATIONSHIPS_REFERENCE_FPS.toFloat()
+            return outputDuration(project, sourceDuration)
         }
-        return parts.introSeconds + parts.automaticScrollSeconds + parts.fixedTailSeconds
+        return outputDuration(
+            project,
+            parts.introSeconds + parts.automaticScrollSeconds + parts.fixedTailSeconds,
+        )
     }
 
     fun duration(project: CtsProject): Float {
@@ -229,13 +242,13 @@ object TimelineEngine {
     fun secondsPerCard(project: CtsProject): Float {
         val parts = timelineParts(project)
         if (parts.scrollSteps <= 0) return 0f
-        return chosenScrollDuration(project, parts) / parts.scrollSteps
+        return chosenScrollDuration(project, parts) / parts.scrollSteps / playbackRate(project)
     }
 
     fun modelTime(project: CtsProject, outputTimeSeconds: Float): Float {
         val output = outputTimeSeconds.coerceAtLeast(0f)
         val parts = timelineParts(project)
-        if (project.modelMode == ModelMode.ExactReference) return output
+        if (project.modelMode == ModelMode.ExactReference) return output * playbackRate(project)
         if (
             DurationRuntime.resolve(project.customDurationSeconds) == null ||
             parts.scrollSteps <= 0 ||
@@ -255,7 +268,7 @@ object TimelineEngine {
     private fun outputTimeForModelTime(project: CtsProject, modelTimeSeconds: Float): Float {
         val modelTime = modelTimeSeconds.coerceAtLeast(0f)
         val parts = timelineParts(project)
-        if (project.modelMode == ModelMode.ExactReference) return modelTime
+        if (project.modelMode == ModelMode.ExactReference) return modelTime / playbackRate(project)
         if (
             DurationRuntime.resolve(project.customDurationSeconds) == null ||
             parts.scrollSteps <= 0 ||
@@ -619,8 +632,9 @@ object TimelineEngine {
                 RELATIONSHIPS_CONTINUOUS_START_FRAME +
                     (safeIndex - 4) * RELATIONSHIPS_CONTINUOUS_STEP_FRAMES
             }
-            return ((frame - relationshipsIntroOffset(project)).coerceAtLeast(0) /
-                RELATIONSHIPS_REFERENCE_FPS.toFloat()).coerceAtMost(duration(project))
+            val sourceSeconds = (frame - relationshipsIntroOffset(project)).coerceAtLeast(0) /
+                RELATIONSHIPS_REFERENCE_FPS.toFloat()
+            return (sourceSeconds / playbackRate(project)).coerceAtMost(duration(project))
         }
         val parts = timelineParts(project)
         val initialCount = min(project.cards.size, project.model.visibleCards)

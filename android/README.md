@@ -9,7 +9,7 @@ Implemented now:
 - Premiere-inspired dark mobile editor shell
 - flagship **Click to Insert Data** workflow
 - Separate **What Males Learn at Each Age** and **Types of Relationships** models
-- **Exact Reference** mode locks each source-derived motion profile; **Custom** unlocks timing
+- **Exact Reference** mode locks each source-derived motion profile and plays it at 0.5× speed; **Custom** unlocks timing
 - Relationships uses the measured 60 fps frame contract (374-frame brand intro, frame-896 conveyor, 11,130-frame canonical 40-card timeline)
 - Optional intro, disclaimer, badges, and ending/fade without changing editable card content
 - CTS desktop timing: 2-second reveals and 10/3-second card scrolling

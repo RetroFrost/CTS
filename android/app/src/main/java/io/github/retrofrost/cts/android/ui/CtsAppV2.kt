@@ -463,7 +463,7 @@ private fun DataWorkspace(
                     Text(
                         if (project.modelMode == ModelMode.ExactReference) {
                             if (project.model == VisualModel.Relationships) {
-                                "Locked source-frame motion · canonical 40-card timeline is 11,130 frames at 60 FPS"
+                                "Locked source-frame motion · 11,130 source frames at 60 FPS · 0.5× playback"
                             } else {
                                 "Locked reference motion · content remains editable"
                             }
