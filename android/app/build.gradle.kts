@@ -63,8 +63,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
-    // Material 3 Expressive theme and wavy progress indicators.
-    implementation("androidx.compose.material3:material3:1.5.0-alpha25")
+    // Material 3 Expressive theme and wavy progress indicators, pinned to the
+    // newest release compatible with this project's API 36 / AGP 8.13 toolchain.
+    implementation("androidx.compose.material3:material3:1.5.0-alpha11")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
