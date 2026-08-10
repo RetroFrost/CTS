@@ -37,4 +37,21 @@ class CardImageRecognitionTest {
         assertTrue(analysis.suggestedFocusX > 0.58f)
         assertTrue(analysis.suggestedZoom >= 1f)
     }
+
+    @Test
+    fun transparentForegroundGuidesFocusToTheSubject() {
+        val width = 100
+        val height = 100
+        val pixels = IntArray(width * height)
+        for (y in 18 until 90) {
+            for (x in 58 until 92) {
+                pixels[y * width + x] = 0xFF66AADD.toInt()
+            }
+        }
+
+        val analysis = CardImageRecognizer.analyze(listOf(CardRaster(width, height, pixels))).single()
+
+        assertTrue(!analysis.blank)
+        assertTrue(analysis.suggestedFocusX > 0.58f)
+    }
 }

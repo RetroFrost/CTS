@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.ui
 
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -27,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -97,8 +99,9 @@ fun ProgramMonitor(
                 .clipToBounds(),
         ) {
             val cardWidth = maxWidth / 4
-            if (showIntroCredits) ReferenceIntroCreditsPanel(cardWidth)
+            if (showIntroCredits) ReferenceIntroCreditsPanel(cardWidth, project.credits)
             if (project.model == VisualModel.Relationships && project.showIntro &&
+                TimelineEngine.customIntroDuration(project) <= 0f &&
                 relationshipsFrame in 1 until TimelineEngine.RELATIONSHIPS_INTRO_OVERLAY_END_FRAME
             ) {
                 RelationshipsInfinityIntro(relationshipsFrame)
@@ -128,9 +131,9 @@ fun ProgramMonitor(
             }
 
             if (project.model == VisualModel.Relationships) {
-                RelationshipsOutroOverlay(cardWidth, relationshipsOutroFrame, outroContent)
+                RelationshipsOutroOverlay(cardWidth, relationshipsOutroFrame, outroContent, project.credits)
             } else {
-                ReferenceOutroOverlay(cardWidth, outroCover, outroContent)
+                ReferenceOutroOverlay(cardWidth, outroCover, outroContent, project.credits)
             }
             if (fadeAlpha < 0.999f) {
                 Box(
@@ -138,6 +141,74 @@ fun ProgramMonitor(
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 1f - fadeAlpha))
                         .zIndex(200f),
+                )
+            }
+            if (TimelineEngine.customIntroVisible(project, positionSeconds)) {
+                CustomIntroPreview(
+                    source = project.introVideo.uri,
+                    positionSeconds = positionSeconds,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(500f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomIntroPreview(
+    source: String?,
+    positionSeconds: Float,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val retriever = androidx.compose.runtime.remember(source) {
+        source?.takeIf(String::isNotBlank)?.let { value ->
+            runCatching {
+                MediaMetadataRetriever().apply {
+                    val uri = Uri.parse(value)
+                    if (uri.scheme.isNullOrBlank()) setDataSource(value) else setDataSource(context, uri)
+                }
+            }.getOrNull()
+        }
+    }
+    DisposableEffect(retriever) {
+        onDispose { retriever?.release() }
+    }
+    val frameBucket = (positionSeconds.coerceAtLeast(0f) * 30f).toInt()
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = retriever, key2 = frameBucket) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                retriever?.getFrameAtTime(
+                    frameBucket * 1_000_000L / 30L,
+                    MediaMetadataRetriever.OPTION_CLOSEST,
+                )?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+        bitmap?.let { image ->
+            Canvas(Modifier.fillMaxSize()) {
+                val destinationAspect = size.width / size.height.coerceAtLeast(1f)
+                val sourceAspect = image.width / image.height.toFloat().coerceAtLeast(1f)
+                val cropWidth: Float
+                val cropHeight: Float
+                if (sourceAspect >= destinationAspect) {
+                    cropHeight = image.height.toFloat()
+                    cropWidth = cropHeight * destinationAspect
+                } else {
+                    cropWidth = image.width.toFloat()
+                    cropHeight = cropWidth / destinationAspect.coerceAtLeast(0.0001f)
+                }
+                drawImage(
+                    image = image,
+                    srcOffset = IntOffset(
+                        ((image.width - cropWidth) / 2f).toInt().coerceAtLeast(0),
+                        ((image.height - cropHeight) / 2f).toInt().coerceAtLeast(0),
+                    ),
+                    srcSize = IntSize(cropWidth.toInt().coerceAtLeast(1), cropHeight.toInt().coerceAtLeast(1)),
+                    dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
                 )
             }
         }
@@ -185,6 +256,7 @@ private fun ReferenceParentCard(
                 cardLayoutScope.ReferenceCardBody(
                     card = card,
                     model = model,
+                    bodyReveal = bodyReveal,
                     artworkReveal = artworkReveal,
                     titleReveal = titleReveal,
                     descriptionReveal = descriptionReveal,
@@ -225,6 +297,7 @@ private fun ReferenceParentCard(
 private fun BoxWithConstraintsScope.ReferenceCardBody(
     card: CtsCard,
     model: VisualModel,
+    bodyReveal: Float,
     artworkReveal: Float,
     titleReveal: Float,
     descriptionReveal: Float,
@@ -233,10 +306,23 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
     val displayCard = card.withNormalizedText()
-    val frames = CardContentLayout.frames(model, card)
+    val frames = CardContentLayout.frames(model, displayCard)
+    if (!displayCard.imageSubcard.backgroundSource.isNullOrBlank()) {
+        Frame(NormalizedRect.Full) {
+            FullCardBackground(displayCard.imageSubcard.backgroundSource)
+        }
+    }
     Frame(
         frames.image,
-        Modifier.background(if (model == VisualModel.Relationships) Color(0xFF1F1F1F) else Color.Transparent),
+        Modifier.background(
+            if (!displayCard.imageSubcard.backgroundSource.isNullOrBlank()) {
+                Color.Transparent
+            } else if (model == VisualModel.Relationships) {
+                Color(0xFF1F1F1F)
+            } else {
+                Color.Transparent
+            },
+        ),
     ) {
         Box(
             modifier = Modifier
@@ -244,13 +330,17 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
                 .fillMaxHeight(artworkReveal.coerceIn(0f, 1f))
                 .align(Alignment.TopCenter)
                 .background(
-                    Brush.verticalGradient(
-                        if (model == VisualModel.Relationships) {
-                            listOf(Color(0xFF0069D3), Color(0xFF0058B5))
-                        } else {
-                            listOf(Color(0xFF138DDB), Color(0xFF0B74BE))
-                        },
-                    ),
+                    if (!displayCard.imageSubcard.backgroundSource.isNullOrBlank()) {
+                        Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+                    } else {
+                        Brush.verticalGradient(
+                            if (model == VisualModel.Relationships) {
+                                listOf(Color(0xFF0069D3), Color(0xFF0058B5))
+                            } else {
+                                listOf(Color(0xFF138DDB), Color(0xFF0B74BE))
+                            },
+                        )
+                    },
                 ),
         ) {
             ImageSubcardFrame(
@@ -258,6 +348,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
                 selected,
                 onSelect,
                 onImageTransformChanged,
+                showPlaceholder = displayCard.imageSubcard.backgroundSource.isNullOrBlank(),
             )
         }
     }
@@ -267,7 +358,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
             titleFrame,
             Modifier
                 .background(if (model == VisualModel.Relationships) Color(0xFFF5F5F3) else Color(0xFFF0F0F0))
-                .alpha(titleReveal.coerceIn(0f, 1f)),
+                .alpha(max(bodyReveal, titleReveal).coerceIn(0f, 1f)),
         ) {
             CardText(
                 text = displayCard.title,
@@ -284,7 +375,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
             descriptionFrame,
             Modifier
                 .background(if (model == VisualModel.Relationships) Color(0xFF2F2F2F) else Color(0xFF625F56))
-                .alpha(descriptionReveal.coerceIn(0f, 1f)),
+                .alpha(max(bodyReveal, descriptionReveal).coerceIn(0f, 1f)),
         ) {
             CardText(
                 text = displayCard.description,
@@ -297,12 +388,14 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     }
 
     if (model == VisualModel.Relationships) {
-        Frame(
-            CardContentLayout.relationshipsRule(),
-            Modifier
-                .background(Color(0xFFEA7F1C))
-                .alpha(descriptionReveal.coerceIn(0f, 1f)),
-        )
+        CardContentLayout.relationshipsRule(displayCard)?.let { rule ->
+            Frame(
+                rule,
+                Modifier
+                    .background(Color(0xFFEA7F1C))
+                    .alpha(max(bodyReveal, descriptionReveal).coerceIn(0f, 1f)),
+            )
+        }
     }
     Frame(CardContentLayout.bottomRule(), Modifier.background(Color(0xFF11100C)))
 }
@@ -352,6 +445,7 @@ private fun ImageSubcardFrame(
     selected: Boolean,
     onSelect: () -> Unit,
     onTransformChanged: (NormalizedRect) -> Unit,
+    showPlaceholder: Boolean,
 ) {
     BoxWithConstraints(
         modifier = Modifier
@@ -389,7 +483,7 @@ private fun ImageSubcardFrame(
                 }
                 .clickable(onClick = onSelect),
         ) {
-            ImageContent(subcard)
+            ImageContent(subcard, showPlaceholder)
 
             if (selected) {
                 ResizeHandle(
@@ -472,7 +566,7 @@ private fun BoxScope.ResizeHandle(
 }
 
 @Composable
-private fun BoxScope.ImageContent(subcard: ImageSubcard) {
+private fun BoxScope.ImageContent(subcard: ImageSubcard, showPlaceholder: Boolean) {
     val bitmap by rememberSourceBitmap(subcard.source)
     if (bitmap != null) {
         val focusX = subcard.cropFocusX.coerceIn(0f, 1f)
@@ -507,7 +601,7 @@ private fun BoxScope.ImageContent(subcard: ImageSubcard) {
                 dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
             )
         }
-    } else {
+    } else if (showPlaceholder) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -525,6 +619,34 @@ private fun BoxScope.ImageContent(subcard: ImageSubcard) {
                 modifier = Modifier.size(26.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun BoxScope.FullCardBackground(source: String?) {
+    val bitmap by rememberSourceBitmap(source)
+    val image = bitmap ?: return
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val destinationAspect = size.width / size.height.coerceAtLeast(1f)
+        val sourceAspect = image.width / image.height.toFloat().coerceAtLeast(1f)
+        val cropWidth: Float
+        val cropHeight: Float
+        if (sourceAspect >= destinationAspect) {
+            cropHeight = image.height.toFloat()
+            cropWidth = cropHeight * destinationAspect
+        } else {
+            cropWidth = image.width.toFloat()
+            cropHeight = cropWidth / destinationAspect.coerceAtLeast(0.0001f)
+        }
+        drawImage(
+            image = image,
+            srcOffset = IntOffset(
+                ((image.width - cropWidth) / 2f).toInt().coerceAtLeast(0),
+                ((image.height - cropHeight) / 2f).toInt().coerceAtLeast(0),
+            ),
+            srcSize = IntSize(cropWidth.toInt().coerceAtLeast(1), cropHeight.toInt().coerceAtLeast(1)),
+            dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
+        )
     }
 }
 

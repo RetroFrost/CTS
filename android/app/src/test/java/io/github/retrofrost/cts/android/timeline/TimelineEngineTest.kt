@@ -1,8 +1,9 @@
 package io.github.retrofrost.cts.android.timeline
 
-import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.CtsCard
+import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.DurationRuntime
+import io.github.retrofrost.cts.android.model.IntroVideoSettings
 import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.VisualModel
 import org.junit.Assert.assertEquals
@@ -13,6 +14,31 @@ import org.junit.Test
 
 class TimelineEngineTest {
     @Before fun resetDurationChoice() = DurationRuntime.resetForTests()
+
+    @Test
+    fun customMp4IntroPrecedesTheReferenceTimeline() {
+        val withoutIntro = CtsProject(model = VisualModel.Relationships, showIntro = false)
+        val withIntro = withoutIntro.copy(
+            showIntro = true,
+            introVideo = IntroVideoSettings(
+                uri = "content://intro.mp4",
+                displayName = "intro.mp4",
+                durationSeconds = 7.5f,
+            ),
+        )
+
+        assertEquals(
+            TimelineEngine.automaticDuration(withoutIntro) + 7.5f,
+            TimelineEngine.automaticDuration(withIntro),
+            0.001f,
+        )
+        assertTrue(TimelineEngine.customIntroVisible(withIntro, 7.49f))
+        assertTrue(!TimelineEngine.customIntroVisible(withIntro, 7.5f))
+        assertEquals(
+            TimelineEngine.RELATIONSHIPS_INTRO_FRAMES,
+            TimelineEngine.relationshipsSourceFrame(withIntro, 7.5f),
+        )
+    }
 
     @Test
     fun androidExposesBothIndependentReferenceModels() {

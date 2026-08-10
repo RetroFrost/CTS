@@ -74,12 +74,45 @@ data class NormalizedRect(
 data class ImageSubcard(
     val id: String = UUID.randomUUID().toString(),
     val parentCardId: String,
+    /** Optional full-card backdrop. The foreground/source remains inside the artwork slot. */
+    val backgroundSource: String? = null,
     val source: String? = null,
     val transform: NormalizedRect = NormalizedRect.Full,
     val cropFocusX: Float = 0.5f,
     val cropFocusY: Float = 0.5f,
     val cropZoom: Float = 1f,
 )
+
+data class IntroVideoSettings(
+    val uri: String? = null,
+    val displayName: String = "",
+    val durationSeconds: Float = 0f,
+) {
+    fun normalized(): IntroVideoSettings = copy(
+        uri = uri?.trim()?.takeIf { it.isNotEmpty() },
+        displayName = displayName.trim(),
+        durationSeconds = durationSeconds
+            .takeIf { it.isFinite() }
+            ?.coerceIn(0f, 6f * 60f * 60f)
+            ?: 0f,
+    )
+}
+
+data class CreditsSettings(
+    val heading: String = "Credits",
+    val lines: String = "Lead Research & Sourcing\nIndependent Fact Check\nLead Graphic Designer\nEdit & Post-Production\nThumbnail Designer\nVideo Idea & Quality Check",
+    val footer: String = "DISCLAIMER · COMMUNITY DISCUSSIONS AND SOURCES",
+    val endingHeading: String = "Video Made By",
+    val endingDetails: String = "Research · Editing · Design · Quality Check",
+) {
+    fun normalized(): CreditsSettings = copy(
+        heading = heading.trim(),
+        lines = lines.lineSequence().map(String::trim).filter(String::isNotEmpty).joinToString("\n"),
+        footer = footer.trim(),
+        endingHeading = endingHeading.trim(),
+        endingDetails = endingDetails.trim(),
+    )
+}
 
 data class CtsCard(
     val id: String = UUID.randomUUID().toString(),
@@ -165,6 +198,8 @@ data class CtsProject(
     val showIntro: Boolean = true,
     val showDisclaimer: Boolean = true,
     val showOutro: Boolean = true,
+    val introVideo: IntroVideoSettings = IntroVideoSettings(),
+    val credits: CreditsSettings = CreditsSettings(),
     /** Null uses automatic timing; a value retimes only horizontal card scrolling. */
     val customDurationSeconds: Float? = null,
     val soundtrack: SoundtrackSettings = SoundtrackSettings(),
@@ -182,6 +217,7 @@ data class CtsProject(
             cards = cards.map { it.withOwnedImageSubcard() },
             customDurationSeconds = DurationRuntime.normalizeProjectValue(customDurationSeconds),
             soundtrack = soundtrack.normalized(),
+            introVideo = introVideo.normalized(),
             export = modelExport,
         )
     }

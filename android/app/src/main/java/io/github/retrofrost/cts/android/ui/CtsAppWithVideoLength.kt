@@ -93,7 +93,7 @@ fun CtsAndroidAppWithVideoLength() {
 }
 
 @Composable
-private fun VideoLengthDialog(
+internal fun VideoLengthDialog(
     initialCustomSeconds: Float?,
     onDismiss: () -> Unit,
     onAutomatic: () -> Unit,

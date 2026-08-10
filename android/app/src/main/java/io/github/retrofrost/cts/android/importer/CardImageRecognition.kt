@@ -21,7 +21,7 @@ data class CardImageAnalysis(
 
 /** Lightweight on-device quality and saliency analysis; no network model is required. */
 object CardImageRecognizer {
-    private const val GRID = 12
+    private const val GRID = 20
 
     fun analyze(rasters: List<CardRaster>): List<CardImageAnalysis> =
         analyzeFeatures(rasters.map(::features))
@@ -63,6 +63,7 @@ object CardImageRecognizer {
         require(raster.width > 0 && raster.height > 0 && raster.argb.size >= raster.width * raster.height)
         val fingerprint = FloatArray(GRID * GRID * 3)
         val luma = FloatArray(GRID * GRID)
+        val alphaGrid = FloatArray(GRID * GRID)
         var visible = 0
         for (gy in 0 until GRID) {
             for (gx in 0 until GRID) {
@@ -78,11 +79,22 @@ object CardImageRecognizer {
                 fingerprint[base + 1] = green * alpha
                 fingerprint[base + 2] = blue * alpha
                 luma[gy * GRID + gx] = (red * 0.2126f + green * 0.7152f + blue * 0.0722f) * alpha
+                alphaGrid[gy * GRID + gx] = alpha
                 if (alpha > 0.1f) visible++
             }
         }
         val mean = luma.average().toFloat()
         val variance = luma.map { value -> (value - mean) * (value - mean) }.average().toFloat()
+        val borderIndices = buildList {
+            for (cell in 0 until GRID) {
+                add(cell)
+                add((GRID - 1) * GRID + cell)
+                add(cell * GRID)
+                add(cell * GRID + GRID - 1)
+            }
+        }.distinct()
+        val borderLuma = borderIndices.map(luma::get).average().toFloat()
+        val alphaIsMeaningful = alphaGrid.any { it < 0.92f }
         var totalWeight = 0f
         var weightedX = 0f
         var weightedY = 0f
@@ -96,7 +108,12 @@ object CardImageRecognizer {
                 val bottom = luma[min(GRID - 1, gy + 1) * GRID + gx]
                 val edge = abs(right - left) + abs(bottom - top)
                 val contrast = abs(center - mean)
-                val weight = edge * 0.72f + contrast * 0.28f + 0.0001f
+                val foreground = if (alphaIsMeaningful) {
+                    alphaGrid[index]
+                } else {
+                    abs(center - borderLuma).coerceIn(0f, 1f)
+                }
+                val weight = edge * 0.48f + contrast * 0.18f + foreground * 0.34f + 0.0001f
                 totalWeight += weight
                 weightedX += ((gx + 0.5f) / GRID) * weight
                 weightedY += ((gy + 0.5f) / GRID) * weight
@@ -104,8 +121,10 @@ object CardImageRecognizer {
         }
         val focusX = (weightedX / totalWeight.coerceAtLeast(0.0001f)).coerceIn(0.12f, 0.88f)
         val focusY = (weightedY / totalWeight.coerceAtLeast(0.0001f)).coerceIn(0.12f, 0.88f)
+        val weightedCoverage = (totalWeight / (GRID * GRID)).coerceIn(0f, 1f)
         val distanceFromCenter = abs(focusX - 0.5f) + abs(focusY - 0.5f)
-        val zoom = (1.04f + distanceFromCenter * 0.18f).coerceIn(1f, 1.22f)
+        val zoom = (1.02f + distanceFromCenter * 0.16f + (0.08f - weightedCoverage).coerceAtLeast(0f))
+            .coerceIn(1f, 1.24f)
         return Features(
             fingerprint = fingerprint,
             variance = variance,

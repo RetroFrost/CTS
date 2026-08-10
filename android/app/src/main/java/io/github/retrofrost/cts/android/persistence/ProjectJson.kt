@@ -3,8 +3,10 @@ package io.github.retrofrost.cts.android.persistence
 import android.media.MediaFormat
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.CreditsSettings
 import io.github.retrofrost.cts.android.model.ExportSettings
 import io.github.retrofrost.cts.android.model.ImageSubcard
+import io.github.retrofrost.cts.android.model.IntroVideoSettings
 import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.SoundtrackSettings
@@ -25,6 +27,7 @@ object ProjectJson {
         val normalized = project.normalized().copy(
             name = project.name.trim(),
             cards = project.cards.map(CtsCard::withNormalizedText),
+            credits = project.credits.normalized(),
         )
         val rows = JSONArray()
         normalized.cards.forEach { card ->
@@ -51,6 +54,7 @@ object ProjectJson {
             .put("project_name", normalized.name)
             .put("card_ids", JSONArray(normalized.cards.map { it.id }))
             .put("image_subcard_ids", JSONArray(normalized.cards.map { it.imageSubcard.id }))
+            .put("image_background_sources", JSONArray(normalized.cards.map { it.imageSubcard.backgroundSource.orEmpty() }))
             .put("image_crop_focus_x", JSONArray(normalized.cards.map { it.imageSubcard.cropFocusX }))
             .put("image_crop_focus_y", JSONArray(normalized.cards.map { it.imageSubcard.cropFocusY }))
             .put("image_crop_zoom", JSONArray(normalized.cards.map { it.imageSubcard.cropZoom }))
@@ -60,6 +64,14 @@ object ProjectJson {
             .put("audio_encoder_name", normalized.export.audioEncoderName ?: JSONObject.NULL)
             .put("video_bitrate", normalized.export.videoBitrate)
             .put("audio_bitrate", normalized.export.audioBitrate)
+            .put("intro_video_uri", normalized.introVideo.uri ?: JSONObject.NULL)
+            .put("intro_video_display_name", normalized.introVideo.displayName)
+            .put("intro_video_duration", normalized.introVideo.durationSeconds)
+            .put("credits_heading", normalized.credits.heading)
+            .put("credits_lines", normalized.credits.lines)
+            .put("credits_footer", normalized.credits.footer)
+            .put("ending_credits_heading", normalized.credits.endingHeading)
+            .put("ending_credits_details", normalized.credits.endingDetails)
 
         val settings = JSONObject()
             .put("width", normalized.export.width)
@@ -169,6 +181,7 @@ object ProjectJson {
         val android = root.optJSONObject("android")
         val ids = android?.optJSONArray("card_ids")
         val subcardIds = android?.optJSONArray("image_subcard_ids")
+        val backgroundSources = android?.optJSONArray("image_background_sources")
         val cropFocusX = android?.optJSONArray("image_crop_focus_x")
         val cropFocusY = android?.optJSONArray("image_crop_focus_y")
         val cropZoom = android?.optJSONArray("image_crop_zoom")
@@ -200,6 +213,9 @@ object ProjectJson {
                         imageSubcard = ImageSubcard(
                             id = subcardId,
                             parentCardId = cardId,
+                            backgroundSource = backgroundSources
+                                ?.optString(index)
+                                ?.takeIf { it.isNotBlank() },
                             source = cell(row, imageColumn).takeIf { it.isNotBlank() },
                             transform = transform.clamped(),
                             cropFocusX = cropFocusX?.optDouble(index, 0.5)?.toFloat() ?: 0.5f,
@@ -251,6 +267,8 @@ object ProjectJson {
             showIntro = settings.optBoolean("show_intro", true),
             showDisclaimer = settings.optBoolean("show_disclaimer", true),
             showOutro = settings.optBoolean("show_outro", true),
+            introVideo = android.introVideoSettings(),
+            credits = android.creditsSettings(),
             customDurationSeconds = customDuration,
             soundtrack = soundtrack,
             export = export,
@@ -302,6 +320,10 @@ object ProjectJson {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: UUID.randomUUID().toString(),
                             parentCardId = cardId,
+                            backgroundSource = imageObject
+                                ?.optString("background_source")
+                                ?.takeIf { it.isNotBlank() }
+                                ?: entry.optString("background").takeIf { it.isNotBlank() },
                             source = imageSource,
                             transform = transform,
                             cropFocusX = imageObject?.optDouble("crop_focus_x", 0.5)?.toFloat() ?: 0.5f,
@@ -333,6 +355,8 @@ object ProjectJson {
                 root.optBoolean("show_disclaimer", true),
             ),
             showOutro = settings.optBoolean("show_outro", root.optBoolean("show_outro", true)),
+            introVideo = android.introVideoSettings(root.optJSONObject("intro_video")),
+            credits = android.creditsSettings(root.optJSONObject("credits")),
             customDurationSeconds = settings
                 .optDouble("custom_duration", Double.NaN)
                 .takeIf { !it.isNaN() }
@@ -360,6 +384,57 @@ object ProjectJson {
 
     private fun JSONObject.nullableString(key: String): String? =
         if (!has(key) || isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
+
+    private fun JSONObject?.introVideoSettings(fallback: JSONObject? = null): IntroVideoSettings {
+        val android = this
+        return IntroVideoSettings(
+            uri = android?.nullableString("intro_video_uri")
+                ?: fallback?.nullableString("uri")
+                ?: fallback?.nullableString("file"),
+            displayName = android?.optString("intro_video_display_name")
+                ?.takeIf { it.isNotBlank() }
+                ?: fallback?.optString("display_name").orEmpty(),
+            durationSeconds = android?.optDouble("intro_video_duration", Double.NaN)
+                ?.takeIf { !it.isNaN() }
+                ?.toFloat()
+                ?: fallback?.optDouble("duration_seconds", 0.0)?.toFloat()
+                ?: 0f,
+        )
+    }
+
+    private fun JSONObject?.creditsSettings(fallback: JSONObject? = null): CreditsSettings {
+        val defaults = CreditsSettings()
+        val android = this
+        return CreditsSettings(
+            heading = android.presentString("credits_heading")
+                ?: fallback.presentString("heading")
+                ?: defaults.heading,
+            lines = android.presentString("credits_lines")
+                ?: fallback.creditLinesIfPresent()
+                ?: defaults.lines,
+            footer = android.presentString("credits_footer")
+                ?: fallback.presentString("footer")
+                ?: defaults.footer,
+            endingHeading = android.presentString("ending_credits_heading")
+                ?: fallback.presentString("ending_heading")
+                ?: defaults.endingHeading,
+            endingDetails = android.presentString("ending_credits_details")
+                ?: fallback.presentString("ending_details")
+                ?: defaults.endingDetails,
+        )
+    }
+
+    private fun JSONObject?.presentString(key: String): String? =
+        this?.takeIf { it.has(key) && !it.isNull(key) }?.optString(key)
+
+    private fun JSONObject?.creditLinesIfPresent(): String? {
+        val json = this ?: return null
+        if (!json.has("lines") || json.isNull("lines")) return null
+        val lines = json.optJSONArray("lines") ?: return json.optString("lines")
+        return List(lines.length()) { index -> lines.optString(index).trim() }
+            .filter(String::isNotEmpty)
+            .joinToString("\n")
+    }
 
     private fun JSONArray.toRect(): NormalizedRect? {
         if (length() != 4) return null

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import io.github.retrofrost.cts.android.model.CreditsSettings
 
 @Composable
 internal fun BoxWithConstraintsScope.RelationshipsInfinityIntro(frame: Int) {
@@ -123,6 +124,7 @@ internal fun BoxWithConstraintsScope.RelationshipsOutroOverlay(
     cardWidth: Dp,
     localFrame: Int,
     contentAlpha: Float,
+    credits: CreditsSettings,
 ) {
     if (contentAlpha > 0f && localFrame >= 35) {
         Box(
@@ -146,6 +148,19 @@ internal fun BoxWithConstraintsScope.RelationshipsOutroOverlay(
                 val subscribe = "SUBSCRIBE for more comparison videos."
                 val s = subscribe.take((((localFrame - 206) / 94f).coerceIn(0f, 1f) * subscribe.length).toInt())
                 Text(s, color = Color.White, fontSize = 17.sp, lineHeight = 19.sp)
+                Spacer(Modifier.height(28.dp))
+                Text(
+                    credits.endingHeading,
+                    color = Color(0xFFD8D8D8),
+                    fontSize = 8.sp,
+                    lineHeight = 9.sp,
+                )
+                Text(
+                    credits.endingDetails,
+                    color = Color(0xFFBEBEBE),
+                    fontSize = 6.sp,
+                    lineHeight = 7.sp,
+                )
             }
         }
     }
@@ -196,7 +211,10 @@ private fun sampleRelationshipOpening(frame: Int): Float {
 }
 
 @Composable
-internal fun BoxWithConstraintsScope.ReferenceIntroCreditsPanel(cardWidth: Dp) {
+internal fun BoxWithConstraintsScope.ReferenceIntroCreditsPanel(
+    cardWidth: Dp,
+    credits: CreditsSettings,
+) {
     Box(
         modifier = Modifier
             .align(Alignment.TopEnd)
@@ -221,10 +239,10 @@ internal fun BoxWithConstraintsScope.ReferenceIntroCreditsPanel(cardWidth: Dp) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFBEBEBE)))
                 Spacer(Modifier.height(14.dp))
-                Text("Credits", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(credits.heading, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Lead Research & Sourcing\nIndependent Fact Check\nLead Graphic Designer\nEdit & Post-Production\nThumbnail Designer\nVideo Idea & Quality Check",
+                    credits.lines,
                     color = Color.White,
                     fontSize = 7.sp,
                     lineHeight = 11.sp,
@@ -232,7 +250,7 @@ internal fun BoxWithConstraintsScope.ReferenceIntroCreditsPanel(cardWidth: Dp) {
                 )
             }
             Text(
-                "DISCLAIMER\nTHIS VIDEO IS BASED ON COMMUNITY DISCUSSIONS AND RELEVANT SOURCES.",
+                credits.footer,
                 color = Color(0xFFC8C8C8),
                 fontSize = 5.sp,
                 lineHeight = 6.sp,
@@ -247,6 +265,7 @@ internal fun BoxWithConstraintsScope.ReferenceOutroOverlay(
     cardWidth: Dp,
     coverProgress: Float,
     contentAlpha: Float,
+    credits: CreditsSettings,
 ) {
     val overlayWidth = cardWidth * 3f
     val overlayHeight = maxHeight
@@ -298,7 +317,7 @@ internal fun BoxWithConstraintsScope.ReferenceOutroOverlay(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "Video Made By\n\nLead Research & Sourcing     Edit & Post-Production\nIndependent Fact Check       Thumbnail Designer\nLead Graphic Designer        Video Idea & Quality Check",
+                        "${credits.endingHeading}\n\n${credits.endingDetails}",
                         color = Color.White,
                         fontSize = 6.sp,
                         lineHeight = 8.sp,

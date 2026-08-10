@@ -2,10 +2,13 @@ package io.github.retrofrost.cts.android.importer
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.CreditsSettings
 import io.github.retrofrost.cts.android.model.ImageSubcard
+import io.github.retrofrost.cts.android.model.IntroVideoSettings
 import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.SoundtrackSettings
 import io.github.retrofrost.cts.android.model.VisualModel
@@ -26,7 +29,7 @@ data class MegaPackImportResult(
 /** Imports a complete, portable CTS project without trusting paths from the ZIP. */
 object MegaPackImporter {
     private const val MANIFEST_NAME = "megapack.json"
-    private const val SUPPORTED_VERSION = 1
+    private const val SUPPORTED_VERSION = 2
     private const val MAX_PACK_BYTES = 1_073_741_824L
     private const val MAX_EXTRACTED_BYTES = 536_870_912L
     private const val MAX_ENTRY_BYTES = 67_108_864L
@@ -79,7 +82,9 @@ object MegaPackImporter {
                     val item = cardsJson.optJSONObject(index)
                         ?: error("MegaPack card ${index + 1} is not an object.")
                     val cardId = UUID.randomUUID().toString()
-                    val imageReference = item.firstString("image", "artwork")
+                    val legacyImageReference = item.firstString("image", "artwork")
+                    val backgroundReference = item.firstString("background", "background_image", "backdrop")
+                    val subjectReference = item.firstString("subject", "foreground", "subject_image")
                     CtsCard(
                         id = cardId,
                         badgePrimary = item.firstString("badge_primary", "badgePrimary", "value"),
@@ -88,7 +93,11 @@ object MegaPackImporter {
                         description = item.firstString("description", "details"),
                         imageSubcard = ImageSubcard(
                             parentCardId = cardId,
-                            source = imageReference.takeIf { it.isNotBlank() }
+                            backgroundSource = backgroundReference.takeIf { it.isNotBlank() }
+                                ?.let { extract(it, index + 1, "background") },
+                            source = subjectReference.takeIf { it.isNotBlank() }
+                                ?.let { extract(it, index + 1, "subject") }
+                                ?: legacyImageReference.takeIf { it.isNotBlank() }
                                 ?.let { extract(it, index + 1, "card") },
                             cropFocusX = item.optDouble("crop_focus_x", 0.5).toFloat(),
                             cropFocusY = item.optDouble("crop_focus_y", 0.5).toFloat(),
@@ -115,6 +124,35 @@ object MegaPackImporter {
                     loop = soundtrackObject?.optBoolean("loop", true) ?: true,
                 )
 
+                val introObject = manifest.optJSONObject("intro_video")
+                val introReference = introObject
+                    ?.firstString("file", "path", "video")
+                    ?.takeIf { it.isNotBlank() }
+                val introPath = introReference?.let { extract(it, 1, "intro") }
+                val measuredIntroDuration = introPath?.let(::mediaVideoDurationSeconds) ?: 0f
+                val introVideo = IntroVideoSettings(
+                    uri = introPath,
+                    displayName = introObject?.firstString("display_name", "displayName", "name")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: introReference?.substringAfterLast('/').orEmpty(),
+                    durationSeconds = introObject?.optDouble("duration_seconds", 0.0)
+                        ?.toFloat()
+                        ?.takeIf { it > 0f }
+                        ?: measuredIntroDuration,
+                )
+
+                val creditsObject = manifest.optJSONObject("credits")
+                val creditDefaults = CreditsSettings()
+                val credits = CreditsSettings(
+                    heading = creditsObject?.presentString("heading", "title") ?: creditDefaults.heading,
+                    lines = creditsObject?.creditsLines() ?: creditDefaults.lines,
+                    footer = creditsObject?.presentString("footer") ?: creditDefaults.footer,
+                    endingHeading = creditsObject?.presentString("ending_heading", "outro_heading")
+                        ?: creditDefaults.endingHeading,
+                    endingDetails = creditsObject?.presentString("ending_details", "outro_details")
+                        ?: creditDefaults.endingDetails,
+                )
+
                 val model = VisualModel.fromId(manifest.firstString("model", "model_id"))
                 val mode = ModelMode.fromId(manifest.firstString("model_mode", "mode"))
                 val packName = manifest.firstString("name", "title").ifBlank { "CTS MegaPack" }
@@ -127,6 +165,8 @@ object MegaPackImporter {
                     showIntro = manifest.optBoolean("show_intro", true),
                     showDisclaimer = manifest.optBoolean("show_disclaimer", true),
                     showOutro = manifest.optBoolean("show_outro", true),
+                    introVideo = introVideo,
+                    credits = credits,
                     soundtrack = soundtrack,
                 ).normalized()
                 return MegaPackImportResult(project, packName, extractedImages.size, warnings)
@@ -216,13 +256,49 @@ object MegaPackImporter {
         .firstOrNull { it.isNotBlank() }
         .orEmpty()
 
+    private fun JSONObject.presentString(vararg keys: String): String? = keys
+        .firstOrNull { has(it) && !isNull(it) }
+        ?.let { key -> optString(key) }
+
+    private fun JSONObject.creditsLines(): String? {
+        val key = listOf("lines", "names").firstOrNull { has(it) && !isNull(it) } ?: return null
+        val array = optJSONArray(key)
+        if (array != null) {
+            return List(array.length()) { index -> array.optString(index).trim() }
+                .filter(String::isNotEmpty)
+                .joinToString("\n")
+        }
+        return optString(key)
+    }
+
+    private fun mediaVideoDurationSeconds(path: String): Float = MediaMetadataRetriever().run {
+        try {
+            setDataSource(path)
+            val videoWidth = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull()
+                ?: 0
+            require(videoWidth > 0) { "MegaPack intro_video does not contain playable video." }
+            val duration = extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?.div(1_000f)
+                ?: 0f
+            require(duration > 0f) { "MegaPack intro_video has no readable duration." }
+            duration
+        } finally {
+            release()
+        }
+    }
+
     private fun validateCardImages(cards: List<CtsCard>): List<String> {
-        val imageCards = cards.mapIndexedNotNull { cardIndex, card ->
-            card.imageSubcard.source?.let { cardIndex to File(it) }
+        val imageCards = cards.flatMapIndexed { cardIndex, card ->
+            listOfNotNull(
+                card.imageSubcard.backgroundSource?.let { Triple(cardIndex, "background", File(it)) },
+                card.imageSubcard.source?.let { Triple(cardIndex, "subject", File(it)) },
+            )
         }
         if (imageCards.isEmpty()) return listOf("This MegaPack has no card images.")
 
-        val rasters = imageCards.asSequence().map { (cardIndex, file) ->
+        val rasters = imageCards.asSequence().map { (cardIndex, _, file) ->
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(file.absolutePath, bounds)
             require(bounds.outWidth > 0 && bounds.outHeight > 0) {
@@ -250,12 +326,15 @@ object MegaPackImporter {
                     analysis.blank -> add("Card $cardNumber may contain a blank image.")
                     analysis.duplicateOf != null -> {
                         val duplicateCard = imageCards[analysis.duplicateOf].first + 1
-                        add("Card $cardNumber appears to duplicate card $duplicateCard.")
+                        val layer = imageCards[imageIndex].second
+                        add("Card $cardNumber $layer appears to duplicate card $duplicateCard.")
                     }
                 }
             }
-            val missing = cards.count { it.imageSubcard.source.isNullOrBlank() }
-            if (missing > 0) add("$missing card${if (missing == 1) " has" else "s have"} no image.")
+            val missing = cards.count {
+                it.imageSubcard.source.isNullOrBlank() && it.imageSubcard.backgroundSource.isNullOrBlank()
+            }
+            if (missing > 0) add("$missing card${if (missing == 1) " has" else "s have"} no artwork.")
         }
     }
 }

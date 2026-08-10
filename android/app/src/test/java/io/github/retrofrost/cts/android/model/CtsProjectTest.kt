@@ -59,4 +59,19 @@ class CtsProjectTest {
         assertEquals("Sea water", card.title)
         assertEquals("", card.description)
     }
+
+    @Test
+    fun backgroundAndForegroundRemainSeparateLayers() {
+        val card = CtsCard(
+            imageSubcard = ImageSubcard(
+                parentCardId = "wrong",
+                backgroundSource = "background.png",
+                source = "felix.png",
+            ),
+        ).withOwnedImageSubcard()
+
+        assertEquals("background.png", card.imageSubcard.backgroundSource)
+        assertEquals("felix.png", card.imageSubcard.source)
+        assertEquals(card.id, card.imageSubcard.parentCardId)
+    }
 }

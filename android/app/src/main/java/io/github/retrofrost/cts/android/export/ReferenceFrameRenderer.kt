@@ -10,7 +10,9 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
+import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -39,15 +41,29 @@ class ReferenceFrameRenderer(
     private val imageCache = mutableMapOf<String, Bitmap?>()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+    private val introRetriever: MediaMetadataRetriever? = project.introVideo.uri
+        ?.takeIf { it.isNotBlank() }
+        ?.let { source ->
+            runCatching {
+                MediaMetadataRetriever().apply {
+                    val uri = Uri.parse(source)
+                    if (uri.scheme.isNullOrBlank()) setDataSource(source) else setDataSource(context, uri)
+                }
+            }.getOrNull()
+        }
 
     fun render(target: Bitmap, outputTimeSeconds: Float) {
         require(target.width == width && target.height == height)
         val canvas = Canvas(target)
         canvas.drawColor(Color.BLACK)
+        if (TimelineEngine.customIntroVisible(project, outputTimeSeconds)) {
+            drawCustomIntro(canvas, outputTimeSeconds)
+            return
+        }
         val cardWidth = width / 4f
 
         if (TimelineEngine.introCreditsVisible(project, outputTimeSeconds)) {
-            ReferenceOverlayRenderer.drawIntroCredits(canvas, width, height, paint)
+            ReferenceOverlayRenderer.drawIntroCredits(canvas, width, height, project.credits, paint)
         }
         TimelineEngine.placements(project, outputTimeSeconds).forEach { placement ->
             val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
@@ -80,7 +96,7 @@ class ReferenceFrameRenderer(
                 height,
                 TimelineEngine.relationshipsSourceFrame(project, outputTimeSeconds),
                 TimelineEngine.relationshipsDisclaimerAlpha(project, outputTimeSeconds),
-                project.showIntro,
+                project.showIntro && TimelineEngine.customIntroDuration(project) <= 0f,
                 paint,
             )
         }
@@ -94,10 +110,11 @@ class ReferenceFrameRenderer(
                 height,
                 TimelineEngine.relationshipsOutroLocalFrame(project, outputTimeSeconds),
                 content,
+                project.credits,
                 paint,
             )
         } else {
-            ReferenceOverlayRenderer.drawOutro(canvas, width, height, cover, content, paint)
+            ReferenceOverlayRenderer.drawOutro(canvas, width, height, cover, content, project.credits, paint)
         }
 
         val fade = TimelineEngine.fadeAlpha(project, outputTimeSeconds).coerceIn(0f, 1f)
@@ -113,6 +130,29 @@ class ReferenceFrameRenderer(
             if (!bitmap.isRecycled) bitmap.recycle()
         }
         imageCache.clear()
+        introRetriever?.release()
+    }
+
+    private fun drawCustomIntro(canvas: Canvas, outputTimeSeconds: Float) {
+        val retriever = introRetriever ?: return
+        val timeUs = (outputTimeSeconds.coerceAtLeast(0f) * 1_000_000f).toLong()
+        val frame = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                retriever.getScaledFrameAtTime(
+                    timeUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST,
+                    width,
+                    height,
+                ) ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+            } else {
+                retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+            }
+        }.getOrNull() ?: return
+        try {
+            drawCenterCrop(canvas, frame, RectF(0f, 0f, width.toFloat(), height.toFloat()), 0.5f, 0.5f, 1f)
+        } finally {
+            if (!frame.isRecycled) frame.recycle()
+        }
     }
 
     private fun drawCardBody(canvas: Canvas, card: CtsCard, cardWidth: Float, placement: CardPlacement) {
@@ -122,19 +162,31 @@ class ReferenceFrameRenderer(
         val title = frames.title?.let { frameRect(it, cardWidth) }
         val description = frames.description?.let { frameRect(it, cardWidth) }
 
-        val topColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 105, 211) else Color.rgb(19, 141, 219)
-        val bottomColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 88, 181) else Color.rgb(11, 116, 190)
-        paint.shader = LinearGradient(
-            image.left,
-            image.top,
-            image.left,
-            image.bottom,
-            intArrayOf(topColor, topColor, bottomColor),
-            floatArrayOf(0f, 0.72f, 1f),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawRect(image, paint)
-        paint.shader = null
+        val background = loadImage(displayCard.imageSubcard.backgroundSource)
+        if (background != null) {
+            drawCenterCrop(
+                canvas = canvas,
+                bitmap = background,
+                destination = RectF(0f, 0f, cardWidth, height.toFloat()),
+                focusX = 0.5f,
+                focusY = 0.5f,
+                zoom = 1f,
+            )
+        } else {
+            val topColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 105, 211) else Color.rgb(19, 141, 219)
+            val bottomColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 88, 181) else Color.rgb(11, 116, 190)
+            paint.shader = LinearGradient(
+                image.left,
+                image.top,
+                image.left,
+                image.bottom,
+                intArrayOf(topColor, topColor, bottomColor),
+                floatArrayOf(0f, 0.72f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            canvas.drawRect(image, paint)
+            paint.shader = null
+        }
 
         loadImage(displayCard.imageSubcard.source)?.let { bitmap ->
             val transform = displayCard.imageSubcard.transform.clamped()
@@ -160,7 +212,7 @@ class ReferenceFrameRenderer(
         val padding = cardWidth * 0.035f
         title?.let {
             val alpha = if (project.model == VisualModel.Relationships) {
-                placement.titleReveal.coerceIn(0f, 1f)
+                max(placement.bodyReveal, placement.titleReveal).coerceIn(0f, 1f)
             } else 1f
             val layer = if (alpha < 0.999f) {
                 canvas.saveLayerAlpha(it, (alpha * 255f).toInt())
@@ -183,7 +235,7 @@ class ReferenceFrameRenderer(
         }
         description?.let {
             val alpha = if (project.model == VisualModel.Relationships) {
-                placement.descriptionReveal.coerceIn(0f, 1f)
+                max(placement.bodyReveal, placement.descriptionReveal).coerceIn(0f, 1f)
             } else 1f
             val layer = if (alpha < 0.999f) {
                 canvas.saveLayerAlpha(it, (alpha * 255f).toInt())
@@ -225,14 +277,16 @@ class ReferenceFrameRenderer(
                     paint,
                 )
             }
-            paint.color = Color.rgb(234, 127, 28)
-            val rule = frameRect(CardContentLayout.relationshipsRule(), cardWidth)
-            val ruleAlpha = placement.descriptionReveal.coerceIn(0f, 1f)
-            val layer = if (ruleAlpha < 0.999f) {
-                canvas.saveLayerAlpha(rule, (ruleAlpha * 255f).toInt())
-            } else null
-            canvas.drawRect(rule, paint)
-            layer?.let(canvas::restoreToCount)
+            CardContentLayout.relationshipsRule(displayCard)?.let { ruleFrame ->
+                paint.color = Color.rgb(234, 127, 28)
+                val rule = frameRect(ruleFrame, cardWidth)
+                val ruleAlpha = max(placement.bodyReveal, placement.descriptionReveal).coerceIn(0f, 1f)
+                val layer = if (ruleAlpha < 0.999f) {
+                    canvas.saveLayerAlpha(rule, (ruleAlpha * 255f).toInt())
+                } else null
+                canvas.drawRect(rule, paint)
+                layer?.let(canvas::restoreToCount)
+            }
         }
     }
 

@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import io.github.retrofrost.cts.android.model.CreditsSettings
 import kotlin.math.max
 import kotlin.math.min
 
@@ -80,6 +81,7 @@ internal object ReferenceOverlayRenderer {
         height: Int,
         localFrame: Int,
         contentAlpha: Float,
+        credits: CreditsSettings,
         paint: Paint,
     ) {
         if (localFrame < 0) return
@@ -110,6 +112,26 @@ internal object ReferenceOverlayRenderer {
             )
             paint.color = Color.argb(alpha, 244, 244, 244)
             drawCentered(canvas, "WATCH MORE", width * 1314f / 1920f, width * 552f / 1920f, height * 0.11f, height * 0.040f, paint)
+            paint.color = Color.argb(alpha, 220, 220, 220)
+            drawCentered(
+                canvas,
+                credits.endingHeading,
+                width * 1314f / 1920f,
+                width * 552f / 1920f,
+                height * 0.86f,
+                height * 0.020f,
+                paint,
+                true,
+            )
+            drawCentered(
+                canvas,
+                credits.endingDetails,
+                width * 1314f / 1920f,
+                width * 552f / 1920f,
+                height * 0.91f,
+                height * 0.014f,
+                paint,
+            )
         }
     }
 
@@ -153,7 +175,13 @@ internal object ReferenceOverlayRenderer {
         return v0 + (v1 - v0) * (frame - f0) / (f1 - f0)
     }
 
-    fun drawIntroCredits(canvas: Canvas, width: Int, height: Int, paint: Paint) {
+    fun drawIntroCredits(
+        canvas: Canvas,
+        width: Int,
+        height: Int,
+        credits: CreditsSettings,
+        paint: Paint,
+    ) {
         val cardWidth = width / 4f
         val left = width - cardWidth
         paint.style = Paint.Style.FILL
@@ -164,16 +192,13 @@ internal object ReferenceOverlayRenderer {
         paint.color = Color.rgb(190, 190, 190)
         canvas.drawRect(left + cardWidth * 0.12f, height * 0.20f, width - cardWidth * 0.12f, height * 0.202f, paint)
         paint.color = Color.WHITE
-        drawCentered(canvas, "Credits", left, cardWidth, height * 0.30f, height * 0.042f, paint, true)
-        val lines = listOf(
-            "Lead Research & Sourcing", "Independent Fact Check", "Lead Graphic Designer",
-            "Edit & Post-Production", "Thumbnail Designer", "Video Idea & Quality Check",
-        )
+        drawCentered(canvas, credits.heading, left, cardWidth, height * 0.30f, height * 0.042f, paint, true)
+        val lines = credits.lines.lineSequence().filter(String::isNotBlank).take(7).toList()
         lines.forEachIndexed { index, line ->
             drawCentered(canvas, line, left, cardWidth, height * (0.39f + index * 0.075f), height * 0.018f, paint)
         }
         paint.color = Color.rgb(200, 200, 200)
-        drawCentered(canvas, "DISCLAIMER · COMMUNITY DISCUSSIONS AND SOURCES", left, cardWidth, height * 0.93f, height * 0.011f, paint)
+        drawCentered(canvas, credits.footer, left, cardWidth, height * 0.93f, height * 0.011f, paint)
     }
 
     fun drawOutro(
@@ -182,6 +207,7 @@ internal object ReferenceOverlayRenderer {
         height: Int,
         coverProgress: Float,
         contentAlpha: Float,
+        creditsSettings: CreditsSettings,
         paint: Paint,
     ) {
         val overlayRight = width * 0.75f
@@ -211,8 +237,8 @@ internal object ReferenceOverlayRenderer {
         paint.color = Color.argb(alpha, 98, 95, 86)
         canvas.drawRoundRect(credits, 12f, 12f, paint)
         paint.color = Color.argb(alpha, 255, 255, 255)
-        drawCentered(canvas, "Video Made By", credits.left, credits.width(), credits.top + credits.height() * 0.22f, height * 0.026f, paint, true)
-        drawCentered(canvas, "Research · Editing · Design · Quality Check", credits.left, credits.width(), credits.top + credits.height() * 0.58f, height * 0.014f, paint)
+        drawCentered(canvas, creditsSettings.endingHeading, credits.left, credits.width(), credits.top + credits.height() * 0.22f, height * 0.026f, paint, true)
+        drawCentered(canvas, creditsSettings.endingDetails, credits.left, credits.width(), credits.top + credits.height() * 0.58f, height * 0.014f, paint)
     }
 
     private fun drawCentered(

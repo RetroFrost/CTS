@@ -70,7 +70,27 @@ class CardContentLayoutTest {
         assertEquals(118f / 1080f, frames.title!!.height, 0.0001f)
         assertEquals(916f / 1080f, frames.description!!.y, 0.0001f)
         assertEquals(164f / 1080f, frames.description!!.height, 0.0001f)
-        assertEquals(906f / 1080f, CardContentLayout.relationshipsRule().y, 0.0001f)
-        assertEquals(10f / 1080f, CardContentLayout.relationshipsRule().height, 0.0001f)
+        assertEquals(906f / 1080f, CardContentLayout.relationshipsRule(CtsCard(description = "Description"))!!.y, 0.0001f)
+        assertEquals(10f / 1080f, CardContentLayout.relationshipsRule(CtsCard(description = "Description"))!!.height, 0.0001f)
+    }
+
+    @Test
+    fun relationshipsEmptyFieldsGiveTheirSpaceToArtwork() {
+        val empty = CardContentLayout.frames(
+            VisualModel.Relationships,
+            CtsCard(title = " \n", description = "\t"),
+        )
+        assertEquals(1f, empty.image.height, 0.0001f)
+        assertNull(empty.title)
+        assertNull(empty.description)
+        assertNull(CardContentLayout.relationshipsRule(CtsCard()))
+
+        val titleOnly = CardContentLayout.frames(
+            VisualModel.Relationships,
+            CtsCard(title = "Seawater", description = ""),
+        )
+        assertEquals(962f / 1080f, titleOnly.image.height, 0.0001f)
+        assertNotNull(titleOnly.title)
+        assertNull(titleOnly.description)
     }
 }

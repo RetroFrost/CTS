@@ -90,7 +90,10 @@ object CardStripRecognizer {
             val lower = max(lowerByExpected, previous + minimumSpacing)
             val upper = min(upperByExpected, primary - (cardCount - index) * minimumSpacing)
             val best = if (lower <= upper) {
-                (lower..upper).maxByOrNull { position -> boundaryScore(lines, position) }
+                (lower..upper).maxByOrNull { position ->
+                    val distancePenalty = abs(position - expected) / radius.coerceAtLeast(1) * 0.12f
+                    boundaryScore(lines, position) - distancePenalty
+                }
                     ?: expected.toInt().coerceIn(1, primary - 2)
             } else {
                 expected.toInt().coerceIn(previous + 1, primary - 2)
@@ -188,13 +191,30 @@ object CardStripRecognizer {
     private fun boundaryScore(lines: List<LineStats>, position: Int): Float {
         if (position <= 0 || position >= lines.lastIndex) return 0f
         val center = lines[position]
-        val left = lines[max(0, position - 2)]
-        val right = lines[min(lines.lastIndex, position + 2)]
+        val left = averageLines(lines, max(0, position - 5), max(0, position - 2))
+        val right = averageLines(lines, min(lines.lastIndex, position + 2), min(lines.lastIndex, position + 5))
         val edge = colorDistance(left, right)
         val contrast = (colorDistance(center, left) + colorDistance(center, right)) / 2f
         val uniformity = (1f - sqrt(center.variance).coerceIn(0f, 1f))
-        return (sqrt(edge) * 0.45f + sqrt(contrast) * 0.35f + uniformity * 0.20f)
+        val localPeak = contrast - (
+            colorDistance(lines[max(0, position - 1)], left) +
+                colorDistance(lines[min(lines.lastIndex, position + 1)], right)
+            ) * 0.25f
+        return (sqrt(edge) * 0.48f + sqrt(contrast) * 0.27f + uniformity * 0.18f + localPeak * 0.07f)
             .coerceIn(0f, 1f)
+    }
+
+    private fun averageLines(lines: List<LineStats>, start: Int, end: Int): LineStats {
+        val safeStart = min(start, end).coerceIn(lines.indices)
+        val safeEnd = max(start, end).coerceIn(lines.indices)
+        val range = safeStart..safeEnd
+        val count = range.count().coerceAtLeast(1)
+        return LineStats(
+            red = range.sumOf { lines[it].red.toDouble() }.toFloat() / count,
+            green = range.sumOf { lines[it].green.toDouble() }.toFloat() / count,
+            blue = range.sumOf { lines[it].blue.toDouble() }.toFloat() / count,
+            variance = range.sumOf { lines[it].variance.toDouble() }.toFloat() / count,
+        )
     }
 
     private fun separatorRun(lines: List<LineStats>, center: Int, maximumRadius: Int): IntRange {

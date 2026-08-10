@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
@@ -115,6 +116,7 @@ import io.github.retrofrost.cts.android.importer.StripAxis
 import io.github.retrofrost.cts.android.layout.CardContentLayout
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.model.DurationRuntime
 import io.github.retrofrost.cts.android.model.ImageSubcard
 import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.NormalizedRect
@@ -128,8 +130,8 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 
 private enum class WorkspaceSection(val label: String) {
-    Data("Data"),
-    Audio("Audio"),
+    Data("Cards"),
+    Audio("Sound & intro"),
     Export("Export"),
 }
 
@@ -179,6 +181,7 @@ fun CtsAndroidAppV2() {
     var isPlaying by remember { mutableStateOf(false) }
     var section by remember { mutableStateOf(WorkspaceSection.Data) }
     var showInsertDialog by remember { mutableStateOf(false) }
+    var showLengthDialog by remember { mutableStateOf(false) }
     var isImportingCardStrip by remember { mutableStateOf(false) }
     var cardStripReview by remember { mutableStateOf<CardStripReviewState?>(null) }
     var cardStripReviewError by remember { mutableStateOf<String?>(null) }
@@ -222,6 +225,17 @@ fun CtsAndroidAppV2() {
         message("Image attached")
     }
 
+    val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        updateSelectedCard { card ->
+            card.copy(imageSubcard = card.imageSubcard.copy(backgroundSource = uri.toString()))
+        }
+        message("Full-card background attached")
+    }
+
     val cardStripPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
         if (project.cards.isEmpty()) {
@@ -257,6 +271,7 @@ fun CtsAndroidAppV2() {
 
     val megaPackPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
+        DurationRuntime.useProjectSetting()
         isImportingMegaPack = true
         scope.launch {
             runCatching {
@@ -293,6 +308,47 @@ fun CtsAndroidAppV2() {
         message("Soundtrack ready for AAC encoding")
     }
 
+    val introVideoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val durationSeconds = withContext(Dispatchers.IO) {
+                    MediaMetadataRetriever().run {
+                        try {
+                            setDataSource(context, uri)
+                            val videoWidth = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                                ?.toIntOrNull()
+                                ?: 0
+                            require(videoWidth > 0) { "The selected file does not contain playable video." }
+                            val durationMs = extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                ?.toLongOrNull()
+                                ?: error("The selected file has no readable duration.")
+                            require(durationMs > 0L) { "The selected MP4 contains no playable video." }
+                            durationMs / 1_000f
+                        } finally {
+                            release()
+                        }
+                    }
+                }
+                project.copy(
+                    showIntro = true,
+                    introVideo = project.introVideo.copy(
+                        uri = uri.toString(),
+                        displayName = queryDisplayName(context, uri),
+                        durationSeconds = durationSeconds,
+                    ),
+                )
+            }.onSuccess(::applyProject).onSuccess {
+                positionSeconds = 0f
+                isPlaying = false
+                message("Custom MP4 intro ready")
+            }.onFailure { error ->
+                message(error.message ?: "Could not use that MP4 as the intro")
+            }
+        }
+    }
+
     val openProject = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
         runCatching {
@@ -300,6 +356,7 @@ fun CtsAndroidAppV2() {
                 ?.bufferedReader()
                 ?.use { it.readText() }
                 ?: error("The selected project could not be read.")
+            DurationRuntime.useProjectSetting()
             project = ProjectJson.decode(text).normalized()
             selectedCardId = project.cards.firstOrNull()?.id
             positionSeconds = 0f
@@ -416,6 +473,13 @@ fun CtsAndroidAppV2() {
                                         index
                                     }
                                     val crop = activeCardStripReview.cropAdjustments[sourceIndex]
+                                        ?: activeCardStripReview.imageAnalyses.getOrNull(sourceIndex)?.let { analysis ->
+                                            ImageCropAdjustment(
+                                                focusX = analysis.suggestedFocusX,
+                                                focusY = analysis.suggestedFocusY,
+                                                zoom = analysis.suggestedZoom,
+                                            )
+                                        }
                                         ?: ImageCropAdjustment()
                                     card.copy(
                                         imageSubcard = card.imageSubcard.copy(
@@ -528,6 +592,7 @@ fun CtsAndroidAppV2() {
                         onProjectChanged = ::applyProject,
                         onUpdateSelectedCard = ::updateSelectedCard,
                         onChooseImage = { imagePicker.launch(arrayOf("image/*")) },
+                        onChooseBackground = { backgroundPicker.launch(arrayOf("image/*")) },
                         onImportCardStrip = { cardStripPicker.launch(arrayOf("image/*")) },
                         isImportingCardStrip = isImportingCardStrip,
                         onImportMegaPack = {
@@ -542,6 +607,7 @@ fun CtsAndroidAppV2() {
                         project = project,
                         onProjectChanged = ::applyProject,
                         onChooseSoundtrack = { soundtrackPicker.launch(arrayOf("audio/*")) },
+                        onChooseIntroVideo = { introVideoPicker.launch(arrayOf("video/mp4", "video/*")) },
                     )
                     WorkspaceSection.Export -> ExportWorkspace(
                         project = project,
@@ -554,6 +620,7 @@ fun CtsAndroidAppV2() {
                                 message("Canceling export…")
                             }
                         },
+                        onSetLength = { showLengthDialog = true },
                     )
                 }
             }
@@ -571,6 +638,21 @@ fun CtsAndroidAppV2() {
                 isPlaying = false
                 showInsertDialog = false
                 message("Inserted ${cards.size} cards")
+            },
+        )
+    }
+
+    if (showLengthDialog) {
+        VideoLengthDialog(
+            initialCustomSeconds = DurationRuntime.effectiveCustomSeconds(),
+            onDismiss = { showLengthDialog = false },
+            onAutomatic = {
+                DurationRuntime.useAutomatic()
+                showLengthDialog = false
+            },
+            onCustom = { seconds ->
+                DurationRuntime.useCustom(seconds)
+                showLengthDialog = false
             },
         )
     }
@@ -1245,6 +1327,7 @@ private fun DataWorkspace(
     onProjectChanged: (CtsProject) -> Unit,
     onUpdateSelectedCard: ((CtsCard) -> CtsCard) -> Unit,
     onChooseImage: () -> Unit,
+    onChooseBackground: () -> Unit,
     onImportCardStrip: () -> Unit,
     isImportingCardStrip: Boolean,
     onImportMegaPack: () -> Unit,
@@ -1252,6 +1335,7 @@ private fun DataWorkspace(
     onInsertData: () -> Unit,
 ) {
     val selected = project.cards.firstOrNull { it.id == selectedCardId }
+    var showAdvanced by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1264,7 +1348,12 @@ private fun DataWorkspace(
                     modifier = Modifier.padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("Reference model", fontWeight = FontWeight.Black)
+                    Text("Create a comparison", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Text(
+                        "Choose a style, add your cards, then attach the artwork. CTS handles the animation and export.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text("Video style", fontWeight = FontWeight.Bold)
                     VisualModel.entries.forEach { model ->
                         FilterChip(
                             selected = project.model == model,
@@ -1272,41 +1361,6 @@ private fun DataWorkspace(
                             label = { Text(model.label) },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ModelMode.entries.forEach { mode ->
-                            FilterChip(
-                                selected = project.modelMode == mode,
-                                onClick = { onProjectChanged(project.copy(modelMode = mode)) },
-                                label = { Text(mode.label) },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                    Text(
-                        if (project.modelMode == ModelMode.ExactReference) {
-                            if (project.model == VisualModel.Relationships) {
-                                "Locked source-frame motion · 11,130 source frames at 60 FPS · 0.5× playback"
-                            } else {
-                                "Locked reference motion · content remains editable"
-                            }
-                        } else {
-                            "Custom mode unlocks timing while retaining this model's design."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    ReferenceOption("Intro", project.showIntro) {
-                        onProjectChanged(project.copy(showIntro = it))
-                    }
-                    ReferenceOption("Disclaimer", project.showDisclaimer) {
-                        onProjectChanged(project.copy(showDisclaimer = it))
-                    }
-                    ReferenceOption("Badges", project.showHexagons) {
-                        onProjectChanged(project.copy(showHexagons = it))
-                    }
-                    ReferenceOption("Ending and fade", project.showOutro) {
-                        onProjectChanged(project.copy(showOutro = it))
                     }
                 }
             }
@@ -1352,12 +1406,60 @@ private fun DataWorkspace(
                 Text(if (isImportingMegaPack) "Loading MegaPack…" else "Import MegaPack (.zip)")
             }
             Text(
-                "Loads megapack.json, card images, and an optional soundtrack. Limits: 1 GB ZIP, " +
+                "Loads megapack.json, separate backgrounds and subjects, plus optional intro video, " +
+                    "credits, and soundtrack. Limits: 1 GB ZIP, " +
                     "512 MB extracted, 64 MB per file, and 500 cards. Images are checked before loading.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
+        }
+        item {
+            OutlinedButton(
+                onClick = { showAdvanced = !showAdvanced },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (showAdvanced) "Hide advanced options" else "Advanced options")
+            }
+        }
+        if (showAdvanced) {
+            item {
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("Animation timing", fontWeight = FontWeight.Black)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ModelMode.entries.forEach { mode ->
+                                FilterChip(
+                                    selected = project.modelMode == mode,
+                                    onClick = { onProjectChanged(project.copy(modelMode = mode)) },
+                                    label = {
+                                        Text(
+                                            if (mode == ModelMode.ExactReference) {
+                                                "Match original"
+                                            } else {
+                                                "Editable timing"
+                                            },
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                        ReferenceOption("Show disclaimer", project.showDisclaimer) {
+                            onProjectChanged(project.copy(showDisclaimer = it))
+                        }
+                        ReferenceOption("Show badges", project.showHexagons) {
+                            onProjectChanged(project.copy(showHexagons = it))
+                        }
+                        ReferenceOption("Show ending", project.showOutro) {
+                            onProjectChanged(project.copy(showOutro = it))
+                        }
+                    }
+                }
+            }
         }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1482,10 +1584,28 @@ private fun DataWorkspace(
                 )
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onChooseImage, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Filled.Image, contentDescription = null)
-                        Text(if (selected.imageSubcard.source.isNullOrBlank()) "Choose image" else "Replace image")
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onChooseImage, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Filled.Image, contentDescription = null)
+                            Text(
+                                if (selected.imageSubcard.source.isNullOrBlank()) {
+                                    "Add subject"
+                                } else {
+                                    "Replace subject"
+                                },
+                            )
+                        }
+                        OutlinedButton(onClick = onChooseBackground, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Filled.Image, contentDescription = null)
+                            Text(
+                                if (selected.imageSubcard.backgroundSource.isNullOrBlank()) {
+                                    "Add background"
+                                } else {
+                                    "Replace background"
+                                },
+                            )
+                        }
                     }
                     OutlinedButton(
                         onClick = {
@@ -1493,10 +1613,10 @@ private fun DataWorkspace(
                                 card.copy(imageSubcard = card.imageSubcard.copy(transform = NormalizedRect.Full))
                             }
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(Icons.Filled.RestartAlt, contentDescription = null)
-                        Text("Reset frame")
+                        Text("Reset subject position")
                     }
                 }
             }
@@ -1523,8 +1643,10 @@ private fun AudioWorkspace(
     project: CtsProject,
     onProjectChanged: (CtsProject) -> Unit,
     onChooseSoundtrack: () -> Unit,
+    onChooseIntroVideo: () -> Unit,
 ) {
     val encoders = remember { CodecCatalog.audioEncoders() }
+    var showAdvanced by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1532,11 +1654,111 @@ private fun AudioWorkspace(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("Soundtrack", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text("Intro and sound", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             Text(
-                "CTS decodes the selected track, applies volume and looping, then encodes it as AAC inside the MP4.",
+                "Add an optional MP4 intro, edit the credits, and choose music for the finished video.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("Intro video", fontWeight = FontWeight.Black)
+                    Text(
+                        project.introVideo.displayName.ifBlank { "Use the built-in intro, or choose any MP4." },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onChooseIntroVideo, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Filled.Movie, contentDescription = null)
+                            Text(if (project.introVideo.uri == null) "Choose MP4" else "Replace MP4")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onProjectChanged(
+                                    project.copy(
+                                        introVideo = project.introVideo.copy(
+                                            uri = null,
+                                            displayName = "",
+                                            durationSeconds = 0f,
+                                        ),
+                                    ),
+                                )
+                            },
+                            enabled = project.introVideo.uri != null,
+                        ) {
+                            Text("Remove")
+                        }
+                    }
+                    ReferenceOption("Include intro", project.showIntro) {
+                        onProjectChanged(project.copy(showIntro = it))
+                    }
+                    if (project.introVideo.durationSeconds > 0f) {
+                        Text(
+                            "${TimelineEngine.formatTime(project.introVideo.durationSeconds)} · fitted to 16:9 without stretching",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    Text("Credits", fontWeight = FontWeight.Black)
+                    OutlinedTextField(
+                        value = project.credits.heading,
+                        onValueChange = { value ->
+                            onProjectChanged(project.copy(credits = project.credits.copy(heading = value)))
+                        },
+                        label = { Text("Credits heading") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = project.credits.lines,
+                        onValueChange = { value ->
+                            onProjectChanged(project.copy(credits = project.credits.copy(lines = value)))
+                        },
+                        label = { Text("Names or roles · one per line") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = project.credits.footer,
+                        onValueChange = { value ->
+                            onProjectChanged(project.copy(credits = project.credits.copy(footer = value)))
+                        },
+                        label = { Text("Credits footer") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = project.credits.endingHeading,
+                        onValueChange = { value ->
+                            onProjectChanged(project.copy(credits = project.credits.copy(endingHeading = value)))
+                        },
+                        label = { Text("Ending credit heading") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = project.credits.endingDetails,
+                        onValueChange = { value ->
+                            onProjectChanged(project.copy(credits = project.credits.copy(endingDetails = value)))
+                        },
+                        label = { Text("Ending credit details") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+        item {
+            Text("Soundtrack", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1580,28 +1802,45 @@ private fun AudioWorkspace(
                             )
                             Text("Loop until the video ends")
                         }
+                        if (project.introVideo.uri != null && project.showIntro) {
+                            Text(
+                                "The soundtrack replaces the intro video's original audio.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
         }
         item {
-            EncoderDropdown(
-                title = "Audio encoder",
-                selectedName = project.export.audioEncoderName,
-                automaticLabel = "Automatic AAC encoder",
-                choices = encoders,
-                onSelected = { choice ->
-                    onProjectChanged(project.copy(export = project.export.copy(audioEncoderName = choice?.name)))
-                },
-            )
+            OutlinedButton(
+                onClick = { showAdvanced = !showAdvanced },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (showAdvanced) "Hide audio settings" else "Advanced audio settings")
+            }
         }
-        item {
-            Text("AAC bitrate", fontWeight = FontWeight.Bold)
-            ChoiceRow(
-                options = listOf(128_000 to "128 kbps", 192_000 to "192 kbps", 256_000 to "256 kbps"),
-                selected = project.export.audioBitrate,
-                onSelected = { value -> onProjectChanged(project.copy(export = project.export.copy(audioBitrate = value))) },
-            )
+        if (showAdvanced) {
+            item {
+                EncoderDropdown(
+                    title = "Audio encoder",
+                    selectedName = project.export.audioEncoderName,
+                    automaticLabel = "Automatic AAC encoder",
+                    choices = encoders,
+                    onSelected = { choice ->
+                        onProjectChanged(project.copy(export = project.export.copy(audioEncoderName = choice?.name)))
+                    },
+                )
+            }
+            item {
+                Text("AAC bitrate", fontWeight = FontWeight.Bold)
+                ChoiceRow(
+                    options = listOf(128_000 to "128 kbps", 192_000 to "192 kbps", 256_000 to "256 kbps"),
+                    selected = project.export.audioBitrate,
+                    onSelected = { value -> onProjectChanged(project.copy(export = project.export.copy(audioBitrate = value))) },
+                )
+            }
         }
     }
 }
@@ -1614,8 +1853,10 @@ private fun ExportWorkspace(
     onExport: () -> Unit,
     exportWork: WorkInfo?,
     onCancelExport: () -> Unit,
+    onSetLength: () -> Unit,
 ) {
     val encoders = remember { CodecCatalog.videoEncoders() }
+    var showAdvanced by remember { mutableStateOf(false) }
     val duration = TimelineEngine.duration(project)
     val progressPercent = exportWork
         ?.progress
@@ -1649,9 +1890,9 @@ private fun ExportWorkspace(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("Encode MP4", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text("Export video", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             Text(
-                "Encoding runs as a foreground background job. You may leave CTS; a notification reports progress and warns when the MP4 is ready.",
+                "Choose the length, check the summary, then export. You can leave CTS while it finishes.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -1699,11 +1940,31 @@ private fun ExportWorkspace(
                 }
             }
         }
+        item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Video length", fontWeight = FontWeight.Black)
+                        Text(
+                            DurationRuntime.effectiveCustomSeconds()?.let {
+                                "Custom · ${formatVideoLength(it)}"
+                            } ?: "Automatic · based on ${project.cards.size} cards",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(onClick = onSetLength) { Text("Change") }
+                }
+            }
+        }
         if (project.modelMode == ModelMode.ExactReference) {
             item {
-                Text("Reference format", fontWeight = FontWeight.Bold)
+                Text("Video quality", fontWeight = FontWeight.Bold)
                 Text(
-                    "1920×1080 · 60 fps · 16:9 (locked by Exact Reference)",
+                    "1080p · 60 fps · smooth reference animation",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -1731,37 +1992,47 @@ private fun ExportWorkspace(
             }
         }
         item {
-            Text("Video bitrate", fontWeight = FontWeight.Bold)
-            ChoiceRow(
-                options = listOf(
-                    4_000_000 to "4 Mbps",
-                    6_000_000 to "6 Mbps",
-                    10_000_000 to "10 Mbps",
-                    16_000_000 to "16 Mbps",
-                ),
-                selected = project.export.videoBitrate,
-                onSelected = { bitrate ->
-                    onProjectChanged(project.copy(export = project.export.copy(videoBitrate = bitrate)))
-                },
-            )
+            OutlinedButton(
+                onClick = { showAdvanced = !showAdvanced },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (showAdvanced) "Hide export settings" else "Advanced export settings")
+            }
         }
-        item {
-            EncoderDropdown(
-                title = "Video encoder",
-                selectedName = project.export.videoEncoderName,
-                automaticLabel = "Auto · fastest efficient H.264 hardware",
-                choices = encoders,
-                onSelected = { choice ->
-                    onProjectChanged(
-                        project.copy(
-                            export = project.export.copy(
-                                videoEncoderName = choice?.name,
-                                videoMime = choice?.mime ?: MediaFormat.MIMETYPE_VIDEO_AVC,
+        if (showAdvanced) {
+            item {
+                Text("Video bitrate", fontWeight = FontWeight.Bold)
+                ChoiceRow(
+                    options = listOf(
+                        4_000_000 to "4 Mbps",
+                        6_000_000 to "6 Mbps",
+                        10_000_000 to "10 Mbps",
+                        16_000_000 to "16 Mbps",
+                    ),
+                    selected = project.export.videoBitrate,
+                    onSelected = { bitrate ->
+                        onProjectChanged(project.copy(export = project.export.copy(videoBitrate = bitrate)))
+                    },
+                )
+            }
+            item {
+                EncoderDropdown(
+                    title = "Video encoder",
+                    selectedName = project.export.videoEncoderName,
+                    automaticLabel = "Auto · fastest efficient H.264 hardware",
+                    choices = encoders,
+                    onSelected = { choice ->
+                        onProjectChanged(
+                            project.copy(
+                                export = project.export.copy(
+                                    videoEncoderName = choice?.name,
+                                    videoMime = choice?.mime ?: MediaFormat.MIMETYPE_VIDEO_AVC,
+                                ),
                             ),
-                        ),
-                    )
-                },
-            )
+                        )
+                    },
+                )
+            }
         }
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
@@ -1782,7 +2053,13 @@ private fun ExportWorkspace(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        if (project.soundtrack.uri == null) "Silent MP4" else "AAC soundtrack · ${project.export.audioBitrate / 1000} kbps",
+                        when {
+                            project.soundtrack.uri != null ->
+                                "AAC soundtrack · ${project.export.audioBitrate / 1000} kbps"
+                            project.introVideo.uri != null && project.showIntro ->
+                                "Original intro audio is kept when available"
+                            else -> "Silent MP4"
+                        },
                     )
                 }
             }

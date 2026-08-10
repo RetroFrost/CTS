@@ -136,12 +136,31 @@ object TimelineEngine {
     private fun playbackRate(project: CtsProject): Float =
         if (project.modelMode == ModelMode.ExactReference) EXACT_REFERENCE_PLAYBACK_RATE else 1f
 
+    fun customIntroDuration(project: CtsProject): Float = if (
+        project.showIntro && !project.introVideo.uri.isNullOrBlank()
+    ) {
+        project.introVideo.durationSeconds.coerceAtLeast(0f)
+    } else {
+        0f
+    }
+
+    fun customIntroVisible(project: CtsProject, outputTimeSeconds: Float): Boolean =
+        customIntroDuration(project) > 0f &&
+            outputTimeSeconds >= 0f &&
+            outputTimeSeconds < customIntroDuration(project)
+
+    private fun contentOutputTime(project: CtsProject, outputTimeSeconds: Float): Float =
+        (outputTimeSeconds - customIntroDuration(project)).coerceAtLeast(0f)
+
+    private fun builtInIntroEnabled(project: CtsProject): Boolean =
+        project.showIntro && customIntroDuration(project) <= 0f
+
     private fun outputDuration(project: CtsProject, modelDurationSeconds: Float): Float =
         modelDurationSeconds / playbackRate(project)
 
     private fun preludeSeconds(project: CtsProject): Float = when (project.model) {
         VisualModel.Males -> 0f
-        VisualModel.Relationships -> if (project.showIntro) RELATIONSHIPS_INTRO_FRAMES / 60f else 0f
+        VisualModel.Relationships -> if (builtInIntroEnabled(project)) RELATIONSHIPS_INTRO_FRAMES / 60f else 0f
     }
 
     private fun revealSeconds(project: CtsProject): Float = when (project.model) {
@@ -186,10 +205,10 @@ object TimelineEngine {
     }
 
     private fun relationshipsIntroOffset(project: CtsProject): Int =
-        if (project.showIntro) 0 else RELATIONSHIPS_INTRO_FRAMES
+        if (builtInIntroEnabled(project)) 0 else RELATIONSHIPS_INTRO_FRAMES
 
     fun relationshipsSourceFrame(project: CtsProject, outputTimeSeconds: Float): Int =
-        (outputTimeSeconds.coerceAtLeast(0f) * playbackRate(project) *
+        (contentOutputTime(project, outputTimeSeconds) * playbackRate(project) *
             RELATIONSHIPS_REFERENCE_FPS).toInt() +
             relationshipsIntroOffset(project)
 
@@ -206,9 +225,9 @@ object TimelineEngine {
             } else 0
             val sourceDuration = (content - relationshipsIntroOffset(project) + outro)
                 .coerceAtLeast(0) / RELATIONSHIPS_REFERENCE_FPS.toFloat()
-            return outputDuration(project, sourceDuration)
+            return customIntroDuration(project) + outputDuration(project, sourceDuration)
         }
-        return outputDuration(
+        return customIntroDuration(project) + outputDuration(
             project,
             parts.introSeconds + parts.automaticScrollSeconds + parts.fixedTailSeconds,
         )
@@ -220,7 +239,7 @@ object TimelineEngine {
         if (project.modelMode == ModelMode.ExactReference) return automatic
         val custom = DurationRuntime.resolve(project.customDurationSeconds) ?: return automatic
         if (parts.scrollSteps <= 0) return automatic
-        val minimum = parts.introSeconds +
+        val minimum = customIntroDuration(project) + parts.introSeconds +
             parts.scrollSteps * MIN_SCROLL_STEP_SECONDS +
             parts.fixedTailSeconds
         return max(minimum, custom)
@@ -235,7 +254,7 @@ object TimelineEngine {
         }
         return max(
             parts.scrollSteps * MIN_SCROLL_STEP_SECONDS,
-            duration(project) - parts.introSeconds - parts.fixedTailSeconds,
+            duration(project) - customIntroDuration(project) - parts.introSeconds - parts.fixedTailSeconds,
         )
     }
 
@@ -246,7 +265,7 @@ object TimelineEngine {
     }
 
     fun modelTime(project: CtsProject, outputTimeSeconds: Float): Float {
-        val output = outputTimeSeconds.coerceAtLeast(0f)
+        val output = contentOutputTime(project, outputTimeSeconds)
         val parts = timelineParts(project)
         if (project.modelMode == ModelMode.ExactReference) return output * playbackRate(project)
         if (
@@ -268,21 +287,23 @@ object TimelineEngine {
     private fun outputTimeForModelTime(project: CtsProject, modelTimeSeconds: Float): Float {
         val modelTime = modelTimeSeconds.coerceAtLeast(0f)
         val parts = timelineParts(project)
-        if (project.modelMode == ModelMode.ExactReference) return modelTime / playbackRate(project)
+        if (project.modelMode == ModelMode.ExactReference) {
+            return customIntroDuration(project) + modelTime / playbackRate(project)
+        }
         if (
             DurationRuntime.resolve(project.customDurationSeconds) == null ||
             parts.scrollSteps <= 0 ||
             parts.automaticScrollSeconds <= 0f
-        ) return modelTime
-        if (modelTime <= parts.introSeconds) return modelTime
+        ) return customIntroDuration(project) + modelTime
+        if (modelTime <= parts.introSeconds) return customIntroDuration(project) + modelTime
 
         val chosenScroll = chosenScrollDuration(project, parts)
         if (modelTime < parts.introSeconds + parts.automaticScrollSeconds) {
             val progress = (modelTime - parts.introSeconds) /
                 parts.automaticScrollSeconds.coerceAtLeast(0.001f)
-            return parts.introSeconds + progress * chosenScroll
+            return customIntroDuration(project) + parts.introSeconds + progress * chosenScroll
         }
-        return parts.introSeconds + chosenScroll +
+        return customIntroDuration(project) + parts.introSeconds + chosenScroll +
             (modelTime - parts.introSeconds - parts.automaticScrollSeconds)
     }
 
@@ -294,12 +315,15 @@ object TimelineEngine {
     private fun outroStart(project: CtsProject): Float = scrollEnd(project) + END_HOLD_SECONDS
 
     fun introCreditsVisible(project: CtsProject, outputTimeSeconds: Float): Boolean {
-        if (project.cards.isEmpty() || project.model != VisualModel.Males || !project.showDisclaimer) return false
+        if (
+            project.cards.isEmpty() || project.model != VisualModel.Males || !project.showDisclaimer ||
+            customIntroDuration(project) > 0f
+        ) return false
         return modelTime(project, outputTimeSeconds) < timelineParts(project).introSeconds
     }
 
     fun relationshipsInfinityProgress(project: CtsProject, outputTimeSeconds: Float): Float {
-        if (project.model != VisualModel.Relationships || !project.showIntro) return 0f
+        if (project.model != VisualModel.Relationships || !builtInIntroEnabled(project)) return 0f
         return relationshipsSourceFrame(project, outputTimeSeconds) /
             RELATIONSHIPS_INTRO_FRAMES.toFloat()
     }

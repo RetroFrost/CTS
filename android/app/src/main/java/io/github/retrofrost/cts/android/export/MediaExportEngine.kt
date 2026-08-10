@@ -34,8 +34,28 @@ class MediaExportEngine(
         try {
             encodeVideo(videoFile)
             val soundtrack = project.soundtrack.uri?.takeIf { it.isNotBlank() }
-            val finalFile = if (soundtrack != null) {
-                encodeAudio(audioFile, Uri.parse(soundtrack), TimelineEngine.duration(project))
+            val introAudio = project.introVideo.uri
+                ?.takeIf { project.showIntro && TimelineEngine.customIntroDuration(project) > 0f }
+                ?.let(Uri::parse)
+                ?.takeIf(::hasAudioTrack)
+            val finalFile = if (soundtrack != null || introAudio != null) {
+                if (soundtrack != null) {
+                    encodeAudio(
+                        output = audioFile,
+                        source = Uri.parse(soundtrack),
+                        targetDurationSeconds = TimelineEngine.duration(project),
+                        loop = project.soundtrack.loop,
+                        volume = project.soundtrack.volume,
+                    )
+                } else {
+                    encodeAudio(
+                        output = audioFile,
+                        source = introAudio!!,
+                        targetDurationSeconds = TimelineEngine.customIntroDuration(project),
+                        loop = false,
+                        volume = 1f,
+                    )
+                }
                 mux(videoFile, audioFile, muxedFile)
                 muxedFile
             } else {
@@ -197,10 +217,16 @@ class MediaExportEngine(
         }
     }
 
-    private fun encodeAudio(output: File, source: Uri, targetDurationSeconds: Float) {
+    private fun encodeAudio(
+        output: File,
+        source: Uri,
+        targetDurationSeconds: Float,
+        loop: Boolean,
+        volume: Float,
+    ) {
         onProgress(72, "Encoding soundtrack", "Preparing the selected audio")
         val extractor = MediaExtractor()
-        extractor.setDataSource(context, source, null)
+        extractor.setProjectDataSource(source)
         val trackIndex = (0 until extractor.trackCount).firstOrNull { index ->
             extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
         } ?: error("The selected file does not contain an audio track.")
@@ -318,7 +344,7 @@ class MediaExportEngine(
                         input.clear()
                         val size = extractor.readSampleData(input, 0)
                         if (size < 0) {
-                            if (project.soundtrack.loop && samplesQueued < targetSamples) {
+                            if (loop && samplesQueued < targetSamples) {
                                 extractor.seekTo(0L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
                                 sourceLoopOffsetUs += max(sourceDurationUs, lastSourceTimeUs + 1L)
                             } else {
@@ -357,7 +383,7 @@ class MediaExportEngine(
                             decoded.limit(decoderInfo.offset + decoderInfo.size)
                             val pcm = ByteArray(decoderInfo.size)
                             decoded.get(pcm)
-                            applyVolume16Bit(pcm, project.soundtrack.volume)
+                            applyVolume16Bit(pcm, volume)
                             queuePcm(pcm)
                         }
                         decoderOutputDone = decoderInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
@@ -421,6 +447,26 @@ class MediaExportEngine(
             videoExtractor.release()
             audioExtractor.release()
             muxer.release()
+        }
+    }
+
+    private fun hasAudioTrack(source: Uri): Boolean = runCatching {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setProjectDataSource(source)
+            (0 until extractor.trackCount).any { index ->
+                extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+            }
+        } finally {
+            extractor.release()
+        }
+    }.getOrDefault(false)
+
+    private fun MediaExtractor.setProjectDataSource(source: Uri) {
+        when (source.scheme?.lowercase()) {
+            null, "" -> setDataSource(source.toString())
+            "file" -> setDataSource(requireNotNull(source.path) { "The selected file has no path." })
+            else -> setDataSource(context, source, null)
         }
     }
 

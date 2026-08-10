@@ -11,7 +11,7 @@ Implemented now:
 - Separate **What Males Learn at Each Age** and **Types of Relationships** models
 - **Exact Reference** mode locks each source-derived motion profile and plays it at 0.5× speed; **Custom** unlocks timing
 - Relationships uses the measured 60 fps frame contract (374-frame brand intro, frame-896 conveyor, 11,130-frame canonical 40-card timeline)
-- Optional intro, disclaimer, badges, and ending/fade without changing editable card content
+- built-in or user-selected MP4 intro, editable credits, disclaimer, badges, and ending/fade
 - CTS desktop timing: 2-second reveals and 10/3-second card scrolling
 - parent-card → child-image-subcard scene hierarchy
 - one independently defined image frame for every parent card
@@ -19,7 +19,7 @@ Implemented now:
 - image replacement without resetting the subcard transform
 - local image picker and HTTP(S) image loading
 - one-image card-strip import with pixel-based orientation and edge recognition, draggable uneven boundaries, blank/duplicate warnings, and per-card focus/zoom previews
-- safe MegaPack `.zip` import for a complete model, card dataset, artwork set, and optional soundtrack, with image validation and quality warnings
+- safe MegaPack `.zip` import for a complete model, layered backgrounds/subjects, optional intro and soundtrack, with image validation and quality warnings
 - card add, duplicate, delete, and direct text editing
 - timeline play/pause and scrubbing
 - open/save `.cts.json`
@@ -40,7 +40,7 @@ A MegaPack is a ZIP with `megapack.json` at its root and referenced media stored
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "name": "Example comparison",
   "model": "males",
   "model_mode": "exact_reference",
@@ -50,12 +50,25 @@ A MegaPack is a ZIP with `megapack.json` at its root and referenced media stored
       "badge_secondary": "SECONDS OLD",
       "title": "Breathing",
       "description": "A baby's first breath.",
-      "image": "images/001.png",
+      "background": "backgrounds/001.jpg",
+      "subject": "subjects/001.png",
       "crop_focus_x": 0.5,
       "crop_focus_y": 0.45,
       "crop_zoom": 1.1
     }
   ],
+  "intro_video": {
+    "file": "video/intro.mp4",
+    "display_name": "Channel intro",
+    "duration_seconds": 6.4
+  },
+  "credits": {
+    "heading": "Credits",
+    "lines": ["Research · Ethan", "Artwork · Cubical Network"],
+    "footer": "SOURCES IN DESCRIPTION",
+    "ending_heading": "Video Made By",
+    "ending_details": "Cubical Network"
+  },
   "soundtrack": {
     "file": "audio/theme.mp3",
     "volume": 1.0,
@@ -64,7 +77,7 @@ A MegaPack is a ZIP with `megapack.json` at its root and referenced media stored
 }
 ```
 
-`model` accepts `males` or `relationships`. Crop fields are optional: focus values range from 0 to 1 and zoom ranges from 1 to 3. Soundtrack is optional. Referenced ZIP paths must be relative. Limits are 1 GB for the ZIP, 512 MB extracted, 64 MB per file, 1,000 entries, and 500 cards.
+`model` accepts `males` or `relationships`. `background` fills the complete card; a transparent `subject` is composed above it but below the badge. Version-1 `image` entries remain supported as legacy single-layer artwork. Crop fields are optional: focus values range from 0 to 1 and zoom ranges from 1 to 3. Intro, credits, and soundtrack are optional. Referenced ZIP paths must be relative. Limits are 1 GB for the ZIP, 512 MB extracted, 64 MB per file, 1,000 entries, and 500 cards.
 
 ## Build on Ubuntu
 
@@ -103,4 +116,4 @@ CTS Android writes the desktop `spreadsheet`, `settings`, `transform_overrides`,
 - Application ID: `io.github.retrofrost.cts.android`
 - Visible name: `CTS Android`
 - Developer branding: `StarterFreaks`
-- Version: `0.3.0-alpha3`
+- Version: `0.3.0-alpha4`
