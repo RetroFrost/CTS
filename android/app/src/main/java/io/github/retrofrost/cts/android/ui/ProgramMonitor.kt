@@ -233,7 +233,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
     val displayCard = card.withNormalizedText()
-    val frames = CardContentLayout.frames(model, displayCard)
+    val frames = CardContentLayout.frames(model, card)
     Frame(
         frames.image,
         Modifier.background(if (model == VisualModel.Relationships) Color(0xFF1F1F1F) else Color.Transparent),
