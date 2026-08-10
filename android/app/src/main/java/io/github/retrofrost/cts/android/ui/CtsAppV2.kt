@@ -77,6 +77,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -1714,6 +1715,7 @@ private fun DataWorkspace(
                                 onUpdateSelectedCard { it.copy(badgePrimary = it.badgePrimary.trim()) }
                             }
                         },
+                    colors = readableOutlinedTextFieldColors(),
                 )
             }
             item {
@@ -1728,6 +1730,7 @@ private fun DataWorkspace(
                                 onUpdateSelectedCard { it.copy(badgeSecondary = it.badgeSecondary.trim()) }
                             }
                         },
+                    colors = readableOutlinedTextFieldColors(),
                 )
             }
             item {
@@ -1742,6 +1745,7 @@ private fun DataWorkspace(
                                 onUpdateSelectedCard { it.copy(title = it.title.trim()) }
                             }
                         },
+                    colors = readableOutlinedTextFieldColors(),
                 )
             }
             item {
@@ -1757,6 +1761,7 @@ private fun DataWorkspace(
                             }
                         },
                     minLines = 2,
+                    colors = readableOutlinedTextFieldColors(),
                 )
             }
             item {
@@ -1800,6 +1805,19 @@ private fun DataWorkspace(
         }
     }
 }
+
+@Composable
+private fun readableOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color.Black,
+    unfocusedTextColor = Color.Black,
+    focusedContainerColor = Color.White,
+    unfocusedContainerColor = Color.White,
+    cursorColor = Color.Black,
+    focusedLabelColor = Color.Black,
+    unfocusedLabelColor = Color.DarkGray,
+    focusedBorderColor = Color.Black,
+    unfocusedBorderColor = Color(0xFF737373),
+)
 
 @Composable
 private fun ReferenceOption(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
@@ -1896,6 +1914,7 @@ private fun AudioWorkspace(
                         },
                         label = { Text("Credits heading") },
                         modifier = Modifier.fillMaxWidth(),
+                        colors = readableOutlinedTextFieldColors(),
                     )
                     OutlinedTextField(
                         value = project.credits.lines,
@@ -1905,6 +1924,7 @@ private fun AudioWorkspace(
                         label = { Text("Names or roles · one per line") },
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth(),
+                        colors = readableOutlinedTextFieldColors(),
                     )
                     OutlinedTextField(
                         value = project.credits.footer,
@@ -1913,6 +1933,7 @@ private fun AudioWorkspace(
                         },
                         label = { Text("Credits footer") },
                         modifier = Modifier.fillMaxWidth(),
+                        colors = readableOutlinedTextFieldColors(),
                     )
                     OutlinedTextField(
                         value = project.credits.endingHeading,
@@ -1921,6 +1942,7 @@ private fun AudioWorkspace(
                         },
                         label = { Text("Ending credit heading") },
                         modifier = Modifier.fillMaxWidth(),
+                        colors = readableOutlinedTextFieldColors(),
                     )
                     OutlinedTextField(
                         value = project.credits.endingDetails,
@@ -1929,6 +1951,7 @@ private fun AudioWorkspace(
                         },
                         label = { Text("Ending credit details") },
                         modifier = Modifier.fillMaxWidth(),
+                        colors = readableOutlinedTextFieldColors(),
                     )
                 }
             }
@@ -2361,6 +2384,7 @@ private fun InsertCardsDialogV2(
                         .fillMaxWidth()
                         .height(300.dp),
                     label = { Text("Badge · Label · Title · Description · Image") },
+                    colors = readableOutlinedTextFieldColors(),
                 )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
