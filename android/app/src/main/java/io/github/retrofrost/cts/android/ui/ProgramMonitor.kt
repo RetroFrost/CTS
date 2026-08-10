@@ -306,7 +306,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
     val displayCard = card.withNormalizedText()
-    val frames = CardContentLayout.frames(model, displayCard)
+    val frames = CardContentLayout.frames(model, card)
     if (!displayCard.imageSubcard.backgroundSource.isNullOrBlank()) {
         Frame(NormalizedRect.Full) {
             FullCardBackground(displayCard.imageSubcard.backgroundSource)
