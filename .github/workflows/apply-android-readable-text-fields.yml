@@ -1,0 +1,151 @@
+name: Apply Android readable text fields
+
+on:
+  push:
+    branches: [android]
+    paths:
+      - ".github/workflows/apply-android-readable-text-fields.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@v4
+        with:
+          ref: android
+
+      - name: Patch text-field contrast and bump alpha
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          ui = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt')
+          text = ui.read_text()
+
+          import_line = 'import androidx.compose.material3.OutlinedTextFieldDefaults\n'
+          anchor_import = 'import androidx.compose.material3.OutlinedTextField\n'
+          if import_line not in text:
+              if anchor_import not in text:
+                  raise SystemExit('OutlinedTextField import anchor not found')
+              text = text.replace(anchor_import, anchor_import + import_line, 1)
+
+          helper = '''\n@Composable\nprivate fun readableOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(\n    focusedTextColor = Color.Black,\n    unfocusedTextColor = Color.Black,\n    focusedContainerColor = Color.White,\n    unfocusedContainerColor = Color.White,\n    cursorColor = Color.Black,\n    focusedLabelColor = Color.Black,\n    unfocusedLabelColor = Color.DarkGray,\n    focusedBorderColor = Color.Black,\n    unfocusedBorderColor = Color(0xFF737373),\n)\n'''
+          helper_anchor = '\n@Composable\nprivate fun ReferenceOption('
+          if 'private fun readableOutlinedTextFieldColors()' not in text:
+              if helper_anchor not in text:
+                  raise SystemExit('ReferenceOption helper anchor not found')
+              text = text.replace(helper_anchor, helper + helper_anchor, 1)
+
+          lines = text.splitlines(keepends=True)
+          out = []
+          i = 0
+          patched = 0
+          while i < len(lines):
+              line = lines[i]
+              if 'OutlinedTextField(' not in line:
+                  out.append(line)
+                  i += 1
+                  continue
+
+              block = [line]
+              depth = line.count('(') - line.count(')')
+              i += 1
+              while i < len(lines) and depth > 0:
+                  block.append(lines[i])
+                  depth += lines[i].count('(') - lines[i].count(')')
+                  i += 1
+
+              block_text = ''.join(block)
+              if 'colors = readableOutlinedTextFieldColors()' not in block_text:
+                  closing = len(block) - 1
+                  indent = block[closing][:len(block[closing]) - len(block[closing].lstrip())]
+                  block.insert(closing, indent + '    colors = readableOutlinedTextFieldColors(),\n')
+                  patched += 1
+              out.extend(block)
+
+          text = ''.join(out)
+          if patched < 9:
+              raise SystemExit(f'Expected at least 9 text fields, patched {patched}')
+          ui.write_text(text)
+          print(f'Patched {patched} OutlinedTextField calls')
+
+          gradle = Path('android/app/build.gradle.kts')
+          g = gradle.read_text()
+          if 'versionCode = 7' in g:
+              g = g.replace('versionCode = 7', 'versionCode = 8', 1)
+          if 'versionName = "0.3.0-alpha7"' in g:
+              g = g.replace('versionName = "0.3.0-alpha7"', 'versionName = "0.3.0-alpha8"', 1)
+          if 'versionCode = 8' not in g or 'versionName = "0.3.0-alpha8"' not in g:
+              raise SystemExit('Could not set alpha8 version')
+          gradle.write_text(g)
+          PY
+
+          git diff --check
+          git diff -- android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt android/app/build.gradle.kts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify shared contract
+        run: python tools/sync_shared_contract.py --check
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Build alpha8 debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:assembleDebug --stacktrace --console=plain 2>&1 | tee android/gradle-build.log
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee android/gradle-test.log
+
+      - name: Commit tested fix to android
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt android/app/build.gradle.kts
+          if git diff --cached --quiet; then
+            echo "Fix already applied"
+          else
+            git commit -m "Fix Android text field contrast"
+            git push origin HEAD:android
+          fi
+
+      - name: Upload alpha8 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTS-Android-alpha8-readable-fields
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTS-Android-alpha8-build-logs
+          path: |
+            android/gradle-build.log
+            android/gradle-test.log
+          if-no-files-found: ignore
