@@ -47,19 +47,28 @@ class ExportWorker(
 
         try {
             val project = ProjectJson.decode(projectFile.readText()).normalized()
+            var lastProgress = -1
+            var lastStage = ""
             MediaExportEngine(
                 context = applicationContext,
                 project = project,
                 shouldStop = { isStopped },
                 onProgress = { percent, stage, detail ->
-                    notifications.progress(percent, stage, detail)
-                    setProgressAsync(
-                        workDataOf(
-                            KEY_PROGRESS to percent,
-                            KEY_STAGE to stage,
-                            KEY_DETAIL to detail,
-                        ),
-                    )
+                    // Rendering can report once per frame. Persist only meaningful
+                    // percentage/stage changes so WorkManager and notifications do not
+                    // perform thousands of redundant writes during a long video.
+                    if (percent != lastProgress || stage != lastStage) {
+                        lastProgress = percent
+                        lastStage = stage
+                        notifications.progress(percent, stage, detail)
+                        setProgressAsync(
+                            workDataOf(
+                                KEY_PROGRESS to percent,
+                                KEY_STAGE to stage,
+                                KEY_DETAIL to detail,
+                            ),
+                        )
+                    }
                 },
             ).export(destination)
             notifications.complete(destination, displayName)

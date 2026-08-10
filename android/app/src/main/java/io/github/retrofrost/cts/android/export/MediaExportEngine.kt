@@ -44,7 +44,15 @@ class MediaExportEngine(
             checkStopped()
             onProgress(99, "Saving video", "Writing the finished MP4")
             context.contentResolver.openOutputStream(destination, "w")?.use { output ->
-                finalFile.inputStream().use { input -> input.copyTo(output, 1024 * 1024) }
+                finalFile.inputStream().use { input ->
+                    val buffer = ByteArray(1024 * 1024)
+                    while (true) {
+                        checkStopped()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                    }
+                }
             } ?: error("The selected destination could not be opened for writing.")
             onProgress(100, "Finished", "The MP4 is ready")
         } finally {
@@ -56,18 +64,46 @@ class MediaExportEngine(
 
     private fun encodeVideo(output: File) {
         val settings = project.export.normalized()
+        val automaticChoice = if (settings.videoEncoderName == null) {
+            CodecCatalog.bestAutomaticVideoEncoder(
+                mime = settings.videoMime,
+                width = settings.width,
+                height = settings.height,
+                fps = settings.fps,
+            )
+        } else {
+            null
+        }
         val codec = settings.videoEncoderName
             ?.let(MediaCodec::createByCodecName)
+            ?: automaticChoice
+                ?.let { choice -> runCatching { MediaCodec.createByCodecName(choice.name) }.getOrNull() }
             ?: MediaCodec.createEncoderByType(settings.videoMime)
-        val capabilities = codec.codecInfo.getCapabilitiesForType(settings.videoMime)
+        val selectedMime = automaticChoice?.mime ?: settings.videoMime
+        val capabilities = codec.codecInfo.getCapabilitiesForType(selectedMime)
         val colorFormat = selectYuv420Format(capabilities.colorFormats)
             ?: error("${codec.name} does not expose a byte-buffer YUV420 input format.")
-        val format = MediaFormat.createVideoFormat(settings.videoMime, settings.width, settings.height).apply {
+        val format = MediaFormat.createVideoFormat(selectedMime, settings.width, settings.height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat)
             setInteger(MediaFormat.KEY_BIT_RATE, settings.videoBitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, settings.fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
+            val encoderCapabilities = capabilities.encoderCapabilities
+            when {
+                encoderCapabilities.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) -> {
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+                }
+                encoderCapabilities.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) -> {
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+                }
+            }
         }
+        val mode = if (settings.videoEncoderName == null) "Auto selected" else "Using"
+        onProgress(
+            0,
+            "Preparing encoder",
+            "$mode ${codec.name} · ${if (selectedMime == MediaFormat.MIMETYPE_VIDEO_HEVC) "HEVC" else "H.264"}",
+        )
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         codec.start()
 
@@ -96,6 +132,7 @@ class MediaExportEngine(
                         val presentationTimeUs = frameIndex.toLong() * 1_000_000L / settings.fps
                         if (frameIndex < totalFrames) {
                             renderer.render(bitmap, frameIndex.toFloat() / settings.fps)
+                            checkStopped()
                             bitmap.getPixels(pixels, 0, settings.width, 0, 0, settings.width, settings.height)
                             argbToYuv420(pixels, yuv, settings.width, settings.height, colorFormat)
                             require(input.capacity() >= yuv.size) {
@@ -433,6 +470,7 @@ class MediaExportEngine(
     ) {
         val frameSize = width * height
         for (index in pixels.indices) {
+            if (index % (width * 32) == 0) checkStopped()
             val color = pixels[index]
             val red = color shr 16 and 0xff
             val green = color shr 8 and 0xff
@@ -447,6 +485,7 @@ class MediaExportEngine(
         val semiPlanar = colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
         var row = 0
         while (row < height) {
+            if (row % 32 == 0) checkStopped()
             var column = 0
             while (column < width) {
                 var u = 0

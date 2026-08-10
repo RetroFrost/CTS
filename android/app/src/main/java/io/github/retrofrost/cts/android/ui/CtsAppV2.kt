@@ -11,6 +11,7 @@ import android.os.Build
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -54,14 +55,17 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -94,6 +98,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.core.content.ContextCompat
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import io.github.retrofrost.cts.android.export.CodecCatalog
 import io.github.retrofrost.cts.android.export.EncoderChoice
 import io.github.retrofrost.cts.android.export.ExportWorker
@@ -115,6 +121,7 @@ import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.persistence.ProjectJson
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -157,6 +164,14 @@ fun CtsAndroidAppV2() {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val workManager = remember(context) { WorkManager.getInstance(context) }
+    var requestedExportId by remember { mutableStateOf<UUID?>(null) }
+    val exportWorkInfos by produceState(initialValue = emptyList<WorkInfo>(), workManager) {
+        workManager.getWorkInfosByTagFlow(ExportWorker.TAG).collect { value = it }
+    }
+    val activeExport = requestedExportId
+        ?.let { id -> exportWorkInfos.firstOrNull { it.id == id && !it.state.isFinished } }
+        ?: exportWorkInfos.lastOrNull { !it.state.isFinished }
     var project by remember { mutableStateOf(CtsProject().normalized()) }
     var selectedCardId by remember { mutableStateOf(project.cards.firstOrNull()?.id) }
     var positionSeconds by remember { mutableFloatStateOf(0f) }
@@ -322,7 +337,8 @@ fun CtsAndroidAppV2() {
             )
         }
         val name = exportFileName(project)
-        ExportWorker.enqueue(context, project, uri, name)
+        requestedExportId = ExportWorker.enqueue(context, project, uri, name)
+        section = WorkspaceSection.Export
         message("Encoding started in the background. CTS will notify you when $name is ready.")
     }
 
@@ -337,6 +353,11 @@ fun CtsAndroidAppV2() {
     }
 
     fun requestExport() {
+        if (activeExport != null) {
+            section = WorkspaceSection.Export
+            message("An export is already running.")
+            return
+        }
         if (project.cards.isEmpty()) {
             message("Add at least one card before exporting.")
             return
@@ -525,6 +546,13 @@ fun CtsAndroidAppV2() {
                         project = project,
                         onProjectChanged = ::applyProject,
                         onExport = ::requestExport,
+                        exportWork = activeExport,
+                        onCancelExport = {
+                            activeExport?.let { work ->
+                                workManager.cancelWorkById(work.id)
+                                message("Canceling export…")
+                            }
+                        },
                     )
                 }
             }
@@ -1554,13 +1582,41 @@ private fun AudioWorkspace(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun ExportWorkspace(
     project: CtsProject,
     onProjectChanged: (CtsProject) -> Unit,
     onExport: () -> Unit,
+    exportWork: WorkInfo?,
+    onCancelExport: () -> Unit,
 ) {
     val encoders = remember { CodecCatalog.videoEncoders() }
     val duration = TimelineEngine.duration(project)
+    val progressPercent = exportWork
+        ?.progress
+        ?.getInt(ExportWorker.KEY_PROGRESS, 0)
+        ?.coerceIn(0, 100)
+        ?: 0
+    val animatedProgress by animateFloatAsState(
+        targetValue = progressPercent / 100f,
+        animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
+        label = "export-progress",
+    )
+    val exportStage = exportWork
+        ?.progress
+        ?.getString(ExportWorker.KEY_STAGE)
+        .orEmpty()
+        .ifBlank {
+            when (exportWork?.state) {
+                WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> "Waiting to export"
+                WorkInfo.State.RUNNING -> "Preparing export"
+                else -> "Exporting"
+            }
+        }
+    val exportDetail = exportWork
+        ?.progress
+        ?.getString(ExportWorker.KEY_DETAIL)
+        .orEmpty()
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1573,6 +1629,50 @@ private fun ExportWorkspace(
                 "Encoding runs as a foreground background job. You may leave CTS; a notification reports progress and warns when the MP4 is ready.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        if (exportWork != null) {
+            item {
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(exportStage, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                                if (exportDetail.isNotBlank()) {
+                                    Text(
+                                        exportDetail,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            Text("$progressPercent%", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                        }
+                        LinearWavyProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(14.dp),
+                        )
+                        FilledTonalButton(
+                            onClick = onCancelExport,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = null)
+                            Spacer(Modifier.size(8.dp))
+                            Text("Cancel export", fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
         }
         if (project.modelMode == ModelMode.ExactReference) {
             item {
@@ -1624,7 +1724,7 @@ private fun ExportWorkspace(
             EncoderDropdown(
                 title = "Video encoder",
                 selectedName = project.export.videoEncoderName,
-                automaticLabel = "Automatic H.264 encoder",
+                automaticLabel = "Auto · fastest efficient H.264 hardware",
                 choices = encoders,
                 onSelected = { choice ->
                     onProjectChanged(
@@ -1648,6 +1748,15 @@ private fun ExportWorkspace(
                     Text("${project.cards.size} cards · ${TimelineEngine.formatTime(duration)}")
                     Text("${project.export.width}×${project.export.height} · ${project.export.fps} fps · ${project.export.videoBitrate / 1_000_000} Mbps")
                     Text(
+                        if (project.export.videoEncoderName == null) {
+                            "Auto selects the fastest compatible hardware encoder"
+                        } else {
+                            encoders.firstOrNull { it.name == project.export.videoEncoderName }?.label
+                                ?: "Selected device encoder"
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
                         if (project.soundtrack.uri == null) "Silent MP4" else "AAC soundtrack · ${project.export.audioBitrate / 1000} kbps",
                     )
                 }
@@ -1656,14 +1765,17 @@ private fun ExportWorkspace(
         item {
             Button(
                 onClick = onExport,
-                enabled = project.cards.isNotEmpty(),
+                enabled = project.cards.isNotEmpty() && exportWork == null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
             ) {
                 Icon(Icons.Filled.Movie, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text("Encode MP4 in background", fontWeight = FontWeight.Black)
+                Text(
+                    if (exportWork == null) "Encode MP4 in background" else "Export in progress",
+                    fontWeight = FontWeight.Black,
+                )
             }
         }
         item { Spacer(Modifier.height(12.dp)) }
