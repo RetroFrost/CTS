@@ -21,20 +21,8 @@ jobs:
           ref: android
           fetch-depth: 0
 
-      - name: Extract and run prepared patch
-        shell: bash
-        run: |
-          python3 - <<'EXTRACT'
-          from pathlib import Path
-          source = Path('.github/workflows/resume-android-reconstruction.yml').read_text()
-          marker = "          python3 - <<'PY'\n"
-          start = source.index(marker) + len(marker)
-          end = source.index("\n          PY\n", start)
-          body = source[start:end]
-          body = "\n".join(line[10:] if line.startswith("          ") else line for line in body.splitlines())
-          Path('/tmp/resume_android_reconstruction.py').write_text(body + "\n")
-          EXTRACT
-          python3 /tmp/resume_android_reconstruction.py
+      - name: Apply prepared Android patch
+        run: python3 tools/apply_resume_android.py
 
       - name: Restore normal Android CI and commit alpha7
         shell: bash
