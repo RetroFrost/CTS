@@ -1715,7 +1715,6 @@ private fun DataWorkspace(
                                 onUpdateSelectedCard { it.copy(badgePrimary = it.badgePrimary.trim()) }
                             }
                         },
-                    colors = readableOutlinedTextFieldColors(),
                 )
             }
             item {
@@ -1730,7 +1729,6 @@ private fun DataWorkspace(
                                 onUpdateSelectedCard { it.copy(badgeSecondary = it.badgeSecondary.trim()) }
                             }
                         },
-                    colors = readableOutlinedTextFieldColors(),
                 )
             }
             item {
@@ -1738,6 +1736,7 @@ private fun DataWorkspace(
                     value = selected.title,
                     onValueChange = { value -> onUpdateSelectedCard { it.copy(title = value) } },
                     label = { Text("Title") },
+                    colors = readableOutlinedTextFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .onFocusChanged { state ->
@@ -1745,7 +1744,6 @@ private fun DataWorkspace(
                                 onUpdateSelectedCard { it.copy(title = it.title.trim()) }
                             }
                         },
-                    colors = readableOutlinedTextFieldColors(),
                 )
             }
             item {
@@ -1761,7 +1759,6 @@ private fun DataWorkspace(
                             }
                         },
                     minLines = 2,
-                    colors = readableOutlinedTextFieldColors(),
                 )
             }
             item {
@@ -1914,8 +1911,7 @@ private fun AudioWorkspace(
                         },
                         label = { Text("Credits heading") },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = readableOutlinedTextFieldColors(),
-                    )
+                        )
                     OutlinedTextField(
                         value = project.credits.lines,
                         onValueChange = { value ->
@@ -1924,8 +1920,7 @@ private fun AudioWorkspace(
                         label = { Text("Names or roles · one per line") },
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = readableOutlinedTextFieldColors(),
-                    )
+                        )
                     OutlinedTextField(
                         value = project.credits.footer,
                         onValueChange = { value ->
@@ -1933,8 +1928,7 @@ private fun AudioWorkspace(
                         },
                         label = { Text("Credits footer") },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = readableOutlinedTextFieldColors(),
-                    )
+                        )
                     OutlinedTextField(
                         value = project.credits.endingHeading,
                         onValueChange = { value ->
@@ -1942,8 +1936,7 @@ private fun AudioWorkspace(
                         },
                         label = { Text("Ending credit heading") },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = readableOutlinedTextFieldColors(),
-                    )
+                        )
                     OutlinedTextField(
                         value = project.credits.endingDetails,
                         onValueChange = { value ->
@@ -1951,8 +1944,7 @@ private fun AudioWorkspace(
                         },
                         label = { Text("Ending credit details") },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = readableOutlinedTextFieldColors(),
-                    )
+                        )
                 }
             }
         }
@@ -2384,7 +2376,6 @@ private fun InsertCardsDialogV2(
                         .fillMaxWidth()
                         .height(300.dp),
                     label = { Text("Badge · Label · Title · Description · Image") },
-                    colors = readableOutlinedTextFieldColors(),
                 )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
