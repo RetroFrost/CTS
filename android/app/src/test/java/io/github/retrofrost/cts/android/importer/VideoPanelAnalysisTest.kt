@@ -50,10 +50,18 @@ class VideoPanelAnalysisTest {
     }
 
     @Test
-    fun reconstructionProgressIsAlwaysBounded() {
-        assertEquals(0f, VideoReconstructionProgress(VideoReconstructionPhase.Reading, 3, 0).fraction)
-        assertEquals(1f, VideoReconstructionProgress(VideoReconstructionPhase.FindingCards, 12, 10).fraction)
-        assertTrue(VideoReconstructionProgress(VideoReconstructionPhase.ReadingText, 3, 10).fraction in 0f..1f)
+    fun reconstructionProgressIsAlwaysBoundedAndCumulative() {
+        val readingEmpty = VideoReconstructionProgress(VideoReconstructionPhase.Reading, 3, 0).fraction
+        val findingDone = VideoReconstructionProgress(VideoReconstructionPhase.FindingCards, 12, 10).fraction
+        val ocrPartial = VideoReconstructionProgress(VideoReconstructionPhase.ReadingText, 3, 10).fraction
+        val artworkDone = VideoReconstructionProgress(VideoReconstructionPhase.SavingArtwork, 1, 1).fraction
+
+        assertEquals(0f, readingEmpty)
+        assertTrue(findingDone in 0f..1f)
+        assertTrue(ocrPartial in 0f..1f)
+        assertTrue(artworkDone in 0f..1f)
+        assertTrue(ocrPartial >= findingDone)
+        assertEquals(1f, artworkDone)
     }
 
     private fun observation(time: Float, hash: Long) = PanelObservation(
