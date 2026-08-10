@@ -12,7 +12,15 @@ import android.os.Build
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +59,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -64,6 +73,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProgressIndicatorDefaults
@@ -113,6 +124,10 @@ import io.github.retrofrost.cts.android.importer.CardImageAnalysis
 import io.github.retrofrost.cts.android.importer.DetectedCardPreview
 import io.github.retrofrost.cts.android.importer.MegaPackImporter
 import io.github.retrofrost.cts.android.importer.StripAxis
+import io.github.retrofrost.cts.android.importer.VideoComparisonImporter
+import io.github.retrofrost.cts.android.importer.VideoReconstructionPhase
+import io.github.retrofrost.cts.android.importer.VideoReconstructionProgress
+import io.github.retrofrost.cts.android.importer.VideoReconstructionResult
 import io.github.retrofrost.cts.android.layout.CardContentLayout
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
@@ -187,6 +202,11 @@ fun CtsAndroidAppV2() {
     var cardStripReviewError by remember { mutableStateOf<String?>(null) }
     var isImportingMegaPack by remember { mutableStateOf(false) }
     var megaPackWarnings by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isReconstructingVideo by remember { mutableStateOf(false) }
+    var videoReconstructionProgress by remember {
+        mutableStateOf(VideoReconstructionProgress(VideoReconstructionPhase.Reading, 0, 1))
+    }
+    var videoReconstruction by remember { mutableStateOf<VideoReconstructionResult?>(null) }
     var pendingExportPermission by remember { mutableStateOf(false) }
     val duration = TimelineEngine.duration(project)
 
@@ -291,6 +311,34 @@ fun CtsAndroidAppV2() {
                 message(error.message ?: "Could not import that MegaPack")
             }
             isImportingMegaPack = false
+        }
+    }
+
+    val comparisonVideoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        isReconstructingVideo = true
+        videoReconstructionProgress = VideoReconstructionProgress(VideoReconstructionPhase.Reading, 0, 1)
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    VideoComparisonImporter.reconstruct(
+                        context = context,
+                        source = uri,
+                        sourceName = queryDisplayName(context, uri),
+                        onProgress = { progress ->
+                            scope.launch { videoReconstructionProgress = progress }
+                        },
+                    )
+                }
+            }.onSuccess { result ->
+                videoReconstruction = result
+            }.onFailure { error ->
+                message(error.message ?: "Could not reconstruct that comparison video")
+            }
+            isReconstructingVideo = false
         }
     }
 
@@ -431,6 +479,45 @@ fun CtsAndroidAppV2() {
         }
     }
 
+    val activeVideoReconstruction = videoReconstruction
+    if (activeVideoReconstruction != null) {
+        VideoReconstructionReviewScreen(
+            result = activeVideoReconstruction,
+            isApplying = false,
+            onCancel = { videoReconstruction = null },
+            onImport = { model, reconstructedCards ->
+                val importedCards = reconstructedCards.map { recovered ->
+                    val cardId = UUID.randomUUID().toString()
+                    CtsCard(
+                        id = cardId,
+                        badgePrimary = recovered.badgePrimary,
+                        badgeSecondary = recovered.badgeSecondary,
+                        title = recovered.title,
+                        description = recovered.description,
+                        imageSubcard = ImageSubcard(
+                            parentCardId = cardId,
+                            source = recovered.artworkPath,
+                        ),
+                    )
+                }
+                applyProject(
+                    project.copy(
+                        name = activeVideoReconstruction.sourceName.substringBeforeLast('.'),
+                        model = model,
+                        cards = importedCards,
+                    ),
+                )
+                selectedCardId = importedCards.firstOrNull()?.id
+                positionSeconds = 0f
+                isPlaying = false
+                section = WorkspaceSection.Data
+                videoReconstruction = null
+                message("Imported ${importedCards.size} reconstructed cards")
+            },
+        )
+        return
+    }
+
     val activeCardStripReview = cardStripReview
     if (activeCardStripReview != null) {
         CardStripReviewScreen(
@@ -520,7 +607,7 @@ fun CtsAndroidAppV2() {
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
                     Column {
                         Text("CTS", fontWeight = FontWeight.Black)
@@ -540,6 +627,9 @@ fun CtsAndroidAppV2() {
                     }
                 },
             )
+        },
+        bottomBar = {
+            WorkspaceTabs(section = section, onSectionChanged = { section = it })
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -580,11 +670,18 @@ fun CtsAndroidAppV2() {
                 },
             )
 
-            WorkspaceTabs(section = section, onSectionChanged = { section = it })
-            HorizontalDivider()
-
-            Box(modifier = Modifier.weight(1f)) {
-                when (section) {
+            AnimatedContent(
+                targetState = section,
+                modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    (fadeIn(tween(220, 70, FastOutSlowInEasing)) +
+                        scaleIn(tween(220, 70, FastOutSlowInEasing), initialScale = 0.96f)) togetherWith
+                        (fadeOut(tween(110, easing = FastOutSlowInEasing)) +
+                            scaleOut(tween(110, easing = FastOutSlowInEasing), targetScale = 0.98f))
+                },
+                label = "workspace-section",
+            ) { activeSection ->
+                when (activeSection) {
                     WorkspaceSection.Data -> DataWorkspace(
                         project = project,
                         selectedCardId = selectedCardId,
@@ -601,6 +698,10 @@ fun CtsAndroidAppV2() {
                             )
                         },
                         isImportingMegaPack = isImportingMegaPack,
+                        onReconstructVideo = {
+                            comparisonVideoPicker.launch(arrayOf("video/mp4", "video/*"))
+                        },
+                        isReconstructingVideo = isReconstructingVideo,
                         onInsertData = { showInsertDialog = true },
                     )
                     WorkspaceSection.Audio -> AudioWorkspace(
@@ -673,6 +774,10 @@ fun CtsAndroidAppV2() {
                 TextButton(onClick = { megaPackWarnings = emptyList() }) { Text("Review project") }
             },
         )
+    }
+
+    if (isReconstructingVideo) {
+        VideoReconstructionProgressDialog(videoReconstructionProgress)
     }
 }
 
@@ -1296,24 +1401,18 @@ private fun WorkspaceTabs(
     section: WorkspaceSection,
     onSectionChanged: (WorkspaceSection) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    NavigationBar(tonalElevation = 3.dp) {
         WorkspaceSection.entries.forEach { item ->
             val icon = when (item) {
                 WorkspaceSection.Data -> Icons.Filled.TableRows
                 WorkspaceSection.Audio -> Icons.Filled.MusicNote
                 WorkspaceSection.Export -> Icons.Filled.Movie
             }
-            FilterChip(
+            NavigationBarItem(
                 selected = section == item,
                 onClick = { onSectionChanged(item) },
                 label = { Text(item.label) },
-                leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                modifier = Modifier.weight(1f),
+                icon = { Icon(icon, contentDescription = null) },
             )
         }
     }
@@ -1332,6 +1431,8 @@ private fun DataWorkspace(
     isImportingCardStrip: Boolean,
     onImportMegaPack: () -> Unit,
     isImportingMegaPack: Boolean,
+    onReconstructVideo: () -> Unit,
+    isReconstructingVideo: Boolean,
     onInsertData: () -> Unit,
 ) {
     val selected = project.cards.firstOrNull { it.id == selectedCardId }
@@ -1390,6 +1491,29 @@ private fun DataWorkspace(
             Text(
                 "Detects ${project.cards.size} ${project.model.label} panels, then opens a review screen " +
                     "for direction, separators, order, and destination previews.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        item {
+            Button(
+                onClick = onReconstructVideo,
+                enabled = !isReconstructingVideo && !isImportingCardStrip && !isImportingMegaPack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+            ) {
+                Icon(Icons.Filled.Movie, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    if (isReconstructingVideo) "Reconstructing comparison…" else "Import a comparison video",
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            Text(
+                "Finds CTS cards in an MP4, recovers their artwork and text, then opens a review screen. " +
+                    "You can correct fields or switch the video style before importing.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
