@@ -55,9 +55,22 @@ data class VideoReconstructionProgress(
     val phase: VideoReconstructionPhase,
     val completed: Int,
     val total: Int,
+    val detail: String = "",
 ) {
-    val fraction: Float
+    private val phaseFraction: Float
         get() = if (total <= 0) 0f else completed.toFloat().div(total).coerceIn(0f, 1f)
+
+    // One continuous progress value: phases no longer reset the visible bar to 0%.
+    val fraction: Float
+        get() = when (phase) {
+            VideoReconstructionPhase.Reading -> phaseFraction * 0.03f
+            VideoReconstructionPhase.FindingCards -> 0.03f + phaseFraction * 0.55f
+            VideoReconstructionPhase.ReadingText -> 0.58f + phaseFraction * 0.40f
+            VideoReconstructionPhase.SavingArtwork -> 0.98f + phaseFraction * 0.02f
+        }.coerceIn(0f, 1f)
+
+    val percent: Int
+        get() = (fraction * 100f).roundToInt().coerceIn(0, 100)
 }
 
 /**
@@ -79,7 +92,7 @@ object VideoComparisonImporter {
         sourceName: String,
         onProgress: (VideoReconstructionProgress) -> Unit = {},
     ): VideoReconstructionResult {
-        onProgress(VideoReconstructionProgress(VideoReconstructionPhase.Reading, 0, 1))
+        onProgress(VideoReconstructionProgress(VideoReconstructionPhase.Reading, 0, 1, "Opening video metadata"))
         val retriever = MediaMetadataRetriever()
         val outputDirectory = File(context.filesDir, "video-imports/${UUID.randomUUID()}")
         try {
@@ -102,6 +115,14 @@ object VideoComparisonImporter {
 
             val durationSeconds = durationMs / 1_000f
             val sampleTimes = sampleTimes(durationSeconds)
+            onProgress(
+                VideoReconstructionProgress(
+                    VideoReconstructionPhase.Reading,
+                    1,
+                    1,
+                    "${sourceWidth}×${sourceHeight} · ${"%.1f".format(durationSeconds)} s · ${sampleTimes.size} sample frames",
+                ),
+            )
             val observations = mutableListOf<PanelObservation>()
             val modelVotes = mutableListOf<ModelVote>()
             sampleTimes.forEachIndexed { index, seconds ->
@@ -110,6 +131,7 @@ object VideoComparisonImporter {
                         VideoReconstructionPhase.FindingCards,
                         index,
                         sampleTimes.size,
+                        "Scanning frame ${index + 1} of ${sampleTimes.size} at ${"%.1f".format(seconds)} s",
                     ),
                 )
                 val frame = scaledFrame(retriever, seconds, PREVIEW_WIDTH, PREVIEW_HEIGHT)
@@ -154,6 +176,7 @@ object VideoComparisonImporter {
                     VideoReconstructionPhase.FindingCards,
                     sampleTimes.size,
                     sampleTimes.size,
+                    "Grouping ${observations.size} visible panel samples into cards",
                 ),
             )
             require(observations.isNotEmpty()) {
@@ -178,6 +201,7 @@ object VideoComparisonImporter {
                             VideoReconstructionPhase.ReadingText,
                             index,
                             clusters.size,
+                            "Card ${index + 1} of ${clusters.size} · OCR + artwork recovery",
                         ),
                     )
                     reconstructCard(
@@ -198,6 +222,7 @@ object VideoComparisonImporter {
                     VideoReconstructionPhase.SavingArtwork,
                     reconstructed.size,
                     reconstructed.size,
+                    "Finalising ${reconstructed.size} editable cards",
                 ),
             )
 

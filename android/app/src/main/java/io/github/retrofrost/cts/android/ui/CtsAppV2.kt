@@ -124,10 +124,10 @@ import io.github.retrofrost.cts.android.importer.CardImageAnalysis
 import io.github.retrofrost.cts.android.importer.DetectedCardPreview
 import io.github.retrofrost.cts.android.importer.MegaPackImporter
 import io.github.retrofrost.cts.android.importer.StripAxis
-import io.github.retrofrost.cts.android.importer.VideoComparisonImporter
 import io.github.retrofrost.cts.android.importer.VideoReconstructionPhase
 import io.github.retrofrost.cts.android.importer.VideoReconstructionProgress
 import io.github.retrofrost.cts.android.importer.VideoReconstructionResult
+import io.github.retrofrost.cts.android.importer.VideoReconstructionWorker
 import io.github.retrofrost.cts.android.layout.CardContentLayout
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
@@ -190,6 +190,13 @@ fun CtsAndroidAppV2() {
     val activeExport = requestedExportId
         ?.let { id -> exportWorkInfos.firstOrNull { it.id == id && !it.state.isFinished } }
         ?: exportWorkInfos.lastOrNull { !it.state.isFinished }
+    var requestedReconstructionId by remember { mutableStateOf<UUID?>(null) }
+    val reconstructionWorkInfos by produceState(initialValue = emptyList<WorkInfo>(), workManager) {
+        workManager.getWorkInfosByTagFlow(VideoReconstructionWorker.TAG).collect { value = it }
+    }
+    val reconstructionWork = requestedReconstructionId
+        ?.let { id -> reconstructionWorkInfos.firstOrNull { it.id == id } }
+        ?: reconstructionWorkInfos.lastOrNull { !it.state.isFinished }
     var project by remember { mutableStateOf(CtsProject().normalized()) }
     var selectedCardId by remember { mutableStateOf(project.cards.firstOrNull()?.id) }
     var positionSeconds by remember { mutableFloatStateOf(0f) }
@@ -204,9 +211,10 @@ fun CtsAndroidAppV2() {
     var megaPackWarnings by remember { mutableStateOf<List<String>>(emptyList()) }
     var isReconstructingVideo by remember { mutableStateOf(false) }
     var videoReconstructionProgress by remember {
-        mutableStateOf(VideoReconstructionProgress(VideoReconstructionPhase.Reading, 0, 1))
+        mutableStateOf(VideoReconstructionProgress(VideoReconstructionPhase.Reading, 0, 1, "Waiting to start"))
     }
     var videoReconstruction by remember { mutableStateOf<VideoReconstructionResult?>(null) }
+    var handledReconstructionId by remember { mutableStateOf<UUID?>(null) }
     var pendingExportPermission by remember { mutableStateOf(false) }
     val duration = TimelineEngine.duration(project)
 
@@ -232,6 +240,50 @@ fun CtsAndroidAppV2() {
     fun updateSelectedCard(update: (CtsCard) -> CtsCard) {
         val cardId = selectedCardId ?: return
         applyProject(project.updateCard(cardId, update))
+    }
+
+    LaunchedEffect(Unit) {
+        VideoReconstructionWorker.peekPendingResult(context)?.let { pending ->
+            videoReconstruction = pending
+            isReconstructingVideo = false
+        }
+    }
+
+    LaunchedEffect(reconstructionWork) {
+        val work = reconstructionWork ?: return@LaunchedEffect
+        if (requestedReconstructionId == null && !work.state.isFinished) {
+            requestedReconstructionId = work.id
+        }
+        if (!work.state.isFinished) {
+            isReconstructingVideo = true
+            videoReconstructionProgress = VideoReconstructionWorker.progressFrom(work.progress)
+        }
+        if (work.state.isFinished && handledReconstructionId != work.id) {
+            handledReconstructionId = work.id
+            isReconstructingVideo = false
+            when (work.state) {
+                WorkInfo.State.SUCCEEDED -> {
+                    val path = work.outputData.getString(VideoReconstructionWorker.KEY_RESULT_PATH)
+                    runCatching {
+                        require(!path.isNullOrBlank()) { "Reconstruction finished without a result file." }
+                        VideoReconstructionWorker.readResult(path)
+                    }.onSuccess { result ->
+                        videoReconstruction = result
+                        message("Recovered ${result.cards.size} cards · ready to review")
+                    }.onFailure { error ->
+                        message(error.message ?: "Could not open the reconstructed comparison")
+                    }
+                }
+                WorkInfo.State.FAILED -> {
+                    message(
+                        work.outputData.getString(VideoReconstructionWorker.KEY_DETAIL)
+                            ?: "Comparison reconstruction failed.",
+                    )
+                }
+                WorkInfo.State.CANCELLED -> message("Comparison reconstruction canceled")
+                else -> Unit
+            }
+        }
     }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -319,27 +371,18 @@ fun CtsAndroidAppV2() {
         runCatching {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        val sourceName = queryDisplayName(context, uri)
+        handledReconstructionId = null
+        videoReconstruction = null
         isReconstructingVideo = true
-        videoReconstructionProgress = VideoReconstructionProgress(VideoReconstructionPhase.Reading, 0, 1)
-        scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    VideoComparisonImporter.reconstruct(
-                        context = context,
-                        source = uri,
-                        sourceName = queryDisplayName(context, uri),
-                        onProgress = { progress ->
-                            scope.launch { videoReconstructionProgress = progress }
-                        },
-                    )
-                }
-            }.onSuccess { result ->
-                videoReconstruction = result
-            }.onFailure { error ->
-                message(error.message ?: "Could not reconstruct that comparison video")
-            }
-            isReconstructingVideo = false
-        }
+        videoReconstructionProgress = VideoReconstructionProgress(
+            VideoReconstructionPhase.Reading,
+            0,
+            1,
+            "Queued in Android background work",
+        )
+        requestedReconstructionId = VideoReconstructionWorker.enqueue(context, uri, sourceName)
+        message("Reconstruction started in the background · the screen can be off")
     }
 
     val soundtrackPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -484,7 +527,10 @@ fun CtsAndroidAppV2() {
         VideoReconstructionReviewScreen(
             result = activeVideoReconstruction,
             isApplying = false,
-            onCancel = { videoReconstruction = null },
+            onCancel = {
+                VideoReconstructionWorker.clearPendingResult(context)
+                videoReconstruction = null
+            },
             onImport = { model, reconstructedCards ->
                 val importedCards = reconstructedCards.map { recovered ->
                     val cardId = UUID.randomUUID().toString()
@@ -511,6 +557,7 @@ fun CtsAndroidAppV2() {
                 positionSeconds = 0f
                 isPlaying = false
                 section = WorkspaceSection.Data
+                VideoReconstructionWorker.clearPendingResult(context)
                 videoReconstruction = null
                 message("Imported ${importedCards.size} reconstructed cards")
             },
@@ -777,7 +824,12 @@ fun CtsAndroidAppV2() {
     }
 
     if (isReconstructingVideo) {
-        VideoReconstructionProgressDialog(videoReconstructionProgress)
+        VideoReconstructionProgressDialog(
+            progress = videoReconstructionProgress,
+            onCancel = {
+                requestedReconstructionId?.let { workManager.cancelWorkById(it) }
+            },
+        )
     }
 }
 

@@ -380,7 +380,10 @@ private fun ReconstructedArtwork(path: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun VideoReconstructionProgressDialog(progress: VideoReconstructionProgress) {
+internal fun VideoReconstructionProgressDialog(
+    progress: VideoReconstructionProgress,
+    onCancel: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = {},
         icon = { Icon(Icons.Filled.AutoAwesome, contentDescription = null) },
@@ -397,18 +400,40 @@ internal fun VideoReconstructionProgressDialog(progress: VideoReconstructionProg
                 ) { phase ->
                     Text(phase.label, fontWeight = FontWeight.Black)
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        progress.detail.ifBlank { "Preparing the next reconstruction step" },
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text("${progress.percent}%", fontWeight = FontWeight.Black)
+                }
                 LinearProgressIndicator(
                     progress = { progress.fraction },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (progress.total > 1) {
+                    Text(
+                        "${progress.completed.coerceIn(0, progress.total)} / ${progress.total}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
-                    "CTS samples settled frames, recovers artwork, then reads the rendered fields on-device.",
+                    "This runs as a foreground background job, so the screen can be off and you can leave CTS while it continues.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            TextButton(onClick = onCancel) { Text("Cancel reconstruction") }
+        },
         shape = RoundedCornerShape(28.dp),
     )
 }
