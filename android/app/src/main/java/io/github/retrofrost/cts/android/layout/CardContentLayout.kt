@@ -57,19 +57,20 @@ object CardContentLayout {
     )
 
     private fun malesFrames(card: CtsCard): CardContentFrames {
+        val displayCard = card.withNormalizedText()
         val left = MALES_LEFT_PX / SOURCE_WIDTH
         val width = MALES_WIDTH_PX / SOURCE_WIDTH
         val titleHeight = MALES_TITLE_HEIGHT_PX / SOURCE_HEIGHT
         val descriptionHeight = MALES_DESCRIPTION_HEIGHT_PX / SOURCE_HEIGHT
 
         var cursor = 1f
-        val description = if (card.description.isNotBlank()) {
+        val description = if (displayCard.description.isNotEmpty()) {
             cursor -= descriptionHeight
             NormalizedRect(left, cursor, width, descriptionHeight)
         } else {
             null
         }
-        val title = if (card.title.isNotBlank()) {
+        val title = if (displayCard.title.isNotEmpty()) {
             cursor -= titleHeight
             NormalizedRect(left, cursor, width, titleHeight)
         } else {

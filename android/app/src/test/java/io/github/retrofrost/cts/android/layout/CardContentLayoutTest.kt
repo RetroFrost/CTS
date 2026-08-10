@@ -46,6 +46,18 @@ class CardContentLayoutTest {
     }
 
     @Test
+    fun whitespaceOnlyFieldsDoNotReserveTextBands() {
+        val frames = CardContentLayout.frames(
+            VisualModel.Males,
+            CtsCard(title = " \n\t ", description = "   "),
+        )
+
+        assertEquals(1f, frames.image.height, 0.0001f)
+        assertNull(frames.title)
+        assertNull(frames.description)
+    }
+
+    @Test
     fun relationshipsUsesMeasuredReferenceBands() {
         val frames = CardContentLayout.frames(
             VisualModel.Relationships,

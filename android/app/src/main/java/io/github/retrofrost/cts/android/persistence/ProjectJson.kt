@@ -22,7 +22,10 @@ object ProjectJson {
     private val headers = listOf("Value", "Label", "Title", "Description", "Image")
 
     fun encode(project: CtsProject): String {
-        val normalized = project.normalized()
+        val normalized = project.normalized().copy(
+            name = project.name.trim(),
+            cards = project.cards.map(CtsCard::withNormalizedText),
+        )
         val rows = JSONArray()
         normalized.cards.forEach { card ->
             rows.put(
@@ -118,6 +121,11 @@ object ProjectJson {
             root.has("cards") -> decodeCardProject(root)
             else -> throw IllegalArgumentException(
                 "This file does not contain CTS cards or a CTS spreadsheet.",
+            )
+        }.let { decoded ->
+            decoded.copy(
+                name = decoded.name.trim(),
+                cards = decoded.cards.map(CtsCard::withNormalizedText),
             )
         }.normalized()
     }

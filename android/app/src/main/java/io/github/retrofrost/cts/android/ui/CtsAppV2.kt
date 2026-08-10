@@ -90,6 +90,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -1428,7 +1429,13 @@ private fun DataWorkspace(
                     value = selected.badgePrimary,
                     onValueChange = { value -> onUpdateSelectedCard { it.copy(badgePrimary = value) } },
                     label = { Text("Badge value") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { state ->
+                            if (!state.isFocused && selected.badgePrimary != selected.badgePrimary.trim()) {
+                                onUpdateSelectedCard { it.copy(badgePrimary = it.badgePrimary.trim()) }
+                            }
+                        },
                 )
             }
             item {
@@ -1436,7 +1443,13 @@ private fun DataWorkspace(
                     value = selected.badgeSecondary,
                     onValueChange = { value -> onUpdateSelectedCard { it.copy(badgeSecondary = value) } },
                     label = { Text("Badge label") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { state ->
+                            if (!state.isFocused && selected.badgeSecondary != selected.badgeSecondary.trim()) {
+                                onUpdateSelectedCard { it.copy(badgeSecondary = it.badgeSecondary.trim()) }
+                            }
+                        },
                 )
             }
             item {
@@ -1444,7 +1457,13 @@ private fun DataWorkspace(
                     value = selected.title,
                     onValueChange = { value -> onUpdateSelectedCard { it.copy(title = value) } },
                     label = { Text("Title") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { state ->
+                            if (!state.isFocused && selected.title != selected.title.trim()) {
+                                onUpdateSelectedCard { it.copy(title = it.title.trim()) }
+                            }
+                        },
                 )
             }
             item {
@@ -1452,7 +1471,13 @@ private fun DataWorkspace(
                     value = selected.description,
                     onValueChange = { value -> onUpdateSelectedCard { it.copy(description = value) } },
                     label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { state ->
+                            if (!state.isFocused && selected.description != selected.description.trim()) {
+                                onUpdateSelectedCard { it.copy(description = it.description.trim()) }
+                            }
+                        },
                     minLines = 2,
                 )
             }

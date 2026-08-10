@@ -89,6 +89,18 @@ data class CtsCard(
     val description: String = "",
     val imageSubcard: ImageSubcard = ImageSubcard(parentCardId = id),
 ) {
+    /**
+     * Text fields stay unmodified while the user is typing, then use this form at
+     * render/import/save boundaries. This removes invisible padding and leading
+     * blank lines without collapsing meaningful spaces inside the text.
+     */
+    fun withNormalizedText(): CtsCard = copy(
+        badgePrimary = badgePrimary.trim(),
+        badgeSecondary = badgeSecondary.trim(),
+        title = title.trim(),
+        description = description.trim(),
+    )
+
     fun withOwnedImageSubcard(subcard: ImageSubcard = imageSubcard): CtsCard =
         copy(
             imageSubcard = subcard.copy(

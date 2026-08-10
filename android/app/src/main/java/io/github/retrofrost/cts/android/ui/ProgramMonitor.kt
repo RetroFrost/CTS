@@ -232,7 +232,8 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     onSelect: () -> Unit,
     onImageTransformChanged: (NormalizedRect) -> Unit,
 ) {
-    val frames = CardContentLayout.frames(model, card)
+    val displayCard = card.withNormalizedText()
+    val frames = CardContentLayout.frames(model, displayCard)
     Frame(
         frames.image,
         Modifier.background(if (model == VisualModel.Relationships) Color(0xFF1F1F1F) else Color.Transparent),
@@ -253,7 +254,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
                 ),
         ) {
             ImageSubcardFrame(
-                card.imageSubcard,
+                displayCard.imageSubcard,
                 selected,
                 onSelect,
                 onImageTransformChanged,
@@ -269,7 +270,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
                 .alpha(titleReveal.coerceIn(0f, 1f)),
         ) {
             CardText(
-                text = card.title,
+                text = displayCard.title,
                 color = Color(0xFF101010),
                 fontWeight = if (model == VisualModel.Relationships) FontWeight.Normal else FontWeight.Black,
                 fontSize = if (model == VisualModel.Relationships) 12.sp else 8.4.sp,
@@ -286,7 +287,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
                 .alpha(descriptionReveal.coerceIn(0f, 1f)),
         ) {
             CardText(
-                text = card.description,
+                text = displayCard.description,
                 color = Color.White,
                 fontWeight = if (model == VisualModel.Relationships) FontWeight.Normal else FontWeight.SemiBold,
                 fontSize = if (model == VisualModel.Relationships) 6.5.sp else 5.4.sp,
@@ -329,8 +330,9 @@ private fun BoxScope.CardText(
     fontSize: TextUnit,
     maxLines: Int,
 ) {
+    val displayText = text.trim()
     Text(
-        text = text,
+        text = displayText,
         modifier = Modifier
             .align(Alignment.Center)
             .padding(horizontal = 4.dp, vertical = 1.dp),

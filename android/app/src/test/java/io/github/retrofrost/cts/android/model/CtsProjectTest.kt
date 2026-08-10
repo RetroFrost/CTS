@@ -44,4 +44,19 @@ class CtsProjectTest {
         assertEquals(3f, card.imageSubcard.cropZoom)
         assertEquals(card.id, card.imageSubcard.parentCardId)
     }
+
+    @Test
+    fun renderTextDropsOuterWhitespaceButPreservesWords() {
+        val card = CtsCard(
+            badgePrimary = "  48  ",
+            badgeSecondary = "\n DANGER RANK \t",
+            title = "\n  Sea water  \n",
+            description = "   ",
+        ).withNormalizedText()
+
+        assertEquals("48", card.badgePrimary)
+        assertEquals("DANGER RANK", card.badgeSecondary)
+        assertEquals("Sea water", card.title)
+        assertEquals("", card.description)
+    }
 }

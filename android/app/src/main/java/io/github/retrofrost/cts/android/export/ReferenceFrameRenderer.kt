@@ -116,7 +116,8 @@ class ReferenceFrameRenderer(
     }
 
     private fun drawCardBody(canvas: Canvas, card: CtsCard, cardWidth: Float, placement: CardPlacement) {
-        val frames = CardContentLayout.frames(project.model, card)
+        val displayCard = card.withNormalizedText()
+        val frames = CardContentLayout.frames(project.model, displayCard)
         val image = frameRect(frames.image, cardWidth)
         val title = frames.title?.let { frameRect(it, cardWidth) }
         val description = frames.description?.let { frameRect(it, cardWidth) }
@@ -135,8 +136,8 @@ class ReferenceFrameRenderer(
         canvas.drawRect(image, paint)
         paint.shader = null
 
-        loadImage(card.imageSubcard.source)?.let { bitmap ->
-            val transform = card.imageSubcard.transform.clamped()
+        loadImage(displayCard.imageSubcard.source)?.let { bitmap ->
+            val transform = displayCard.imageSubcard.transform.clamped()
             val destination = RectF(
                 image.left + image.width() * transform.x,
                 image.top + image.height() * transform.y,
@@ -149,31 +150,28 @@ class ReferenceFrameRenderer(
                 canvas = canvas,
                 bitmap = bitmap,
                 destination = destination,
-                focusX = card.imageSubcard.cropFocusX,
-                focusY = card.imageSubcard.cropFocusY,
-                zoom = card.imageSubcard.cropZoom,
+                focusX = displayCard.imageSubcard.cropFocusX,
+                focusY = displayCard.imageSubcard.cropFocusY,
+                zoom = displayCard.imageSubcard.cropZoom,
             )
             canvas.restore()
         }
 
-        title?.let {
-            paint.color = if (project.model == VisualModel.Relationships) Color.rgb(245, 245, 243) else Color.rgb(240, 240, 240)
-            canvas.drawRect(it, paint)
-        }
-        description?.let {
-            paint.color = if (project.model == VisualModel.Relationships) Color.rgb(47, 47, 47) else Color.rgb(98, 95, 86)
-            canvas.drawRect(it, paint)
-        }
-
-        paint.color = Color.rgb(17, 16, 12)
-        val bottomRule = frameRect(CardContentLayout.bottomRule(), cardWidth)
-        canvas.drawRect(bottomRule, paint)
-
         val padding = cardWidth * 0.035f
         title?.let {
+            val alpha = if (project.model == VisualModel.Relationships) {
+                placement.titleReveal.coerceIn(0f, 1f)
+            } else 1f
+            val layer = if (alpha < 0.999f) {
+                canvas.saveLayerAlpha(it, (alpha * 255f).toInt())
+            } else null
+            paint.color = if (project.model == VisualModel.Relationships) {
+                Color.rgb(245, 245, 243)
+            } else Color.rgb(240, 240, 240)
+            canvas.drawRect(it, paint)
             drawTextBlock(
                 canvas = canvas,
-                text = card.title,
+                text = displayCard.title,
                 rect = RectF(it.left + padding, it.top + 2f, it.right - padding, it.bottom - 2f),
                 color = Color.rgb(16, 16, 16),
                 bold = project.model != VisualModel.Relationships,
@@ -181,11 +179,22 @@ class ReferenceFrameRenderer(
                 minimumSize = height * (if (project.model == VisualModel.Relationships) 0.022f else 0.018f),
                 maxLines = if (project.model == VisualModel.Relationships) 1 else 2,
             )
+            layer?.let(canvas::restoreToCount)
         }
         description?.let {
+            val alpha = if (project.model == VisualModel.Relationships) {
+                placement.descriptionReveal.coerceIn(0f, 1f)
+            } else 1f
+            val layer = if (alpha < 0.999f) {
+                canvas.saveLayerAlpha(it, (alpha * 255f).toInt())
+            } else null
+            paint.color = if (project.model == VisualModel.Relationships) {
+                Color.rgb(47, 47, 47)
+            } else Color.rgb(98, 95, 86)
+            canvas.drawRect(it, paint)
             drawTextBlock(
                 canvas = canvas,
-                text = card.description,
+                text = displayCard.description,
                 rect = RectF(
                     it.left + padding,
                     it.top + 2f,
@@ -198,7 +207,12 @@ class ReferenceFrameRenderer(
                 minimumSize = height * (if (project.model == VisualModel.Relationships) 0.018f else 0.014f),
                 maxLines = if (project.model == VisualModel.Relationships) 4 else 3,
             )
+            layer?.let(canvas::restoreToCount)
         }
+
+        paint.color = Color.rgb(17, 16, 12)
+        val bottomRule = frameRect(CardContentLayout.bottomRule(), cardWidth)
+        canvas.drawRect(bottomRule, paint)
 
         if (project.model == VisualModel.Relationships) {
             if (placement.artworkReveal < 1f) {
@@ -211,20 +225,14 @@ class ReferenceFrameRenderer(
                     paint,
                 )
             }
-            if (placement.titleReveal < 1f) {
-                title?.let {
-                    paint.color = Color.rgb(245, 245, 243)
-                    canvas.drawRect(it, paint)
-                }
-            }
-            if (placement.descriptionReveal < 1f) {
-                description?.let {
-                    paint.color = Color.rgb(47, 47, 47)
-                    canvas.drawRect(it, paint)
-                }
-            }
             paint.color = Color.rgb(234, 127, 28)
-            canvas.drawRect(frameRect(CardContentLayout.relationshipsRule(), cardWidth), paint)
+            val rule = frameRect(CardContentLayout.relationshipsRule(), cardWidth)
+            val ruleAlpha = placement.descriptionReveal.coerceIn(0f, 1f)
+            val layer = if (ruleAlpha < 0.999f) {
+                canvas.saveLayerAlpha(rule, (ruleAlpha * 255f).toInt())
+            } else null
+            canvas.drawRect(rule, paint)
+            layer?.let(canvas::restoreToCount)
         }
     }
 
@@ -237,7 +245,7 @@ class ReferenceFrameRenderer(
     ) {
         ReferenceBadgePainter.draw(
             canvas = canvas,
-            card = card,
+            card = card.withNormalizedText(),
             model = project.model,
             placement = placement,
             cardLeft = cardX,
@@ -287,14 +295,21 @@ class ReferenceFrameRenderer(
         minimumSize: Float,
         maxLines: Int,
     ) {
-        if (text.isBlank() || rect.width() <= 2f || rect.height() <= 2f) return
+        val displayText = text.trim()
+        if (displayText.isEmpty() || rect.width() <= 2f || rect.height() <= 2f) return
         textPaint.color = color
         textPaint.typeface = if (bold) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
         var size = maximumSize.coerceAtLeast(minimumSize)
         var layout: StaticLayout
         while (true) {
             textPaint.textSize = size
-            layout = StaticLayout.Builder.obtain(text, 0, text.length, textPaint, max(1, rect.width().toInt()))
+            layout = StaticLayout.Builder.obtain(
+                displayText,
+                0,
+                displayText.length,
+                textPaint,
+                max(1, rect.width().toInt()),
+            )
                 .setAlignment(Layout.Alignment.ALIGN_CENTER)
                 .setIncludePad(false)
                 .setMaxLines(maxLines)
