@@ -24,13 +24,13 @@ jobs:
       - name: Apply prepared Android patch
         run: python3 tools/apply_resume_android.py
 
-      - name: Restore normal Android CI and commit alpha7
+      - name: Commit Android alpha7 code only
         shell: bash
         run: |
-          git show HEAD^:.github/workflows/android.yml > .github/workflows/android.yml
+          git restore --source=HEAD -- .github/workflows/resume-android-reconstruction.yml tools/apply_resume_android.py .github/workflows/android.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add android
           git diff --cached --check
           git diff --cached --stat
           git commit -m "Android: durable background video reconstruction [reconstruction-bg]"
