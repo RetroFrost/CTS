@@ -77,6 +77,12 @@ object ReferenceBadgePainter {
             lineTo(96f, 118f)
             close()
         }
+        // The entry streak and shine intentionally leave this shared Paint with a
+        // translucent colour. Reset its alpha before drawing the next frame so
+        // those effect layers cannot make the red badge itself translucent.
+        fill.alpha = 255
+        fill.maskFilter = null
+        fill.clearShadowLayer()
         fill.shader = LinearGradient(
             0f, 32f, 0f, 375f,
             intArrayOf(Color.rgb(235, 9, 9), Color.rgb(224, 0, 0), Color.rgb(213, 0, 0)),
@@ -143,6 +149,10 @@ object ReferenceBadgePainter {
             lineTo(badge.left, badge.top + cutY)
             close()
         }
+        // Keep the badge body opaque; only the separately drawn shine is translucent.
+        fill.alpha = 255
+        fill.maskFilter = null
+        fill.clearShadowLayer()
         fill.shader = null
         fill.color = Color.rgb(224, 17, 27)
         fill.setShadowLayer(max(3f, badge.width() * 0.025f), 0f, badge.width() * 0.012f, Color.argb(160, 0, 0, 0))
