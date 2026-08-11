@@ -16,10 +16,9 @@ class TimelineEngineTest {
     @Before fun resetDurationChoice() = DurationRuntime.resetForTests()
 
     @Test
-    fun customMp4IntroPrecedesTheReferenceTimeline() {
-        val withoutIntro = CtsProject(model = VisualModel.Relationships, showIntro = false)
+    fun customMp4IntroPrecedesButDoesNotReplaceReferenceIntro() {
+        val withoutIntro = CtsProject(model = VisualModel.Relationships)
         val withIntro = withoutIntro.copy(
-            showIntro = true,
             introVideo = IntroVideoSettings(
                 uri = "content://intro.mp4",
                 displayName = "intro.mp4",
@@ -34,10 +33,7 @@ class TimelineEngineTest {
         )
         assertTrue(TimelineEngine.customIntroVisible(withIntro, 7.49f))
         assertTrue(!TimelineEngine.customIntroVisible(withIntro, 7.5f))
-        assertEquals(
-            TimelineEngine.RELATIONSHIPS_INTRO_FRAMES,
-            TimelineEngine.relationshipsSourceFrame(withIntro, 7.5f),
-        )
+        assertEquals(0, TimelineEngine.relationshipsSourceFrame(withIntro, 7.5f))
     }
 
     @Test
@@ -48,27 +44,18 @@ class TimelineEngineTest {
     }
 
     @Test
-    fun automaticDurationIncludesTheFullReferenceOutro() {
-        val project = CtsProject(model = VisualModel.Males)
-        val sourceDuration = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS + SCROLL_SECONDS +
-            END_HOLD_SECONDS + OUTRO_COVER_SECONDS + OUTRO_CONTENT_DELAY_SECONDS +
-            OUTRO_HOLD_SECONDS + FADE_SECONDS
+    fun referenceModelIgnoresCustomTimingRequests() {
+        val project = CtsProject(
+            model = VisualModel.Males,
+            modelMode = ModelMode.Custom,
+            customDurationSeconds = 42f,
+        )
+        assertEquals(TimelineEngine.automaticDuration(project), TimelineEngine.duration(project), 0.0001f)
         assertEquals(
-            sourceDuration / TimelineEngine.EXACT_REFERENCE_PLAYBACK_RATE,
-            TimelineEngine.automaticDuration(project),
+            SCROLL_SECONDS / TimelineEngine.EXACT_REFERENCE_PLAYBACK_RATE,
+            TimelineEngine.secondsPerCard(project),
             0.0001f,
         )
-    }
-
-    @Test
-    fun customLengthChangesOnlySecondsPerScrollingCard() {
-        val automaticProject = CtsProject(model = VisualModel.Males, modelMode = ModelMode.Custom)
-        val automaticDuration = TimelineEngine.automaticDuration(automaticProject)
-        val customProject = automaticProject.copy(customDurationSeconds = automaticDuration + 6f)
-        val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
-        assertEquals(automaticDuration + 6f, TimelineEngine.duration(customProject), 0.0001f)
-        assertEquals(SCROLL_SECONDS + 6f, TimelineEngine.secondsPerCard(customProject), 0.0001f)
-        assertEquals(scrollStart, TimelineEngine.modelTime(customProject, scrollStart), 0.0001f)
     }
 
     @Test
@@ -138,21 +125,37 @@ class TimelineEngineTest {
     }
 
     @Test
-    fun outroCoversOnlyTheFirstThreeColumnsAndThenShowsContent() {
-        val project = CtsProject(model = VisualModel.Males)
-        val rate = TimelineEngine.EXACT_REFERENCE_PLAYBACK_RATE
-        val scrollEnd = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS + SCROLL_SECONDS
-        assertEquals(0f, TimelineEngine.outroCoverProgress(project, scrollEnd / rate), 0.001f)
-        assertTrue(TimelineEngine.outroCoverProgress(project, (scrollEnd + END_HOLD_SECONDS + OUTRO_COVER_SECONDS) / rate) > 0.99f)
-        assertTrue(
-            TimelineEngine.outroContentAlpha(
-                project,
-                (scrollEnd + END_HOLD_SECONDS + OUTRO_COVER_SECONDS + OUTRO_CONTENT_DELAY_SECONDS + 0.12f) / rate,
-            ) > 0.99f,
-        )
-        val finalPlacement = TimelineEngine.placements(project, (scrollEnd + END_HOLD_SECONDS) / rate).last()
+    fun malesCanonicalFullVideoUsesAll16741Frames() {
+        val project = CtsProject(
+            model = VisualModel.Males,
+            cards = List(78) { CtsCard(title = "Age $it") },
+        ).normalized()
+        assertEquals(16_741f / 60f, TimelineEngine.duration(project), 0.0001f)
+    }
+
+    @Test
+    fun exactReferenceRunsAtNativeSourceSpeed() {
+        assertEquals(1f, TimelineEngine.EXACT_REFERENCE_PLAYBACK_RATE, 0f)
+    }
+
+    @Test
+    fun malesMeasuredOutroScalesToProjectCardCount() {
+        val project = CtsProject(
+            model = VisualModel.Males,
+            cards = List(5) { CtsCard(title = "Card $it") },
+        ).normalized()
+        val duration = TimelineEngine.duration(project)
+        val endingSeconds = (25f + 23f + 273f + 48f) / 60f
+        val wipeStart = duration - endingSeconds
+
+        assertEquals(0f, TimelineEngine.outroCoverProgress(project, wipeStart - 1f / 60f), 0.001f)
+        assertTrue(TimelineEngine.outroCoverProgress(project, wipeStart + 25f / 60f) > 0.99f)
+        assertTrue(TimelineEngine.outroContentAlpha(project, wipeStart + 48f / 60f) > 0.99f)
+        assertTrue(TimelineEngine.fadeAlpha(project, duration - 1f / 60f) < 0.1f)
+
+        val finalPlacement = TimelineEngine.placements(project, wipeStart - 1f / 60f).last()
         assertEquals(4, finalPlacement.cardIndex)
-        assertEquals(3f, finalPlacement.xInCards, 0.001f)
+        assertEquals(3f, finalPlacement.xInCards, 0.02f)
     }
 
     @Test
@@ -170,7 +173,7 @@ class TimelineEngineTest {
             TimelineEngine.duration(project),
             0.0001f,
         )
-        assertEquals(371f, TimelineEngine.duration(project), 0.0001f)
+        assertEquals(185.5f, TimelineEngine.duration(project), 0.0001f)
     }
 
     @Test

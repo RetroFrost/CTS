@@ -217,26 +217,34 @@ internal object ReferenceOverlayRenderer {
             canvas.drawRect(0f, 0f, overlayRight, height * coverProgress.coerceIn(0f, 1f), paint)
         }
         if (contentAlpha <= 0f) return
-        val alpha = (255f * contentAlpha.coerceIn(0f, 1f)).toInt()
-        paint.color = Color.argb(alpha, 17, 17, 17)
+        val rise = 1f - (1f - contentAlpha.coerceIn(0f, 1f)).let { it * it * it }
+        val yOffset = height * (1f - rise)
+        val alpha = 255
+        paint.color = Color.rgb(17, 17, 17)
         canvas.drawRect(0f, 0f, overlayRight, height.toFloat(), paint)
 
-        val margin = width * 0.02f
-        val gap = width * 0.025f
-        val boxTop = height * 0.17f
-        val boxBottom = height * 0.53f
-        val boxWidth = (overlayRight - margin * 2 - gap) / 2f
-        paint.color = Color.argb(alpha, 224, 0, 0)
-        canvas.drawRoundRect(RectF(margin, boxTop, margin + boxWidth, boxBottom), 12f, 12f, paint)
-        canvas.drawRoundRect(RectF(margin + boxWidth + gap, boxTop, overlayRight - margin, boxBottom), 12f, 12f, paint)
-        paint.color = Color.argb(alpha, 255, 255, 255)
-        drawCentered(canvas, "BEST VIDEO FOR YOU", margin, boxWidth, boxTop + height * 0.045f, height * 0.027f, paint, true)
-        drawCentered(canvas, "NEWEST VIDEO", margin + boxWidth + gap, boxWidth, boxTop + height * 0.045f, height * 0.027f, paint, true)
+        val scaleX = width / 1920f
+        val scaleY = height / 1080f
+        val margin = 25f * scaleX
+        val gap = 42f * scaleX
+        val boxTop = 245f * scaleY + yOffset
+        val boxBottom = 665f * scaleY + yOffset
+        val boxWidth = (overlayRight - margin * 2f - gap) / 2f
+        paint.color = Color.argb(alpha, 216, 0, 22)
+        canvas.drawRoundRect(RectF(margin, boxTop, margin + boxWidth, boxBottom), 12f * scaleX, 12f * scaleY, paint)
+        canvas.drawRoundRect(RectF(margin + boxWidth + gap, boxTop, overlayRight - margin, boxBottom), 12f * scaleX, 12f * scaleY, paint)
+        paint.color = Color.WHITE
+        drawCentered(canvas, "BEST VIDEO FOR YOU", margin, boxWidth, boxTop + 35f * scaleY, 35f * scaleY, paint, true)
+        drawCentered(canvas, "NEWEST VIDEO", margin + boxWidth + gap, boxWidth, boxTop + 35f * scaleY, 35f * scaleY, paint, true)
 
-        val credits = RectF(overlayRight * 0.32f, height * 0.62f, overlayRight * 0.68f, height * 0.84f)
-        paint.color = Color.argb(alpha, 98, 95, 86)
-        canvas.drawRoundRect(credits, 12f, 12f, paint)
-        paint.color = Color.argb(alpha, 255, 255, 255)
+        val creditWidth = 460f * scaleX
+        val creditHeight = 150f * scaleY
+        val creditLeft = (overlayRight - creditWidth) / 2f
+        val creditTop = 790f * scaleY + yOffset
+        val credits = RectF(creditLeft, creditTop, creditLeft + creditWidth, creditTop + creditHeight)
+        paint.color = Color.rgb(96, 93, 84)
+        canvas.drawRoundRect(credits, 20f * scaleX, 20f * scaleY, paint)
+        paint.color = Color.WHITE
         drawCentered(canvas, creditsSettings.endingHeading, credits.left, credits.width(), credits.top + credits.height() * 0.22f, height * 0.026f, paint, true)
         drawCentered(canvas, creditsSettings.endingDetails, credits.left, credits.width(), credits.top + credits.height() * 0.58f, height * 0.014f, paint)
     }

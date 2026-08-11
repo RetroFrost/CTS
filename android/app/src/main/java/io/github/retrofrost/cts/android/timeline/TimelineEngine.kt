@@ -64,10 +64,43 @@ private data class TimelineParts(
 )
 
 object TimelineEngine {
-    /** Exact Reference keeps every measured source frame but presents it at half speed. */
-    const val EXACT_REFERENCE_PLAYBACK_RATE = 0.5f
+    /** Exact Reference maps one output frame to one measured source frame. */
+    const val EXACT_REFERENCE_PLAYBACK_RATE = 1f
     const val MALES_REFERENCE_FRAMES = 16_741
     const val MALES_REFERENCE_FPS = 60
+    private const val MALES_CANONICAL_CARD_COUNT = 78
+    private const val MALES_CONVEYOR_START_FRAME = 528
+    private const val MALES_STEADY_START_FRAME = 620
+    private const val MALES_STEADY_START_SHIFT = 0.614439f
+    private const val MALES_STEADY_END_FRAME = 16_335
+    private const val MALES_STEADY_END_SHIFT = 74f
+    private const val MALES_STEADY_PERIOD_FRAMES = 214.14294f
+    private const val MALES_FINAL_HOLD_FRAMES = 37
+    private const val MALES_OUTRO_START_FRAME = 16_372
+    private const val MALES_END_WIPE_FRAMES = 25
+    private const val MALES_END_RISE_FRAMES = 23
+    private const val MALES_END_HOLD_FRAMES = 273
+    private const val MALES_FADE_FRAMES = 48
+    private const val MALES_BADGE_DEEMPHASIS_SECONDS = 1f
+    private const val MALES_BADGE_ACTIVE_SCALE = 1f
+    private const val MALES_BADGE_MEDIUM_SCALE = 272f / 298f
+    private const val MALES_BADGE_SMALL_SCALE = 248f / 298f
+
+    // Full-video separator tracking from the canonical MP4. The opening hand-off is
+    // not a generic easing curve: it has a one-time acceleration before the steady conveyor.
+    private val malesPhasePullKeys = arrayOf(
+        528f to 0.000000f,
+        535f to 0.035055f,
+        540f to 0.047559f,
+        550f to 0.089242f,
+        560f to 0.160102f,
+        570f to 0.230962f,
+        580f to 0.301822f,
+        590f to 0.385186f,
+        600f to 0.464382f,
+        610f to 0.535242f,
+        620f to MALES_STEADY_START_SHIFT,
+    )
     const val MALES_BODY_SECONDS = 1.34f
     private const val MALES_CONVEYOR_STRIDE = 477f / 480f
     private const val MALES_PHASE_PULL_START_FRAME = 535
@@ -130,14 +163,21 @@ object TimelineEngine {
     private val relationshipsOpeningStarts = intArrayOf(374, 521, 656, 795)
     private val relationshipsOpeningEnds = intArrayOf(521, 656, 795, 896)
 
+    private fun isSealedReference(project: CtsProject): Boolean =
+        project.model == VisualModel.Males || project.model == VisualModel.Relationships
+
     private fun isLockedRelationships(project: CtsProject): Boolean =
-        project.model == VisualModel.Relationships && project.modelMode == ModelMode.ExactReference
+        project.model == VisualModel.Relationships
 
     private fun playbackRate(project: CtsProject): Float =
-        if (project.modelMode == ModelMode.ExactReference) EXACT_REFERENCE_PLAYBACK_RATE else 1f
+        if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) {
+            EXACT_REFERENCE_PLAYBACK_RATE
+        } else {
+            1f
+        }
 
     fun customIntroDuration(project: CtsProject): Float = if (
-        project.showIntro && !project.introVideo.uri.isNullOrBlank()
+        !project.introVideo.uri.isNullOrBlank()
     ) {
         project.introVideo.durationSeconds.coerceAtLeast(0f)
     } else {
@@ -153,7 +193,7 @@ object TimelineEngine {
         (outputTimeSeconds - customIntroDuration(project)).coerceAtLeast(0f)
 
     private fun builtInIntroEnabled(project: CtsProject): Boolean =
-        project.showIntro && customIntroDuration(project) <= 0f
+        isSealedReference(project) || project.showIntro
 
     private fun outputDuration(project: CtsProject, modelDurationSeconds: Float): Float =
         modelDurationSeconds / playbackRate(project)
@@ -173,7 +213,7 @@ object TimelineEngine {
         VisualModel.Relationships -> RELATIONSHIPS_CONTINUOUS_STEP_FRAMES / 60f
     }
 
-    private fun tailSeconds(project: CtsProject): Float = if (project.showOutro) {
+    private fun tailSeconds(project: CtsProject): Float = if (isSealedReference(project) || project.showOutro) {
         END_HOLD_SECONDS + OUTRO_COVER_SECONDS + OUTRO_CONTENT_DELAY_SECONDS + OUTRO_HOLD_SECONDS + FADE_SECONDS
     } else {
         END_HOLD_SECONDS
@@ -217,9 +257,13 @@ object TimelineEngine {
 
     fun automaticDuration(project: CtsProject): Float {
         val parts = timelineParts(project)
+        if (project.model == VisualModel.Males && isSealedReference(project)) {
+            return customIntroDuration(project) +
+                malesReferenceFrameCount(project.cards.size) / MALES_REFERENCE_FPS.toFloat()
+        }
         if (isLockedRelationships(project)) {
             val content = relationshipsContentEndFrame(project.cards.size)
-            val outro = if (project.showOutro) {
+            val outro = if (isSealedReference(project) || project.showOutro) {
                 RELATIONSHIPS_END_WIPE_FRAMES + RELATIONSHIPS_END_RISE_FRAMES +
                     RELATIONSHIPS_END_HOLD_FRAMES + RELATIONSHIPS_FADE_FRAMES
             } else 0
@@ -236,7 +280,7 @@ object TimelineEngine {
     fun duration(project: CtsProject): Float {
         val parts = timelineParts(project)
         val automatic = automaticDuration(project)
-        if (project.modelMode == ModelMode.ExactReference) return automatic
+        if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) return automatic
         val custom = DurationRuntime.resolve(project.customDurationSeconds) ?: return automatic
         if (parts.scrollSteps <= 0) return automatic
         val minimum = customIntroDuration(project) + parts.introSeconds +
@@ -248,7 +292,7 @@ object TimelineEngine {
     private fun chosenScrollDuration(project: CtsProject, parts: TimelineParts): Float {
         if (parts.scrollSteps <= 0) return 0f
         if (isLockedRelationships(project)) return parts.automaticScrollSeconds
-        if (project.modelMode == ModelMode.ExactReference) return parts.automaticScrollSeconds
+        if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) return parts.automaticScrollSeconds
         if (DurationRuntime.resolve(project.customDurationSeconds) == null) {
             return parts.automaticScrollSeconds
         }
@@ -267,7 +311,7 @@ object TimelineEngine {
     fun modelTime(project: CtsProject, outputTimeSeconds: Float): Float {
         val output = contentOutputTime(project, outputTimeSeconds)
         val parts = timelineParts(project)
-        if (project.modelMode == ModelMode.ExactReference) return output * playbackRate(project)
+        if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) return output * playbackRate(project)
         if (
             DurationRuntime.resolve(project.customDurationSeconds) == null ||
             parts.scrollSteps <= 0 ||
@@ -287,7 +331,7 @@ object TimelineEngine {
     private fun outputTimeForModelTime(project: CtsProject, modelTimeSeconds: Float): Float {
         val modelTime = modelTimeSeconds.coerceAtLeast(0f)
         val parts = timelineParts(project)
-        if (project.modelMode == ModelMode.ExactReference) {
+        if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) {
             return customIntroDuration(project) + modelTime / playbackRate(project)
         }
         if (
@@ -316,8 +360,9 @@ object TimelineEngine {
 
     fun introCreditsVisible(project: CtsProject, outputTimeSeconds: Float): Boolean {
         if (
-            project.cards.isEmpty() || project.model != VisualModel.Males || !project.showDisclaimer ||
-            customIntroDuration(project) > 0f
+            project.cards.isEmpty() || project.model != VisualModel.Males ||
+            (!isSealedReference(project) && !project.showDisclaimer) ||
+            customIntroVisible(project, outputTimeSeconds)
         ) return false
         return modelTime(project, outputTimeSeconds) < timelineParts(project).introSeconds
     }
@@ -329,14 +374,18 @@ object TimelineEngine {
     }
 
     fun relationshipsDisclaimerAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
-        if (project.model != VisualModel.Relationships || !project.showDisclaimer) return 0f
+        if (project.model != VisualModel.Relationships || (!isSealedReference(project) && !project.showDisclaimer)) return 0f
         val frame = relationshipsSourceFrame(project, outputTimeSeconds)
         if (frame !in 434 until 795) return 0f
         return ((frame - 434) / 45f).coerceIn(0f, 1f)
     }
 
     fun outroCoverProgress(project: CtsProject, outputTimeSeconds: Float): Float {
-        if (!project.showOutro) return 0f
+        if (project.model == VisualModel.Males && isSealedReference(project)) {
+            val frame = (contentOutputTime(project, outputTimeSeconds) * MALES_REFERENCE_FPS).toInt()
+            return smoothStep((frame - malesOutroStartFrame(project.cards.size)) / MALES_END_WIPE_FRAMES.toFloat())
+        }
+        if (!isSealedReference(project) && !project.showOutro) return 0f
         if (isLockedRelationships(project)) {
             return (relationshipsOutroLocalFrame(project, outputTimeSeconds) /
                 RELATIONSHIPS_END_WIPE_FRAMES.toFloat()).coerceIn(0f, 1f)
@@ -346,6 +395,11 @@ object TimelineEngine {
     }
 
     fun outroContentAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
+        if (project.model == VisualModel.Males && isSealedReference(project)) {
+            val frame = (contentOutputTime(project, outputTimeSeconds) * MALES_REFERENCE_FPS).toInt()
+            val riseStart = malesOutroStartFrame(project.cards.size) + MALES_END_WIPE_FRAMES
+            return ((frame - riseStart) / MALES_END_RISE_FRAMES.toFloat()).coerceIn(0f, 1f)
+        }
         if (!project.showOutro) return 0f
         if (isLockedRelationships(project)) {
             return ((relationshipsOutroLocalFrame(project, outputTimeSeconds) - 35) / 28f)
@@ -363,14 +417,19 @@ object TimelineEngine {
         }
 
         val modelTime = modelTime(project, outputTimeSeconds)
-        if (modelTime >= modelDuration(project)) return emptyList()
+        val activeDuration = if (project.model == VisualModel.Males && isSealedReference(project)) {
+            malesReferenceFrameCount(project.cards.size) / MALES_REFERENCE_FPS.toFloat()
+        } else {
+            modelDuration(project)
+        }
+        if (modelTime >= activeDuration) return emptyList()
 
         val visibleCards = project.model.visibleCards
         val initialCount = min(cardCount, visibleCards)
         val parts = timelineParts(project)
         val scrollStart = parts.introSeconds
 
-        val lockedMales = project.model == VisualModel.Males && project.modelMode == ModelMode.ExactReference
+        val lockedMales = project.model == VisualModel.Males && isSealedReference(project)
         if (modelTime < scrollStart) {
             return buildList {
                 for (index in 0 until initialCount) {
@@ -406,10 +465,7 @@ object TimelineEngine {
         val cycleProgress = rawShift - completedShifts
         val easedShift = if (lockedMales) {
             val sourceFrame = (modelTime * MALES_REFERENCE_FPS).toInt()
-            val pull = ((sourceFrame - MALES_PHASE_PULL_START_FRAME) /
-                (MALES_PHASE_PULL_END_FRAME - MALES_PHASE_PULL_START_FRAME).toFloat())
-                .coerceIn(0f, 1f) * (1f - MALES_CONVEYOR_STRIDE)
-            (rawShift * MALES_CONVEYOR_STRIDE + pull).coerceAtMost(maximumShift.toFloat())
+            malesConveyorShift(sourceFrame, maximumShift.toFloat())
         } else if (completedShifts >= maximumShift) {
             maximumShift.toFloat()
         } else {
@@ -431,7 +487,7 @@ object TimelineEngine {
                 val exactBadgeAge = if (index < initialCount) {
                     modelTime - parts.preludeSeconds - index * parts.revealSeconds
                 } else {
-                    val cardStart = scrollStart + (index - initialCount) * parts.scrollSeconds
+                    val cardStart = malesCardStartFrame(index) / MALES_REFERENCE_FPS
                     (modelTime - cardStart - MALES_POST_BADGE_DELAY) * MALES_POST_BADGE_SPEED
                 }
                 add(
@@ -444,10 +500,16 @@ object TimelineEngine {
                             (exactBadgeAge / MALES_BADGE_ENTRY_END).coerceIn(0f, 1f)
                         } else materialEase(badgeTime / BADGE_SETTLE_SECONDS),
                         badgeAgeSeconds = exactBadgeAge,
-                        badgeAffine = if (!lockedMales) BadgeAffine.Identity else if (index < initialCount) {
-                            malesOpeningBadgeAffine(exactBadgeAge)
+                        badgeAffine = if (!lockedMales) {
+                            BadgeAffine.Identity
                         } else {
-                            malesPostBadgeAffine(exactBadgeAge)
+                            malesMeasuredBadgeAffine(
+                                index = index,
+                                age = exactBadgeAge,
+                                sourceFrame = (modelTime * MALES_REFERENCE_FPS).toInt(),
+                                cardCount = cardCount,
+                                initialCount = initialCount,
+                            )
                         },
                     ),
                 )
@@ -463,7 +525,8 @@ object TimelineEngine {
         val cardCount = project.cards.size
         val contentEnd = relationshipsContentEndFrame(cardCount)
         if (frame >= contentEnd) {
-            if (!project.showOutro || frame >= contentEnd + RELATIONSHIPS_END_WIPE_FRAMES +
+            if ((!isSealedReference(project) && !project.showOutro) ||
+                frame >= contentEnd + RELATIONSHIPS_END_WIPE_FRAMES +
                 RELATIONSHIPS_END_RISE_FRAMES + RELATIONSHIPS_END_HOLD_FRAMES + RELATIONSHIPS_FADE_FRAMES
             ) return emptyList()
             val local = frame - contentEnd
@@ -510,6 +573,116 @@ object TimelineEngine {
                 add(relationshipsPlacement(index, x, frame - start, opening = index < 4))
             }
         }
+    }
+
+    private fun malesConveyorShift(sourceFrame: Int, maximumShift: Float): Float {
+        if (maximumShift <= 0f || sourceFrame <= MALES_CONVEYOR_START_FRAME) return 0f
+        val measured = if (sourceFrame <= MALES_STEADY_START_FRAME) {
+            val frame = sourceFrame.toFloat()
+            val right = malesPhasePullKeys.indexOfFirst { frame <= it.first }
+            when {
+                right <= 0 -> malesPhasePullKeys.first().second
+                else -> {
+                    val (f0, s0) = malesPhasePullKeys[right - 1]
+                    val (f1, s1) = malesPhasePullKeys[right]
+                    lerp(s0, s1, (frame - f0) / (f1 - f0))
+                }
+            }
+        } else {
+            MALES_STEADY_START_SHIFT +
+                (sourceFrame - MALES_STEADY_START_FRAME) / MALES_STEADY_PERIOD_FRAMES
+        }
+        return measured.coerceIn(0f, maximumShift)
+    }
+
+    private fun malesFrameForShift(targetShift: Float): Float {
+        if (targetShift <= 0f) return MALES_CONVEYOR_START_FRAME.toFloat()
+        if (targetShift <= MALES_STEADY_START_SHIFT) {
+            val right = malesPhasePullKeys.indexOfFirst { targetShift <= it.second }
+            if (right <= 0) return malesPhasePullKeys.first().first
+            val (f0, s0) = malesPhasePullKeys[right - 1]
+            val (f1, s1) = malesPhasePullKeys[right]
+            val amount = ((targetShift - s0) / (s1 - s0).coerceAtLeast(0.000001f)).coerceIn(0f, 1f)
+            return lerp(f0, f1, amount)
+        }
+        return MALES_STEADY_START_FRAME +
+            (targetShift - MALES_STEADY_START_SHIFT) * MALES_STEADY_PERIOD_FRAMES
+    }
+
+    private fun malesCardStartFrame(index: Int): Float = when {
+        index <= 0 -> 0f
+        index < 4 -> index * 120f
+        else -> malesFrameForShift((index - 4).toFloat())
+    }
+
+    private fun malesReferenceFrameCount(cardCount: Int): Int {
+        if (cardCount <= 0) return 0
+        if (cardCount == MALES_CANONICAL_CARD_COUNT) return MALES_REFERENCE_FRAMES
+        val settledFrame = when (cardCount) {
+            1 -> 120
+            2 -> 240
+            3 -> 360
+            4 -> 535
+            else -> kotlin.math.ceil(malesFrameForShift((cardCount - 4).toFloat()).toDouble()).toInt()
+        }
+        return settledFrame + MALES_FINAL_HOLD_FRAMES +
+            MALES_END_WIPE_FRAMES + MALES_END_RISE_FRAMES + MALES_END_HOLD_FRAMES + MALES_FADE_FRAMES
+    }
+
+    private fun malesOutroStartFrame(cardCount: Int): Int =
+        malesReferenceFrameCount(cardCount) -
+            (MALES_END_WIPE_FRAMES + MALES_END_RISE_FRAMES + MALES_END_HOLD_FRAMES + MALES_FADE_FRAMES)
+
+    private fun malesBadgeClockFrame(index: Int, animationAge: Float): Float {
+        val start = malesCardStartFrame(index)
+        return if (index < 4) {
+            start + animationAge * MALES_REFERENCE_FPS
+        } else {
+            start + MALES_POST_BADGE_DELAY * MALES_REFERENCE_FPS +
+                animationAge / MALES_POST_BADGE_SPEED * MALES_REFERENCE_FPS
+        }
+    }
+
+    private fun easeInOutCubic(value: Float): Float {
+        val x = value.coerceIn(0f, 1f)
+        val q = -2f * x + 2f
+        return if (x < 0.5f) 4f * x * x * x else 1f - q * q * q / 2f
+    }
+
+    private fun malesStageScale(index: Int, sourceFrame: Int, cardCount: Int): Float {
+        var scale = MALES_BADGE_ACTIVE_SCALE
+        if (index + 1 < cardCount) {
+            val next = index + 1
+            val speed = if (next < 4) 1f else MALES_POST_BADGE_SPEED
+            val trigger = malesBadgeClockFrame(next, 1.72f)
+            val duration = MALES_BADGE_DEEMPHASIS_SECONDS / speed * MALES_REFERENCE_FPS
+            scale = lerp(scale, MALES_BADGE_MEDIUM_SCALE, easeInOutCubic((sourceFrame - trigger) / duration))
+        }
+        if (index + 2 < cardCount) {
+            val next = index + 2
+            val speed = if (next < 4) 1f else MALES_POST_BADGE_SPEED
+            val trigger = malesBadgeClockFrame(next, 1.72f)
+            val duration = MALES_BADGE_DEEMPHASIS_SECONDS / speed * MALES_REFERENCE_FPS
+            val p = easeInOutCubic((sourceFrame - trigger) / duration)
+            if (p > 0f) scale = lerp(MALES_BADGE_MEDIUM_SCALE, MALES_BADGE_SMALL_SCALE, p)
+        }
+        return scale
+    }
+
+    private fun malesMeasuredBadgeAffine(
+        index: Int,
+        age: Float,
+        sourceFrame: Int,
+        cardCount: Int,
+        initialCount: Int,
+    ): BadgeAffine {
+        if (age < MALES_BADGE_ENTRY_END) {
+            return if (index < initialCount) malesOpeningBadgeAffine(age) else malesPostBadgeAffine(age)
+        }
+        val scale = malesStageScale(index, sourceFrame, cardCount)
+        val cx = 243.5f
+        val cy = 203.5f
+        return BadgeAffine(scale, 0f, 0f, scale, cx * (1f - scale), cy * (1f - scale))
     }
 
     private fun malesBodyProgress(localTime: Float): Float {
@@ -635,7 +808,12 @@ object TimelineEngine {
         start + (end - start) * amount.coerceIn(0f, 1f)
 
     fun fadeAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
-        if (!project.showOutro) return 1f
+        if (project.model == VisualModel.Males && isSealedReference(project)) {
+            val frame = (contentOutputTime(project, outputTimeSeconds) * MALES_REFERENCE_FPS).toInt()
+            val fadeStart = malesReferenceFrameCount(project.cards.size) - MALES_FADE_FRAMES
+            return 1f - ((frame - fadeStart) / MALES_FADE_FRAMES.toFloat()).coerceIn(0f, 1f)
+        }
+        if (!isSealedReference(project) && !project.showOutro) return 1f
         if (isLockedRelationships(project)) {
             val fadeStart = RELATIONSHIPS_END_WIPE_FRAMES + RELATIONSHIPS_END_RISE_FRAMES +
                 RELATIONSHIPS_END_HOLD_FRAMES

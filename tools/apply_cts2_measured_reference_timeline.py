@@ -215,7 +215,8 @@ helpers = '''    private fun malesConveyorShift(sourceFrame: Int, maximumShift: 
 
     private fun easeInOutCubic(value: Float): Float {
         val x = value.coerceIn(0f, 1f)
-        return if (x < 0.5f) 4f * x * x * x else 1f - kotlin.math.pow(-2f * x + 2f, 3f) / 2f
+        val q = -2f * x + 2f
+        return if (x < 0.5f) 4f * x * x * x else 1f - q * q * q / 2f
     }
 
     private fun malesStageScale(index: Int, sourceFrame: Int, cardCount: Int): Float {
@@ -256,7 +257,9 @@ helpers = '''    private fun malesConveyorShift(sourceFrame: Int, maximumShift: 
 
 '''
 if "private fun malesConveyorShift(" not in t:
-    t = insert_after(t, helper_marker, helpers, "males measured helpers")
+    if helper_marker not in t:
+        raise SystemExit("males measured helpers: marker not found")
+    t = t.replace(helper_marker, helpers + helper_marker, 1)
 
 # Measured Males outro clock: final conveyor reaches shift 74 at 16335, holds 37 frames,
 # then 25 wipe + 23 rise + 273 hold + 48 fade = frame 16741.
@@ -416,7 +419,7 @@ new_test = '''    @Test
 '''
 if old_test in pt:
     pt = pt.replace(old_test, new_test, 1)
-elif "shippedReferenceModelCannotBeRetimedOrReformattedByTheApp" not in pt:
+elif "shippedReferenceModelCannotBeRetimedOrReformattedByTheApp" not in pt and "referenceModelRejectsCustomVideoFormatAndMode" not in pt:
     raise SystemExit("project sealed-model test block not found")
 project_test_path.write_text(pt)
 

@@ -29,19 +29,20 @@ class VideoLengthTest {
     }
 
     @Test
-    fun customModeLengthRetimesTheConveyorAndPersists() {
+    fun shippedReferenceRejectsCustomLength() {
+        DurationRuntime.useCustom(90f)
         val project = CtsProject(
             modelMode = ModelMode.Custom,
             cards = List(7) { CtsCard(title = "Card $it") },
+        ).normalized()
+
+        assertEquals(ModelMode.ExactReference, project.modelMode)
+        assertNull(project.customDurationSeconds)
+        assertEquals(
+            TimelineEngine.automaticDuration(project),
+            TimelineEngine.duration(project),
+            0.001f,
         )
-        val automatic = TimelineEngine.automaticDuration(project)
-
-        DurationRuntime.useAutomatic()
-        assertEquals(automatic, TimelineEngine.duration(project), 0.001f)
-
-        DurationRuntime.useCustom(90f)
-        assertEquals(90f, TimelineEngine.duration(project), 0.001f)
-        assertEquals(90f, project.normalized().customDurationSeconds ?: 0f, 0.001f)
     }
 
     @Test

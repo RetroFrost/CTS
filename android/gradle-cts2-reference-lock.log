@@ -1,0 +1,85 @@
+
+Welcome to Gradle 8.13!
+
+Here are the highlights of this release:
+ - Daemon JVM auto-provisioning
+ - Enhancements for Scala plugin and JUnit testing
+ - Improvements for build authors and plugin developers
+
+For more details see https://docs.gradle.org/8.13/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateDebugBuildConfig
+> Task :app:checkDebugAarMetadata
+> Task :app:processDebugNavigationResources
+> Task :app:generateDebugResValues
+> Task :app:compileDebugNavigationResources
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
+> Task :app:mergeDebugResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:parseDebugLocalResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:javaPreCompileDebug
+> Task :app:mergeDebugShaders
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets
+> Task :app:compressDebugAssets
+> Task :app:desugarDebugFileDependencies
+> Task :app:processDebugManifestForPackage
+> Task :app:checkDebugDuplicateClasses
+> Task :app:processDebugResources
+> Task :app:mergeExtDexDebug
+> Task :app:mergeDebugJniLibFolders
+> Task :app:mergeLibDexDebug
+> Task :app:mergeDebugNativeLibs
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+
+> Task :app:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so. Run with --info option to learn more.
+
+> Task :app:compileDebugKotlin
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:82:56 'static field COLOR_FormatYUV420SemiPlanar: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:83:60 'static field COLOR_FormatYUV420Planar: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:90:79 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:90:89 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:90:96 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:91:76 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:91:86 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:92:64 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:92:74 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:99:81 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:99:91 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/CodecCatalog.kt:99:98 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Int'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/MediaExportEngine.kt:113:17 Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type 'MediaCodecInfo.EncoderCapabilities?'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/MediaExportEngine.kt:116:17 Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type 'MediaCodecInfo.EncoderCapabilities?'.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/MediaExportEngine.kt:504:46 'static field COLOR_FormatYUV420SemiPlanar: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/MediaExportEngine.kt:505:46 'static field COLOR_FormatYUV420Planar: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/export/MediaExportEngine.kt:531:74 'static field COLOR_FormatYUV420SemiPlanar: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/importer/CardStripImporter.kt:152:51 'static fun newInstance(p0: InputStream, p1: Boolean): BitmapRegionDecoder?' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/importer/CardStripImporter.kt:188:51 'static fun newInstance(p0: InputStream, p1: Boolean): BitmapRegionDecoder?' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/CTS/CTS/android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt:743:43 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics
+> Task :app:processDebugJavaRes
+> Task :app:mergeProjectDexDebug
+> Task :app:mergeDebugJavaResource
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect
+> Task :app:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_9-1786442999202.json
+
+BUILD SUCCESSFUL in 3m 22s
+39 actionable tasks: 39 executed

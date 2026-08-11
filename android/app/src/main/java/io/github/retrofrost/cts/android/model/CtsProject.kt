@@ -207,15 +207,21 @@ data class CtsProject(
 ) {
     fun normalized(): CtsProject {
         val safeExport = export.normalized()
-        val modelExport = if (modelMode == ModelMode.ExactReference) {
+        val sealedReference = model == VisualModel.Males || model == VisualModel.Relationships
+        val modelExport = if (sealedReference) {
             safeExport.copy(width = 1920, height = 1080, fps = 60)
         } else {
             safeExport
         }
         return copy(
             version = SharedContract.PROJECT_VERSION,
+            modelMode = if (sealedReference) ModelMode.ExactReference else modelMode,
             cards = cards.map { it.withOwnedImageSubcard() },
-            customDurationSeconds = DurationRuntime.normalizeProjectValue(customDurationSeconds),
+            showHexagons = if (sealedReference) true else showHexagons,
+            showIntro = if (sealedReference) true else showIntro,
+            showDisclaimer = if (sealedReference) true else showDisclaimer,
+            showOutro = if (sealedReference) true else showOutro,
+            customDurationSeconds = if (sealedReference) null else DurationRuntime.normalizeProjectValue(customDurationSeconds),
             soundtrack = soundtrack.normalized(),
             introVideo = introVideo.normalized(),
             export = modelExport,

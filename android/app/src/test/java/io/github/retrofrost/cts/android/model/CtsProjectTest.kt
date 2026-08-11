@@ -17,15 +17,27 @@ class CtsProjectTest {
     }
 
     @Test
-    fun customModeRetainsChosenVideoFormat() {
+    fun referenceModelRejectsCustomVideoFormatAndMode() {
         val project = CtsProject(
+            model = VisualModel.Males,
             modelMode = ModelMode.Custom,
+            showHexagons = false,
+            showIntro = false,
+            showDisclaimer = false,
+            showOutro = false,
+            customDurationSeconds = 12f,
             export = ExportSettings(width = 1280, height = 720, fps = 30),
         ).normalized()
 
-        assertEquals(1280, project.export.width)
-        assertEquals(720, project.export.height)
-        assertEquals(30, project.export.fps)
+        assertEquals(ModelMode.ExactReference, project.modelMode)
+        assertEquals(true, project.showHexagons)
+        assertEquals(true, project.showIntro)
+        assertEquals(true, project.showDisclaimer)
+        assertEquals(true, project.showOutro)
+        assertEquals(null, project.customDurationSeconds)
+        assertEquals(1920, project.export.width)
+        assertEquals(1080, project.export.height)
+        assertEquals(60, project.export.fps)
     }
 
     @Test

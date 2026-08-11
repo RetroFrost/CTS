@@ -84,7 +84,7 @@ class ReferenceFrameRenderer(
             drawCardBody(canvas, card, cardWidth, placement)
             if (project.model == VisualModel.Relationships) canvas.restore()
             canvas.restore()
-            if (project.showHexagons && placement.badgeVisible) {
+            if (placement.badgeVisible) {
                 drawBadge(canvas, card, cardX, cardWidth, placement)
             }
         }
@@ -96,7 +96,7 @@ class ReferenceFrameRenderer(
                 height,
                 TimelineEngine.relationshipsSourceFrame(project, outputTimeSeconds),
                 TimelineEngine.relationshipsDisclaimerAlpha(project, outputTimeSeconds),
-                project.showIntro && TimelineEngine.customIntroDuration(project) <= 0f,
+                true,
                 paint,
             )
         }
@@ -162,31 +162,20 @@ class ReferenceFrameRenderer(
         val title = frames.title?.let { frameRect(it, cardWidth) }
         val description = frames.description?.let { frameRect(it, cardWidth) }
 
-        val background = loadImage(displayCard.imageSubcard.backgroundSource)
-        if (background != null) {
-            drawCenterCrop(
-                canvas = canvas,
-                bitmap = background,
-                destination = RectF(0f, 0f, cardWidth, height.toFloat()),
-                focusX = 0.5f,
-                focusY = 0.5f,
-                zoom = 1f,
-            )
-        } else {
-            val topColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 105, 211) else Color.rgb(19, 141, 219)
-            val bottomColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 88, 181) else Color.rgb(11, 116, 190)
-            paint.shader = LinearGradient(
-                image.left,
-                image.top,
-                image.left,
-                image.bottom,
-                intArrayOf(topColor, topColor, bottomColor),
-                floatArrayOf(0f, 0.72f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            canvas.drawRect(image, paint)
-            paint.shader = null
-        }
+        // Reference-model colours are owned by the model and are never replaced by app content.
+        val topColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 105, 211) else Color.rgb(19, 141, 219)
+        val bottomColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 88, 181) else Color.rgb(11, 116, 190)
+        paint.shader = LinearGradient(
+            image.left,
+            image.top,
+            image.left,
+            image.bottom,
+            intArrayOf(topColor, topColor, bottomColor),
+            floatArrayOf(0f, 0.72f, 1f),
+            Shader.TileMode.CLAMP,
+        )
+        canvas.drawRect(image, paint)
+        paint.shader = null
 
         loadImage(displayCard.imageSubcard.source)?.let { bitmap ->
             val transform = displayCard.imageSubcard.transform.clamped()

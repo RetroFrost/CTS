@@ -100,8 +100,7 @@ fun ProgramMonitor(
         ) {
             val cardWidth = maxWidth / 4
             if (showIntroCredits) ReferenceIntroCreditsPanel(cardWidth, project.credits)
-            if (project.model == VisualModel.Relationships && project.showIntro &&
-                TimelineEngine.customIntroDuration(project) <= 0f &&
+            if (project.model == VisualModel.Relationships &&
                 relationshipsFrame in 1 until TimelineEngine.RELATIONSHIPS_INTRO_OVERLAY_END_FRAME
             ) {
                 RelationshipsInfinityIntro(relationshipsFrame)
@@ -117,11 +116,11 @@ fun ProgramMonitor(
                     artworkReveal = placement.artworkReveal,
                     titleReveal = placement.titleReveal,
                     descriptionReveal = placement.descriptionReveal,
-                    badgeVisible = project.showHexagons && placement.badgeVisible,
+                    badgeVisible = placement.badgeVisible,
                     placement = placement,
-                    selected = selectedCardId == card.id,
+                    selected = false,
                     onSelect = { onSelectCard(card.id) },
-                    onImageTransformChanged = { onImageTransformChanged(card.id, it) },
+                    onImageTransformChanged = { _ -> },
                     modifier = Modifier
                         .offset(x = cardWidth * placement.xInCards)
                         .width(cardWidth)
@@ -307,21 +306,10 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
 ) {
     val displayCard = card.withNormalizedText()
     val frames = CardContentLayout.frames(model, card)
-    if (!displayCard.imageSubcard.backgroundSource.isNullOrBlank()) {
-        Frame(NormalizedRect.Full) {
-            FullCardBackground(displayCard.imageSubcard.backgroundSource)
-        }
-    }
     Frame(
         frames.image,
         Modifier.background(
-            if (!displayCard.imageSubcard.backgroundSource.isNullOrBlank()) {
-                Color.Transparent
-            } else if (model == VisualModel.Relationships) {
-                Color(0xFF1F1F1F)
-            } else {
-                Color.Transparent
-            },
+            if (model == VisualModel.Relationships) Color(0xFF1F1F1F) else Color.Transparent,
         ),
     ) {
         Box(
@@ -330,25 +318,21 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
                 .fillMaxHeight(artworkReveal.coerceIn(0f, 1f))
                 .align(Alignment.TopCenter)
                 .background(
-                    if (!displayCard.imageSubcard.backgroundSource.isNullOrBlank()) {
-                        Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
-                    } else {
-                        Brush.verticalGradient(
-                            if (model == VisualModel.Relationships) {
-                                listOf(Color(0xFF0069D3), Color(0xFF0058B5))
-                            } else {
-                                listOf(Color(0xFF138DDB), Color(0xFF0B74BE))
-                            },
-                        )
-                    },
+                    Brush.verticalGradient(
+                        if (model == VisualModel.Relationships) {
+                            listOf(Color(0xFF0069D3), Color(0xFF0058B5))
+                        } else {
+                            listOf(Color(0xFF138DDB), Color(0xFF0B74BE))
+                        },
+                    ),
                 ),
         ) {
             ImageSubcardFrame(
                 displayCard.imageSubcard,
-                selected,
-                onSelect,
-                onImageTransformChanged,
-                showPlaceholder = displayCard.imageSubcard.backgroundSource.isNullOrBlank(),
+                selected = false,
+                onSelect = onSelect,
+                onTransformChanged = { _ -> },
+                showPlaceholder = false,
             )
         }
     }
