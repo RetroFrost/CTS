@@ -13,7 +13,6 @@ replacement = '''                    WorkspaceSection.Data -> CardsWorkspace2(
                         onProjectChanged = ::applyProject,
                         onUpdateSelectedCard = ::updateSelectedCard,
                         onChooseImage = { imagePicker.launch(arrayOf("image/*")) },
-                        onChooseBackground = { backgroundPicker.launch(arrayOf("image/*")) },
                         onImportCardStrip = { cardStripPicker.launch(arrayOf("image/*")) },
                         isImportingCardStrip = isImportingCardStrip,
                         onImportMegaPack = {
@@ -38,10 +37,11 @@ integrated = app.read_text()
 card_ui = cards.read_text()
 assert 'WorkspaceSection.Data -> CardsWorkspace2(' in integrated
 assert 'WorkspaceSection.Data -> DataWorkspace(' not in integrated
+assert 'onChooseBackground' not in replacement
 assert 'colors = titleFieldColors2()' in card_ui
 assert 'focusedContainerColor = Color.White' in card_ui
 assert 'focusedTextColor = Color.Black' in card_ui
 assert 'VisualModel.entries.forEach' in card_ui
 assert 'Compact' not in card_ui
 assert 'Gradient Bars' not in card_ui
-print('CTS 2.0 Cards workspace integrated; title contrast fix verified.')
+print('CTS 2.0 Cards workspace integrated; sealed model UI and title contrast verified.')
