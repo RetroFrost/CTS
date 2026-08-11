@@ -1,6 +1,6 @@
 name: CTS Android validation
 
-# Final branch-wide compile/test gate for CTS 2.0 source.
+# Absolute final branch-wide compile/test gate for CTS 2.0 source.
 on:
   push:
     branches: [main, android, "agent/**"]
