@@ -23,7 +23,9 @@ class MainActivity : ComponentActivity() {
                     getSharedPreferences("cts-first-run", MODE_PRIVATE)
                 }
                 var setupComplete by remember {
-                    mutableStateOf(preferences.getBoolean("setup-complete-v1", false))
+                    // CTS 2.0 has a materially new first-run flow. Do not let the old
+                    // alpha setup flag skip it on an upgraded installation.
+                    mutableStateOf(preferences.getBoolean("setup-complete-v2", false))
                 }
                 var preferredModel by remember {
                     mutableStateOf(
@@ -38,7 +40,7 @@ class MainActivity : ComponentActivity() {
                             preferredModel = model
                             preferences.edit()
                                 .putString("preferred-model", model.id)
-                                .putBoolean("setup-complete-v1", true)
+                                .putBoolean("setup-complete-v2", true)
                                 .apply()
                             setupComplete = true
                         },
