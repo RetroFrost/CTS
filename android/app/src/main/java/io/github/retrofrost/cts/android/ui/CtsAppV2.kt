@@ -334,7 +334,6 @@ fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {
                     }
                 }
                 project.copy(
-                    showIntro = true,
                     introVideo = project.introVideo.copy(
                         uri = uri.toString(),
                         displayName = queryDisplayName(context, uri),
@@ -344,9 +343,9 @@ fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {
             }.onSuccess(::applyProject).onSuccess {
                 positionSeconds = 0f
                 isPlaying = false
-                message("Custom MP4 intro ready")
+                message("Pre-roll ready")
             }.onFailure { error ->
-                message(error.message ?: "Could not use that MP4 as the intro")
+                message(error.message ?: "Could not use that MP4 as the pre-roll")
             }
         }
     }
@@ -1713,8 +1712,8 @@ private fun ExportWorkspace(
                         when {
                             project.soundtrack.uri != null ->
                                 "AAC soundtrack · ${project.export.audioBitrate / 1000} kbps"
-                            project.introVideo.uri != null && project.showIntro ->
-                                "Original intro audio is kept when available"
+                            project.introVideo.uri != null ->
+                                "Pre-roll audio is kept when available"
                             else -> "Silent MP4"
                         },
                     )
