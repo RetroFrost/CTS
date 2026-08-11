@@ -143,7 +143,7 @@ import java.util.UUID
 
 private enum class WorkspaceSection(val label: String) {
     Data("Cards"),
-    Audio("Sound & intro"),
+    Audio("Sound & pre-roll"),
     Export("Export"),
 }
 
@@ -193,7 +193,6 @@ fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {
     var isPlaying by remember { mutableStateOf(false) }
     var section by remember { mutableStateOf(WorkspaceSection.Data) }
     var showInsertDialog by remember { mutableStateOf(false) }
-    var showLengthDialog by remember { mutableStateOf(false) }
     var isImportingCardStrip by remember { mutableStateOf(false) }
     var cardStripReview by remember { mutableStateOf<CardStripReviewState?>(null) }
     var cardStripReviewError by remember { mutableStateOf<String?>(null) }
@@ -632,7 +631,6 @@ fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {
                                 message("Canceling export…")
                             }
                         },
-                        onSetLength = { showLengthDialog = true },
                     )
                 }
             }
@@ -650,21 +648,6 @@ fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {
                 isPlaying = false
                 showInsertDialog = false
                 message("Inserted ${cards.size} cards")
-            },
-        )
-    }
-
-    if (showLengthDialog) {
-        VideoLengthDialog(
-            initialCustomSeconds = DurationRuntime.effectiveCustomSeconds(),
-            onDismiss = { showLengthDialog = false },
-            onAutomatic = {
-                DurationRuntime.useAutomatic()
-                showLengthDialog = false
-            },
-            onCustom = { seconds ->
-                DurationRuntime.useCustom(seconds)
-                showLengthDialog = false
             },
         )
     }
@@ -1327,338 +1310,6 @@ private fun WorkspaceTabs(
 }
 
 @Composable
-private fun DataWorkspace(
-    project: CtsProject,
-    selectedCardId: String?,
-    onSelectCard: (String) -> Unit,
-    onProjectChanged: (CtsProject) -> Unit,
-    onUpdateSelectedCard: ((CtsCard) -> CtsCard) -> Unit,
-    onChooseImage: () -> Unit,
-    onChooseBackground: () -> Unit,
-    onImportCardStrip: () -> Unit,
-    isImportingCardStrip: Boolean,
-    onImportMegaPack: () -> Unit,
-    isImportingMegaPack: Boolean,
-    onReconstructVideo: () -> Unit,
-    isReconstructingVideo: Boolean,
-    onInsertData: () -> Unit,
-) {
-    val selected = project.cards.firstOrNull { it.id == selectedCardId }
-    var showAdvanced by remember { mutableStateOf(false) }
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item {
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Create a comparison", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                    Text(
-                        "Choose a style, add your cards, then attach the artwork. CTS handles the animation and export.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text("Video style", fontWeight = FontWeight.Bold)
-                    VisualModel.entries.forEach { model ->
-                        FilterChip(
-                            selected = project.model == model,
-                            onClick = { onProjectChanged(project.copy(model = model)) },
-                            label = { Text(model.label) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
-        }
-        item {
-            Button(
-                onClick = onInsertData,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Icon(Icons.Filled.TableRows, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text("Insert or edit all cards", fontWeight = FontWeight.Black)
-            }
-        }
-        item {
-            OutlinedButton(
-                onClick = onImportCardStrip,
-                enabled = project.cards.isNotEmpty() && !isImportingCardStrip,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.Image, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text(if (isImportingCardStrip) "Dividing card strip…" else "Import one image for all cards")
-            }
-            Text(
-                "Detects ${project.cards.size} ${project.model.label} panels, then opens a review screen " +
-                    "for direction, separators, order, and destination previews.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-        item {
-            Button(
-                onClick = onReconstructVideo,
-                enabled = !isReconstructingVideo && !isImportingCardStrip && !isImportingMegaPack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Icon(Icons.Filled.Movie, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text(
-                    if (isReconstructingVideo) "Reconstructing comparison…" else "Import a comparison video",
-                    fontWeight = FontWeight.Black,
-                )
-            }
-            Text(
-                "Finds CTS cards in an MP4, recovers their artwork and text, then opens a review screen. " +
-                    "You can correct fields or switch the video style before importing.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-        item {
-            OutlinedButton(
-                onClick = onImportMegaPack,
-                enabled = !isImportingMegaPack && !isImportingCardStrip,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.FolderOpen, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text(if (isImportingMegaPack) "Loading MegaPack…" else "Import MegaPack (.zip)")
-            }
-            Text(
-                "Loads megapack.json, separate backgrounds and subjects, plus optional intro video, " +
-                    "credits, and soundtrack. Limits: 1 GB ZIP, " +
-                    "512 MB extracted, 64 MB per file, and 500 cards. Images are checked before loading.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-        item {
-            OutlinedButton(
-                onClick = { showAdvanced = !showAdvanced },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (showAdvanced) "Hide advanced options" else "Advanced options")
-            }
-        }
-        if (showAdvanced) {
-            item {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text("Animation timing", fontWeight = FontWeight.Black)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ModelMode.entries.forEach { mode ->
-                                FilterChip(
-                                    selected = project.modelMode == mode,
-                                    onClick = { onProjectChanged(project.copy(modelMode = mode)) },
-                                    label = {
-                                        Text(
-                                            if (mode == ModelMode.ExactReference) {
-                                                "Match original"
-                                            } else {
-                                                "Editable timing"
-                                            },
-                                        )
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                        }
-                        ReferenceOption("Show disclaimer", project.showDisclaimer) {
-                            onProjectChanged(project.copy(showDisclaimer = it))
-                        }
-                        ReferenceOption("Show badges", project.showHexagons) {
-                            onProjectChanged(project.copy(showHexagons = it))
-                        }
-                        ReferenceOption("Show ending", project.showOutro) {
-                            onProjectChanged(project.copy(showOutro = it))
-                        }
-                    }
-                }
-            }
-        }
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                items(project.cards, key = { it.id }) { card ->
-                    FilterChip(
-                        selected = card.id == selectedCardId,
-                        onClick = { onSelectCard(card.id) },
-                        label = {
-                            Text(
-                                card.title.ifBlank { "Untitled" },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                    )
-                }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(
-                    onClick = {
-                        val updated = project.addBlankCard()
-                        onProjectChanged(updated)
-                        updated.cards.lastOrNull()?.id?.let(onSelectCard)
-                    },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = null)
-                    Text("Add")
-                }
-                FilledTonalButton(
-                    onClick = {
-                        selectedCardId?.let { id ->
-                            val updated = project.duplicateCard(id)
-                            onProjectChanged(updated)
-                            val index = updated.cards.indexOfFirst { it.id == id }
-                            updated.cards.getOrNull(index + 1)?.id?.let(onSelectCard)
-                        }
-                    },
-                    enabled = selected != null,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = null)
-                    Text("Duplicate")
-                }
-                FilledTonalButton(
-                    onClick = {
-                        selectedCardId?.let { onProjectChanged(project.removeCard(it)) }
-                    },
-                    enabled = selected != null,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Filled.Delete, contentDescription = null)
-                    Text("Delete")
-                }
-            }
-        }
-
-        if (selected == null) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Text("Add or paste cards to begin.", modifier = Modifier.padding(18.dp))
-                }
-            }
-        } else {
-            item {
-                OutlinedTextField(
-                    value = selected.badgePrimary,
-                    onValueChange = { value -> onUpdateSelectedCard { it.copy(badgePrimary = value) } },
-                    label = { Text("Badge value") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { state ->
-                            if (!state.isFocused && selected.badgePrimary != selected.badgePrimary.trim()) {
-                                onUpdateSelectedCard { it.copy(badgePrimary = it.badgePrimary.trim()) }
-                            }
-                        },
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = selected.badgeSecondary,
-                    onValueChange = { value -> onUpdateSelectedCard { it.copy(badgeSecondary = value) } },
-                    label = { Text("Badge label") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { state ->
-                            if (!state.isFocused && selected.badgeSecondary != selected.badgeSecondary.trim()) {
-                                onUpdateSelectedCard { it.copy(badgeSecondary = it.badgeSecondary.trim()) }
-                            }
-                        },
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = selected.title,
-                    onValueChange = { value -> onUpdateSelectedCard { it.copy(title = value) } },
-                    label = { Text("Title") },
-                    colors = readableOutlinedTextFieldColors(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { state ->
-                            if (!state.isFocused && selected.title != selected.title.trim()) {
-                                onUpdateSelectedCard { it.copy(title = it.title.trim()) }
-                            }
-                        },
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = selected.description,
-                    onValueChange = { value -> onUpdateSelectedCard { it.copy(description = value) } },
-                    label = { Text("Description") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { state ->
-                            if (!state.isFocused && selected.description != selected.description.trim()) {
-                                onUpdateSelectedCard { it.copy(description = it.description.trim()) }
-                            }
-                        },
-                    minLines = 2,
-                )
-            }
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onChooseImage, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Filled.Image, contentDescription = null)
-                            Text(
-                                if (selected.imageSubcard.source.isNullOrBlank()) {
-                                    "Add subject"
-                                } else {
-                                    "Replace subject"
-                                },
-                            )
-                        }
-                        OutlinedButton(onClick = onChooseBackground, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Filled.Image, contentDescription = null)
-                            Text(
-                                if (selected.imageSubcard.backgroundSource.isNullOrBlank()) {
-                                    "Add background"
-                                } else {
-                                    "Replace background"
-                                },
-                            )
-                        }
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            onUpdateSelectedCard { card ->
-                                card.copy(imageSubcard = card.imageSubcard.copy(transform = NormalizedRect.Full))
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Filled.RestartAlt, contentDescription = null)
-                        Text("Reset subject position")
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(10.dp)) }
-        }
-    }
-}
-
-@Composable
 private fun readableOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Color.Black,
     unfocusedTextColor = Color.Black,
@@ -1700,9 +1351,9 @@ private fun AudioWorkspace(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("Intro and sound", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text("Sound & pre-roll", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             Text(
-                "Add an optional MP4 intro, edit the credits, and choose music for the finished video.",
+                "Add an optional pre-roll, edit text content, and choose music. The reference model itself stays untouched.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -1712,9 +1363,9 @@ private fun AudioWorkspace(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("Intro video", fontWeight = FontWeight.Black)
+                    Text("Optional pre-roll", fontWeight = FontWeight.Black)
                     Text(
-                        project.introVideo.displayName.ifBlank { "Use the built-in intro, or choose any MP4." },
+                        project.introVideo.displayName.ifBlank { "Choose an MP4 to play before the model starts." },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1739,12 +1390,9 @@ private fun AudioWorkspace(
                             Text("Remove")
                         }
                     }
-                    ReferenceOption("Include intro", project.showIntro) {
-                        onProjectChanged(project.copy(showIntro = it))
-                    }
                     if (project.introVideo.durationSeconds > 0f) {
                         Text(
-                            "${TimelineEngine.formatTime(project.introVideo.durationSeconds)} · fitted to 16:9 without stretching",
+                            "${TimelineEngine.formatTime(project.introVideo.durationSeconds)} · plays before the fixed reference intro",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1848,7 +1496,7 @@ private fun AudioWorkspace(
                             )
                             Text("Loop until the video ends")
                         }
-                        if (project.introVideo.uri != null && project.showIntro) {
+                        if (project.introVideo.uri != null) {
                             Text(
                                 "The soundtrack replaces the intro video's original audio.",
                                 style = MaterialTheme.typography.bodySmall,
@@ -1899,7 +1547,6 @@ private fun ExportWorkspace(
     onExport: () -> Unit,
     exportWork: WorkInfo?,
     onCancelExport: () -> Unit,
-    onSetLength: () -> Unit,
 ) {
     val encoders = remember { CodecCatalog.videoEncoders() }
     var showAdvanced by remember { mutableStateOf(false) }
@@ -1938,7 +1585,7 @@ private fun ExportWorkspace(
         item {
             Text("Export video", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             Text(
-                "Choose the length, check the summary, then export. You can leave CTS while it finishes.",
+                "Review the reference output, then export. You can leave CTS while encoding continues.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -1988,53 +1635,17 @@ private fun ExportWorkspace(
         }
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
+                Column(
                     modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Video length", fontWeight = FontWeight.Black)
-                        Text(
-                            DurationRuntime.effectiveCustomSeconds()?.let {
-                                "Custom · ${formatVideoLength(it)}"
-                            } ?: "Automatic · based on ${project.cards.size} cards",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    OutlinedButton(onClick = onSetLength) { Text("Change") }
+                    Text("Reference output", fontWeight = FontWeight.Black)
+                    Text("${project.model.label} · fixed model timing")
+                    Text(
+                        "1920×1080 · 60 fps · model colors, geometry and animation locked",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-            }
-        }
-        if (project.modelMode == ModelMode.ExactReference) {
-            item {
-                Text("Video quality", fontWeight = FontWeight.Bold)
-                Text(
-                    "1080p · 60 fps · smooth reference animation",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
-            item {
-                Text("Resolution", fontWeight = FontWeight.Bold)
-                ChoiceRow(
-                    options = listOf(
-                        (1280 to 720) to "720p",
-                        (1920 to 1080) to "1080p",
-                    ),
-                    selected = project.export.width to project.export.height,
-                    onSelected = { (width, height) ->
-                        onProjectChanged(project.copy(export = project.export.copy(width = width, height = height)))
-                    },
-                )
-            }
-            item {
-                Text("Frame rate", fontWeight = FontWeight.Bold)
-                ChoiceRow(
-                    options = listOf(24 to "24 fps", 30 to "30 fps", 60 to "60 fps"),
-                    selected = project.export.fps,
-                    onSelected = { fps -> onProjectChanged(project.copy(export = project.export.copy(fps = fps))) },
-                )
             }
         }
         item {
