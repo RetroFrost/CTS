@@ -1,5 +1,6 @@
 name: Integrate CTS 2.0 app shell
 
+# Revalidate shell semantics against the restored full-video measured timeline.
 on:
   push:
     branches: [android]
