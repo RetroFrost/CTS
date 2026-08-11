@@ -42,6 +42,7 @@ remove_between(
 )
 
 # Present custom video as an app-level pre-roll; it never replaces the model intro.
+text = text.replace('    Audio("Sound & intro"),', '    Audio("Sound & pre-roll"),')
 text = text.replace(
     'Text("Intro and sound", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)',
     'Text("Sound & pre-roll", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)',
@@ -125,9 +126,10 @@ for forbidden in (
     'WorkspaceSection.Data -> DataWorkspace(',
     'private fun DataWorkspace(',
     '"Editable timing"',
+    'Audio("Sound & intro")',
 ):
     if forbidden in final:
-        raise SystemExit(f'CTS 2.0 shell still exposes sealed-model override: {forbidden}')
+        raise SystemExit(f'CTS 2.0 shell still exposes stale/override UI: {forbidden}')
 
 if 'WorkspaceSection.Data -> CardsWorkspace2(' not in final:
     raise SystemExit('CTS 2.0 Cards workspace is not wired')
