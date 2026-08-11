@@ -18,12 +18,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: android
-        
+
       - name: Apply CTS 2.0 Cards workspace
         run: python tools/apply_cts2_cards_workspace.py
 
       - name: Seal reference model behaviour
         run: python tools/lock_android_reference_models.py
+
+      - name: Normalize measured-pass compatibility
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_cts2_measured_reference_timeline.py')
+          text = path.read_text()
+          old = 'elif "shippedReferenceModelCannotBeRetimedOrReformattedByTheApp" not in pt:'
+          new = 'elif "shippedReferenceModelCannotBeRetimedOrReformattedByTheApp" not in pt and "referenceModelRejectsCustomVideoFormatAndMode" not in pt:'
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          PY
 
       - name: Apply whole-video measured clocks
         run: python tools/apply_cts2_measured_reference_timeline.py
