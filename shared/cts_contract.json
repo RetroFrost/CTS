@@ -61,15 +61,15 @@
     "background": "#000000",
     "image_top": "#138DDB",
     "image_bottom": "#0B74BE",
-    "title_background": "#F0F0F0",
-    "title_text": "#101010",
-    "description_background": "#625F56",
+    "title_background": "#F2F2F2",
+    "title_text": "#020202",
+    "description_background": "#635E57",
     "description_text": "#FFFFFF",
     "divider": "#11100C",
-    "badge_top": "#EB0909",
-    "badge_middle": "#E00000",
-    "badge_bottom": "#D50000",
-    "badge_border": "#FF4545"
+    "badge_top": "#D30809",
+    "badge_middle": "#D30809",
+    "badge_bottom": "#D30809",
+    "badge_border": "#B90008"
   },
   "fields": [
     "badge_primary",

@@ -83,11 +83,8 @@ object ReferenceBadgePainter {
         fill.alpha = 255
         fill.maskFilter = null
         fill.clearShadowLayer()
-        fill.shader = LinearGradient(
-            0f, 32f, 0f, 375f,
-            intArrayOf(Color.rgb(235, 9, 9), Color.rgb(224, 0, 0), Color.rgb(213, 0, 0)),
-            null, Shader.TileMode.CLAMP,
-        )
+        fill.shader = null
+        fill.color = Color.rgb(211, 8, 9)
         fill.setShadowLayer(8f, 5f, 8f, Color.argb(150, 0, 0, 0))
         canvas.drawPath(path, fill)
         fill.clearShadowLayer()
@@ -154,11 +151,11 @@ object ReferenceBadgePainter {
         fill.maskFilter = null
         fill.clearShadowLayer()
         fill.shader = null
-        fill.color = Color.rgb(224, 17, 27)
+        fill.color = Color.rgb(211, 15, 14)
         fill.setShadowLayer(max(3f, badge.width() * 0.025f), 0f, badge.width() * 0.012f, Color.argb(160, 0, 0, 0))
         canvas.drawPath(path, fill)
         fill.clearShadowLayer()
-        stroke.color = Color.rgb(239, 194, 72)
+        stroke.color = Color.rgb(254, 186, 97)
         stroke.strokeWidth = max(1f, badge.width() * 0.006f)
         canvas.drawPath(path, stroke)
 

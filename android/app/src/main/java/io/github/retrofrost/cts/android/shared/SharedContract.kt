@@ -49,15 +49,15 @@ object SharedContract {
     const val COLOR_BACKGROUND = "#000000"
     const val COLOR_IMAGE_TOP = "#138DDB"
     const val COLOR_IMAGE_BOTTOM = "#0B74BE"
-    const val COLOR_TITLE_BACKGROUND = "#F0F0F0"
-    const val COLOR_TITLE_TEXT = "#101010"
-    const val COLOR_DESCRIPTION_BACKGROUND = "#625F56"
+    const val COLOR_TITLE_BACKGROUND = "#F2F2F2"
+    const val COLOR_TITLE_TEXT = "#020202"
+    const val COLOR_DESCRIPTION_BACKGROUND = "#635E57"
     const val COLOR_DESCRIPTION_TEXT = "#FFFFFF"
     const val COLOR_DIVIDER = "#11100C"
-    const val COLOR_BADGE_TOP = "#EB0909"
-    const val COLOR_BADGE_MIDDLE = "#E00000"
-    const val COLOR_BADGE_BOTTOM = "#D50000"
-    const val COLOR_BADGE_BORDER = "#FF4545"
+    const val COLOR_BADGE_TOP = "#D30809"
+    const val COLOR_BADGE_MIDDLE = "#D30809"
+    const val COLOR_BADGE_BOTTOM = "#D30809"
+    const val COLOR_BADGE_BORDER = "#B90008"
 }
 
 data class SharedSampleCard(

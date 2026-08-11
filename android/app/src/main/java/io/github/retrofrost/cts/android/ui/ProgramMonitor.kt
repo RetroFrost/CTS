@@ -341,12 +341,12 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
         Frame(
             titleFrame,
             Modifier
-                .background(if (model == VisualModel.Relationships) Color(0xFFF5F5F3) else Color(0xFFF0F0F0))
+                .background(if (model == VisualModel.Relationships) Color(0xFFE8E6E2) else Color(0xFFF2F2F2))
                 .alpha(max(bodyReveal, titleReveal).coerceIn(0f, 1f)),
         ) {
             CardText(
                 text = displayCard.title,
-                color = Color(0xFF101010),
+                color = if (model == VisualModel.Relationships) Color(0xFF181614) else Color(0xFF020202),
                 fontWeight = if (model == VisualModel.Relationships) FontWeight.Normal else FontWeight.Black,
                 fontSize = if (model == VisualModel.Relationships) 12.sp else 8.4.sp,
                 maxLines = if (model == VisualModel.Relationships) 1 else 2,
@@ -358,7 +358,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
         Frame(
             descriptionFrame,
             Modifier
-                .background(if (model == VisualModel.Relationships) Color(0xFF2F2F2F) else Color(0xFF625F56))
+                .background(if (model == VisualModel.Relationships) Color(0xFF181818) else Color(0xFF635E57))
                 .alpha(max(bodyReveal, descriptionReveal).coerceIn(0f, 1f)),
         ) {
             CardText(
@@ -376,7 +376,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
             Frame(
                 rule,
                 Modifier
-                    .background(Color(0xFFEA7F1C))
+                    .background(Color(0xFFC06F00))
                     .alpha(max(bodyReveal, descriptionReveal).coerceIn(0f, 1f)),
             )
         }

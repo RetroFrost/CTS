@@ -207,14 +207,14 @@ class ReferenceFrameRenderer(
                 canvas.saveLayerAlpha(it, (alpha * 255f).toInt())
             } else null
             paint.color = if (project.model == VisualModel.Relationships) {
-                Color.rgb(245, 245, 243)
-            } else Color.rgb(240, 240, 240)
+                Color.rgb(232, 230, 226)
+            } else Color.rgb(242, 242, 242)
             canvas.drawRect(it, paint)
             drawTextBlock(
                 canvas = canvas,
                 text = displayCard.title,
                 rect = RectF(it.left + padding, it.top + 2f, it.right - padding, it.bottom - 2f),
-                color = Color.rgb(16, 16, 16),
+                color = if (project.model == VisualModel.Relationships) Color.rgb(24, 22, 20) else Color.rgb(2, 2, 2),
                 bold = project.model != VisualModel.Relationships,
                 maximumSize = height * (if (project.model == VisualModel.Relationships) 0.060f else 0.043f),
                 minimumSize = height * (if (project.model == VisualModel.Relationships) 0.022f else 0.018f),
@@ -230,8 +230,8 @@ class ReferenceFrameRenderer(
                 canvas.saveLayerAlpha(it, (alpha * 255f).toInt())
             } else null
             paint.color = if (project.model == VisualModel.Relationships) {
-                Color.rgb(47, 47, 47)
-            } else Color.rgb(98, 95, 86)
+                Color.rgb(24, 24, 24)
+            } else Color.rgb(99, 94, 87)
             canvas.drawRect(it, paint)
             drawTextBlock(
                 canvas = canvas,
@@ -267,7 +267,7 @@ class ReferenceFrameRenderer(
                 )
             }
             CardContentLayout.relationshipsRule(displayCard)?.let { ruleFrame ->
-                paint.color = Color.rgb(234, 127, 28)
+                paint.color = Color.rgb(192, 111, 0)
                 val rule = frameRect(ruleFrame, cardWidth)
                 val ruleAlpha = max(placement.bodyReveal, placement.descriptionReveal).coerceIn(0f, 1f)
                 val layer = if (ruleAlpha < 0.999f) {
