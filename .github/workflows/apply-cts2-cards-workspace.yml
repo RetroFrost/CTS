@@ -1,0 +1,144 @@
+name: Integrate CTS 2.0 cards workspace
+
+on:
+  push:
+    branches: [android]
+    paths:
+      - ".github/workflows/apply-cts2-cards-workspace.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@v4
+        with:
+          ref: android
+
+      - name: Replace legacy Cards workspace
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt')
+          text = path.read_text()
+
+          old = '''                    WorkspaceSection.Data -> DataWorkspace(
+                        project = project,
+                        selectedCardId = selectedCardId,
+                        onSelectCard = ::selectCard,
+                        onProjectChanged = ::applyProject,
+                        onUpdateSelectedCard = ::updateSelectedCard,
+                        onChooseImage = { imagePicker.launch(arrayOf("image/*")) },
+                        onChooseBackground = { backgroundPicker.launch(arrayOf("image/*")) },
+                        onImportCardStrip = { cardStripPicker.launch(arrayOf("image/*")) },
+                        isImportingCardStrip = isImportingCardStrip,
+                        onImportMegaPack = {
+                            megaPackPicker.launch(
+                                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
+                            )
+                        },
+                        isImportingMegaPack = isImportingMegaPack,
+                        onReconstructVideo = {
+                            comparisonVideoPicker.launch(arrayOf("video/mp4", "video/*"))
+                        },
+                        isReconstructingVideo = isReconstructingVideo,
+                        onInsertData = { showInsertDialog = true },
+                    )'''
+
+          new = '''                    WorkspaceSection.Data -> CardsWorkspace2(
+                        project = project,
+                        selectedCardId = selectedCardId,
+                        onSelectCard = ::selectCard,
+                        onProjectChanged = ::applyProject,
+                        onUpdateSelectedCard = ::updateSelectedCard,
+                        onChooseImage = { imagePicker.launch(arrayOf("image/*")) },
+                        onChooseBackground = { backgroundPicker.launch(arrayOf("image/*")) },
+                        onImportCardStrip = { cardStripPicker.launch(arrayOf("image/*")) },
+                        isImportingCardStrip = isImportingCardStrip,
+                        onImportMegaPack = {
+                            megaPackPicker.launch(
+                                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
+                            )
+                        },
+                        isImportingMegaPack = isImportingMegaPack,
+                        onInsertData = { showInsertDialog = true },
+                    )'''
+
+          if old not in text:
+              if 'WorkspaceSection.Data -> CardsWorkspace2(' in text:
+                  print('CTS 2.0 Cards workspace already integrated')
+              else:
+                  raise SystemExit('Legacy DataWorkspace call not found')
+          else:
+              text = text.replace(old, new, 1)
+              path.write_text(text)
+
+          integrated = path.read_text()
+          if 'WorkspaceSection.Data -> CardsWorkspace2(' not in integrated:
+              raise SystemExit('CardsWorkspace2 integration missing')
+          if 'WorkspaceSection.Data -> DataWorkspace(' in integrated:
+              raise SystemExit('Legacy DataWorkspace is still wired into navigation')
+          PY
+
+          git diff --check
+          git diff -- android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify shared contract
+        run: python tools/sync_shared_contract.py --check
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Build CTS 2.0 UI
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:assembleDebug --stacktrace --console=plain 2>&1 | tee android/gradle-cts2-ui.log
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee android/gradle-cts2-tests.log
+
+      - name: Commit tested UI integration
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt
+          if git diff --cached --quiet; then
+            echo "Integration already committed"
+          else
+            git commit -m "Use focused CTS 2.0 cards workspace"
+            git push origin HEAD:android
+          fi
+
+      - name: Upload compile logs only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTS-2.0-cards-workspace-build-logs
+          path: |
+            android/gradle-cts2-ui.log
+            android/gradle-cts2-tests.log
+          if-no-files-found: ignore
