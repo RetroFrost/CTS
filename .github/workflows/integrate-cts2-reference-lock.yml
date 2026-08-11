@@ -22,6 +22,9 @@ jobs:
       - name: Apply CTS 2.0 Cards workspace
         run: python tools/apply_cts2_cards_workspace.py
 
+      - name: Remove abandoned video reconstruction
+        run: python tools/remove_cts2_video_reconstruction.py
+
       - name: Seal reference model behaviour
         run: python tools/lock_android_reference_models.py
 
@@ -32,10 +35,20 @@ jobs:
           from pathlib import Path
           path = Path('tools/apply_cts2_measured_reference_timeline.py')
           text = path.read_text()
+
           old = 'elif "shippedReferenceModelCannotBeRetimedOrReformattedByTheApp" not in pt:'
           new = 'elif "shippedReferenceModelCannotBeRetimedOrReformattedByTheApp" not in pt and "referenceModelRejectsCustomVideoFormatAndMode" not in pt:'
-          if old in text:
-              path.write_text(text.replace(old, new, 1))
+          text = text.replace(old, new, 1)
+
+          old = '''if "private fun malesConveyorShift(" not in t:\n    t = insert_after(t, helper_marker, helpers, "males measured helpers")\n'''
+          new = '''if "private fun malesConveyorShift(" not in t:\n    if helper_marker not in t:\n        raise SystemExit("males measured helpers: marker not found")\n    t = t.replace(helper_marker, helpers + helper_marker, 1)\n'''
+          text = text.replace(old, new, 1)
+
+          old = '''        return if (x < 0.5f) 4f * x * x * x else 1f - kotlin.math.pow(-2f * x + 2f, 3f) / 2f\n'''
+          new = '''        val q = -2f * x + 2f\n        return if (x < 0.5f) 4f * x * x * x else 1f - q * q * q / 2f\n'''
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
           PY
 
       - name: Apply whole-video measured clocks
@@ -56,6 +69,9 @@ jobs:
           grep -q 'modelMode = if (sealedReference) ModelMode.ExactReference else modelMode' android/app/src/main/java/io/github/retrofrost/cts/android/model/CtsProject.kt
           ! grep -q 'Reference settings' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
           ! grep -q 'onChooseBackground' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
+          ! test -e android/app/src/main/java/io/github/retrofrost/cts/android/importer/VideoComparisonImporter.kt
+          ! test -e android/app/src/main/java/io/github/retrofrost/cts/android/importer/VideoReconstructionWorker.kt
+          ! test -e android/app/src/main/java/io/github/retrofrost/cts/android/ui/VideoReconstructionReview.kt
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -66,7 +82,7 @@ jobs:
         run: python tools/sync_shared_contract.py --check
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -93,18 +109,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt \
-            android/app/src/main/java/io/github/retrofrost/cts/android/ui/ProgramMonitor.kt \
-            android/app/src/main/java/io/github/retrofrost/cts/android/export/ReferenceFrameRenderer.kt \
-            android/app/src/main/java/io/github/retrofrost/cts/android/export/ReferenceOverlayRenderer.kt \
-            android/app/src/main/java/io/github/retrofrost/cts/android/model/CtsProject.kt \
-            android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt \
-            android/app/src/test/java/io/github/retrofrost/cts/android/model/CtsProjectTest.kt \
-            android/app/src/test/java/io/github/retrofrost/cts/android/timeline/TimelineEngineTest.kt \
-            tools/apply_cts2_cards_workspace.py \
-            tools/lock_android_reference_models.py \
-            tools/apply_cts2_measured_reference_timeline.py
+          git add -A android tools/apply_cts2_cards_workspace.py tools/lock_android_reference_models.py tools/apply_cts2_measured_reference_timeline.py tools/remove_cts2_video_reconstruction.py
           if git diff --cached --quiet; then
             echo "Measured reference integration already committed"
           else
