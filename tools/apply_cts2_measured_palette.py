@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -13,6 +14,7 @@ def replace(path: Path, old: str, new: str, label: str) -> None:
 renderer = Path('android/app/src/main/java/io/github/retrofrost/cts/android/export/ReferenceFrameRenderer.kt')
 monitor = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/ProgramMonitor.kt')
 badges = Path('android/app/src/main/java/io/github/retrofrost/cts/android/render/ReferenceBadgePainter.kt')
+contract = Path('shared/cts_contract.json')
 
 # Flat-band colours measured from settled frames throughout the canonical MP4s.
 replace(renderer, 'Color.rgb(245, 245, 243)\n            } else Color.rgb(240, 240, 240)',
@@ -62,6 +64,20 @@ m = m.replace(
 )
 monitor.write_text(m)
 
+# The shared contract's canonical palette is the Males reference. Keep desktop and
+# Android adapters aligned with the measured source instead of the old approximations.
+spec = json.loads(contract.read_text())
+spec['colors'].update({
+    'title_background': '#F2F2F2',
+    'title_text': '#020202',
+    'description_background': '#635E57',
+    'badge_top': '#D30809',
+    'badge_middle': '#D30809',
+    'badge_bottom': '#D30809',
+    'badge_border': '#B90008',
+})
+contract.write_text(json.dumps(spec, indent=2, ensure_ascii=False) + '\n')
+
 # Source-measurement invariants.
 assert 'Color.rgb(232, 230, 226)' in renderer.read_text()
 assert 'Color.rgb(242, 242, 242)' in renderer.read_text()
@@ -73,4 +89,5 @@ assert 'Color.rgb(254, 186, 97)' in badges.read_text()
 assert 'Color(0xFFE8E6E2)' in monitor.read_text()
 assert 'Color(0xFF181818)' in monitor.read_text()
 assert 'Color(0xFFC06F00)' in monitor.read_text()
+assert json.loads(contract.read_text())['colors']['title_background'] == '#F2F2F2'
 print('Applied model-owned palette values measured directly from canonical CTS reference frames.')
