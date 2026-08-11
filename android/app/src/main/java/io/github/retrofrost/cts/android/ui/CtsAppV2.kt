@@ -179,7 +179,7 @@ private data class ImageCropAdjustment(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CtsAndroidAppV2() {
+fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -198,7 +198,7 @@ fun CtsAndroidAppV2() {
     val reconstructionWork = requestedReconstructionId
         ?.let { id -> reconstructionWorkInfos.firstOrNull { it.id == id } }
         ?: reconstructionWorkInfos.lastOrNull { !it.state.isFinished }
-    var project by remember { mutableStateOf(CtsProject().normalized()) }
+    var project by remember(initialModel) { mutableStateOf(CtsProject(model = initialModel).normalized()) }
     var selectedCardId by remember { mutableStateOf(project.cards.firstOrNull()?.id) }
     var positionSeconds by remember { mutableFloatStateOf(0f) }
     var isPlaying by remember { mutableStateOf(false) }
