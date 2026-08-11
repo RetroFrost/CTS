@@ -1,0 +1,126 @@
+name: Integrate CTS M3 Expressive setup
+
+on:
+  push:
+    branches: [android]
+    paths:
+      - ".github/workflows/apply-android-m3-expressive-setup.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@v4
+        with:
+          ref: android
+
+      - name: Integrate setup-selected model and bump alpha
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          ui = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt')
+          text = ui.read_text()
+
+          old_sig = 'fun CtsAndroidAppV2() {'
+          new_sig = 'fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {'
+          if old_sig in text:
+              text = text.replace(old_sig, new_sig, 1)
+          elif new_sig not in text:
+              raise SystemExit('CtsAndroidAppV2 signature anchor not found')
+
+          old_project = 'var project by remember { mutableStateOf(CtsProject().normalized()) }'
+          new_project = 'var project by remember(initialModel) { mutableStateOf(CtsProject(model = initialModel).normalized()) }'
+          if old_project in text:
+              text = text.replace(old_project, new_project, 1)
+          elif new_project not in text:
+              raise SystemExit('Initial project anchor not found')
+
+          ui.write_text(text)
+
+          gradle = Path('android/app/build.gradle.kts')
+          g = gradle.read_text()
+          if 'versionCode = 9' in g:
+              g = g.replace('versionCode = 9', 'versionCode = 10', 1)
+          if 'versionName = "0.3.0-alpha9"' in g:
+              g = g.replace('versionName = "0.3.0-alpha9"', 'versionName = "0.3.0-alpha10"', 1)
+          if 'versionCode = 10' not in g or 'versionName = "0.3.0-alpha10"' not in g:
+              raise SystemExit('Could not set alpha10 version')
+          gradle.write_text(g)
+
+          theme = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/theme/CtsTheme.kt').read_text()
+          assert 'dynamicDarkColorScheme(context)' in theme
+          assert 'dynamicLightColorScheme(context)' in theme
+          assert 'MaterialExpressiveTheme' in theme
+
+          main = Path('android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt').read_text()
+          assert 'CtsFirstRunSetup(' in main
+          assert 'setup-complete-v1' in main
+
+          setup = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsFirstRunSetup.kt').read_text()
+          assert 'Start creating' in setup
+          assert 'LinearProgressIndicator' in setup
+          PY
+
+          git diff --check
+          git diff -- android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt android/app/build.gradle.kts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify shared contract
+        run: python tools/sync_shared_contract.py --check
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Build alpha10 debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:assembleDebug --stacktrace --console=plain 2>&1 | tee android/gradle-build.log
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee android/gradle-test.log
+
+      - name: Commit tested integration
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt android/app/build.gradle.kts
+          if git diff --cached --quiet; then
+            echo "Integration already applied"
+          else
+            git commit -m "Integrate M3 Expressive first-run setup"
+            git push origin HEAD:android
+          fi
+
+      - name: Upload compile logs only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTS-Android-alpha10-m3-build-logs
+          path: |
+            android/gradle-build.log
+            android/gradle-test.log
+          if-no-files-found: ignore
