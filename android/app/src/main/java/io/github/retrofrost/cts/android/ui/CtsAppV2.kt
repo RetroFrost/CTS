@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -175,7 +176,10 @@ private data class ImageCropAdjustment(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {
+fun CtsAndroidAppV2(
+    initialModel: VisualModel = VisualModel.Males,
+    onReplaySetup: () -> Unit = {},
+) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -538,6 +542,9 @@ fun CtsAndroidAppV2(initialModel: VisualModel = VisualModel.Males) {
                     }
                     IconButton(onClick = { saveProject.launch("comparison-project.cts.json") }) {
                         Icon(Icons.Filled.Save, contentDescription = "Save project")
+                    }
+                    IconButton(onClick = onReplaySetup) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Run setup again")
                     }
                 },
             )

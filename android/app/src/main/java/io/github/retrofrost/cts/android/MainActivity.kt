@@ -46,7 +46,15 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 } else {
-                    CtsAndroidAppV2(initialModel = preferredModel)
+                    CtsAndroidAppV2(
+                        initialModel = preferredModel,
+                        onReplaySetup = {
+                            preferences.edit()
+                                .putBoolean("setup-complete-v2", false)
+                                .apply()
+                            setupComplete = false
+                        },
+                    )
                 }
             }
         }
