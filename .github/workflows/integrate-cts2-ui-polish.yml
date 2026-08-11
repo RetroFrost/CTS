@@ -38,8 +38,11 @@ jobs:
           ! grep -q 'ReferenceOption("Include intro"' "$APP"
           ! grep -q 'Editable timing' "$APP"
           ! grep -q 'Audio("Sound & intro")' "$APP"
+          ! grep -q 'Custom MP4 intro ready' "$APP"
+          ! grep -q 'introVideo.uri != null && project.showIntro' "$APP"
           grep -q 'Audio("Sound & pre-roll")' "$APP"
           grep -q 'Optional pre-roll' "$APP"
+          grep -q 'Pre-roll ready' "$APP"
           grep -q 'Reference output' "$APP"
           grep -q 'colors = titleFieldColors2()' "$CARDS"
           grep -q 'focusedContainerColor = Color.White' "$CARDS"
@@ -89,9 +92,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "CTS 2.0 app shell already integrated"
           else
-            git commit -m "Polish CTS 2.0 sealed-model app shell"
-            # Gradle writes tracked/untracked diagnostics during validation. Stash only
-            # those post-build changes so they cannot block the tested source rebase.
+            git commit -m "Polish CTS 2.0 pre-roll semantics"
             git stash push --include-untracked -m cts-ui-ci-generated || true
             git pull --rebase origin android
             git push origin HEAD:android
