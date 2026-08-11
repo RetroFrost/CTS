@@ -24,11 +24,13 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
-          path = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt')
-          text = path.read_text()
+          app = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt')
+          cards = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt')
+          text = app.read_text()
 
+          start_marker = '                    WorkspaceSection.Data -> DataWorkspace('
+          end_marker = '                    WorkspaceSection.Audio -> AudioWorkspace('
           replacement = '''                    WorkspaceSection.Data -> CardsWorkspace2(
                         project = project,
                         selectedCardId = selectedCardId,
@@ -50,26 +52,23 @@ jobs:
 '''
 
           if 'WorkspaceSection.Data -> CardsWorkspace2(' not in text:
-              pattern = re.compile(
-                  r'\s*WorkspaceSection\.Data\s*->\s*DataWorkspace\(.*?\n\s*\)\n(?=\s*WorkspaceSection\.Audio\s*->)',
-                  re.S,
-              )
-              match = pattern.search(text)
-              if not match:
-                  start = text.find('WorkspaceSection.Data -> DataWorkspace(')
-                  if start >= 0:
-                      print(text[start:start + 1800])
-                  raise SystemExit('Could not locate legacy DataWorkspace call with structural regex')
-              indent = re.match(r'\s*', match.group(0)).group(0)
-              normalized = replacement
-              text = text[:match.start()] + normalized + text[match.end():]
-              path.write_text(text)
+              start = text.find(start_marker)
+              end = text.find(end_marker, start)
+              if start < 0 or end < 0:
+                  raise SystemExit('Could not locate the current Cards workspace call')
+              text = text[:start] + replacement + text[end:]
+              app.write_text(text)
 
-          integrated = path.read_text()
-          if 'WorkspaceSection.Data -> CardsWorkspace2(' not in integrated:
-              raise SystemExit('CardsWorkspace2 integration missing')
-          if 'WorkspaceSection.Data -> DataWorkspace(' in integrated:
-              raise SystemExit('Legacy DataWorkspace is still wired into navigation')
+          integrated = app.read_text()
+          card_ui = cards.read_text()
+          assert 'WorkspaceSection.Data -> CardsWorkspace2(' in integrated
+          assert 'WorkspaceSection.Data -> DataWorkspace(' not in integrated
+          assert 'colors = titleFieldColors2()' in card_ui
+          assert 'focusedContainerColor = Color.White' in card_ui
+          assert 'focusedTextColor = Color.Black' in card_ui
+          assert 'VisualModel.entries.forEach' in card_ui
+          assert 'Compact' not in card_ui
+          assert 'Gradient Bars' not in card_ui
           PY
 
           git diff --check
