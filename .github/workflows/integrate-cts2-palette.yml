@@ -22,6 +22,9 @@ jobs:
       - name: Apply measured reference palette
         run: python tools/apply_cts2_measured_palette.py
 
+      - name: Regenerate shared contract adapters
+        run: python tools/sync_shared_contract.py
+
       - name: Verify measured palette invariants
         shell: bash
         run: |
@@ -40,6 +43,8 @@ jobs:
           grep -q 'Color(0xFFE8E6E2)' "$P"
           grep -q 'Color(0xFF181818)' "$P"
           grep -q 'Color(0xFFC06F00)' "$P"
+          grep -q '"title_background": "#F2F2F2"' shared/cts_contract.json
+          grep -q '"description_background": "#635E57"' shared/cts_contract.json
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -75,9 +80,13 @@ jobs:
       - name: Commit tested measured palette
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
+            shared/cts_contract.json \
+            comparison_studio/shared_contract.py \
+            android/app/src/main/java/io/github/retrofrost/cts/android/shared/SharedContract.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/export/ReferenceFrameRenderer.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/ui/ProgramMonitor.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/render/ReferenceBadgePainter.kt
@@ -85,8 +94,10 @@ jobs:
             echo "Measured palette already integrated"
           else
             git commit -m "Match CTS 2.0 reference palette to source video"
+            git stash push --include-untracked -m cts-palette-ci-generated || true
             git pull --rebase origin android
             git push origin HEAD:android
+            git stash pop || true
           fi
 
       - name: Upload validation logs only
