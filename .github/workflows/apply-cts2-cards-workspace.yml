@@ -24,34 +24,12 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt')
           text = path.read_text()
 
-          old = '''                    WorkspaceSection.Data -> DataWorkspace(
-                        project = project,
-                        selectedCardId = selectedCardId,
-                        onSelectCard = ::selectCard,
-                        onProjectChanged = ::applyProject,
-                        onUpdateSelectedCard = ::updateSelectedCard,
-                        onChooseImage = { imagePicker.launch(arrayOf("image/*")) },
-                        onChooseBackground = { backgroundPicker.launch(arrayOf("image/*")) },
-                        onImportCardStrip = { cardStripPicker.launch(arrayOf("image/*")) },
-                        isImportingCardStrip = isImportingCardStrip,
-                        onImportMegaPack = {
-                            megaPackPicker.launch(
-                                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
-                            )
-                        },
-                        isImportingMegaPack = isImportingMegaPack,
-                        onReconstructVideo = {
-                            comparisonVideoPicker.launch(arrayOf("video/mp4", "video/*"))
-                        },
-                        isReconstructingVideo = isReconstructingVideo,
-                        onInsertData = { showInsertDialog = true },
-                    )'''
-
-          new = '''                    WorkspaceSection.Data -> CardsWorkspace2(
+          replacement = '''                    WorkspaceSection.Data -> CardsWorkspace2(
                         project = project,
                         selectedCardId = selectedCardId,
                         onSelectCard = ::selectCard,
@@ -68,15 +46,23 @@ jobs:
                         },
                         isImportingMegaPack = isImportingMegaPack,
                         onInsertData = { showInsertDialog = true },
-                    )'''
+                    )
+'''
 
-          if old not in text:
-              if 'WorkspaceSection.Data -> CardsWorkspace2(' in text:
-                  print('CTS 2.0 Cards workspace already integrated')
-              else:
-                  raise SystemExit('Legacy DataWorkspace call not found')
-          else:
-              text = text.replace(old, new, 1)
+          if 'WorkspaceSection.Data -> CardsWorkspace2(' not in text:
+              pattern = re.compile(
+                  r'\s*WorkspaceSection\.Data\s*->\s*DataWorkspace\(.*?\n\s*\)\n(?=\s*WorkspaceSection\.Audio\s*->)',
+                  re.S,
+              )
+              match = pattern.search(text)
+              if not match:
+                  start = text.find('WorkspaceSection.Data -> DataWorkspace(')
+                  if start >= 0:
+                      print(text[start:start + 1800])
+                  raise SystemExit('Could not locate legacy DataWorkspace call with structural regex')
+              indent = re.match(r'\s*', match.group(0)).group(0)
+              normalized = replacement
+              text = text[:match.start()] + normalized + text[match.end():]
               path.write_text(text)
 
           integrated = path.read_text()
