@@ -54,6 +54,9 @@ jobs:
       - name: Apply whole-video measured clocks
         run: python tools/apply_cts2_measured_reference_timeline.py
 
+      - name: Fix measured reference regression contracts
+        run: python tools/fix_cts2_reference_regressions.py
+
       - name: Verify source invariants
         shell: bash
         run: |
@@ -63,6 +66,7 @@ jobs:
           grep -q 'const val EXACT_REFERENCE_PLAYBACK_RATE = 1f' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
           grep -q 'MALES_STEADY_END_FRAME = 16_335' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
           grep -q 'MALES_OUTRO_START_FRAME = 16_372' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          grep -q 'malesOutroStartFrame(project.cards.size)' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
           grep -q 'colors = titleFieldColors2()' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
           grep -q 'focusedContainerColor = Color.White' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
           grep -q 'focusedTextColor = Color.Black' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
@@ -109,7 +113,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A android tools/apply_cts2_cards_workspace.py tools/lock_android_reference_models.py tools/apply_cts2_measured_reference_timeline.py tools/remove_cts2_video_reconstruction.py
+          git add -A android \
+            tools/apply_cts2_cards_workspace.py \
+            tools/remove_cts2_video_reconstruction.py \
+            tools/lock_android_reference_models.py \
+            tools/apply_cts2_measured_reference_timeline.py \
+            tools/fix_cts2_reference_regressions.py
           if git diff --cached --quiet; then
             echo "Measured reference integration already committed"
           else
