@@ -1,9 +1,30 @@
+import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val ctsKeystorePath = providers.environmentVariable("CTS_ANDROID_KEYSTORE_PATH").orNull
+val ctsStorePassword = providers.environmentVariable("CTS_ANDROID_KEYSTORE_PASSWORD").orNull
+val ctsKeyAlias = providers.environmentVariable("CTS_ANDROID_KEY_ALIAS").orNull
+val ctsKeyPassword = providers.environmentVariable("CTS_ANDROID_KEY_PASSWORD").orNull
+val ctsStableSigningReady = listOf(
+    ctsKeystorePath,
+    ctsStorePassword,
+    ctsKeyAlias,
+    ctsKeyPassword,
+).all { !it.isNullOrBlank() }
+val ctsRequireStableSigning = providers.environmentVariable("CTS_REQUIRE_STABLE_SIGNING")
+    .orNull
+    ?.equals("true", ignoreCase = true) == true
+
+if (ctsRequireStableSigning && !ctsStableSigningReady) {
+    throw GradleException(
+        "CTS stable signing is required, but CTS_ANDROID_KEYSTORE_PATH/PASSWORD/ALIAS credentials are incomplete.",
+    )
 }
 
 android {
@@ -21,9 +42,23 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    signingConfigs {
+        if (ctsStableSigningReady) {
+            create("ctsStable") {
+                storeFile = file(ctsKeystorePath!!)
+                storePassword = ctsStorePassword
+                keyAlias = ctsKeyAlias
+                keyPassword = ctsKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (ctsStableSigningReady) {
+                signingConfig = signingConfigs.getByName("ctsStable")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
