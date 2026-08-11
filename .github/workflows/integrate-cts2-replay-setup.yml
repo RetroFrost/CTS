@@ -1,0 +1,95 @@
+name: Integrate replayable CTS 2.0 setup
+
+on:
+  push:
+    branches: [android]
+    paths:
+      - ".github/workflows/integrate-cts2-replay-setup.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replay-setup-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@v4
+        with:
+          ref: android
+
+      - name: Add replay setup hook
+        run: python tools/add_cts2_replay_setup.py
+
+      - name: Verify replay setup invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt
+          MAIN=android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt
+          git diff --check
+          grep -q 'onReplaySetup: () -> Unit = {}' "$APP"
+          grep -q 'contentDescription = "Run setup again"' "$APP"
+          grep -q 'onReplaySetup = {' "$MAIN"
+          grep -q '.putBoolean("setup-complete-v2", false)' "$MAIN"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify shared contract
+        run: python tools/sync_shared_contract.py --check
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Build replayable setup
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:assembleDebug --stacktrace --console=plain 2>&1 | tee android/gradle-cts2-replay-setup.log
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee android/gradle-cts2-replay-setup-tests.log
+
+      - name: Commit tested replay setup hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt \
+            android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo "Replay setup hook already integrated"
+          else
+            git commit -m "Let CTS 2.0 onboarding run again"
+            git stash push --include-untracked -m cts-replay-setup-ci-generated || true
+            git pull --rebase origin android
+            git push origin HEAD:android
+            git stash pop || true
+          fi
+
+      - name: Upload validation logs only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTS-2.0-replay-setup-validation-logs
+          path: |
+            android/gradle-cts2-replay-setup.log
+            android/gradle-cts2-replay-setup-tests.log
+          if-no-files-found: ignore
