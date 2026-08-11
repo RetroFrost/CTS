@@ -1,4 +1,4 @@
-name: Integrate CTS 2.0 reference lock
+name: Integrate CTS 2.0 full-video reference match
 
 on:
   push:
@@ -18,12 +18,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: android
-
+        
       - name: Apply CTS 2.0 Cards workspace
         run: python tools/apply_cts2_cards_workspace.py
 
-      - name: Lock reference model behaviour
+      - name: Seal reference model behaviour
         run: python tools/lock_android_reference_models.py
+
+      - name: Apply whole-video measured clocks
+        run: python tools/apply_cts2_measured_reference_timeline.py
 
       - name: Verify source invariants
         shell: bash
@@ -31,8 +34,12 @@ jobs:
           git diff --check
           grep -q 'versionCode = 20000' android/app/build.gradle.kts
           grep -q 'versionName = "2.0.0"' android/app/build.gradle.kts
+          grep -q 'const val EXACT_REFERENCE_PLAYBACK_RATE = 1f' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          grep -q 'MALES_STEADY_END_FRAME = 16_335' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          grep -q 'MALES_OUTRO_START_FRAME = 16_372' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
           grep -q 'colors = titleFieldColors2()' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
           grep -q 'focusedContainerColor = Color.White' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
+          grep -q 'focusedTextColor = Color.Black' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
           grep -q 'modelMode = if (sealedReference) ModelMode.ExactReference else modelMode' android/app/src/main/java/io/github/retrofrost/cts/android/model/CtsProject.kt
           ! grep -q 'Reference settings' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
           ! grep -q 'onChooseBackground' android/app/src/main/java/io/github/retrofrost/cts/android/ui/CardsWorkspace2.kt
@@ -56,7 +63,7 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Build CTS 2.0.0 debug for validation
+      - name: Build CTS 2.0.0 validation APK
         shell: bash
         run: |
           set -o pipefail
@@ -77,13 +84,18 @@ jobs:
             android/app/src/main/java/io/github/retrofrost/cts/android/ui/CtsAppV2.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/ui/ProgramMonitor.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/export/ReferenceFrameRenderer.kt \
+            android/app/src/main/java/io/github/retrofrost/cts/android/export/ReferenceOverlayRenderer.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/model/CtsProject.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt \
-            tools/apply_cts2_cards_workspace.py
+            android/app/src/test/java/io/github/retrofrost/cts/android/model/CtsProjectTest.kt \
+            android/app/src/test/java/io/github/retrofrost/cts/android/timeline/TimelineEngineTest.kt \
+            tools/apply_cts2_cards_workspace.py \
+            tools/lock_android_reference_models.py \
+            tools/apply_cts2_measured_reference_timeline.py
           if git diff --cached --quiet; then
-            echo "Integration already committed"
+            echo "Measured reference integration already committed"
           else
-            git commit -m "Seal CTS 2.0 reference models"
+            git commit -m "Match CTS 2.0 to full reference video clocks"
             git pull --rebase origin android
             git push origin HEAD:android
           fi
@@ -92,7 +104,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CTS-2.0-reference-lock-validation-logs
+          name: CTS-2.0-full-reference-validation-logs
           path: |
             android/gradle-cts2-reference-lock.log
             android/gradle-cts2-reference-tests.log
