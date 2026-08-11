@@ -1,0 +1,113 @@
+name: Restore tested CTS 2.0 measured timeline
+
+on:
+  push:
+    branches: [android]
+    paths:
+      - ".github/workflows/restore-measured-timeline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Android history
+        uses: actions/checkout@v4
+        with:
+          ref: android
+          fetch-depth: 0
+
+      - name: Restore proven measured timeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          git show 47a0796aed2d5aacf5ceac5fc84aacff3952d125:"$FILE" > "$FILE"
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt')
+          text = path.read_text()
+          old = '        if (!project.showOutro) return 0f\n        if (isLockedRelationships(project)) {'
+          new = '        if (!isSealedReference(project) && !project.showOutro) return 0f\n        if (isLockedRelationships(project)) {'
+          if old not in text:
+              raise SystemExit('Expected outroContentAlpha guard not found in proven timeline')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - name: Verify full-video timeline invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          git diff --check
+          grep -q 'const val EXACT_REFERENCE_PLAYBACK_RATE = 1f' "$FILE"
+          grep -q 'MALES_STEADY_END_FRAME = 16_335' "$FILE"
+          grep -q 'MALES_OUTRO_START_FRAME = 16_372' "$FILE"
+          grep -q 'RELATIONSHIPS_CONTENT_END_CANONICAL_FRAME = 10_738' "$FILE"
+          grep -q 'RELATIONSHIPS_POSITION_STEP_FRAMES = 265.7158648f' "$FILE"
+          grep -q '320f / 480f' "$FILE"
+          grep -q '928f / 480f' "$FILE"
+          grep -q '780f / 480f' "$FILE"
+          grep -q '!isSealedReference(project) && !project.showOutro' "$FILE"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify shared contract
+        run: python tools/sync_shared_contract.py --check
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Compile restored measured timeline
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:assembleDebug --stacktrace --console=plain 2>&1 | tee android/gradle-restore-measured-timeline.log
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --project-dir android :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee android/gradle-restore-measured-timeline-tests.log
+
+      - name: Commit only tested restored engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          if git diff --cached --quiet; then
+            echo "Measured timeline already restored"
+          else
+            git commit -m "Restore proven CTS 2.0 measured timeline"
+            git stash push --include-untracked -m cts-timeline-ci-generated || true
+            git pull --rebase origin android
+            git push origin HEAD:android
+            git stash pop || true
+          fi
+
+      - name: Upload validation logs only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTS-2.0-restored-measured-timeline-logs
+          path: |
+            android/gradle-restore-measured-timeline.log
+            android/gradle-restore-measured-timeline-tests.log
+          if-no-files-found: ignore
