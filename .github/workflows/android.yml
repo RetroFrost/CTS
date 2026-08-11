@@ -1,4 +1,4 @@
-name: CTS Android
+name: CTS Android validation
 
 on:
   push:
@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   build:
-    name: Build debug APK
+    name: Compile and test Android
     runs-on: ubuntu-latest
 
     steps:
@@ -37,7 +37,7 @@ jobs:
         run: python tools/sync_shared_contract.py --check
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -47,26 +47,11 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Build debug APK
+      - name: Compile validation APK
         shell: bash
         run: |
           set -o pipefail
           gradle --project-dir android :app:assembleDebug --stacktrace --console=plain 2>&1 | tee android/gradle-build.log
-
-      - name: Upload build log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: CTS-Android-build-log
-          path: android/gradle-build.log
-          if-no-files-found: error
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: CTS-Android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
 
       - name: Run unit tests
         shell: bash
@@ -74,10 +59,15 @@ jobs:
           set -o pipefail
           gradle --project-dir android :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee android/gradle-test.log
 
-      - name: Upload test log on failure
+      - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: CTS-Android-test-log
-          path: android/gradle-test.log
+          name: CTS-Android-validation-logs
+          path: |
+            android/gradle-build.log
+            android/gradle-test.log
           if-no-files-found: warn
+
+      # Deliberately no debug APK upload. Runner debug keys are ephemeral and CTS 2.0
+      # installers must come only from the stable-signing release workflow.
