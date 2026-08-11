@@ -84,6 +84,7 @@ jobs:
             echo "Integration already committed"
           else
             git commit -m "Seal CTS 2.0 reference models"
+            git pull --rebase origin android
             git push origin HEAD:android
           fi
 
