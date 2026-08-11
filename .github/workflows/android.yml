@@ -60,6 +60,17 @@ jobs:
           set -o pipefail
           gradle --project-dir android :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee android/gradle-test.log
 
+      - name: Upload validation APK and diagnostics
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTS-2.0-validation-debug
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/gradle-build.log
+            android/gradle-test.log
+          if-no-files-found: error
+
       - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -70,5 +81,4 @@ jobs:
             android/gradle-test.log
           if-no-files-found: warn
 
-      # Deliberately no debug APK upload. Runner debug keys are ephemeral and CTS 2.0
-      # installers must come only from the stable-signing release workflow.
+      # This is a validation APK only. Release installers must come from the stable-signing release workflow.
