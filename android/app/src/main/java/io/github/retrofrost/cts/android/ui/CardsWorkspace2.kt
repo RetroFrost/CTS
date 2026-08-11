@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,15 +45,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
-import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.VisualModel
 
 /**
  * CTS 2.0 card workspace.
  *
- * The reference renderers remain completely separate from this UI. This screen only edits
- * the project model and deliberately exposes only the real reference models shipped by CTS.
+ * Reference models are sealed presets. The app may select a model and provide content/artwork,
+ * but it never overrides model-owned colours, gradients, geometry, typography, timing,
+ * animation, badge styling, disclaimer styling, ending styling, or other visual rules.
  */
 @Composable
 internal fun CardsWorkspace2(
@@ -64,7 +63,6 @@ internal fun CardsWorkspace2(
     onProjectChanged: (CtsProject) -> Unit,
     onUpdateSelectedCard: ((CtsCard) -> CtsCard) -> Unit,
     onChooseImage: () -> Unit,
-    onChooseBackground: () -> Unit,
     onImportCardStrip: () -> Unit,
     isImportingCardStrip: Boolean,
     onImportMegaPack: () -> Unit,
@@ -74,7 +72,6 @@ internal fun CardsWorkspace2(
     val selected = project.cards.firstOrNull { it.id == selectedCardId }
     var showCardDetails by remember { mutableStateOf(false) }
     var showImports by remember { mutableStateOf(false) }
-    var showReferenceSettings by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -84,13 +81,9 @@ internal fun CardsWorkspace2(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Cards", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                 Text(
-                    text = "Cards",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Black,
-                )
-                Text(
-                    text = "${project.cards.size} cards · ${project.model.label}",
+                    "${project.cards.size} cards · ${project.model.label}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -105,7 +98,7 @@ internal fun CardsWorkspace2(
                 ) {
                     Text("Reference model", fontWeight = FontWeight.Bold)
                     Text(
-                        "Choose one of the original CTS reference layouts. Geometry, timing and rendering stay untouched.",
+                        "Pick the reference. Its visual design and animation are fixed by the model itself.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -115,11 +108,7 @@ internal fun CardsWorkspace2(
                                 selected = project.model == model,
                                 onClick = { onProjectChanged(project.copy(model = model)) },
                                 label = {
-                                    Text(
-                                        text = model.label,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
+                                    Text(model.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 },
                                 modifier = Modifier.weight(1f),
                             )
@@ -132,9 +121,7 @@ internal fun CardsWorkspace2(
         item {
             Button(
                 onClick = onInsertData,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
             ) {
                 Icon(Icons.Filled.TableRows, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
@@ -150,11 +137,7 @@ internal fun CardsWorkspace2(
                             selected = card.id == selectedCardId,
                             onClick = { onSelectCard(card.id) },
                             label = {
-                                Text(
-                                    text = card.title.ifBlank { "Untitled" },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                Text(card.title.ifBlank { "Untitled" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             },
                         )
                     }
@@ -170,10 +153,7 @@ internal fun CardsWorkspace2(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text("No card selected", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Add cards or paste your comparison data to begin.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Text("Add cards or paste your comparison data to begin.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         FilledTonalButton(
                             onClick = {
                                 val updated = project.addBlankCard()
@@ -225,17 +205,10 @@ internal fun CardsWorkspace2(
                                 },
                         )
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = onChooseImage, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Filled.Image, contentDescription = null)
-                                Spacer(Modifier.size(6.dp))
-                                Text(if (selected.imageSubcard.source.isNullOrBlank()) "Add artwork" else "Artwork")
-                            }
-                            OutlinedButton(onClick = onChooseBackground, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Filled.Image, contentDescription = null)
-                                Spacer(Modifier.size(6.dp))
-                                Text(if (selected.imageSubcard.backgroundSource.isNullOrBlank()) "Background" else "Replace bg")
-                            }
+                        Button(onClick = onChooseImage, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Filled.Image, contentDescription = null)
+                            Spacer(Modifier.size(6.dp))
+                            Text(if (selected.imageSubcard.source.isNullOrBlank()) "Add artwork" else "Replace artwork")
                         }
 
                         OutlinedButton(
@@ -361,71 +334,7 @@ internal fun CardsWorkspace2(
             }
         }
 
-        item {
-            OutlinedButton(
-                onClick = { showReferenceSettings = !showReferenceSettings },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (showReferenceSettings) "Hide reference settings" else "Reference settings")
-            }
-        }
-
-        item {
-            AnimatedVisibility(showReferenceSettings) {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text("Timing", fontWeight = FontWeight.Bold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ModelMode.entries.forEach { mode ->
-                                FilterChip(
-                                    selected = project.modelMode == mode,
-                                    onClick = { onProjectChanged(project.copy(modelMode = mode)) },
-                                    label = {
-                                        Text(if (mode == ModelMode.ExactReference) "Exact reference" else "Custom timing")
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                        }
-                        ReferenceSwitch2(
-                            label = "Disclaimer",
-                            checked = project.showDisclaimer,
-                            onCheckedChange = { onProjectChanged(project.copy(showDisclaimer = it)) },
-                        )
-                        ReferenceSwitch2(
-                            label = "Badges",
-                            checked = project.showHexagons,
-                            onCheckedChange = { onProjectChanged(project.copy(showHexagons = it)) },
-                        )
-                        ReferenceSwitch2(
-                            label = "Ending",
-                            checked = project.showOutro,
-                            onCheckedChange = { onProjectChanged(project.copy(showOutro = it)) },
-                        )
-                    }
-                }
-            }
-        }
-
         item { Spacer(Modifier.height(12.dp)) }
-    }
-}
-
-@Composable
-private fun ReferenceSwitch2(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
