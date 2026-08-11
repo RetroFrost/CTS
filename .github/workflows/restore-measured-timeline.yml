@@ -1,5 +1,7 @@
 name: Restore tested CTS 2.0 exact reference motion
 
+# Re-run the source-measured reference pass on demand and after workflow updates.
+
 on:
   push:
     branches: [android]
@@ -94,12 +96,13 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin android
+          git rebase origin/android
           git add android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt android/app/src/main/java/io/github/retrofrost/cts/android/ui/ProgramMonitor.kt
           if git diff --cached --quiet; then
             echo "Exact-reference changes already present"
           else
             git commit -m "Use frame-measured CTS reference motion and palette"
-            git pull --rebase origin android
             git push origin HEAD:android
           fi
 
