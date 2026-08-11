@@ -65,6 +65,13 @@ text = text.replace(
     '"${TimelineEngine.formatTime(project.introVideo.durationSeconds)} · fitted to 16:9 without stretching"',
     '"${TimelineEngine.formatTime(project.introVideo.durationSeconds)} · plays before the fixed reference intro"',
 )
+text = text.replace('                    showIntro = true,\n', '')
+text = text.replace('message("Custom MP4 intro ready")', 'message("Pre-roll ready")')
+text = text.replace('"Could not use that MP4 as the intro"', '"Could not use that MP4 as the pre-roll"')
+text = text.replace(
+    'project.introVideo.uri != null && project.showIntro ->\n                                "Original intro audio is kept when available"',
+    'project.introVideo.uri != null ->\n                                "Pre-roll audio is kept when available"',
+)
 
 # Export screen: model timing/format is informative, not editable.
 text = text.replace('    onSetLength: () -> Unit,\n', '')
@@ -127,6 +134,9 @@ for forbidden in (
     'private fun DataWorkspace(',
     '"Editable timing"',
     'Audio("Sound & intro")',
+    'Custom MP4 intro ready',
+    'as the intro',
+    'introVideo.uri != null && project.showIntro',
 ):
     if forbidden in final:
         raise SystemExit(f'CTS 2.0 shell still exposes stale/override UI: {forbidden}')
