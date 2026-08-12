@@ -1,9 +1,8 @@
 name: CTS Android validation
 
-# Absolute final branch-wide compile/test gate for CTS 2.0 source.
 on:
   push:
-    branches: [main, android, "agent/**"]
+    branches: [main, android, renderer-exact-males, "agent/**"]
     paths:
       - "android/**"
       - "shared/**"
@@ -64,7 +63,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: CTS-2.0-validation-debug
+          name: CTS-2.0-exact-males-validation
           path: |
             android/app/build/outputs/apk/debug/*.apk
             android/gradle-build.log
@@ -75,10 +74,10 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: CTS-Android-validation-logs
+          name: CTS-Android-exact-males-logs
           path: |
             android/gradle-build.log
             android/gradle-test.log
           if-no-files-found: warn
 
-      # This is a validation APK only. Release installers must come from the stable-signing release workflow.
+      # Validation APK only; release installers remain on the stable-signing release workflow.
