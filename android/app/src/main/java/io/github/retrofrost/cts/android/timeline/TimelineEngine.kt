@@ -444,7 +444,11 @@ object TimelineEngine {
                         CardPlacement(
                             cardIndex = index,
                             // Each opening card comes from exactly one slot to its left.
-                            xInCards = index - 1f + slide,
+                            xInCards = if (lockedMales) {
+                                val sourceFrame = (modelTime * MALES_REFERENCE_FPS).toInt()
+                                ExactReferenceFrames.malesOpeningCardX(sourceFrame, index)?.div(480f)
+                                    ?: (index - 1f + slide)
+                            } else index - 1f + slide,
                             bodyReveal = 1f,
                             badgeVisible = if (lockedMales) localTime >= 0f else badgeTime >= 0f,
                             badgeSettle = if (lockedMales) {
@@ -576,23 +580,9 @@ object TimelineEngine {
     }
 
     private fun malesConveyorShift(sourceFrame: Int, maximumShift: Float): Float {
-        if (maximumShift <= 0f || sourceFrame <= MALES_CONVEYOR_START_FRAME) return 0f
-        val measured = if (sourceFrame <= MALES_STEADY_START_FRAME) {
-            val frame = sourceFrame.toFloat()
-            val right = malesPhasePullKeys.indexOfFirst { frame <= it.first }
-            when {
-                right <= 0 -> malesPhasePullKeys.first().second
-                else -> {
-                    val (f0, s0) = malesPhasePullKeys[right - 1]
-                    val (f1, s1) = malesPhasePullKeys[right]
-                    lerp(s0, s1, (frame - f0) / (f1 - f0))
-                }
-            }
-        } else {
-            MALES_STEADY_START_SHIFT +
-                (sourceFrame - MALES_STEADY_START_FRAME) / MALES_STEADY_PERIOD_FRAMES
-        }
-        return measured.coerceIn(0f, maximumShift)
+        if (maximumShift <= 0f || sourceFrame < ExactReferenceFrames.MALES_CONVEYOR_START) return 0f
+        val cardX = ExactReferenceFrames.malesConveyorCardX(sourceFrame, 0) ?: return 0f
+        return (-cardX / 480f).coerceIn(0f, maximumShift)
     }
 
     private fun malesFrameForShift(targetShift: Float): Float {
@@ -609,11 +599,8 @@ object TimelineEngine {
             (targetShift - MALES_STEADY_START_SHIFT) * MALES_STEADY_PERIOD_FRAMES
     }
 
-    private fun malesCardStartFrame(index: Int): Float = when {
-        index <= 0 -> 0f
-        index < 4 -> index * 120f
-        else -> malesFrameForShift((index - 4).toFloat())
-    }
+    private fun malesCardStartFrame(index: Int): Float =
+        ExactReferenceFrames.malesCardStartFrame(index).toFloat()
 
     private fun malesReferenceFrameCount(cardCount: Int): Int {
         if (cardCount <= 0) return 0
@@ -676,9 +663,12 @@ object TimelineEngine {
         cardCount: Int,
         initialCount: Int,
     ): BadgeAffine {
-        if (age < MALES_BADGE_ENTRY_END) {
-            return if (index < initialCount) malesOpeningBadgeAffine(age) else malesPostBadgeAffine(age)
+        if (index < initialCount) {
+            ExactReferenceFrames.malesOpeningBadgeAffine(sourceFrame, index)?.let { return it }
+        } else {
+            ExactReferenceFrames.malesPostBadgeAffine(sourceFrame, index)?.let { return it }
         }
+        if (age < MALES_BADGE_ENTRY_END) return BadgeAffine.Identity
         val scale = malesStageScale(index, sourceFrame, cardCount)
         val cx = 243.5f
         val cy = 203.5f
