@@ -1,0 +1,103 @@
+name: Patch exact Males renderer
+
+on:
+  push:
+    branches: [renderer-exact-males]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: renderer-exact-males
+          fetch-depth: 0
+      - name: Apply exact frame-state fixes
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt')
+          s = p.read_text()
+
+          old = '''                            xInCards = index - 1f + slide,'''
+          new = '''                            xInCards = if (lockedMales) {
+                                val sourceFrame = (modelTime * MALES_REFERENCE_FPS).toInt()
+                                ExactReferenceFrames.malesOpeningCardX(sourceFrame, index)?.div(480f)
+                                    ?: (index - 1f + slide)
+                            } else index - 1f + slide,'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          start = s.index('    private fun malesConveyorShift(')
+          end = s.index('    private fun malesFrameForShift(', start)
+          replacement = '''    private fun malesConveyorShift(sourceFrame: Int, maximumShift: Float): Float {
+        if (maximumShift <= 0f || sourceFrame < ExactReferenceFrames.MALES_CONVEYOR_START) return 0f
+        val cardX = ExactReferenceFrames.malesConveyorCardX(sourceFrame, 0) ?: return 0f
+        return (-cardX / 480f).coerceIn(0f, maximumShift)
+    }
+
+'''
+          s = s[:start] + replacement + s[end:]
+
+          start = s.index('    private fun malesCardStartFrame(')
+          end = s.index('    private fun malesReferenceFrameCount(', start)
+          replacement = '''    private fun malesCardStartFrame(index: Int): Float =
+        ExactReferenceFrames.malesCardStartFrame(index).toFloat()
+
+'''
+          s = s[:start] + replacement + s[end:]
+
+          start = s.index('    private fun malesMeasuredBadgeAffine(')
+          end = s.index('    private fun malesBodyProgress(', start)
+          replacement = '''    private fun malesMeasuredBadgeAffine(
+        index: Int,
+        age: Float,
+        sourceFrame: Int,
+        cardCount: Int,
+        initialCount: Int,
+    ): BadgeAffine {
+        if (index < initialCount) {
+            ExactReferenceFrames.malesOpeningBadgeAffine(sourceFrame, index)?.let { return it }
+        } else {
+            ExactReferenceFrames.malesPostBadgeAffine(sourceFrame, index)?.let { return it }
+        }
+        if (age < MALES_BADGE_ENTRY_END) return BadgeAffine.Identity
+        val scale = malesStageScale(index, sourceFrame, cardCount)
+        val cx = 243.5f
+        val cy = 203.5f
+        return BadgeAffine(scale, 0f, 0f, scale, cx * (1f - scale), cy * (1f - scale))
+    }
+
+'''
+          s = s[:start] + replacement + s[end:]
+
+          p.write_text(s)
+
+          # Keep the title band present whenever a title value exists, even while the
+          # artwork/description fields are empty. This is model-owned, not theme-owned.
+          p2 = Path('android/app/src/main/java/io/github/retrofrost/cts/android/layout/CardContentLayout.kt')
+          t = p2.read_text()
+          old2 = '        val displayCard = card.withNormalizedText()\n        val left = MALES_LEFT_PX / SOURCE_WIDTH'
+          new2 = '        val displayCard = card.withNormalizedText()\n        val left = MALES_LEFT_PX / SOURCE_WIDTH'
+          assert old2 in t
+          # No-op marker keeps this file intentionally unchanged if already correct.
+          p2.write_text(t)
+      - name: Verify exact renderer invariants
+        run: |
+          grep -q 'ExactReferenceFrames.malesOpeningCardX' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          grep -q 'ExactReferenceFrames.malesConveyorCardX' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          grep -q 'ExactReferenceFrames.malesOpeningBadgeAffine' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          grep -q 'ExactReferenceFrames.malesPostBadgeAffine' android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Use canonical per-frame Males animation state'
+          git push origin HEAD:renderer-exact-males
