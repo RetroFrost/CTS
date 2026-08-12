@@ -59,7 +59,7 @@ class TimelineEngineTest {
     }
 
     @Test
-    fun firstCardSlidesFromOneSlotLeftInsteadOfBeingWiped() {
+    fun firstCardUsesCanonicalOpeningFramesInsteadOfGenericTiming() {
         val project = CtsProject(model = VisualModel.Males)
         val rate = TimelineEngine.EXACT_REFERENCE_PLAYBACK_RATE
         val first = TimelineEngine.placements(project, 0f).first()
@@ -70,25 +70,31 @@ class TimelineEngineTest {
         val entering = TimelineEngine.placements(project, 0.7f / rate).first()
         assertTrue(entering.xInCards in -1f..0f)
         assertTrue(entering.badgeVisible)
-        val settled = TimelineEngine.placements(project, TimelineEngine.MALES_BODY_SECONDS / rate).first()
-        assertEquals(0f, settled.xInCards, 0.001f)
+
+        val settledFrame = ExactReferenceFrames.malesCardStartFrame(0) + 120
+        val settled = TimelineEngine.placements(project, settledFrame / 60f / rate).first()
+        val expectedX = ExactReferenceFrames.malesOpeningCardX(settledFrame, 0)
+        assertEquals(expectedX!! / 480f, settled.xInCards, 0.001f)
     }
 
     @Test
-    fun scrollingMovesEachCompleteParentByOneCardWidthWithEasing() {
+    fun scrollingMatchesCanonicalMalesConveyorFrames() {
         val project = CtsProject(model = VisualModel.Males)
         val rate = TimelineEngine.EXACT_REFERENCE_PLAYBACK_RATE
         val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
-        val before = TimelineEngine.placements(project, scrollStart / rate)
-        val halfway = TimelineEngine.placements(project, (scrollStart + SCROLL_SECONDS / 2f) / rate)
-        val after = TimelineEngine.placements(project, (scrollStart + SCROLL_SECONDS) / rate)
-        val beforeSecond = before.first { it.cardIndex == 1 }
-        val halfwaySecond = halfway.first { it.cardIndex == 1 }
-        val afterSecond = after.first { it.cardIndex == 1 }
-        assertTrue(halfwaySecond.xInCards < beforeSecond.xInCards)
-        assertTrue(halfwaySecond.xInCards > afterSecond.xInCards)
-        assertEquals(1f, beforeSecond.xInCards - afterSecond.xInCards, 0.0001f)
-        assertEquals(1f, halfway.first { it.cardIndex == 4 }.bodyReveal, 0.0001f)
+        val frames = intArrayOf(648, 660, 672)
+        val placements = frames.map { frame ->
+            TimelineEngine.placements(project, frame / 60f / rate)
+                .first { it.cardIndex == 1 }
+        }
+        for ((placement, frame) in placements.zip(frames)) {
+            val expected = ExactReferenceFrames.malesConveyorCardX(frame, 1)!! / 480f
+            assertEquals(expected, placement.xInCards, 0.001f)
+        }
+        assertTrue(placements[1].xInCards < placements[0].xInCards)
+        assertTrue(placements[1].xInCards > placements[2].xInCards)
+        assertEquals(1f, placements[2].bodyReveal, 0.0001f)
+        assertEquals(scrollStart, 528f / 60f, 0.0001f)
     }
 
     @Test
