@@ -3,7 +3,6 @@ package io.github.retrofrost.cts.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,15 +15,14 @@ import io.github.retrofrost.cts.android.ui.theme.CtsTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Keep the editor on the classic CTS content metrics instead of forcing the
+        // modern edge-to-edge treatment that made the compact editor harder to use.
         setContent {
             CtsTheme {
                 val preferences = remember {
                     getSharedPreferences("cts-first-run", MODE_PRIVATE)
                 }
                 var setupComplete by remember {
-                    // CTS 2.0 has a materially new first-run flow. Do not let the old
-                    // alpha setup flag skip it on an upgraded installation.
                     mutableStateOf(preferences.getBoolean("setup-complete-v2", false))
                 }
                 var preferredModel by remember {
