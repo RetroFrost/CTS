@@ -24,7 +24,7 @@ from ccengine.renderer import FrameRenderer
 from ccengine.timing import frame_to_seconds, total_duration, total_frame_count
 from ccengine.validation import normalize_project
 
-VERSION = "1.0.0"
+VERSION = "1.0.6"
 
 
 def write_progress_file(path: Path | None, done: int, total: int) -> None:
@@ -454,7 +454,14 @@ def command_self_test(args: argparse.Namespace) -> int:
         "png": str(preview_png),
         "bmp": str(preview_bmp),
         "mp4": str(video_mp4),
-        "duration": total_duration(loaded),
+        "duration": total_duration(video_project),
+        "frame_count": total_frame_count(video_project),
+        "video_card_count": len(video_project.cards),
+        "video_scope": "lightweight MP4 export project",
+        "project_duration": total_duration(loaded),
+        "project_frame_count": total_frame_count(loaded),
+        "project_card_count": len(loaded.cards),
+        "project_scope": "CCX and JSON round-trip project",
     }, indent=2))
     return 0
 

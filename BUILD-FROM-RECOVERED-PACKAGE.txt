@@ -1,0 +1,10 @@
+This 1.0.6 source bundle was reconstructed from the verified Cubical Compare 1.0.5 Debian package payload and contains the complete Python dashboard/rendering engine sources shipped by that package, plus the 1.0.6 dashboard-parity fixes.
+
+Runtime dependencies on Debian/Ubuntu:
+  python3 python3-tk python3-pil python3-pil.imagetk python3-openpyxl ffmpeg fonts-dejavu-core
+
+Run dashboard from this tree:
+  PYTHONPATH=engine python3 dashboard.py
+
+Engine self-test:
+  PYTHONPATH=engine python3 engine/engine_cli.py self-test --directory ./self-test-output

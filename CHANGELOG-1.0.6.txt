@@ -1,0 +1,18 @@
+Cubical Compare 1.0.6 — dashboard workflow parity and import reliability
+
+- Restored the Image Sheet action to the desktop dashboard.
+- Image-sheet analysis and cropping run outside the UI thread and can be cancelled.
+- Automatic sheet detection reports the detected grid before assignment.
+- Extra detected cells can create blank cards instead of being silently discarded.
+- Existing per-card image transforms survive image-sheet assignment.
+- Image-sheet working assets are stored in durable application/project storage.
+- Project saves collect local images, soundtrack files and custom fonts into portable assets.
+- Re-saving an already-portable project reuses collected assets instead of growing filenames.
+- CSV/XLSX/XLSM import now runs outside the UI thread.
+- Imported cards are committed to the active project and refresh card list, data table, duration and preview state.
+- Encoder preset selection restored to Model & Export.
+- Soundtrack offset and fade-out controls restored.
+- Title, description, badge and credits font controls restored.
+- Image fit (cover/contain) restored.
+- Refreshing/opening a project no longer marks it dirty merely from UI variable synchronisation.
+- Official model timing, output geometry and 60 FPS model lock are unchanged from 1.0.5.
