@@ -92,8 +92,9 @@ object ExactReferenceFrames {
     }
 
     fun malesConveyorCardX(sourceFrame: Int, cardIndex: Int): Float? {
-        if (sourceFrame !in MALES_CONVEYOR_START..MALES_CONVEYOR_END) return null
-        val origin = malesOrigins[sourceFrame - MALES_CONVEYOR_START] / 2f
+        if (sourceFrame < MALES_CONVEYOR_START) return null
+        val heldFrame = sourceFrame.coerceAtMost(MALES_CONVEYOR_END)
+        val origin = malesOrigins[heldFrame - MALES_CONVEYOR_START] / 2f
         return origin + (cardIndex + 1) * MALES_CARD_PITCH_PX - MALES_CARD_WIDTH_PX
     }
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import io.github.retrofrost.cts.android.model.CreditsSettings
+import io.github.retrofrost.cts.android.timeline.ExactReferenceFrames
 
 @Composable
 internal fun BoxWithConstraintsScope.RelationshipsInfinityIntro(frame: Int) {
@@ -40,9 +41,8 @@ internal fun BoxWithConstraintsScope.RelationshipsInfinityIntro(frame: Int) {
         frame < 450 -> 1f
         else -> 1f - smoothStep((frame - 450) / 100f)
     }
-    val yellow = relationshipLoopState(shapeFrame, yellow = true)
-    val pink = relationshipLoopState(shapeFrame, yellow = false)
-    val opening = sampleRelationshipOpening(shapeFrame)
+    val lime = ExactReferenceFrames.relationshipLoop(shapeFrame, lime = true)
+    val pink = ExactReferenceFrames.relationshipLoop(shapeFrame, lime = false)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -50,32 +50,36 @@ internal fun BoxWithConstraintsScope.RelationshipsInfinityIntro(frame: Int) {
             .zIndex(80f),
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            fun loop(state: Triple<Float, Float, Float>, start: Float, colour: Color) {
-                val (cx, cy, radius) = state
+            fun loop(state: ExactReferenceFrames.LoopState?, colour: Color) {
+                state ?: return
+                val cx = state.centerXPx
+                val cy = state.centerYPx
+                val radius = state.radiusPx
                 val sx = size.width / 1920f
                 val sy = size.height / 1080f
                 val r = radius * minOf(sx, sy)
+                val alpha = opacity * state.alpha
                 drawArc(
-                    color = Color(0xFFF4F2E3).copy(alpha = opacity),
-                    startAngle = start + 46f,
-                    sweepAngle = 268f,
+                    color = Color(0xFFF4F2E3).copy(alpha = alpha),
+                    startAngle = state.startDegrees,
+                    sweepAngle = state.sweepDegrees,
                     useCenter = false,
                     topLeft = androidx.compose.ui.geometry.Offset(cx * sx - r, cy * sy - r),
                     size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
                     style = Stroke(width = (16f + 0.055f * radius) * minOf(sx, sy), cap = StrokeCap.Round),
                 )
                 drawArc(
-                    color = colour.copy(alpha = opacity),
-                    startAngle = start + 46f,
-                    sweepAngle = 268f,
+                    color = colour.copy(alpha = alpha),
+                    startAngle = state.startDegrees,
+                    sweepAngle = state.sweepDegrees,
                     useCenter = false,
                     topLeft = androidx.compose.ui.geometry.Offset(cx * sx - r, cy * sy - r),
                     size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
                     style = Stroke(width = (5f + 0.014f * radius) * minOf(sx, sy), cap = StrokeCap.Round),
                 )
             }
-            loop(yellow, opening, Color(0xFFC6E900))
-            loop(pink, opening + 180f, Color(0xFFEE5B7F))
+            loop(lime, Color(0xFFC6E900))
+            loop(pink, Color(0xFFEE5B7F))
         }
         if (frame >= 240) {
             val first = "Infinite".take((((shapeFrame - 240) / 50f).coerceIn(0f, 1f) * 8).toInt())
@@ -169,45 +173,6 @@ internal fun BoxWithConstraintsScope.RelationshipsOutroOverlay(
 private fun smoothStep(value: Float): Float {
     val t = value.coerceIn(0f, 1f)
     return t * t * (3f - 2f * t)
-}
-
-private fun relationshipLoopState(frame: Int, yellow: Boolean): Triple<Float, Float, Float> {
-    val keys = if (yellow) {
-        arrayOf(
-            floatArrayOf(34f, 987.6f, -142.2f, 478.8f), floatArrayOf(50f, 778.3f, 71.9f, 357.9f),
-            floatArrayOf(70f, 677.3f, 286f, 276.1f), floatArrayOf(100f, 678.5f, 478.9f, 207.7f),
-            floatArrayOf(120f, 708.9f, 523.2f, 181.4f), floatArrayOf(150f, 740.5f, 526.4f, 158.5f),
-            floatArrayOf(180f, 752.2f, 527.3f, 150f), floatArrayOf(373f, 752.6f, 527.5f, 149.7f),
-        )
-    } else {
-        arrayOf(
-            floatArrayOf(34f, 997.6f, 1169f, 475.5f), floatArrayOf(50f, 1178.4f, 959.6f, 360.9f),
-            floatArrayOf(70f, 1253.4f, 744.6f, 278.6f), floatArrayOf(100f, 1227.2f, 561.2f, 209.5f),
-            floatArrayOf(120f, 1192.7f, 523.8f, 182.8f), floatArrayOf(150f, 1163.2f, 525f, 159.7f),
-            floatArrayOf(180f, 1152.3f, 525.8f, 151.2f), floatArrayOf(373f, 1152.1f, 525.8f, 151.1f),
-        )
-    }
-    return sampleRelationshipState(keys, frame)
-}
-
-private fun sampleRelationshipState(keys: Array<FloatArray>, frame: Int): Triple<Float, Float, Float> {
-    if (frame <= keys.first()[0]) return Triple(keys.first()[1], keys.first()[2], keys.first()[3])
-    if (frame >= keys.last()[0]) return Triple(keys.last()[1], keys.last()[2], keys.last()[3])
-    val right = keys.indexOfFirst { frame <= it[0] }
-    val a = keys[right - 1]
-    val b = keys[right]
-    val t = (frame - a[0]) / (b[0] - a[0])
-    return Triple(a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t)
-}
-
-private fun sampleRelationshipOpening(frame: Int): Float {
-    val keys = arrayOf(34f to 90f, 50f to 65f, 70f to 37.5f, 100f to 7.5f, 120f to -0.5f, 373f to -1f)
-    if (frame <= keys.first().first) return keys.first().second
-    if (frame >= keys.last().first) return keys.last().second
-    val right = keys.indexOfFirst { frame <= it.first }
-    val (f0, v0) = keys[right - 1]
-    val (f1, v1) = keys[right]
-    return v0 + (v1 - v0) * (frame - f0) / (f1 - f0)
 }
 
 @Composable

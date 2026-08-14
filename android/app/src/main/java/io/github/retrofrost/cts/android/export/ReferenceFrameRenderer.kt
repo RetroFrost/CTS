@@ -27,7 +27,9 @@ import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import io.github.retrofrost.cts.android.timeline.CardPlacement
 import java.io.File
 import java.io.FileInputStream
+import java.io.InputStream
 import java.net.URL
+import java.util.LinkedHashMap
 import kotlin.math.max
 import kotlin.math.min
 
@@ -38,7 +40,14 @@ class ReferenceFrameRenderer(
     private val width: Int,
     private val height: Int,
 ) {
-    private val imageCache = mutableMapOf<String, Bitmap?>()
+    private val missingImages = mutableSetOf<String>()
+    private val imageCache = object : LinkedHashMap<String, Bitmap>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
+            val remove = size > MAX_CACHED_IMAGES
+            if (remove) eldest?.value?.takeUnless { it.isRecycled }?.recycle()
+            return remove
+        }
+    }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
     private val introRetriever: MediaMetadataRetriever? = project.introVideo.uri
@@ -70,6 +79,13 @@ class ReferenceFrameRenderer(
             val cardX = cardWidth * placement.xInCards
             canvas.save()
             canvas.translate(cardX, 0f)
+            placement.bodyTransform?.let { transform ->
+                canvas.translate(
+                    (transform.xPx / 480f - placement.xInCards) * cardWidth,
+                    transform.yPx / 1080f * height,
+                )
+                canvas.scale(transform.scaleX, transform.scaleY)
+            }
             if (project.model == VisualModel.Relationships) {
                 canvas.saveLayerAlpha(
                     0f,
@@ -126,10 +142,11 @@ class ReferenceFrameRenderer(
     }
 
     fun close() {
-        imageCache.values.filterNotNull().forEach { bitmap ->
+        imageCache.values.forEach { bitmap ->
             if (!bitmap.isRecycled) bitmap.recycle()
         }
         imageCache.clear()
+        missingImages.clear()
         introRetriever?.release()
     }
 
@@ -370,27 +387,46 @@ class ReferenceFrameRenderer(
     private fun loadImage(source: String?): Bitmap? {
         val key = source?.trim().orEmpty()
         if (key.isBlank()) return null
-        if (imageCache.containsKey(key)) return imageCache[key]
+        imageCache[key]?.let { bitmap ->
+            if (!bitmap.isRecycled) return bitmap
+            imageCache.remove(key)
+        }
+        if (key in missingImages) return null
         val bitmap = runCatching {
-            val stream = when {
-                key.startsWith("http://", true) || key.startsWith("https://", true) -> {
-                    URL(key).openConnection().apply {
-                        connectTimeout = 15_000
-                        readTimeout = 20_000
-                        setRequestProperty("User-Agent", "CTS-Android-Exporter")
-                    }.getInputStream()
-                }
-                key.startsWith("content://", true) || key.startsWith("file://", true) ->
-                    context.contentResolver.openInputStream(Uri.parse(key))
-                else -> FileInputStream(File(key))
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            openImageStream(key)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) error("Could not read image bounds")
+            var sampleSize = 1
+            while (max(bounds.outWidth, bounds.outHeight) / (sampleSize * 2) >= MAX_DECODED_EDGE) {
+                sampleSize *= 2
+            }
+            openImageStream(key)?.use { stream ->
+                BitmapFactory.decodeStream(
+                    stream,
+                    null,
+                    BitmapFactory.Options().apply { inSampleSize = sampleSize },
+                )
             } ?: error("Could not open image")
-            stream.use { BitmapFactory.decodeStream(it) }
         }.getOrNull()
-        imageCache[key] = bitmap
+        if (bitmap == null) missingImages += key else imageCache[key] = bitmap
         return bitmap
     }
 
+    private fun openImageStream(key: String): InputStream? = when {
+        key.startsWith("http://", true) || key.startsWith("https://", true) ->
+            URL(key).openConnection().apply {
+                connectTimeout = 15_000
+                readTimeout = 20_000
+                setRequestProperty("User-Agent", "CTS-Android-Exporter")
+            }.getInputStream()
+        key.startsWith("content://", true) || key.startsWith("file://", true) ->
+            context.contentResolver.openInputStream(Uri.parse(key))
+        else -> FileInputStream(File(key))
+    }
+
     private companion object {
+        const val MAX_CACHED_IMAGES = 6
+        const val MAX_DECODED_EDGE = 3_072
         val BADGE_FRAME = NormalizedRect(0.245f, 0.063f, 0.51f, 0.263f)
     }
 }

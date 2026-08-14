@@ -1,5 +1,6 @@
 package io.github.retrofrost.cts.android.ui
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -39,8 +40,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -176,18 +178,21 @@ private fun CustomIntroPreview(
         onDispose { retriever?.release() }
     }
     val frameBucket = (positionSeconds.coerceAtLeast(0f) * 30f).toInt()
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = retriever, key2 = frameBucket) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = retriever, key2 = frameBucket) {
         value = withContext(Dispatchers.IO) {
             runCatching {
                 retriever?.getFrameAtTime(
                     frameBucket * 1_000_000L / 30L,
                     MediaMetadataRetriever.OPTION_CLOSEST,
-                )?.asImageBitmap()
+                )
             }.getOrNull()
         }
     }
+    DisposableEffect(bitmap) {
+        onDispose { bitmap?.takeUnless(Bitmap::isRecycled)?.recycle() }
+    }
     Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-        bitmap?.let { image ->
+        bitmap?.takeUnless(Bitmap::isRecycled)?.asImageBitmap()?.let { image ->
             Canvas(Modifier.fillMaxSize()) {
                 val destinationAspect = size.width / size.height.coerceAtLeast(1f)
                 val sourceAspect = image.width / image.height.toFloat().coerceAtLeast(1f)
@@ -244,6 +249,15 @@ private fun ReferenceParentCard(
             modifier = Modifier
                 .width(if (model == VisualModel.Relationships) fullCardWidth else fullCardWidth * reveal)
                 .fillMaxHeight()
+                .graphicsLayer {
+                    placement.bodyTransform?.let { transform ->
+                        translationX = (transform.xPx / 480f - placement.xInCards) * size.width
+                        translationY = transform.yPx / 1080f * size.height
+                        scaleX = transform.scaleX
+                        scaleY = transform.scaleY
+                        transformOrigin = TransformOrigin(0f, 0f)
+                    }
+                }
                 .alpha(if (model == VisualModel.Relationships) reveal else 1f)
                 .clipToBounds(),
         ) {
@@ -552,12 +566,12 @@ private fun BoxScope.ResizeHandle(
 @Composable
 private fun BoxScope.ImageContent(subcard: ImageSubcard, showPlaceholder: Boolean) {
     val bitmap by rememberSourceBitmap(subcard.source)
-    if (bitmap != null) {
+    val image = bitmap?.takeUnless(Bitmap::isRecycled)?.asImageBitmap()
+    if (image != null) {
         val focusX = subcard.cropFocusX.coerceIn(0f, 1f)
         val focusY = subcard.cropFocusY.coerceIn(0f, 1f)
         val zoom = subcard.cropZoom.coerceIn(1f, 3f)
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val image = bitmap!!
             val destinationAspect = size.width / size.height.coerceAtLeast(1f)
             val sourceAspect = image.width / image.height.toFloat().coerceAtLeast(1f)
             val baseCropWidth: Float
@@ -609,7 +623,7 @@ private fun BoxScope.ImageContent(subcard: ImageSubcard, showPlaceholder: Boolea
 @Composable
 private fun BoxScope.FullCardBackground(source: String?) {
     val bitmap by rememberSourceBitmap(source)
-    val image = bitmap ?: return
+    val image = bitmap?.takeUnless(Bitmap::isRecycled)?.asImageBitmap() ?: return
     Canvas(modifier = Modifier.fillMaxSize()) {
         val destinationAspect = size.width / size.height.coerceAtLeast(1f)
         val sourceAspect = image.width / image.height.toFloat().coerceAtLeast(1f)
@@ -635,28 +649,45 @@ private fun BoxScope.FullCardBackground(source: String?) {
 }
 
 @Composable
-private fun rememberSourceBitmap(source: String?): State<ImageBitmap?> {
+private fun rememberSourceBitmap(source: String?): State<Bitmap?> {
     val context = LocalContext.current
-    return produceState<ImageBitmap?>(initialValue = null, key1 = source) {
+    val state = produceState<Bitmap?>(initialValue = null, key1 = source) {
         if (source.isNullOrBlank()) {
             value = null
             return@produceState
         }
         value = withContext(Dispatchers.IO) {
             runCatching {
-                val stream = when {
-                    source.startsWith("http://", true) || source.startsWith("https://", true) -> {
-                        URL(source).openStream()
-                    }
-                    Uri.parse(source).scheme != null -> {
-                        context.contentResolver.openInputStream(Uri.parse(source))
-                    }
+                fun openStream() = when {
+                    source.startsWith("http://", true) || source.startsWith("https://", true) ->
+                        URL(source).openConnection().apply {
+                            connectTimeout = 10_000
+                            readTimeout = 15_000
+                        }.getInputStream()
+                    Uri.parse(source).scheme != null -> context.contentResolver.openInputStream(Uri.parse(source))
                     else -> FileInputStream(File(source))
                 }
-                stream?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                openStream()?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+                var sampleSize = 1
+                while (max(bounds.outWidth, bounds.outHeight) / (sampleSize * 2) >= 2_048) {
+                    sampleSize *= 2
+                }
+                openStream()?.use { stream ->
+                    BitmapFactory.decodeStream(
+                        stream,
+                        null,
+                        BitmapFactory.Options().apply { inSampleSize = sampleSize },
+                    )
+                }
             }.getOrNull()
         }
     }
+    DisposableEffect(state.value) {
+        onDispose { state.value?.takeUnless(Bitmap::isRecycled)?.recycle() }
+    }
+    return state
 }
 
 private fun NormalizedRect.moveBy(dx: Float, dy: Float): NormalizedRect =

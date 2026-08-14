@@ -9,6 +9,7 @@ import io.github.retrofrost.cts.android.shared.SharedContract
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 const val REVEAL_SECONDS = SharedContract.REVEAL_SECONDS
 const val SCROLL_SECONDS = SharedContract.SCROLL_SECONDS
@@ -37,6 +38,7 @@ data class CardPlacement(
     val badgeTextAlpha: Float = 1f,
     val badgeAgeSeconds: Float = Float.POSITIVE_INFINITY,
     val badgeAffine: BadgeAffine = BadgeAffine.Identity,
+    val bodyTransform: ExactReferenceFrames.BodyTransform? = null,
 )
 
 /** Source-space affine used by the measured Males badge renderer (480 x 430). */
@@ -169,12 +171,21 @@ object TimelineEngine {
     private fun isLockedRelationships(project: CtsProject): Boolean =
         project.model == VisualModel.Relationships
 
+    private fun isCanonicalMales(project: CtsProject): Boolean =
+        project.model == VisualModel.Males && project.cards.size == MALES_CANONICAL_CARD_COUNT
+
+    private fun isCanonicalRelationships(project: CtsProject): Boolean =
+        project.model == VisualModel.Relationships && project.cards.size == 40
+
     private fun playbackRate(project: CtsProject): Float =
         if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) {
             EXACT_REFERENCE_PLAYBACK_RATE
         } else {
             1f
         }
+
+    private fun sourceFrameAt(seconds: Float, fps: Int): Int =
+        (seconds * fps).roundToInt()
 
     fun customIntroDuration(project: CtsProject): Float = if (
         !project.introVideo.uri.isNullOrBlank()
@@ -248,8 +259,10 @@ object TimelineEngine {
         if (builtInIntroEnabled(project)) 0 else RELATIONSHIPS_INTRO_FRAMES
 
     fun relationshipsSourceFrame(project: CtsProject, outputTimeSeconds: Float): Int =
-        (contentOutputTime(project, outputTimeSeconds) * playbackRate(project) *
-            RELATIONSHIPS_REFERENCE_FPS).toInt() +
+        sourceFrameAt(
+            contentOutputTime(project, outputTimeSeconds) * playbackRate(project),
+            RELATIONSHIPS_REFERENCE_FPS,
+        ) +
             relationshipsIntroOffset(project)
 
     fun relationshipsOutroLocalFrame(project: CtsProject, outputTimeSeconds: Float): Int =
@@ -382,7 +395,8 @@ object TimelineEngine {
 
     fun outroCoverProgress(project: CtsProject, outputTimeSeconds: Float): Float {
         if (project.model == VisualModel.Males && isSealedReference(project)) {
-            val frame = (contentOutputTime(project, outputTimeSeconds) * MALES_REFERENCE_FPS).toInt()
+            val frame = sourceFrameAt(contentOutputTime(project, outputTimeSeconds), MALES_REFERENCE_FPS)
+            if (isCanonicalMales(project)) return ExactReferenceFrames.malesOutroCoverProgress(frame)
             return smoothStep((frame - malesOutroStartFrame(project.cards.size)) / MALES_END_WIPE_FRAMES.toFloat())
         }
         if (!isSealedReference(project) && !project.showOutro) return 0f
@@ -396,7 +410,7 @@ object TimelineEngine {
 
     fun outroContentAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
         if (project.model == VisualModel.Males && isSealedReference(project)) {
-            val frame = (contentOutputTime(project, outputTimeSeconds) * MALES_REFERENCE_FPS).toInt()
+            val frame = sourceFrameAt(contentOutputTime(project, outputTimeSeconds), MALES_REFERENCE_FPS)
             val riseStart = malesOutroStartFrame(project.cards.size) + MALES_END_WIPE_FRAMES
             return ((frame - riseStart) / MALES_END_RISE_FRAMES.toFloat()).coerceIn(0f, 1f)
         }
@@ -444,7 +458,11 @@ object TimelineEngine {
                         CardPlacement(
                             cardIndex = index,
                             // Each opening card comes from exactly one slot to its left.
-                            xInCards = index - 1f + slide,
+                            xInCards = if (lockedMales) {
+                                val sourceFrame = sourceFrameAt(modelTime, MALES_REFERENCE_FPS)
+                                ExactReferenceFrames.malesOpeningCardX(sourceFrame, index)?.div(480f)
+                                    ?: (index - 1f + slide)
+                            } else index - 1f + slide,
                             bodyReveal = 1f,
                             badgeVisible = if (lockedMales) localTime >= 0f else badgeTime >= 0f,
                             badgeSettle = if (lockedMales) {
@@ -464,8 +482,12 @@ object TimelineEngine {
         val completedShifts = floor(rawShift).toInt().coerceAtMost(maximumShift)
         val cycleProgress = rawShift - completedShifts
         val easedShift = if (lockedMales) {
-            val sourceFrame = (modelTime * MALES_REFERENCE_FPS).toInt()
-            malesConveyorShift(sourceFrame, maximumShift.toFloat())
+            val sourceFrame = sourceFrameAt(modelTime, MALES_REFERENCE_FPS)
+            malesConveyorShift(
+                sourceFrame = sourceFrame,
+                maximumShift = maximumShift.toFloat(),
+                exact = isCanonicalMales(project),
+            )
         } else if (completedShifts >= maximumShift) {
             maximumShift.toFloat()
         } else {
@@ -474,7 +496,11 @@ object TimelineEngine {
 
         return buildList {
             for (index in 0 until cardCount) {
-                val x = index - easedShift
+                val sourceFrame = sourceFrameAt(modelTime, MALES_REFERENCE_FPS)
+                val x = if (lockedMales && isCanonicalMales(project)) {
+                    ExactReferenceFrames.malesConveyorCardX(sourceFrame, index)?.div(480f)
+                        ?: (index - easedShift)
+                } else index - easedShift
                 if (x >= visibleCards || x + 1f <= 0f) continue
 
                 val badgeStart = if (index < initialCount) {
@@ -506,7 +532,7 @@ object TimelineEngine {
                             malesMeasuredBadgeAffine(
                                 index = index,
                                 age = exactBadgeAge,
-                                sourceFrame = (modelTime * MALES_REFERENCE_FPS).toInt(),
+                                sourceFrame = sourceFrame,
                                 cardCount = cardCount,
                                 initialCount = initialCount,
                             )
@@ -530,7 +556,7 @@ object TimelineEngine {
                 RELATIONSHIPS_END_RISE_FRAMES + RELATIONSHIPS_END_HOLD_FRAMES + RELATIONSHIPS_FADE_FRAMES
             ) return emptyList()
             val local = frame - contentEnd
-            val x = when {
+            val x = ExactReferenceFrames.relationshipsFinalLastCardX(frame)?.div(480f) ?: when {
                 local <= 32 -> lerp(2f, 0f, smoothStep(local / 32f))
                 local <= 42 -> lerp(0f, 320f / 480f, 1f - (1f - (local - 32) / 10f).coerceIn(0f, 1f).let { it * it * it })
                 local <= 62 -> lerp(320f / 480f, 928f / 480f, 1f - (1f - (local - 42) / 20f).coerceIn(0f, 1f).let { it * it * it })
@@ -552,31 +578,40 @@ object TimelineEngine {
         if (frame < RELATIONSHIPS_CONTINUOUS_START_FRAME) {
             return buildList {
                 for (index in 0 until min(4, cardCount)) {
-                    val start = relationshipsOpeningStarts[index]
+                    val start = ExactReferenceFrames.relationshipsCardStartFrame(index)
                     if (frame < start) continue
                     val local = frame - start
-                    add(relationshipsPlacement(index, index.toFloat(), local, opening = true))
+                    add(relationshipsPlacement(index, index.toFloat(), local, opening = true, sourceFrame = frame))
                 }
             }
         }
 
-        val shift = (frame - RELATIONSHIPS_CONTINUOUS_START_FRAME) /
-            RELATIONSHIPS_POSITION_STEP_FRAMES
         return buildList {
             for (index in 0 until cardCount) {
-                val x = index - shift
+                val finalCardX = if (index == cardCount - 1) {
+                    ExactReferenceFrames.relationshipsFinalLastCardX(frame)?.div(480f)
+                } else null
+                val x = finalCardX
+                    ?: ExactReferenceFrames.relationshipsConveyorCardX(frame, index)?.div(480f)
+                    ?: index - (frame - RELATIONSHIPS_CONTINUOUS_START_FRAME) /
+                    RELATIONSHIPS_POSITION_STEP_FRAMES
                 if (x <= -1f || x >= 5f) continue
-                val start = if (index < 4) relationshipsOpeningStarts[index] else {
-                    RELATIONSHIPS_CONTINUOUS_START_FRAME +
-                        (index - 4) * RELATIONSHIPS_CONTINUOUS_STEP_FRAMES
-                }
-                add(relationshipsPlacement(index, x, frame - start, opening = index < 4))
+                val start = ExactReferenceFrames.relationshipsCardStartFrame(index)
+                add(relationshipsPlacement(index, x, frame - start, opening = index < 4, sourceFrame = frame))
             }
         }
     }
 
-    private fun malesConveyorShift(sourceFrame: Int, maximumShift: Float): Float {
+    private fun malesConveyorShift(
+        sourceFrame: Int,
+        maximumShift: Float,
+        exact: Boolean,
+    ): Float {
         if (maximumShift <= 0f || sourceFrame <= MALES_CONVEYOR_START_FRAME) return 0f
+        if (exact) {
+            val cardX = ExactReferenceFrames.malesConveyorCardX(sourceFrame, 0) ?: return 0f
+            return (-cardX / 480f).coerceIn(0f, maximumShift)
+        }
         val measured = if (sourceFrame <= MALES_STEADY_START_FRAME) {
             val frame = sourceFrame.toFloat()
             val right = malesPhasePullKeys.indexOfFirst { frame <= it.first }
@@ -609,11 +644,8 @@ object TimelineEngine {
             (targetShift - MALES_STEADY_START_SHIFT) * MALES_STEADY_PERIOD_FRAMES
     }
 
-    private fun malesCardStartFrame(index: Int): Float = when {
-        index <= 0 -> 0f
-        index < 4 -> index * 120f
-        else -> malesFrameForShift((index - 4).toFloat())
-    }
+    private fun malesCardStartFrame(index: Int): Float =
+        ExactReferenceFrames.malesCardStartFrame(index).toFloat()
 
     private fun malesReferenceFrameCount(cardCount: Int): Int {
         if (cardCount <= 0) return 0
@@ -676,9 +708,12 @@ object TimelineEngine {
         cardCount: Int,
         initialCount: Int,
     ): BadgeAffine {
-        if (age < MALES_BADGE_ENTRY_END) {
-            return if (index < initialCount) malesOpeningBadgeAffine(age) else malesPostBadgeAffine(age)
+        if (index < initialCount) {
+            ExactReferenceFrames.malesOpeningBadgeAffine(sourceFrame, index)?.let { return it }
+        } else {
+            ExactReferenceFrames.malesPostBadgeAffine(sourceFrame, index)?.let { return it }
         }
+        if (age < MALES_BADGE_ENTRY_END) return BadgeAffine.Identity
         val scale = malesStageScale(index, sourceFrame, cardCount)
         val cx = 243.5f
         val cy = 203.5f
@@ -736,8 +771,14 @@ object TimelineEngine {
         x: Float,
         localFrame: Int,
         opening: Boolean,
+        sourceFrame: Int,
     ): CardPlacement {
-        val artwork = if (opening) ((localFrame - 58) / 43f).coerceIn(0f, 1f) else 1f
+        val exactBody = if (opening) {
+            ExactReferenceFrames.relationshipsOpeningTransform(sourceFrame, index)
+        } else null
+        val artwork = if (opening) {
+            ExactReferenceFrames.relationshipsArtworkReveal(sourceFrame, index)
+        } else 1f
         val title = if (opening) ((localFrame - 96) / 10f).coerceIn(0f, 1f) else 1f
         val description = if (opening) ((localFrame - 105) / 15f).coerceIn(0f, 1f) else 1f
         val textStart = if (opening) 88 else 18
@@ -745,17 +786,24 @@ object TimelineEngine {
         return CardPlacement(
             cardIndex = index,
             xInCards = x,
-            bodyReveal = ((localFrame + 1) / 10f).coerceIn(0f, 1f),
+            bodyReveal = if (opening) {
+                // The measured transform only covers the 121-frame entrance.
+                // Once that table ends the card is fully settled, not hidden.
+                if (localFrame > 120 || exactBody != null) 1f else 0f
+            } else 1f,
             badgeVisible = localFrame >= 11,
             badgeSettle = relationshipsBadgeScale(localFrame),
             artworkReveal = artwork,
             titleReveal = title,
             descriptionReveal = description,
+            // The compressed table tracks the inner red component. The full
+            // badge renderer needs the measured outer octagon bounds here.
             badgeRect = relationshipsBadgeRect(localFrame),
             badgeTextAlpha = textProgress,
             // The Relationships reference drives its gloss from the same
             // canonical 0.9..2.3 badge clock used by the desktop renderer.
             badgeAgeSeconds = 0.9f + textProgress * 1.4f,
+            bodyTransform = exactBody,
         )
     }
 
@@ -809,12 +857,18 @@ object TimelineEngine {
 
     fun fadeAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
         if (project.model == VisualModel.Males && isSealedReference(project)) {
-            val frame = (contentOutputTime(project, outputTimeSeconds) * MALES_REFERENCE_FPS).toInt()
+            val frame = sourceFrameAt(contentOutputTime(project, outputTimeSeconds), MALES_REFERENCE_FPS)
+            if (isCanonicalMales(project)) return ExactReferenceFrames.malesFadeAlpha(frame)
             val fadeStart = malesReferenceFrameCount(project.cards.size) - MALES_FADE_FRAMES
             return 1f - ((frame - fadeStart) / MALES_FADE_FRAMES.toFloat()).coerceIn(0f, 1f)
         }
         if (!isSealedReference(project) && !project.showOutro) return 1f
         if (isLockedRelationships(project)) {
+            if (isCanonicalRelationships(project)) {
+                return ExactReferenceFrames.relationshipsFadeAlpha(
+                    relationshipsSourceFrame(project, outputTimeSeconds),
+                )
+            }
             val fadeStart = RELATIONSHIPS_END_WIPE_FRAMES + RELATIONSHIPS_END_RISE_FRAMES +
                 RELATIONSHIPS_END_HOLD_FRAMES
             return 1f - ((relationshipsOutroLocalFrame(project, outputTimeSeconds) - fadeStart) /

@@ -59,8 +59,11 @@ class TimelineEngineTest {
     }
 
     @Test
-    fun firstCardSlidesFromOneSlotLeftInsteadOfBeingWiped() {
-        val project = CtsProject(model = VisualModel.Males)
+    fun firstCardUsesCanonicalOpeningFramesInsteadOfGenericTiming() {
+        val project = CtsProject(
+            model = VisualModel.Males,
+            cards = List(78) { CtsCard(title = "Age $it") },
+        )
         val rate = TimelineEngine.EXACT_REFERENCE_PLAYBACK_RATE
         val first = TimelineEngine.placements(project, 0f).first()
         assertEquals(-1f, first.xInCards, 0.001f)
@@ -70,25 +73,35 @@ class TimelineEngineTest {
         val entering = TimelineEngine.placements(project, 0.7f / rate).first()
         assertTrue(entering.xInCards in -1f..0f)
         assertTrue(entering.badgeVisible)
-        val settled = TimelineEngine.placements(project, TimelineEngine.MALES_BODY_SECONDS / rate).first()
-        assertEquals(0f, settled.xInCards, 0.001f)
+        val settledFrame = ExactReferenceFrames.malesCardStartFrame(0) + 119
+        val settled = TimelineEngine.placements(project, settledFrame / 60f / rate).first()
+        assertEquals(
+            ExactReferenceFrames.malesOpeningCardX(settledFrame, 0)!! / 480f,
+            settled.xInCards,
+            0.001f,
+        )
     }
 
     @Test
-    fun scrollingMovesEachCompleteParentByOneCardWidthWithEasing() {
-        val project = CtsProject(model = VisualModel.Males)
+    fun scrollingUsesCanonicalMalesConveyorFrames() {
+        val project = CtsProject(
+            model = VisualModel.Males,
+            cards = List(78) { CtsCard(title = "Age $it") },
+        )
         val rate = TimelineEngine.EXACT_REFERENCE_PLAYBACK_RATE
-        val scrollStart = 4 * REVEAL_SECONDS + INTRO_TAIL_HOLD_SECONDS
-        val before = TimelineEngine.placements(project, scrollStart / rate)
-        val halfway = TimelineEngine.placements(project, (scrollStart + SCROLL_SECONDS / 2f) / rate)
-        val after = TimelineEngine.placements(project, (scrollStart + SCROLL_SECONDS) / rate)
-        val beforeSecond = before.first { it.cardIndex == 1 }
-        val halfwaySecond = halfway.first { it.cardIndex == 1 }
-        val afterSecond = after.first { it.cardIndex == 1 }
-        assertTrue(halfwaySecond.xInCards < beforeSecond.xInCards)
-        assertTrue(halfwaySecond.xInCards > afterSecond.xInCards)
-        assertEquals(1f, beforeSecond.xInCards - afterSecond.xInCards, 0.0001f)
-        assertEquals(1f, halfway.first { it.cardIndex == 4 }.bodyReveal, 0.0001f)
+        val frames = intArrayOf(648, 660, 672)
+        val placements = frames.map { frame ->
+            TimelineEngine.placements(project, frame / 60f / rate).first { it.cardIndex == 1 }
+        }
+        frames.indices.forEach { index ->
+            assertEquals(
+                ExactReferenceFrames.malesConveyorCardX(frames[index], 1)!! / 480f,
+                placements[index].xInCards,
+                0.001f,
+            )
+        }
+        assertTrue(placements[1].xInCards < placements[0].xInCards)
+        assertTrue(placements[1].xInCards > placements[2].xInCards)
     }
 
     @Test
@@ -199,6 +212,49 @@ class TimelineEngineTest {
         assertEquals(170.3f / 1080f, rect.y, 0.0002f)
         assertEquals(48f / 480f, rect.width, 0.0002f)
         assertEquals(47.4f / 1080f, rect.height, 0.0002f)
+    }
+
+    @Test
+    fun relationshipsOpeningUsesMeasuredBodyTransform() {
+        val project = CtsProject(model = VisualModel.Relationships)
+        val frame = 400
+        val placement = TimelineEngine.placements(project, frame / 60f).first()
+        assertEquals(
+            ExactReferenceFrames.relationshipsOpeningTransform(frame, 0),
+            placement.bodyTransform,
+        )
+        assertEquals(
+            ExactReferenceFrames.relationshipsArtworkReveal(frame, 0),
+            placement.artworkReveal,
+            0.0001f,
+        )
+    }
+
+    @Test
+    fun relationshipsCardStaysVisibleAfterMeasuredEntranceEnds() {
+        val project = CtsProject(model = VisualModel.Relationships)
+        val frame = ExactReferenceFrames.relationshipsCardStartFrame(0) + 121
+        val placement = TimelineEngine.placements(project, frame / 60f).first()
+
+        assertEquals(0, placement.cardIndex)
+        assertEquals(1f, placement.bodyReveal, 0.0001f)
+        assertEquals(1f, placement.titleReveal, 0.0001f)
+        assertEquals(null, placement.bodyTransform)
+    }
+
+    @Test
+    fun relationshipsConveyorUsesCanonicalPerFrameCoordinates() {
+        val project = CtsProject(
+            model = VisualModel.Relationships,
+            cards = List(40) { CtsCard(title = "Relationship $it") },
+        )
+        val frame = 1_000
+        val placement = TimelineEngine.placements(project, frame / 60f).first { it.cardIndex == 0 }
+        assertEquals(
+            ExactReferenceFrames.relationshipsConveyorCardX(frame, 0)!! / 480f,
+            placement.xInCards,
+            0.0001f,
+        )
     }
 
     @Test
