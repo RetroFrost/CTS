@@ -1,71 +1,75 @@
 package io.github.retrofrost.cts.android.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 
-val CtsPurple = Color(0xFF7D67EE)
-val CtsPurpleSoft = Color(0xFFB9ACFF)
-val CtsCanvas = Color(0xFF090B0F)
-val CtsPanel = Color(0xFF11151C)
-val CtsPanelRaised = Color(0xFF181D27)
-val CtsLine = Color(0xFF2A3140)
+val CtsPurple = Color(0xFF6750A4)
+val CtsPurpleSoft = Color(0xFFD0BCFF)
+val CtsCanvas = Color(0xFFF7F7F7)
+val CtsPanel = Color.White
+val CtsPanelRaised = Color(0xFFEDEDED)
+val CtsLine = Color(0xFF79747E)
 
 private val DarkColors = darkColorScheme(
     primary = CtsPurpleSoft,
-    onPrimary = Color(0xFF21165E),
-    primaryContainer = Color(0xFF3C2D8C),
-    onPrimaryContainer = Color(0xFFE8E2FF),
-    secondary = Color(0xFFB9C4D8),
-    background = CtsCanvas,
-    onBackground = Color(0xFFF2F4F8),
-    surface = CtsPanel,
-    onSurface = Color(0xFFF2F4F8),
-    surfaceVariant = CtsPanelRaised,
-    onSurfaceVariant = Color(0xFFC1C8D4),
-    outline = CtsLine,
+    onPrimary = Color(0xFF381E72),
+    primaryContainer = Color(0xFF4F378B),
+    onPrimaryContainer = Color(0xFFEADDFF),
+    secondary = Color(0xFFCCC2DC),
+    background = Color(0xFF121212),
+    onBackground = Color(0xFFFFFFFF),
+    surface = Color(0xFF1E1E1E),
+    onSurface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFF2B2930),
+    onSurfaceVariant = Color(0xFFCAC4D0),
+    outline = Color(0xFF938F99),
 )
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF5C45C7),
+    primary = Color(0xFF6750A4),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE7E0FF),
-    onPrimaryContainer = Color(0xFF1B085E),
-    secondary = Color(0xFF596274),
-    background = Color(0xFFF5F6FA),
-    onBackground = Color(0xFF16181D),
-    surface = Color.White,
-    onSurface = Color(0xFF16181D),
-    surfaceVariant = Color(0xFFE7E9F0),
-    onSurfaceVariant = Color(0xFF444A55),
-    outline = Color(0xFFC4C8D2),
+    primaryContainer = Color(0xFFEADDFF),
+    onPrimaryContainer = Color(0xFF21005D),
+    secondary = Color(0xFF625B71),
+    background = CtsCanvas,
+    onBackground = Color(0xFF1C1B1F),
+    surface = CtsPanel,
+    onSurface = Color(0xFF1C1B1F),
+    surfaceVariant = CtsPanelRaised,
+    onSurfaceVariant = Color(0xFF49454F),
+    outline = CtsLine,
 )
 
+/**
+ * CTS intentionally uses the compact, restrained visual language of classic Material:
+ * small corner radii, fixed colors, normal progress indicators and no dynamic/expressive
+ * Material You treatment. Material 3 remains underneath only for the current Compose
+ * component implementation, while the component metrics are kept close to Material 2.
+ */
 @Composable
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 fun CtsTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val context = LocalContext.current
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme -> dynamicDarkColorScheme(context)
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> dynamicLightColorScheme(context)
-        darkTheme -> DarkColors
-        else -> LightColors
-    }
-
-    MaterialExpressiveTheme(
+    val colorScheme = if (darkTheme) DarkColors else LightColors
+    val shapes = Shapes(
+        extraSmall = RoundedCornerShape(2.dp),
+        small = RoundedCornerShape(2.dp),
+        medium = RoundedCornerShape(4.dp),
+        large = RoundedCornerShape(4.dp),
+        extraLarge = RoundedCornerShape(4.dp),
+    )
+    MaterialTheme(
         colorScheme = colorScheme,
+        shapes = shapes,
         content = content,
     )
 }
