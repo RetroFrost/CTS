@@ -14,6 +14,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 from .models import Card, Project
 from .model_registry import MODEL_TYPES_OF_RELATIONSHIPS
 from .reference_profiles import get_reference_profile
+from .scene import build_frame_scene
 from .exact_reference_frames import continuous_card_x, relationships_fade_alpha, relationships_last_card_x
 from .reference_motion import (
     age_later_badge_age,
@@ -32,9 +33,7 @@ from .brand_intro import (
     INTRO_OVERLAY_END_FRAME, render_relationships_intro,
     render_relationships_intro_overlay,
 )
-from .timing import (
-    card_start_frames, card_start_times, content_duration, content_frame_count, locate_segment, seconds_to_frame, total_duration,
-)
+from .timing import content_frame_count, total_duration
 
 
 REFERENCE_WIDTH = 1920
@@ -260,7 +259,7 @@ class FrameRenderer:
         self._body_cache: OrderedDict[tuple[object, ...], Image.Image] = OrderedDict()
         self._badge_shell_cache: dict[str, Image.Image] = {}
         self._badge_final_cache: OrderedDict[tuple[str, str], Image.Image] = OrderedDict()
-        self._max_image_cache = 48
+        self._max_image_cache = 12
         self._max_body_cache = 32
         self._max_badge_cache = 64
         self._active_settings = None
@@ -359,7 +358,9 @@ class FrameRenderer:
         try:
             path = materialize_remote_asset(key) if key.lower().startswith(("http://", "https://")) else Path(key).expanduser()
             if path.exists():
-                loaded = Image.open(path).convert("RGBA")
+                with Image.open(path) as opened:
+                    opened.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                    loaded = opened.convert("RGBA").copy()
         except Exception:
             loaded = None
         self._image_cache[key] = loaded.copy() if loaded else None
@@ -431,6 +432,64 @@ class FrameRenderer:
         overflow = " ".join(lines[max_lines - 1 :])
         visible[-1] = ellipsize(overflow)
         return visible
+
+    def _draw_fitted_text_block(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        box: tuple[int, int, int, int],
+        *,
+        maximum_size: int,
+        minimum_size: int,
+        max_lines: int,
+        bold: bool,
+        role: str,
+        fill: tuple[int, int, int],
+    ) -> None:
+        """Shrink, wrap and center text without silently dropping long titles."""
+        normalized = " ".join(str(text or "").split())
+        left, top, right, bottom = box
+        available_width = max(1, right - left)
+        available_height = max(1, bottom - top)
+        if not normalized or available_width <= 1 or available_height <= 1:
+            return
+
+        chosen_font = self._font(minimum_size, bold, role)
+        chosen_lines: list[str] = []
+        chosen_line_height = max(1, minimum_size)
+        for size in range(maximum_size, minimum_size - 1, -1):
+            font = self._font(size, bold, role)
+            line_height = max(1, int(round(size * 1.08)))
+            line_limit = max(1, min(max_lines, available_height // line_height))
+            lines = self._wrapped_lines(draw, normalized, font, available_width, line_limit)
+            ellipsized = any(line.endswith("…") for line in lines)
+            if lines and len(lines) * line_height <= available_height and (not ellipsized or size == minimum_size):
+                chosen_font = font
+                chosen_lines = lines
+                chosen_line_height = line_height
+                break
+
+        if not chosen_lines:
+            chosen_lines = self._wrapped_lines(
+                draw,
+                normalized,
+                chosen_font,
+                available_width,
+                max(1, min(max_lines, available_height // chosen_line_height)),
+            )
+
+        total_height = len(chosen_lines) * chosen_line_height
+        y = top + max(0, (available_height - total_height) // 2)
+        for line in chosen_lines:
+            bounds = draw.textbbox((0, 0), line, font=chosen_font)
+            line_width = bounds[2] - bounds[0]
+            draw.text(
+                (left + (available_width - line_width) / 2, y),
+                line,
+                font=chosen_font,
+                fill=fill,
+            )
+            y += chosen_line_height
 
     def _draw_placeholder(self, canvas: Image.Image, box: tuple[int, int, int, int], card: Card) -> None:
         x0, y0, x1, y1 = box
@@ -579,19 +638,16 @@ class FrameRenderer:
         relationship = self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS
         if has_title:
             title_size = int(width * (0.105 if relationship else 0.072))
-            title_font = self._font(max(27, title_size), not relationship, "title")
-            title_box = draw.textbbox((0, 0), title, font=title_font)
-            minimum = 22 if not relationship else 24
-            while getattr(title_font, "size", minimum) > minimum and title_box[2] > width - 24:
-                title_font = self._font(getattr(title_font, "size", minimum + 2) - 2, not relationship, "title")
-                title_box = draw.textbbox((0, 0), title, font=title_font)
-            draw.text(
-                (ix + width / 2, title_top + title_height / 2),
+            self._draw_fitted_text_block(
+                draw,
                 title,
-                font=title_font,
+                (ix + 12, title_top + 2, ix + width - 12, title_bottom - 2),
+                maximum_size=max(27, title_size),
+                minimum_size=22 if not relationship else 24,
+                max_lines=1 if relationship else 2,
+                bold=not relationship,
+                role="title",
                 fill=self.theme.title_text,
-                anchor="mm",
-                align="center",
             )
 
         if has_description and desc_top < height:
@@ -1547,14 +1603,15 @@ class FrameRenderer:
             draw.text((REFERENCE_WIDTH / 2, REFERENCE_HEIGHT * 0.54), "Paste rows or import CSV / XLSX", font=self._font(30, False), fill=(150, 157, 170), anchor="mm")
             return ImageOps.pad(base, output_size, method=Image.Resampling.LANCZOS, color=self.theme.background) if output_size else base
 
-        starts = card_start_frames(project)
-        global_frame = seconds_to_frame(project, seconds)
-        segment, progress, _segment_start = locate_segment(project, seconds)
+        scene = build_frame_scene(project, seconds)
+        starts = list(scene.card_starts)
+        global_frame = scene.global_frame
+        segment = scene.segment
         if segment is None:
             return ImageOps.pad(base, output_size, method=Image.Resampling.LANCZOS, color=self.theme.background) if output_size else base
-        p = clamp(progress)
-        content_end = content_frame_count(project)
-        relationship = project.settings.model_id == MODEL_TYPES_OF_RELATIONSHIPS
+        p = scene.segment_progress
+        content_end = scene.content_end_frame
+        relationship = scene.relationships
 
         if segment.kind == "brand_intro":
             base = render_relationships_intro(global_frame)
