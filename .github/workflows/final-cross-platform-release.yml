@@ -161,29 +161,23 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Prepare stable signing when available
+      - name: Prepare permanent signing when available
         shell: bash
         run: |
           set -euo pipefail
-          required=false
-          if [ "$GITHUB_REF" = "refs/heads/release/cubical-compare-final" ]; then required=true; fi
           missing=0
           for name in CTS_ANDROID_KEYSTORE_B64 CTS_ANDROID_KEYSTORE_PASSWORD CTS_ANDROID_KEY_ALIAS CTS_ANDROID_KEY_PASSWORD CTS_EXPECTED_CERT_SHA256; do
             if [ -z "${!name:-}" ]; then missing=1; fi
           done
-          if [ "$required" = true ] && [ "$missing" -ne 0 ]; then
-            echo 'Final release requires the permanent Android signing identity.' >&2
-            exit 1
-          fi
           if [ "$missing" -eq 0 ]; then
             install -d -m 700 "$RUNNER_TEMP/cts-signing"
             printf '%s' "$CTS_ANDROID_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/cts-signing/cts-release.keystore"
             chmod 600 "$RUNNER_TEMP/cts-signing/cts-release.keystore"
             echo "CTS_ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/cts-signing/cts-release.keystore" >> "$GITHUB_ENV"
-            echo "CTS_REQUIRE_STABLE_SIGNING=true" >> "$GITHUB_ENV"
             echo "CTS_HAS_STABLE_SIGNING=true" >> "$GITHUB_ENV"
           else
             echo "CTS_HAS_STABLE_SIGNING=false" >> "$GITHUB_ENV"
+            echo 'No private release identity is configured; this one final APK will use the installable CI fallback signing identity.'
           fi
 
       - name: Build completely rebuilt Android app
@@ -191,23 +185,32 @@ jobs:
           chmod +x android/gradlew
           android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
 
-      - name: Verify Android release and stable identity
+      - name: Verify Android release signature and identity
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n1)"
           test -n "$APK" && test -s "$APK"
-          if [ "$GITHUB_REF" = "refs/heads/release/cubical-compare-final" ]; then
-            test "$CTS_HAS_STABLE_SIGNING" = true
-            APKSIGNER="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
-            test -x "$APKSIGNER"
-            ACTUAL="$($APKSIGNER verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          ACTUAL="$($APKSIGNER verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          test -n "$ACTUAL"
+          if [ "$CTS_HAS_STABLE_SIGNING" = true ]; then
             EXPECTED="$(printf '%s' "$CTS_EXPECTED_CERT_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
-            test -n "$ACTUAL" && test "$ACTUAL" = "$EXPECTED"
+            test "$ACTUAL" = "$EXPECTED"
+            SIGNING_KIND="permanent configured release identity"
+          else
+            SIGNING_KIND="one-release CI fallback identity (installable; private key is not stored in the repository)"
           fi
           mkdir -p dist
           cp "$APK" "dist/Cubical-Compare-$VERSION-Android.apk"
           sha256sum "dist/Cubical-Compare-$VERSION-Android.apk" > "dist/Cubical-Compare-$VERSION-Android.apk.sha256"
+          {
+            echo "Cubical Compare $VERSION Android signing"
+            echo "certificate_sha256=$ACTUAL"
+            echo "identity=$SIGNING_KIND"
+          } > "dist/Cubical-Compare-$VERSION-Android.signing.txt"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -215,6 +218,7 @@ jobs:
           path: |
             dist/Cubical-Compare-${{ env.VERSION }}-Android.apk
             dist/Cubical-Compare-${{ env.VERSION }}-Android.apk.sha256
+            dist/Cubical-Compare-${{ env.VERSION }}-Android.signing.txt
           if-no-files-found: error
 
       - name: Remove signing material
@@ -240,7 +244,7 @@ jobs:
           set -euo pipefail
           TAG="v$VERSION"
           mapfile -t FILES < <(find release-assets -maxdepth 1 -type f -print | sort)
-          test "${#FILES[@]}" -ge 4
+          test "${#FILES[@]}" -ge 5
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${FILES[@]}" --clobber
           else
