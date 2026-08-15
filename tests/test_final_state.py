@@ -114,13 +114,17 @@ def test_missing_soundtrack_is_an_export_error(tmp_path: Path) -> None:
 
 def test_native_windows_exposes_complete_workflow_and_async_import() -> None:
     source = (Path(__file__).parents[1] / "native/windows/main.cpp").read_text(encoding="utf-8")
-    assert 'L"Music",ID_MUSIC' in source
-    assert 'L"Model",ID_MODEL' in source
-    assert 'What Males Learn At Each Age' in source
-    assert source.count('CB_ADDSTRING') >= 1
-    assert 'Automatic video length' not in source
-    assert 'Fixed length (seconds)' not in source
-    assert 'TaskKind::ImportData' in source
-    assert 'save-portable' in source
-    assert '"--create-extra"' in source
-    assert '"--fast"' not in source[source.index("void begin_export"):source.index("void show_page")]
+    assert 'L"Choose soundtrack..."' in source
+    assert "ID_CHOOSE_SOUNDTRACK" in source
+    assert "TaskResult::Kind::ImportData" in source
+    assert "TaskResult::Kind::ImportPack" in source
+    assert '"import-data"' in source
+    assert '"import-megapack"' in source
+    assert '"render-preview"' in source
+    assert '"export"' in source
+    assert '"--progress-file"' in source
+    assert '"--cancel-file"' in source
+    assert "std::thread" in source
+    assert "snapshot_project" in source
+    assert "Automatic video length" not in source
+    assert "Fixed length (seconds)" not in source
