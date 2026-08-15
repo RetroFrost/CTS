@@ -72,6 +72,7 @@ class ProjectSettings:
     # Opening credits. The strings are content fields; position, motion and
     # timing are owned by the selected locked model.
     credits_enabled: bool = True
+    show_badges: bool = True
     credits_top_text: str = "Values are estimates and may vary."
     credits_heading: str = "Credits"
     credits_project_name: str = "Cubical Compare"

@@ -146,6 +146,7 @@ bool save_ccx(const Project& project, const std::filesystem::path& path, std::st
     put(out, "project.auto_length", bool_text(s.auto_length));
     put(out, "project.custom_length_seconds", std::to_string(s.custom_length_seconds));
     put(out, "project.credits_enabled", bool_text(s.credits_enabled));
+    put(out, "project.show_badges", bool_text(s.show_badges));
 #define PUTS_FIELD(name) puts(out, "project." #name, s.name)
     PUTS_FIELD(credits_top_text); PUTS_FIELD(credits_heading); PUTS_FIELD(credits_project_name);
     PUTS_FIELD(credits_created_with_label); PUTS_FIELD(credits_created_with_value);
@@ -210,6 +211,7 @@ bool load_ccx(Project& project, const std::filesystem::path& path, std::string* 
     s.auto_length = number(values, "project.auto_length", int(s.auto_length)) != 0;
     s.custom_length_seconds = number(values, "project.custom_length_seconds", s.custom_length_seconds);
     s.credits_enabled = number(values, "project.credits_enabled", int(s.credits_enabled)) != 0;
+    s.show_badges = number(values, "project.show_badges", int(s.show_badges)) != 0;
 #define GETS_FIELD(name) s.name = decoded(values, "project." #name, s.name)
     GETS_FIELD(credits_top_text); GETS_FIELD(credits_heading); GETS_FIELD(credits_project_name);
     GETS_FIELD(credits_created_with_label); GETS_FIELD(credits_created_with_value);

@@ -35,6 +35,7 @@ struct Settings {
     double custom_length_seconds{60.0};
 
     bool credits_enabled{true};
+    bool show_badges{true};
     std::string credits_top_text{"Values are estimates and may vary."};
     std::string credits_heading{"Credits"};
     std::string credits_project_name{"Cubical Compare"};

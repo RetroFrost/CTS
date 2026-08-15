@@ -10,6 +10,7 @@ set(CUBICAL_COMPARE_ENGINE_PATH "" CACHE FILEPATH "Absolute path to the private 
 
 if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  add_compile_options(/utf-8)
 endif()
 
 add_library(cubical_core STATIC

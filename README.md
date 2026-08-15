@@ -20,12 +20,19 @@ Projects persist a model ID and revision lock. Legacy project values that attemp
 
 1. **Use the Males reference model** — it locks all animation mechanics.
 2. **Click to Insert Data** — import CSV or XLSX data and replace the active cards.
-3. **Image Sheet** — split a continuous or gridded sheet into durable per-card assets.
-4. **Music** — select a soundtrack and configure looping, volume, offset, and fade-out.
-5. **Preview** — inspect the same integer source frames used by export.
-6. **Export MP4** — export with visible progress, cancellation, validation, and atomic output replacement.
+3. **MegaPack** — open the same safe v1/v2 `.zip` packs supported by CTS Android.
+4. **Image Sheet** — split a continuous or gridded sheet into durable per-card assets.
+5. **Music** — select a soundtrack and configure looping, volume, offset, and fade-out.
+6. **Preview** — inspect the same integer source frames used by export.
+7. **Export MP4** — export with visible progress, cancellation, validation, and atomic output replacement.
 
 The manual editor supports direct card editing, image transforms, credits, fonts, fit modes, and encoding settings. Model timing and layout remain read-only.
+
+### MegaPack compatibility
+
+Windows accepts a ZIP with `megapack.json` at its root using the Android v1/v2 schema. It imports up to 500 cards, legacy `image` artwork, layered `background` and `subject` artwork, crop focus/zoom, soundtrack settings, credits, and end-credit text. Layered artwork is composed into durable per-card PNG files below the model badge. Absolute paths, traversal, oversized entries, excessive expansion, malformed manifests, and unsupported images are rejected before the project is replaced.
+
+The locked desktop model begins at reference frame zero, so an optional intro video is preserved in the imported-assets directory but is not prepended to the timeline. The importer reports that limitation as a warning.
 
 ## Packages
 

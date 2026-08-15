@@ -1081,6 +1081,8 @@ class FrameRenderer:
         global_frame: int,
         starts: list[int],
     ) -> None:
+        if not project.settings.show_badges:
+            return
         card = project.cards[index]
         if not card.value or index >= len(starts):
             return

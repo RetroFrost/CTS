@@ -16,6 +16,7 @@ from ccengine.assets import collect_project_assets, resolve_project_assets
 from ccengine.exporter import VideoExporter
 from ccengine.image_sheet_core import ImageSheetProcessor, export_sheet_crops, inset_detection
 from ccengine.importers import load_spreadsheet
+from ccengine.megapack import import_megapack
 from ccengine.models import Card, Project, ProjectSettings
 from ccengine.model_registry import (
     DEFAULT_MODEL_ID, get_model, list_models, model_manifest, normalize_model_id,
@@ -73,6 +74,7 @@ def write_ccx(project: Project, path: str | Path) -> None:
     put("project.auto_length", int(s.auto_length))
     put("project.custom_length_seconds", s.custom_length_seconds)
     put("project.credits_enabled", int(s.credits_enabled))
+    put("project.show_badges", int(s.show_badges))
     for key in (
         "credits_top_text", "credits_heading", "credits_project_name",
         "credits_created_with_label", "credits_created_with_value",
@@ -144,6 +146,7 @@ def read_ccx(path: str | Path) -> Project:
     s.auto_length = getb("project.auto_length", s.auto_length)
     s.custom_length_seconds = getf("project.custom_length_seconds", s.custom_length_seconds)
     s.credits_enabled = getb("project.credits_enabled", s.credits_enabled)
+    s.show_badges = getb("project.show_badges", s.show_badges)
     for key in (
         "credits_top_text", "credits_heading", "credits_project_name",
         "credits_created_with_label", "credits_created_with_value",
@@ -310,6 +313,34 @@ def command_import_sheet(args: argparse.Namespace) -> int:
         "start": args.start + 1,
         "fit": args.fit,
     }))
+    return 0
+
+
+def command_import_megapack(args: argparse.Namespace) -> int:
+    progress_file = Path(args.progress_file) if args.progress_file else None
+    cancel_file = Path(args.cancel_file) if args.cancel_file else None
+
+    def progress(done: int, total: int) -> None:
+        write_progress_file(progress_file, done, total)
+
+    def cancelled() -> bool:
+        return bool(cancel_file and cancel_file.exists())
+
+    result = import_megapack(
+        args.pack,
+        args.assets,
+        progress=progress,
+        cancelled=cancelled,
+    )
+    write_ccx(result.project, args.output)
+    write_progress_file(progress_file, 1, 1)
+    summary = (
+        f"MegaPack '{result.pack_name}' loaded: {len(result.project.cards)} cards and "
+        f"{result.extracted_files} referenced media files."
+    )
+    if result.warnings:
+        summary += " Warnings: " + " | ".join(result.warnings)
+    print(summary)
     return 0
 
 
@@ -524,6 +555,14 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--progress-file", default="")
     s.add_argument("--cancel-file", default="")
     s.set_defaults(func=command_import_sheet)
+
+    s = sub.add_parser("import-megapack")
+    s.add_argument("pack")
+    s.add_argument("output")
+    s.add_argument("assets")
+    s.add_argument("--progress-file", default="")
+    s.add_argument("--cancel-file", default="")
+    s.set_defaults(func=command_import_megapack)
 
     s = sub.add_parser("render-preview")
     s.add_argument("input")

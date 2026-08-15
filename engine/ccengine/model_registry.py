@@ -120,6 +120,7 @@ _ALIASES: Final[dict[str, str]] = {
     "": DEFAULT_MODEL_ID,
     "default": DEFAULT_MODEL_ID,
     "legacy": DEFAULT_MODEL_ID,
+    "males": MODEL_WHAT_MALES_LEARN,
     "males-age": MODEL_WHAT_MALES_LEARN,
 }
 
