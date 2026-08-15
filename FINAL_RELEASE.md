@@ -20,6 +20,12 @@ Every Android video frame is produced by the same Python `FrameRenderer` used by
 
 The Android unit-test suite was also rebuilt: tests belonging to the removed Kotlin renderer/model/timeline implementation were deleted rather than retained as compatibility baggage. The final tests cover the new 2.0 application identity and project contract, while repository-level tests enforce byte-for-byte renderer parity.
 
+## Android signing
+
+The release pipeline uses a permanent Android release identity whenever one is configured through private repository secrets and verifies its expected certificate fingerprint. This public repository currently contains no permanent private signing key. When those private secrets are absent, CI signs the one final APK with its local installable fallback identity instead of publishing an unsigned APK. The certificate SHA-256 fingerprint and signing mode are shipped beside the APK as `Cubical-Compare-2.0.0-Android.signing.txt`; no private key is committed or published.
+
+The fallback identity is suitable for installing this exact final APK, but it is not presented as a permanent update-signing identity for hypothetical future Android releases.
+
 ## Release gates
 
 CI rejects the release if:
@@ -30,4 +36,5 @@ CI rejects the release if:
 - renderer regression tests fail.
 - the Windows native shell or private renderer self-test fails.
 - the Android release APK fails to assemble.
-- stable Android signing is required but the configured release identity is unavailable or mismatched.
+- the Android APK is not cryptographically signed.
+- a configured permanent Android release identity has the wrong certificate fingerprint.
