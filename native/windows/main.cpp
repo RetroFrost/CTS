@@ -1,619 +1,612 @@
 #define UNICODE
 #define _UNICODE
 #include <windows.h>
-#include <windowsx.h>
 #include <commctrl.h>
 #include <commdlg.h>
-#include <shobjidl.h>
-#include <shlobj.h>
-#include <fstream>
 #include <shellapi.h>
+
 #include <algorithm>
 #include <atomic>
-#include <cstdlib>
-#include <cctype>
 #include <chrono>
-#include <cmath>
-#include <iomanip>
-#include <sstream>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
+
 #include "cubical/process.hpp"
 #include "cubical/project.hpp"
 
 #pragma comment(lib, "comctl32.lib")
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "ole32.lib")
-#pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "comdlg32.lib")
+#pragma comment(lib, "shell32.lib")
 
 namespace fs = std::filesystem;
 namespace {
-constexpr wchar_t kMainClass[] = L"CubicalCompareMainWindow";
-constexpr wchar_t kControlsClass[] = L"CubicalCompareControlsWindow";
-constexpr UINT WM_EXPORT_DONE = WM_APP + 42;
-constexpr UINT WM_PREVIEW_READY = WM_APP + 43;
-constexpr UINT WM_TASK_DONE = WM_APP + 44;
-constexpr UINT PLAYER_TIMER = 7;
-constexpr UINT TASK_TIMER = 8;
 
-enum Id {
-    ID_NEW=100, ID_OPEN, ID_SAVE, ID_INSERT, ID_MEGAPACK, ID_SHEET, ID_PREVIEW, ID_EXPORT, ID_CONTROLS,
-    ID_CARD_LIST, ID_TITLE, ID_VALUE, ID_DESCRIPTION, ID_IMAGE, ID_CHOOSE_IMAGE, ID_ADD, ID_REMOVE, ID_TRIM,
-    ID_PLAY, ID_RESTART, ID_SEEK, ID_TIME_LABEL, ID_STATUS, ID_PREVIEW_BITMAP, ID_MUSIC, ID_MODEL,
-    ID_TAB=500, ID_APPLY_CONTROLS, ID_FONT_TITLE, ID_FONT_DESCRIPTION, ID_FONT_BADGE, ID_FONT_CREDITS, ID_REUSE_FONT, ID_TRANSFORM_RESET,
-};
+constexpr wchar_t kWindowClass[] = L"CubicalCompareFinalStudio";
+constexpr UINT WM_PREVIEW_DONE = WM_APP + 10;
+constexpr UINT WM_TASK_DONE = WM_APP + 11;
+constexpr UINT kProgressTimer = 20;
 
-struct AppState {
-    HINSTANCE instance{};
-    HWND window{}, status{}, card_list{}, preview{}, play_button{}, seek{}, time_label{};
-    HWND sheet_rows{}, sheet_columns{}, sheet_start{};
-    HWND title{}, value{}, description{}, image{};
-    HFONT ui_font{};
-    HBITMAP preview_bitmap{};
-    cubical::Project project;
-    int selected{0};
-    std::string selected_card_id;
-    bool loading{false};
-    bool busy{false};
-    bool task_is_export{false};
-    bool pending_close{false};
-    bool closing{false};
-    std::atomic<int> preview_jobs{0};
-    IProgressDialog* task_dialog{};
-    fs::path task_progress_path;
-    fs::path task_cancel_path;
-    fs::path working_ccx;
-    fs::path preview_path;
-    bool playing{false};
-    bool preview_rendering{false};
-    bool preview_pending{false};
-    bool updating_seek{false};
-    double current_time{0.0};
-    double duration{0.0};
-    double pending_time{0.0};
-    double play_anchor_time{0.0};
-    std::chrono::steady_clock::time_point play_anchor{};
-    bool image_dragging{false};
-    POINT image_drag_last{};
-};
-
-enum class TaskKind { ExportVideo, ImportSheet, ImportData, ImportMegaPack };
-struct TaskResult {
-    AppState* state{};
-    TaskKind kind{TaskKind::ExportVideo};
-    cubical::ProcessResult process;
-    fs::path output_ccx;
-    fs::path assets;
-    std::string target_path;
-};
-
-struct PreviewResult {
-    AppState* state{};
-    fs::path image_path;
-    fs::path project_snapshot;
-    double time{0.0};
-    std::string error;
-};
-
-struct ControlsState {
-    AppState* app{};
-    HWND window{}, tabs{};
-    std::vector<HWND> page_text, page_audio, page_output, page_transform;
-    HWND project_name{}, model{}, credits_enabled{};
-    std::vector<HWND> text_fields;
-    HWND soundtrack{}, loop{}, volume{}, offset{}, fade{};
-    HWND width{}, height{}, fps{}, preset{}, crf{}, fit_mode{};
-    std::vector<HWND> font_fields;
-    HWND image_x{}, image_y{}, image_scale{}, image_rotation{};
-    HWND crop_left{}, crop_top{}, crop_right{}, crop_bottom{}, image_front{};
+enum ControlId {
+    ID_NEW = 100,
+    ID_OPEN,
+    ID_SAVE,
+    ID_IMPORT_DATA,
+    ID_IMPORT_PACK,
+    ID_ADD_CARD,
+    ID_DELETE_CARD,
+    ID_EXPORT,
+    ID_CANCEL,
+    ID_CARD_LIST,
+    ID_PREVIEW,
+    ID_TIMELINE,
+    ID_FRAME_LABEL,
+    ID_TITLE,
+    ID_VALUE,
+    ID_DESCRIPTION,
+    ID_IMAGE,
+    ID_CHOOSE_IMAGE,
+    ID_SOUNDTRACK,
+    ID_CHOOSE_SOUNDTRACK,
+    ID_BADGES,
+    ID_CREDITS,
+    ID_PROGRESS,
+    ID_STATUS,
 };
 
 std::string utf8(const std::wstring& value) {
     if (value.empty()) return {};
-    int size = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
-    std::string out(size, '\0'); WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), out.data(), size, nullptr, nullptr); return out;
+    const int count = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+    std::string result(static_cast<std::size_t>(count), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), count, nullptr, nullptr);
+    return result;
 }
+
 std::wstring wide(const std::string& value) {
     if (value.empty()) return {};
-    int size = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
-    std::wstring out(size, L'\0'); MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), out.data(), size); return out;
+    const int count = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+    std::wstring result(static_cast<std::size_t>(count), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), count);
+    return result;
 }
-std::wstring text(HWND h) { int n = GetWindowTextLengthW(h); std::wstring v(static_cast<std::size_t>(n) + 1, L'\0'); GetWindowTextW(h, v.data(), n + 1); v.resize(static_cast<std::size_t>(n)); return v; }
-void set_text(HWND h, const std::string& value) { SetWindowTextW(h, wide(value).c_str()); }
-void set_status(AppState* s, const std::string& value) { SetWindowTextW(s->status, wide(value).c_str()); }
-std::string lower_extension(const fs::path& path) {
-    std::string value = path.extension().string();
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch){ return static_cast<char>(std::tolower(ch)); });
-    return value;
-}
-fs::path persistent_asset_directory(const char* role) {
-    const char* local = std::getenv("LOCALAPPDATA");
-    fs::path root = local && *local ? fs::path(local) : fs::temp_directory_path();
-    const auto ticks = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    fs::path output = root / "Cubical Compare" / "Imported Assets" / (std::string(role) + "-" + std::to_string(ticks));
-    fs::create_directories(output);
-    return output;
-}
-bool valid_mp4_file(const fs::path& path) {
-    std::error_code ec;
-    if (!fs::is_regular_file(path, ec) || fs::file_size(path, ec) < 256) return false;
-    std::ifstream in(path, std::ios::binary);
-    std::string header(64, '\0');
-    in.read(header.data(), static_cast<std::streamsize>(header.size()));
-    header.resize(static_cast<std::size_t>(std::max<std::streamsize>(0, in.gcount())));
-    return header.find("ftyp") != std::string::npos;
-}
-void set_font(HWND h, HFONT font) { SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE); }
 
-int selected_index(AppState* s) {
-    const int by_id = cubical::find_card_index_by_id(s->project, s->selected_card_id);
-    if (by_id >= 0) { s->selected = by_id; return by_id; }
-    if (s->selected >= 0 && s->selected < static_cast<int>(s->project.cards.size())) {
-        s->selected_card_id = s->project.cards[static_cast<std::size_t>(s->selected)].id;
-        return s->selected;
+std::string narrow_path(const fs::path& value) { return utf8(value.wstring()); }
+
+std::wstring control_text(HWND control) {
+    const int length = GetWindowTextLengthW(control);
+    std::wstring result(static_cast<std::size_t>(length) + 1, L'\0');
+    GetWindowTextW(control, result.data(), length + 1);
+    result.resize(static_cast<std::size_t>(length));
+    return result;
+}
+
+void set_control_text(HWND control, const std::string& value) {
+    SetWindowTextW(control, wide(value).c_str());
+}
+
+struct App {
+    HINSTANCE instance{};
+    HWND window{};
+    HWND cards{};
+    HWND preview{};
+    HWND timeline{};
+    HWND frame_label{};
+    HWND title{};
+    HWND value{};
+    HWND description{};
+    HWND image{};
+    HWND soundtrack{};
+    HWND badges{};
+    HWND credits{};
+    HWND progress{};
+    HWND status{};
+    HWND cancel{};
+    HFONT font{};
+    HBITMAP preview_bitmap{};
+
+    cubical::Project project;
+    fs::path project_path;
+    fs::path working_ccx;
+    fs::path preview_bmp;
+    fs::path progress_file;
+    fs::path cancel_file;
+
+    int selected{0};
+    int current_frame{0};
+    int total_frames{1};
+    bool loading_fields{false};
+    std::atomic<unsigned long> preview_generation{0};
+    std::atomic<bool> busy{false};
+    bool pending_close{false};
+};
+
+struct PreviewResult {
+    unsigned long generation{};
+    fs::path bitmap;
+    std::string error;
+};
+
+struct TaskResult {
+    enum class Kind { ImportData, ImportPack, Export } kind{Kind::Export};
+    cubical::ProcessResult process;
+    fs::path output;
+    fs::path assets;
+};
+
+HWND make_control(App* app, const wchar_t* cls, const wchar_t* text, DWORD style, int id) {
+    HWND control = CreateWindowExW(
+        WS_EX_NOPARENTNOTIFY,
+        cls,
+        text,
+        WS_CHILD | WS_VISIBLE | style,
+        0, 0, 10, 10,
+        app->window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
+        app->instance,
+        nullptr
+    );
+    if (control && app->font) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(app->font), TRUE);
+    return control;
+}
+
+void status(App* app, const std::string& text) { set_control_text(app->status, text); }
+
+std::wstring choose_file(HWND owner, bool save, const wchar_t* filter, const wchar_t* extension = nullptr) {
+    wchar_t path[32768]{};
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = owner;
+    dialog.lpstrFile = path;
+    dialog.nMaxFile = static_cast<DWORD>(std::size(path));
+    dialog.lpstrFilter = filter;
+    dialog.lpstrDefExt = extension;
+    dialog.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
+    const BOOL ok = save ? GetSaveFileNameW(&dialog) : GetOpenFileNameW(&dialog);
+    return ok ? std::wstring(path) : std::wstring();
+}
+
+void replace_bitmap(App* app, HBITMAP bitmap) {
+    if (app->preview_bitmap) DeleteObject(app->preview_bitmap);
+    app->preview_bitmap = bitmap;
+    SendMessageW(app->preview, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap));
+}
+
+void commit_fields(App* app) {
+    if (app->loading_fields || app->selected < 0 || app->selected >= static_cast<int>(app->project.cards.size())) return;
+    auto& card = app->project.cards[static_cast<std::size_t>(app->selected)];
+    card.title = utf8(control_text(app->title));
+    card.value = utf8(control_text(app->value));
+    card.description = utf8(control_text(app->description));
+    card.image = utf8(control_text(app->image));
+    app->project.settings.soundtrack = utf8(control_text(app->soundtrack));
+    app->project.settings.show_badges = SendMessageW(app->badges, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    app->project.settings.credits_enabled = SendMessageW(app->credits, BM_GETCHECK, 0, 0) == BST_CHECKED;
+}
+
+bool snapshot_project(App* app) {
+    commit_fields(app);
+    std::string error;
+    if (!cubical::save_ccx(app->project, app->working_ccx, &error)) {
+        status(app, "Could not create renderer snapshot: " + error);
+        return false;
     }
-    return -1;
-}
-void select_index(AppState* s, int index) {
-    if (s->project.cards.empty()) { s->selected=-1; s->selected_card_id.clear(); return; }
-    s->selected=std::clamp(index,0,static_cast<int>(s->project.cards.size())-1);
-    s->selected_card_id=s->project.cards[static_cast<std::size_t>(s->selected)].id;
-}
-
-HWND make_control(AppState* s, const wchar_t* cls, const wchar_t* caption, DWORD style, int x, int y, int w, int h, HWND parent, int id=0, DWORD ex=0) {
-    HWND result = CreateWindowExW(ex, cls, caption, WS_CHILD|WS_VISIBLE|style, x,y,w,h,parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), s->instance, nullptr);
-    set_font(result, s->ui_font); return result;
-}
-
-std::wstring choose_shell_file(HWND owner, bool save, const wchar_t* title, const COMDLG_FILTERSPEC* filters, UINT count, const wchar_t* default_extension=nullptr) {
-    IFileDialog* dialog = nullptr; std::wstring result;
-    HRESULT hr = CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-        save ? IID_IFileSaveDialog : IID_IFileOpenDialog, reinterpret_cast<void**>(&dialog));
-    if (FAILED(hr) || !dialog) return result;
-    dialog->SetTitle(title); if (filters && count) dialog->SetFileTypes(count, filters);
-    if (save && default_extension) static_cast<IFileSaveDialog*>(dialog)->SetDefaultExtension(default_extension);
-    if (SUCCEEDED(dialog->Show(owner))) {
-        IShellItem* item = nullptr; if (SUCCEEDED(dialog->GetResult(&item))) {
-            PWSTR path = nullptr; if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) { result = path; CoTaskMemFree(path); }
-            item->Release();
-        }
-    }
-    dialog->Release(); return result;
-}
-
-bool write_working(AppState* s) {
-    const int index = selected_index(s);
-    if (index >= 0) {
-        auto& c = s->project.cards[static_cast<std::size_t>(index)];
-        c.title=utf8(text(s->title)); c.value=utf8(text(s->value)); c.description=utf8(text(s->description)); c.image=utf8(text(s->image));
-    }
-    std::string error; if (!cubical::save_ccx(s->project, s->working_ccx, &error)) { set_status(s,error); return false; } return true;
-}
-
-void rebuild_cards(AppState* s) {
-    SendMessageW(s->card_list, LB_RESETCONTENT, 0, 0);
-    for (std::size_t i=0;i<s->project.cards.size();++i) {
-        std::wstring label=std::to_wstring(i+1)+L". "+wide(s->project.cards[i].title.empty()?"Untitled card":s->project.cards[i].title);
-        SendMessageW(s->card_list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
-    }
-    if (!s->project.cards.empty()) { int index=cubical::find_card_index_by_id(s->project,s->selected_card_id); if(index<0)index=std::clamp(s->selected,0,static_cast<int>(s->project.cards.size())-1);select_index(s,index);SendMessageW(s->card_list,LB_SETCURSEL,s->selected,0); }
-}
-void load_card(AppState* s) {
-    s->loading=true; const int index=selected_index(s); if (index>=0) {
-        const auto& c=s->project.cards[static_cast<std::size_t>(index)]; set_text(s->title,c.title);set_text(s->value,c.value);set_text(s->description,c.description);set_text(s->image,c.image);
-    } s->loading=false;
-}
-void load_project(AppState* s) { rebuild_cards(s); load_card(s); set_status(s,cubical::summary(s->project)); }
-
-std::wstring format_time(double seconds) {
-    seconds = std::max(0.0, seconds);
-    const int total = static_cast<int>(seconds);
-    const int minutes = total / 60;
-    const int secs = total % 60;
-    const int tenths = static_cast<int>((seconds - total) * 10.0 + 0.5) % 10;
-    std::wostringstream out;
-    out << std::setfill(L'0') << std::setw(2) << minutes << L':' << std::setw(2) << secs << L'.' << tenths;
-    return out.str();
-}
-
-HBITMAP load_scaled_bitmap(const fs::path& path, int target_width, int target_height) {
-    HBITMAP source = static_cast<HBITMAP>(LoadImageW(nullptr, path.wstring().c_str(), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_CREATEDIBSECTION));
-    if (!source) return nullptr;
-    BITMAP info{};
-    GetObjectW(source, sizeof(info), &info);
-    HDC screen = GetDC(nullptr);
-    HDC source_dc = CreateCompatibleDC(screen);
-    HDC target_dc = CreateCompatibleDC(screen);
-    HBITMAP target = CreateCompatibleBitmap(screen, target_width, target_height);
-    HGDIOBJ old_source = SelectObject(source_dc, source);
-    HGDIOBJ old_target = SelectObject(target_dc, target);
-    SetStretchBltMode(target_dc, HALFTONE);
-    SetBrushOrgEx(target_dc, 0, 0, nullptr);
-    const BOOL ok = StretchBlt(target_dc, 0, 0, target_width, target_height, source_dc, 0, 0, info.bmWidth, info.bmHeight, SRCCOPY);
-    SelectObject(source_dc, old_source);
-    SelectObject(target_dc, old_target);
-    DeleteDC(source_dc);
-    DeleteDC(target_dc);
-    ReleaseDC(nullptr, screen);
-    DeleteObject(source);
-    if (!ok) { DeleteObject(target); return nullptr; }
-    return target;
-}
-
-void update_player_ui(AppState* s) {
-    s->current_time = std::clamp(s->current_time, 0.0, std::max(0.0, s->duration));
-    s->updating_seek = true;
-    const int position = s->duration > 0.0 ? static_cast<int>(std::round(s->current_time * 10000.0 / s->duration)) : 0;
-    SendMessageW(s->seek, TBM_SETPOS, TRUE, std::clamp(position, 0, 10000));
-    s->updating_seek = false;
-    const std::wstring label = format_time(s->current_time) + L" / " + format_time(s->duration);
-    SetWindowTextW(s->time_label, label.c_str());
-    SetWindowTextW(s->play_button, s->playing ? L"Pause" : L"Play");
-}
-
-void start_preview_render(AppState* s, double requested_time);
-
-void request_preview(AppState* s, double requested_time, bool sync_project = true) {
-    if (sync_project && !write_working(s)) return;
-    s->duration = cubical::timeline_duration(s->project);
-    s->current_time = std::clamp(requested_time, 0.0, std::max(0.0, s->duration));
-    update_player_ui(s);
-    start_preview_render(s, s->current_time);
-}
-
-LRESULT CALLBACK PreviewSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR ref_data) {
-    auto* s = reinterpret_cast<AppState*>(ref_data);
-    if (!s) return DefSubclassProc(hwnd, msg, wp, lp);
-    auto selected_card = [&]() -> cubical::Card* {
-        const int index = selected_index(s);
-        return index >= 0 ? &s->project.cards[static_cast<std::size_t>(index)] : nullptr;
-    };
-    auto commit_transform = [&]() {
-        if (write_working(s)) request_preview(s, s->current_time, false);
-    };
-    switch (msg) {
-        case WM_LBUTTONDOWN: {
-            auto* card = selected_card();
-            if (!card || card->image.empty()) {
-                set_status(s, "Choose an image before using free transform.");
-                return 0;
-            }
-            s->image_dragging = true;
-            s->image_drag_last = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            SetCapture(hwnd);
-            set_status(s, "Free transform: drag to move; wheel scales; Ctrl+wheel rotates; Shift+wheel crops.");
-            return 0;
-        }
-        case WM_MOUSEMOVE:
-            if (s->image_dragging && (wp & MK_LBUTTON)) {
-                auto* card = selected_card();
-                if (!card) return 0;
-                POINT current{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-                RECT rect{}; GetClientRect(hwnd, &rect);
-                const double preview_width = std::max(1L, rect.right - rect.left);
-                const double preview_height = std::max(1L, rect.bottom - rect.top);
-                card->image_x += (current.x - s->image_drag_last.x) * 1920.0 / preview_width;
-                card->image_y += (current.y - s->image_drag_last.y) * 1080.0 / preview_height;
-                s->image_drag_last = current;
-                commit_transform();
-                return 0;
-            }
-            break;
-        case WM_LBUTTONUP:
-        case WM_CAPTURECHANGED:
-            if (s->image_dragging) {
-                s->image_dragging = false;
-                if (GetCapture() == hwnd) ReleaseCapture();
-                commit_transform();
-            }
-            return 0;
-        case WM_MOUSEWHEEL: {
-            auto* card = selected_card();
-            if (!card || card->image.empty()) return 0;
-            const double steps = static_cast<double>(GET_WHEEL_DELTA_WPARAM(wp)) / WHEEL_DELTA;
-            const UINT keys = GET_KEYSTATE_WPARAM(wp);
-            if (keys & MK_CONTROL) {
-                card->image_rotation += steps * 5.0;
-            } else if (keys & MK_SHIFT) {
-                const double amount = steps * 0.02;
-                POINT point{}; GetCursorPos(&point); ScreenToClient(hwnd, &point);
-                RECT rect{}; GetClientRect(hwnd, &rect);
-                const int distances[] = {point.x, point.y, std::max(0, rect.right-point.x), std::max(0, rect.bottom-point.y)};
-                const int edge = static_cast<int>(std::min_element(std::begin(distances), std::end(distances)) - std::begin(distances));
-                double* crops[] = {&card->image_crop_left,&card->image_crop_top,&card->image_crop_right,&card->image_crop_bottom};
-                *crops[edge] = std::clamp(*crops[edge] + amount, 0.0, 0.49);
-            } else {
-                card->image_scale = std::clamp(card->image_scale * std::pow(1.10, steps), 0.05, 8.0);
-            }
-            commit_transform();
-            return 0;
-        }
-        case WM_NCDESTROY:
-            RemoveWindowSubclass(hwnd, PreviewSubclassProc, 1);
-            break;
-    }
-    return DefSubclassProc(hwnd, msg, wp, lp);
-}
-
-void start_preview_render(AppState* s, double requested_time) {
-    if (s->preview_rendering) {
-        s->preview_pending = true;
-        s->pending_time = requested_time;
-        return;
-    }
-    if (s->closing) return;
-    s->preview_rendering = true;
-    ++s->preview_jobs;
-    const auto snapshot = cubical::temporary_path("cubical-compare-preview-project", ".ccx");
-    const auto output = cubical::temporary_path("cubical-compare-preview", ".bmp");
-    std::error_code copy_error;
-    fs::copy_file(s->working_ccx, snapshot, fs::copy_options::overwrite_existing, copy_error);
-    if (copy_error) {
-        s->preview_rendering = false;
-        --s->preview_jobs;
-        set_status(s, "Could not prepare preview project: " + copy_error.message());
-        return;
-    }
-    HWND window = s->window;
-    std::thread([s, window, snapshot, output, requested_time]() {
-        const auto result = cubical::run_engine({
-            "render-preview", snapshot.string(), output.string(), "--time", std::to_string(requested_time)
-        });
-        auto* payload = new PreviewResult{
-            s, output, snapshot, requested_time,
-            result.exit_code == 0 && fs::exists(output)
-                ? std::string{}
-                : (result.output.empty() ? "Preview rendering failed." : result.output)
-        };
-        if (s->closing || !IsWindow(window) || !PostMessageW(window, WM_PREVIEW_READY, 0, reinterpret_cast<LPARAM>(payload))) {
-            std::error_code ignored;
-            fs::remove(output, ignored); fs::remove(snapshot, ignored);
-            delete payload;
-        }
-        --s->preview_jobs;
-    }).detach();
-}
-
-void reset_player(AppState* s) {
-    s->playing = false;
-    s->duration = cubical::timeline_duration(s->project);
-    s->current_time = std::min(0.15, s->duration);
-    update_player_ui(s);
-    if (write_working(s)) start_preview_render(s, s->current_time);
-}
-
-void toggle_play(AppState* s) {
-    if (s->playing) {
-        s->playing = false;
-        update_player_ui(s);
-        return;
-    }
-    if (!write_working(s)) return;
-    s->duration = cubical::timeline_duration(s->project);
-    if (s->current_time >= s->duration) s->current_time = 0.0;
-    s->playing = true;
-    s->play_anchor_time = s->current_time;
-    s->play_anchor = std::chrono::steady_clock::now();
-    update_player_ui(s);
-    start_preview_render(s, s->current_time);
-}
-
-void restart_player(AppState* s) {
-    s->playing = false;
-    request_preview(s, std::min(0.15, s->duration), true);
-}
-
-void import_project(AppState* s,const fs::path& path){
-    std::string error;bool loaded=false;
-    if(lower_extension(path)==".ccx")loaded=cubical::load_ccx(s->project,path,&error);
-    else{auto r=cubical::run_engine({"project-to-ccx",path.string(),s->working_ccx.string()});if(r.exit_code==0)loaded=cubical::load_ccx(s->project,s->working_ccx,&error);else error=r.output;}
-    if(loaded){s->project.project_path=path;select_index(s,0);load_project(s);reset_player(s);}else set_status(s,error.empty()?"Could not open the selected project.":error);
-}
-void save_project(AppState* s,const fs::path& path){
-    if(!write_working(s))return;
-    auto r=cubical::run_engine({"save-portable",s->working_ccx.string(),path.string()});
-    if(r.exit_code==0){s->project.project_path=path;set_status(s,"Saved portable project "+path.string());}
-    else set_status(s,r.output.empty()?"Could not save the project.":r.output);
-}
-
-double to_double(HWND h,double fallback){try{return std::stod(text(h));}catch(...){return fallback;}}
-int to_int(HWND h,int fallback){try{return std::stoi(text(h));}catch(...){return fallback;}}
-bool begin_task(AppState* s, bool export_task, const wchar_t* title, const wchar_t* line);
-
-void choose_and_import_data(AppState* s){
-    if(s->busy)return;
-    COMDLG_FILTERSPEC f[]={{L"Spreadsheet",L"*.xlsx;*.xlsm;*.csv"},{L"All files",L"*.*"}};
-    auto p=choose_shell_file(s->window,false,L"Insert spreadsheet data",f,2);
-    if(p.empty()||!write_working(s))return;
-    auto out=cubical::temporary_path("cubical-import",".ccx");
-    if(!begin_task(s,false,L"Importing spreadsheet",L"Reading rows and applying cards…"))return;
-    HWND window=s->window; auto input=s->working_ccx; auto source=fs::path(p);
-    std::thread([s,window,input,source,out](){
-        auto result=cubical::run_engine({"import-data",input.string(),source.string(),out.string()});
-        auto* payload=new TaskResult{s,TaskKind::ImportData,std::move(result),out,{},source.string()};
-        if(!IsWindow(window)||!PostMessageW(window,WM_TASK_DONE,0,reinterpret_cast<LPARAM>(payload)))delete payload;
-    }).detach();
-}
-
-void choose_and_import_megapack(AppState* s){
-    if(s->busy)return;
-    COMDLG_FILTERSPEC f[]={{L"CTS MegaPack",L"*.zip"},{L"All files",L"*.*"}};
-    auto p=choose_shell_file(s->window,false,L"Import CTS MegaPack",f,2);
-    if(p.empty())return;
-    auto out=cubical::temporary_path("cubical-megapack",".ccx");
-    auto assets=persistent_asset_directory("megapack");
-    if(!begin_task(s,false,L"Importing MegaPack",L"Checking the pack and preparing its cards...") )return;
-    std::vector<std::string> command={
-        "import-megapack",utf8(p),out.string(),assets.string(),
-        "--progress-file",s->task_progress_path.string(),
-        "--cancel-file",s->task_cancel_path.string()
-    };
-    HWND window=s->window;
-    std::thread([s,window,command=std::move(command),out,assets]()mutable{
-        auto result=cubical::run_engine(command);
-        auto* payload=new TaskResult{s,TaskKind::ImportMegaPack,std::move(result),out,assets,{}};
-        if(!IsWindow(window)||!PostMessageW(window,WM_TASK_DONE,0,reinterpret_cast<LPARAM>(payload)))delete payload;
-    }).detach();
-}
-
-bool begin_task(AppState* s, bool export_task, const wchar_t* title, const wchar_t* line) {
-    if (s->busy) { set_status(s, "Another operation is already running."); return false; }
-    IProgressDialog* dialog=nullptr;
-    if (FAILED(CoCreateInstance(CLSID_ProgressDialog,nullptr,CLSCTX_INPROC_SERVER,IID_IProgressDialog,reinterpret_cast<void**>(&dialog)))||!dialog) {
-        set_status(s,"Could not open the progress window."); return false;
-    }
-    s->busy=true;s->task_is_export=export_task;s->playing=false;update_player_ui(s);
-    s->task_dialog=dialog;
-    s->task_progress_path=cubical::temporary_path("cubical-compare-progress",".txt");
-    s->task_cancel_path=cubical::temporary_path("cubical-compare-cancel",".flag");
-    std::ofstream(s->task_progress_path)<<0;
-    dialog->SetTitle(title);dialog->SetLine(1,line,FALSE,nullptr);dialog->SetProgress(0,100);
-    dialog->StartProgressDialog(s->window,nullptr,PROGDLG_MODAL|PROGDLG_AUTOTIME|PROGDLG_NOMINIMIZE,nullptr);
-    SetTimer(s->window,TASK_TIMER,100,nullptr);
     return true;
 }
-void finish_task(AppState* s,const std::string& status){
-    KillTimer(s->window,TASK_TIMER);
-    if(s->task_dialog){s->task_dialog->StopProgressDialog();s->task_dialog->Release();s->task_dialog=nullptr;}
-    std::error_code ec;fs::remove(s->task_progress_path,ec);fs::remove(s->task_cancel_path,ec);
-    s->busy=false;s->task_is_export=false;set_status(s,status);
-    if(s->pending_close){s->closing=true;DestroyWindow(s->window);}
-}
-bool read_task_progress(const fs::path& path,int& percent,int& done,int& total){
-    HANDLE file=CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
-    if(file==INVALID_HANDLE_VALUE)return false;
-    char buffer[128]{};DWORD bytes_read=0;
-    const BOOL read_ok=ReadFile(file,buffer,sizeof(buffer)-1,&bytes_read,nullptr);
-    CloseHandle(file);
-    if(!read_ok||bytes_read==0)return false;
-    std::istringstream input(std::string(buffer,bytes_read));
-    return bool(input>>percent>>done>>total);
-}
-void update_task_progress(AppState* s){
-    if(!s->busy||!s->task_dialog)return;
-    int percent=0,done=0,total=0;read_task_progress(s->task_progress_path,percent,done,total);
-    percent=std::clamp(percent,0,100);s->task_dialog->SetProgress(percent,100);
-    if(done>0&&total>0){
-        const std::wstring line=s->task_is_export
-            ? L"Rendering frame "+std::to_wstring(done)+L" of "+std::to_wstring(total)+L"…"
-            : L"Preparing image "+std::to_wstring(done)+L" of "+std::to_wstring(total)+L"…";
-        s->task_dialog->SetLine(1,line.c_str(),FALSE,nullptr);
+
+void rebuild_card_list(App* app) {
+    SendMessageW(app->cards, LB_RESETCONTENT, 0, 0);
+    for (std::size_t i = 0; i < app->project.cards.size(); ++i) {
+        const auto& card = app->project.cards[i];
+        const std::wstring label = std::to_wstring(i + 1) + L"  " + wide(card.title.empty() ? "Untitled" : card.title);
+        SendMessageW(app->cards, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
-    if(s->task_dialog->HasUserCancelled()){std::ofstream(s->task_cancel_path)<<"cancel";s->task_dialog->SetLine(1,L"Cancelling…",FALSE,nullptr);}
+    if (!app->project.cards.empty()) {
+        app->selected = std::clamp(app->selected, 0, static_cast<int>(app->project.cards.size()) - 1);
+        SendMessageW(app->cards, LB_SETCURSEL, app->selected, 0);
+    } else {
+        app->selected = -1;
+    }
 }
 
-void choose_and_import_sheet(AppState* s){
-    if(s->busy)return;
-    COMDLG_FILTERSPEC f[]={{L"Images",L"*.png;*.jpg;*.jpeg;*.webp;*.bmp"},{L"All files",L"*.*"}};
-    auto p=choose_shell_file(s->window,false,L"Import image sheet",f,2);
-    if(p.empty()||!write_working(s))return;
-    auto out=cubical::temporary_path("cubical-sheet",".ccx");
-    auto assets=persistent_asset_directory("sheet");
-    int rows=to_int(s->sheet_rows,0),columns=to_int(s->sheet_columns,0),start=std::max(0,to_int(s->sheet_start,1)-1);
-    if(!begin_task(s,false,L"Importing image sheet",L"Detecting the grid and preparing card artwork…"))return;
-    const int expected=std::max(1,static_cast<int>(s->project.cards.size())-start);
-    std::vector<std::string> command={"import-sheet",s->working_ccx.string(),utf8(p),out.string(),assets.string(),"--expected",std::to_string(expected),"--start",std::to_string(start),"--create-extra","--fit","cts_card","--progress-file",s->task_progress_path.string(),"--cancel-file",s->task_cancel_path.string()};
-    if(rows>0&&columns>0)command.insert(command.end(),{"--rows",std::to_string(rows),"--columns",std::to_string(columns)});
-    HWND window=s->window;
-    std::thread([s,window,command=std::move(command),out,assets]()mutable{
-        auto result=cubical::run_engine(command);
-        auto* payload=new TaskResult{s,TaskKind::ImportSheet,std::move(result),out,assets,{}};
-        if(!IsWindow(window)||!PostMessageW(window,WM_TASK_DONE,0,reinterpret_cast<LPARAM>(payload)))delete payload;
+void load_fields(App* app) {
+    app->loading_fields = true;
+    if (app->selected >= 0 && app->selected < static_cast<int>(app->project.cards.size())) {
+        const auto& card = app->project.cards[static_cast<std::size_t>(app->selected)];
+        set_control_text(app->title, card.title);
+        set_control_text(app->value, card.value);
+        set_control_text(app->description, card.description);
+        set_control_text(app->image, card.image);
+    } else {
+        SetWindowTextW(app->title, L"");
+        SetWindowTextW(app->value, L"");
+        SetWindowTextW(app->description, L"");
+        SetWindowTextW(app->image, L"");
+    }
+    set_control_text(app->soundtrack, app->project.settings.soundtrack);
+    SendMessageW(app->badges, BM_SETCHECK, app->project.settings.show_badges ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(app->credits, BM_SETCHECK, app->project.settings.credits_enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+    app->loading_fields = false;
+}
+
+void read_metadata(App* app) {
+    if (!snapshot_project(app)) return;
+    auto result = cubical::run_engine({"validate", narrow_path(app->working_ccx)});
+    if (result.exit_code != 0) return;
+    const std::string needle = "\"frame_count\":";
+    const auto pos = result.output.find(needle);
+    if (pos != std::string::npos) {
+        std::size_t start = pos + needle.size();
+        while (start < result.output.size() && std::isspace(static_cast<unsigned char>(result.output[start]))) ++start;
+        app->total_frames = std::max(1, std::atoi(result.output.c_str() + start));
+    }
+    app->current_frame = std::clamp(app->current_frame, 0, app->total_frames - 1);
+    SendMessageW(app->timeline, TBM_SETRANGEMAX, TRUE, app->total_frames - 1);
+    SendMessageW(app->timeline, TBM_SETPOS, TRUE, app->current_frame);
+}
+
+void update_frame_label(App* app) {
+    std::wostringstream text;
+    text << L"Frame " << app->current_frame << L" / " << std::max(0, app->total_frames - 1);
+    SetWindowTextW(app->frame_label, text.str().c_str());
+}
+
+void request_preview(App* app) {
+    if (!snapshot_project(app)) return;
+    const auto generation = ++app->preview_generation;
+    const fs::path snapshot = app->working_ccx;
+    const fs::path output = cubical::temporary_path("final-preview-" + std::to_string(generation), ".bmp");
+    const int frame = app->current_frame;
+    const HWND window = app->window;
+    status(app, "Rendering exact preview...");
+    std::thread([generation, snapshot, output, frame, window]() {
+        auto* result = new PreviewResult();
+        result->generation = generation;
+        result->bitmap = output;
+        auto process = cubical::run_engine({
+            "render-preview", narrow_path(snapshot), narrow_path(output),
+            "--frame", std::to_string(frame), "--width", "960", "--height", "540"
+        });
+        if (process.exit_code != 0) result->error = process.output.empty() ? "Renderer preview failed." : process.output;
+        PostMessageW(window, WM_PREVIEW_DONE, 0, reinterpret_cast<LPARAM>(result));
+    }).detach();
+    update_frame_label(app);
+}
+
+void sync_project_ui(App* app, bool refresh_metadata = true) {
+    rebuild_card_list(app);
+    load_fields(app);
+    if (refresh_metadata) read_metadata(app);
+    update_frame_label(app);
+    request_preview(app);
+}
+
+void save_project_as(App* app, bool force_choose) {
+    commit_fields(app);
+    fs::path output = app->project_path;
+    if (force_choose || output.empty()) {
+        const auto chosen = choose_file(app->window, true, L"Cubical Compare project (*.ccx)\0*.ccx\0All files\0*.*\0\0", L"ccx");
+        if (chosen.empty()) return;
+        output = chosen;
+    }
+    std::string error;
+    if (!cubical::save_ccx(app->project, output, &error)) {
+        MessageBoxW(app->window, wide(error).c_str(), L"Save failed", MB_ICONERROR);
+        return;
+    }
+    app->project_path = output;
+    status(app, "Saved " + narrow_path(output));
+}
+
+void set_busy(App* app, bool busy, const std::string& text) {
+    app->busy = busy;
+    EnableWindow(GetDlgItem(app->window, ID_EXPORT), !busy);
+    EnableWindow(app->cancel, busy);
+    if (!busy) SendMessageW(app->progress, PBM_SETPOS, 0, 0);
+    status(app, text);
+}
+
+void begin_import(App* app, TaskResult::Kind kind, const fs::path& source) {
+    if (app->busy || !snapshot_project(app)) return;
+    const fs::path output = cubical::temporary_path(kind == TaskResult::Kind::ImportData ? "import-data" : "import-pack", ".ccx");
+    const fs::path assets = kind == TaskResult::Kind::ImportPack
+        ? (fs::temp_directory_path() / ("cubical-pack-" + std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count())))
+        : fs::path();
+    if (!assets.empty()) fs::create_directories(assets);
+    set_busy(app, true, kind == TaskResult::Kind::ImportData ? "Importing data..." : "Importing MegaPack...");
+    const HWND window = app->window;
+    const fs::path input = app->working_ccx;
+    std::thread([kind, source, output, assets, input, window]() {
+        auto* task = new TaskResult();
+        task->kind = kind; task->output = output; task->assets = assets;
+        if (kind == TaskResult::Kind::ImportData) {
+            task->process = cubical::run_engine({"import-data", narrow_path(input), narrow_path(source), narrow_path(output)});
+        } else {
+            task->process = cubical::run_engine({"import-megapack", narrow_path(source), narrow_path(output), narrow_path(assets)});
+        }
+        PostMessageW(window, WM_TASK_DONE, 0, reinterpret_cast<LPARAM>(task));
     }).detach();
 }
 
-void begin_export(AppState* s){
-    if(s->busy)return;
-    COMDLG_FILTERSPEC f[]={{L"MP4 Video",L"*.mp4"}};
-    auto p=choose_shell_file(s->window,true,L"Export MP4",f,1,L"mp4");
-    if(p.empty()||!write_working(s))return;
-    fs::path export_path=utf8(p);
-    if(export_path.extension()!=".mp4")export_path.replace_extension(".mp4");
-    if(!begin_task(s,true,L"Exporting MP4",L"Starting the real frame renderer and FFmpeg encoder…"))return;
-    auto input=s->working_ccx;auto path=export_path.string();auto progress=s->task_progress_path;auto cancel=s->task_cancel_path;HWND window=s->window;
-    std::thread([s,window,input,path,progress,cancel](){
-        auto result=cubical::run_engine({"export",input.string(),path,"--progress-file",progress.string(),"--cancel-file",cancel.string()});
-        auto* payload=new TaskResult{s,TaskKind::ExportVideo,std::move(result),{},{},path};
-        if(!IsWindow(window)||!PostMessageW(window,WM_TASK_DONE,0,reinterpret_cast<LPARAM>(payload)))delete payload;
+void begin_export(App* app, const fs::path& output) {
+    if (app->busy || !snapshot_project(app)) return;
+    app->progress_file = cubical::temporary_path("final-export-progress", ".txt");
+    app->cancel_file = cubical::temporary_path("final-export-cancel", ".flag");
+    std::error_code ec;
+    fs::remove(app->progress_file, ec); fs::remove(app->cancel_file, ec);
+    set_busy(app, true, "Exporting through verified renderer...");
+    SetTimer(app->window, kProgressTimer, 120, nullptr);
+    const HWND window = app->window;
+    const fs::path input = app->working_ccx;
+    const fs::path progress = app->progress_file;
+    const fs::path cancel = app->cancel_file;
+    std::thread([input, output, progress, cancel, window]() {
+        auto* task = new TaskResult();
+        task->kind = TaskResult::Kind::Export; task->output = output;
+        task->process = cubical::run_engine({
+            "export", narrow_path(input), narrow_path(output),
+            "--progress-file", narrow_path(progress), "--cancel-file", narrow_path(cancel)
+        });
+        PostMessageW(window, WM_TASK_DONE, 0, reinterpret_cast<LPARAM>(task));
     }).detach();
 }
 
-void show_page(ControlsState* c,int index){auto set=[&](std::vector<HWND>& v,bool show){for(HWND h:v)ShowWindow(h,show?SW_SHOW:SW_HIDE);};set(c->page_text,index==0);set(c->page_audio,index==1);set(c->page_output,index==2);set(c->page_transform,index==3);}
-HWND cedit(ControlsState* c,const wchar_t* label,int y,std::vector<HWND>& page,int id=0){auto* s=c->app;HWND l=make_control(s,WC_STATICW,label,0,18,y,190,22,c->window);HWND e=make_control(s,WC_EDITW,L"",WS_BORDER|ES_AUTOHSCROLL,215,y-2,540,25,c->window,id,WS_EX_CLIENTEDGE);page.push_back(l);page.push_back(e);return e;}
-HWND ccheck(ControlsState* c,const wchar_t* label,int y,std::vector<HWND>& page){HWND h=make_control(c->app,WC_BUTTONW,label,BS_AUTOCHECKBOX,215,y,400,24,c->window);page.push_back(h);return h;}
-
-void choose_system_font(ControlsState* c, int index) {
-    LOGFONTW lf{};
-    const std::wstring current = text(c->font_fields[static_cast<std::size_t>(index)]);
-    if (!current.empty() && current.find(L'\\') == std::wstring::npos && current.find(L'/') == std::wstring::npos)
-        wcsncpy_s(lf.lfFaceName, current.c_str(), LF_FACESIZE - 1);
-    CHOOSEFONTW choice{};
-    choice.lStructSize = sizeof(choice);
-    choice.hwndOwner = c->window;
-    choice.lpLogFont = &lf;
-    choice.Flags = CF_SCREENFONTS | CF_INITTOLOGFONTSTRUCT | CF_NOVERTFONTS;
-    if (ChooseFontW(&choice)) SetWindowTextW(c->font_fields[static_cast<std::size_t>(index)], lf.lfFaceName);
+void cancel_task(App* app) {
+    if (!app->busy || app->cancel_file.empty()) return;
+    std::ofstream(app->cancel_file, std::ios::binary) << "cancel\n";
+    status(app, "Cancel requested...");
 }
 
-void reuse_title_font(ControlsState* c) {
-    const std::wstring selected = text(c->font_fields[0]);
-    for (HWND field : c->font_fields) SetWindowTextW(field, selected.c_str());
+void layout(App* app, int width, int height) {
+    const int margin = 10;
+    const int toolbar_h = 38;
+    const int status_h = 26;
+    const int progress_h = 8;
+    const int body_top = margin + toolbar_h + 6;
+    const int body_bottom = height - margin - status_h - progress_h - 8;
+    const int body_h = std::max(180, body_bottom - body_top);
+    const int left_w = std::clamp(width / 6, 190, 260);
+    const int right_w = std::clamp(width / 4, 270, 360);
+    const int center_x = margin + left_w + 10;
+    const int center_w = std::max(320, width - center_x - right_w - 20);
+    const int right_x = center_x + center_w + 10;
+
+    int x = margin;
+    const int button_w[] = {66,66,66,92,98,76,76,78,76};
+    const int ids[] = {ID_NEW,ID_OPEN,ID_SAVE,ID_IMPORT_DATA,ID_IMPORT_PACK,ID_ADD_CARD,ID_DELETE_CARD,ID_EXPORT,ID_CANCEL};
+    for (std::size_t i=0;i<std::size(ids);++i) { MoveWindow(GetDlgItem(app->window,ids[i]),x,margin,button_w[i],toolbar_h,TRUE); x += button_w[i]+5; }
+
+    MoveWindow(app->cards, margin, body_top, left_w, body_h, TRUE);
+
+    const int preview_h = std::min(body_h - 70, center_w * 9 / 16);
+    MoveWindow(app->preview, center_x, body_top, center_w, std::max(180, preview_h), TRUE);
+    MoveWindow(app->timeline, center_x, body_top + std::max(180, preview_h) + 8, center_w, 32, TRUE);
+    MoveWindow(app->frame_label, center_x, body_top + std::max(180, preview_h) + 42, center_w, 24, TRUE);
+
+    int y = body_top;
+    auto place = [&](int id, int h) { MoveWindow(GetDlgItem(app->window,id),right_x,y,right_w,h,TRUE); y += h + 7; };
+    place(ID_TITLE, 38); place(ID_VALUE,38); place(ID_DESCRIPTION,88); place(ID_IMAGE,38); place(ID_CHOOSE_IMAGE,32); place(ID_SOUNDTRACK,38); place(ID_CHOOSE_SOUNDTRACK,32);
+    MoveWindow(app->badges,right_x,y,right_w/2,28,TRUE); MoveWindow(app->credits,right_x+right_w/2,y,right_w/2,28,TRUE);
+
+    MoveWindow(app->progress, margin, height - margin - status_h - progress_h - 2, width - 2*margin, progress_h, TRUE);
+    MoveWindow(app->status, margin, height - margin - status_h, width - 2*margin, status_h, TRUE);
 }
 
-void load_controls(ControlsState* c){auto& p=c->app->project;auto& s=p.settings;set_text(c->project_name,p.name);SendMessageW(c->model,CB_SETCURSEL,0,0);SendMessageW(c->credits_enabled,BM_SETCHECK,s.credits_enabled?BST_CHECKED:BST_UNCHECKED,0);std::vector<std::string*> tv={&s.credits_top_text,&s.credits_heading,&s.credits_project_name,&s.credits_created_with_label,&s.credits_created_with_value,&s.credits_design_label,&s.credits_design_value,&s.credits_footer,&s.end_best_label,&s.end_newest_label,&s.end_credit_label,&s.end_credit_value};for(size_t i=0;i<tv.size();++i)set_text(c->text_fields[i],*tv[i]);set_text(c->soundtrack,s.soundtrack);SendMessageW(c->loop,BM_SETCHECK,s.soundtrack_loop?BST_CHECKED:BST_UNCHECKED,0);SetWindowTextW(c->volume,std::to_wstring(static_cast<int>(s.soundtrack_volume*100)).c_str());SetWindowTextW(c->offset,std::to_wstring(s.soundtrack_offset_seconds).c_str());SetWindowTextW(c->fade,std::to_wstring(s.soundtrack_fade_out_seconds).c_str());SetWindowTextW(c->width,L"1920");SetWindowTextW(c->height,std::to_wstring(s.height).c_str());SetWindowTextW(c->fps,std::to_wstring(s.fps).c_str());set_text(c->preset,s.encoder_preset);SetWindowTextW(c->crf,std::to_wstring(s.encoder_crf).c_str());set_text(c->fit_mode,s.image_fit_mode);set_text(c->font_fields[0],s.font_title);set_text(c->font_fields[1],s.font_description);set_text(c->font_fields[2],s.font_badge);set_text(c->font_fields[3],s.font_credits);const int index=selected_index(c->app);if(index>=0){const auto& card=p.cards[static_cast<std::size_t>(index)];SetWindowTextW(c->image_x,std::to_wstring(card.image_x).c_str());SetWindowTextW(c->image_y,std::to_wstring(card.image_y).c_str());SetWindowTextW(c->image_scale,std::to_wstring(card.image_scale*100.0).c_str());SetWindowTextW(c->image_rotation,std::to_wstring(card.image_rotation).c_str());SetWindowTextW(c->crop_left,std::to_wstring(card.image_crop_left*100.0).c_str());SetWindowTextW(c->crop_top,std::to_wstring(card.image_crop_top*100.0).c_str());SetWindowTextW(c->crop_right,std::to_wstring(card.image_crop_right*100.0).c_str());SetWindowTextW(c->crop_bottom,std::to_wstring(card.image_crop_bottom*100.0).c_str());SendMessageW(c->image_front,BM_SETCHECK,card.image_layer=="front"?BST_CHECKED:BST_UNCHECKED,0);}}
+void create_ui(App* app) {
+    NONCLIENTMETRICSW metrics{sizeof(metrics)};
+    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0);
+    app->font = CreateFontIndirectW(&metrics.lfMessageFont);
 
-void apply_controls(ControlsState* c){auto& p=c->app->project;auto& s=p.settings;p.name=utf8(text(c->project_name));s.model_id="what-males-learn-at-each-age";s.model_revision=1;s.credits_enabled=SendMessageW(c->credits_enabled,BM_GETCHECK,0,0)==BST_CHECKED;std::vector<std::string*> tv={&s.credits_top_text,&s.credits_heading,&s.credits_project_name,&s.credits_created_with_label,&s.credits_created_with_value,&s.credits_design_label,&s.credits_design_value,&s.credits_footer,&s.end_best_label,&s.end_newest_label,&s.end_credit_label,&s.end_credit_value};for(size_t i=0;i<tv.size();++i)*tv[i]=utf8(text(c->text_fields[i]));s.soundtrack=utf8(text(c->soundtrack));s.soundtrack_loop=SendMessageW(c->loop,BM_GETCHECK,0,0)==BST_CHECKED;s.soundtrack_volume=std::clamp(to_double(c->volume,75.0)/100.0,0.0,1.0);s.soundtrack_offset_seconds=std::max(0.0,to_double(c->offset,0));s.soundtrack_fade_out_seconds=std::max(0.0,to_double(c->fade,.75));s.auto_length=true;s.width=1920;s.height=1080;s.fps=60;s.encoder_preset=utf8(text(c->preset));{const std::vector<std::string> valid={"ultrafast","superfast","veryfast","faster","fast","medium","slow","slower","veryslow"};if(std::find(valid.begin(),valid.end(),s.encoder_preset)==valid.end())s.encoder_preset="faster";}s.encoder_crf=std::clamp(to_int(c->crf,18),0,51);s.image_fit_mode=utf8(text(c->fit_mode))=="contain"?"contain":"cover";s.font_title=utf8(text(c->font_fields[0]));s.font_description=utf8(text(c->font_fields[1]));s.font_badge=utf8(text(c->font_fields[2]));s.font_credits=utf8(text(c->font_fields[3]));const int index=selected_index(c->app);if(index>=0){auto& card=p.cards[static_cast<std::size_t>(index)];card.image_x=to_double(c->image_x,0.0);card.image_y=to_double(c->image_y,0.0);card.image_scale=std::clamp(to_double(c->image_scale,100.0)/100.0,0.05,8.0);card.image_rotation=to_double(c->image_rotation,0.0);card.image_crop_left=std::clamp(to_double(c->crop_left,0.0)/100.0,0.0,0.49);card.image_crop_top=std::clamp(to_double(c->crop_top,0.0)/100.0,0.0,0.49);card.image_crop_right=std::clamp(to_double(c->crop_right,0.0)/100.0,0.0,0.49);card.image_crop_bottom=std::clamp(to_double(c->crop_bottom,0.0)/100.0,0.0,0.49);card.image_layer=SendMessageW(c->image_front,BM_GETCHECK,0,0)==BST_CHECKED?"front":"behind";}load_project(c->app);request_preview(c->app,c->app->current_time);}
+    auto button = [&](int id, const wchar_t* label) { make_control(app, L"BUTTON", label, BS_PUSHBUTTON, id); };
+    button(ID_NEW,L"New"); button(ID_OPEN,L"Open"); button(ID_SAVE,L"Save"); button(ID_IMPORT_DATA,L"Import data"); button(ID_IMPORT_PACK,L"MegaPack"); button(ID_ADD_CARD,L"Add card"); button(ID_DELETE_CARD,L"Delete"); button(ID_EXPORT,L"Export"); button(ID_CANCEL,L"Cancel");
+    app->cancel = GetDlgItem(app->window, ID_CANCEL); EnableWindow(app->cancel, FALSE);
 
-LRESULT CALLBACK ControlsProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){auto* c=reinterpret_cast<ControlsState*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));if(msg==WM_CREATE){auto* cs=reinterpret_cast<CREATESTRUCTW*>(lp);c=static_cast<ControlsState*>(cs->lpCreateParams);SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(c));c->window=hwnd;c->tabs=make_control(c->app,WC_TABCONTROLW,L"",WS_CLIPSIBLINGS,10,10,770,38,hwnd,ID_TAB);TCITEMW item{};item.mask=TCIF_TEXT;wchar_t t0[]=L"Visible text";item.pszText=t0;TabCtrl_InsertItem(c->tabs,0,&item);wchar_t t1[]=L"Soundtrack";item.pszText=t1;TabCtrl_InsertItem(c->tabs,1,&item);wchar_t t2[]=L"Appearance & output";item.pszText=t2;TabCtrl_InsertItem(c->tabs,2,&item);wchar_t t3[]=L"Image transform";item.pszText=t3;TabCtrl_InsertItem(c->tabs,3,&item);
-int y=62;c->project_name=cedit(c,L"Project title (optional)",y,c->page_text);y+=32;c->credits_enabled=ccheck(c,L"Show opening credits",y,c->page_text);y+=32;const wchar_t* labels[]={L"Credits top text",L"Credits heading",L"Credits project/name",L"Created-with label",L"Created-with value",L"Design label",L"Design value",L"Credits footer",L"End left label",L"End right label",L"End credit label",L"End credit value"};for(auto* label:labels){c->text_fields.push_back(cedit(c,label,y,c->page_text));y+=32;}
-y=70;c->soundtrack=cedit(c,L"Soundtrack",y,c->page_audio);y+=36;{HWND b=make_control(c->app,WC_BUTTONW,L"Choose / replace…",0,215,y,160,28,hwnd,9001);c->page_audio.push_back(b);}y+=40;c->loop=ccheck(c,L"Loop until video ends",y,c->page_audio);y+=38;c->volume=cedit(c,L"Volume %",y,c->page_audio);y+=34;c->offset=cedit(c,L"Start inside track (s)",y,c->page_audio);y+=34;c->fade=cedit(c,L"Fade out (s)",y,c->page_audio);
-y=70;{HWND label=make_control(c->app,WC_STATICW,L"Reference model",0,18,y,190,22,hwnd);c->model=make_control(c->app,WC_COMBOBOXW,L"",CBS_DROPDOWNLIST|WS_VSCROLL,215,y-3,540,160,hwnd);SendMessageW(c->model,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"What Males Learn At Each Age"));EnableWindow(c->model,FALSE);c->page_output.push_back(label);c->page_output.push_back(c->model);}y+=36;{HWND note=make_control(c->app,WC_STATICW,L"The Males reference locks every animation, transition, layout, 1920×1080 geometry and 60 FPS timing.",SS_LEFT,18,y,737,42,hwnd);c->page_output.push_back(note);}y+=48;c->fit_mode=cedit(c,L"Image fit (cover / contain)",y,c->page_output);y+=34;c->width=cedit(c,L"Width (model locked)",y,c->page_output);EnableWindow(c->width,FALSE);y+=34;c->height=cedit(c,L"Height (model locked)",y,c->page_output);EnableWindow(c->height,FALSE);y+=34;c->fps=cedit(c,L"FPS (model locked)",y,c->page_output);EnableWindow(c->fps,FALSE);y+=34;c->preset=cedit(c,L"Encoder preset",y,c->page_output);y+=34;c->crf=cedit(c,L"CRF",y,c->page_output);y+=34;
-const wchar_t* fl[]={L"Title font (file or family)",L"Description font (file or family)",L"Badge font (file or family)",L"Credits font (file or family)"};
-const int font_ids[]={ID_FONT_TITLE,ID_FONT_DESCRIPTION,ID_FONT_BADGE,ID_FONT_CREDITS};
-for(int i=0;i<4;++i){HWND label=make_control(c->app,WC_STATICW,fl[i],0,18,y,190,22,hwnd);HWND edit=make_control(c->app,WC_EDITW,L"",WS_BORDER|ES_AUTOHSCROLL,215,y-2,365,25,hwnd,0,WS_EX_CLIENTEDGE);HWND button=make_control(c->app,WC_BUTTONW,L"List system fonts…",0,590,y-3,165,27,hwnd,font_ids[i]);c->page_output.push_back(label);c->page_output.push_back(edit);c->page_output.push_back(button);c->font_fields.push_back(edit);y+=34;}
-{HWND reuse=make_control(c->app,WC_BUTTONW,L"Reuse title font for all fields",0,215,y,280,29,hwnd,ID_REUSE_FONT);c->page_output.push_back(reuse);}
-y=70;c->image_x=cedit(c,L"Horizontal offset (px)",y,c->page_transform);y+=34;c->image_y=cedit(c,L"Vertical offset (px)",y,c->page_transform);y+=34;c->image_scale=cedit(c,L"Scale %",y,c->page_transform);y+=34;c->image_rotation=cedit(c,L"Rotation degrees",y,c->page_transform);y+=34;c->crop_left=cedit(c,L"Crop left %",y,c->page_transform);y+=34;c->crop_top=cedit(c,L"Crop top %",y,c->page_transform);y+=34;c->crop_right=cedit(c,L"Crop right %",y,c->page_transform);y+=34;c->crop_bottom=cedit(c,L"Crop bottom %",y,c->page_transform);y+=38;c->image_front=ccheck(c,L"Place image in front of title, description and badge",y,c->page_transform);y+=40;{HWND hint=make_control(c->app,WC_STATICW,L"Preview shortcuts: drag = move, wheel = scale, Ctrl+wheel = rotate, Shift+wheel = crop",0,18,y,740,44,hwnd);c->page_transform.push_back(hint);}y+=48;{HWND reset=make_control(c->app,WC_BUTTONW,L"Reset selected image",0,215,y,220,29,hwnd,ID_TRANSFORM_RESET);c->page_transform.push_back(reset);}
-make_control(c->app,WC_BUTTONW,L"Apply",BS_DEFPUSHBUTTON,620,585,150,34,hwnd,ID_APPLY_CONTROLS);load_controls(c);show_page(c,0);return 0;}
-if(!c)return DefWindowProcW(hwnd,msg,wp,lp);switch(msg){case WM_NOTIFY:if(reinterpret_cast<LPNMHDR>(lp)->idFrom==ID_TAB&&reinterpret_cast<LPNMHDR>(lp)->code==TCN_SELCHANGE)show_page(c,TabCtrl_GetCurSel(c->tabs));return 0;case WM_COMMAND:if(LOWORD(wp)==ID_APPLY_CONTROLS){apply_controls(c);DestroyWindow(hwnd);return 0;}if(LOWORD(wp)==9001){COMDLG_FILTERSPEC f[]={{L"Audio",L"*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.opus"},{L"All files",L"*.*"}};auto p=choose_shell_file(hwnd,false,L"Choose soundtrack",f,2);if(!p.empty())SetWindowTextW(c->soundtrack,p.c_str());return 0;}if(LOWORD(wp)>=ID_FONT_TITLE&&LOWORD(wp)<=ID_FONT_CREDITS){choose_system_font(c,LOWORD(wp)-ID_FONT_TITLE);return 0;}if(LOWORD(wp)==ID_REUSE_FONT){reuse_title_font(c);return 0;}if(LOWORD(wp)==ID_TRANSFORM_RESET){SetWindowTextW(c->image_x,L"0");SetWindowTextW(c->image_y,L"0");SetWindowTextW(c->image_scale,L"100");SetWindowTextW(c->image_rotation,L"0");SetWindowTextW(c->crop_left,L"0");SetWindowTextW(c->crop_top,L"0");SetWindowTextW(c->crop_right,L"0");SetWindowTextW(c->crop_bottom,L"0");SendMessageW(c->image_front,BM_SETCHECK,BST_UNCHECKED,0);return 0;}break;case WM_CLOSE:DestroyWindow(hwnd);return 0;case WM_DESTROY:delete c;return 0;}return DefWindowProcW(hwnd,msg,wp,lp);}
-
-void open_controls(AppState* s,int initial_tab=0){auto* c=new ControlsState();c->app=s;HWND w=CreateWindowExW(WS_EX_DLGMODALFRAME,kControlsClass,L"Cubical Compare — Project Controls",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,810,680,s->window,nullptr,s->instance,c);EnableWindow(s->window,FALSE);ShowWindow(w,SW_SHOW);UpdateWindow(w);if(IsWindow(w)){TabCtrl_SetCurSel(c->tabs,std::clamp(initial_tab,0,3));show_page(c,std::clamp(initial_tab,0,3));}MSG m{};while(IsWindow(w)&&GetMessageW(&m,nullptr,0,0)>0){if(!IsDialogMessageW(w,&m)){TranslateMessage(&m);DispatchMessageW(&m);}}EnableWindow(s->window,TRUE);SetForegroundWindow(s->window);}
-
-LRESULT CALLBACK MainProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){auto* s=reinterpret_cast<AppState*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));if(msg==WM_CREATE){auto* cs=reinterpret_cast<CREATESTRUCTW*>(lp);s=static_cast<AppState*>(cs->lpCreateParams);SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(s));s->window=hwnd;int x=12;struct B{const wchar_t* t;int id;int w;}bs[]={{L"New",ID_NEW,55},{L"Open",ID_OPEN,60},{L"Save",ID_SAVE,60},{L"Click to Insert Data",ID_INSERT,145},{L"MegaPack",ID_MEGAPACK,92},{L"Image Sheet",ID_SHEET,90},{L"Music",ID_MUSIC,68},{L"Model",ID_MODEL,70},{L"Manual editor",ID_CONTROLS,105},{L"Export MP4",ID_EXPORT,95}};for(auto&b:bs){make_control(s,WC_BUTTONW,b.t,b.id==ID_INSERT?BS_DEFPUSHBUTTON:0,x,10,b.w,30,hwnd,b.id);x+=b.w+6;}
-s->preview=make_control(s,WC_STATICW,L"",SS_BITMAP|SS_CENTERIMAGE|SS_NOTIFY,12,50,650,366,hwnd,ID_PREVIEW_BITMAP,WS_EX_CLIENTEDGE);SetWindowSubclass(s->preview,PreviewSubclassProc,1,reinterpret_cast<DWORD_PTR>(s));
-s->play_button=make_control(s,WC_BUTTONW,L"Play",0,12,422,70,30,hwnd,ID_PLAY);
-make_control(s,WC_BUTTONW,L"Restart",0,88,422,80,30,hwnd,ID_RESTART);
-s->seek=make_control(s,TRACKBAR_CLASSW,L"",TBS_HORZ|TBS_NOTICKS,176,421,355,32,hwnd,ID_SEEK);
-SendMessageW(s->seek,TBM_SETRANGE,TRUE,MAKELONG(0,10000));
-s->time_label=make_control(s,WC_STATICW,L"00:00.0 / 00:00.0",SS_RIGHT,536,427,126,22,hwnd,ID_TIME_LABEL);
-make_control(s,WC_STATICW,L"Rows",0,680,55,42,22,hwnd);s->sheet_rows=make_control(s,WC_EDITW,L"0",WS_BORDER|ES_AUTOHSCROLL,725,52,52,26,hwnd,0,WS_EX_CLIENTEDGE);make_control(s,WC_STATICW,L"Columns",0,785,55,65,22,hwnd);s->sheet_columns=make_control(s,WC_EDITW,L"0",WS_BORDER|ES_AUTOHSCROLL,852,52,52,26,hwnd,0,WS_EX_CLIENTEDGE);make_control(s,WC_STATICW,L"Start",0,912,55,42,22,hwnd);s->sheet_start=make_control(s,WC_EDITW,L"1",WS_BORDER|ES_AUTOHSCROLL,956,52,70,26,hwnd,0,WS_EX_CLIENTEDGE);s->card_list=make_control(s,WC_LISTBOXW,L"",LBS_NOTIFY|WS_VSCROLL|WS_BORDER,680,85,470,330,hwnd,ID_CARD_LIST,WS_EX_CLIENTEDGE);
-int y=462;make_control(s,WC_STATICW,L"Title",0,12,y,70,22,hwnd);s->title=make_control(s,WC_EDITW,L"",WS_BORDER|ES_AUTOHSCROLL,82,y-3,270,27,hwnd,ID_TITLE,WS_EX_CLIENTEDGE);make_control(s,WC_STATICW,L"Value / badge",0,365,y,100,22,hwnd);s->value=make_control(s,WC_EDITW,L"",WS_BORDER|ES_AUTOHSCROLL,465,y-3,197,27,hwnd,ID_VALUE,WS_EX_CLIENTEDGE);y+=34;make_control(s,WC_STATICW,L"Description",0,12,y,70,22,hwnd);s->description=make_control(s,WC_EDITW,L"",WS_BORDER|ES_AUTOHSCROLL,82,y-3,580,27,hwnd,ID_DESCRIPTION,WS_EX_CLIENTEDGE);y+=34;make_control(s,WC_STATICW,L"Image",0,12,y,70,22,hwnd);s->image=make_control(s,WC_EDITW,L"",WS_BORDER|ES_AUTOHSCROLL,82,y-3,465,27,hwnd,ID_IMAGE,WS_EX_CLIENTEDGE);make_control(s,WC_BUTTONW,L"Choose...",0,552,y-4,110,29,hwnd,ID_CHOOSE_IMAGE);
-make_control(s,WC_BUTTONW,L"Add card",0,680,422,90,30,hwnd,ID_ADD);make_control(s,WC_BUTTONW,L"Remove",0,776,422,90,30,hwnd,ID_REMOVE);make_control(s,WC_BUTTONW,L"Trim after selected",0,872,422,180,30,hwnd,ID_TRIM);s->status=make_control(s,WC_STATICW,L"Ready",SS_SUNKEN,12,570,1138,28,hwnd,ID_STATUS);load_project(s);reset_player(s);SetTimer(hwnd,PLAYER_TIMER,100,nullptr);return 0;}
-if(!s)return DefWindowProcW(hwnd,msg,wp,lp);switch(msg){case WM_COMMAND:{int id=LOWORD(wp);if(id==ID_CARD_LIST&&HIWORD(wp)==LBN_SELCHANGE){write_working(s);const int index=static_cast<int>(SendMessageW(s->card_list,LB_GETCURSEL,0,0));if(index>=0&&index<static_cast<int>(s->project.cards.size()))select_index(s,index);load_card(s);return 0;}if(id==ID_PLAY){toggle_play(s);}else if(id==ID_RESTART){restart_player(s);}else if(id==ID_NEW){if(s->busy)return 0;s->project=cubical::Project{};s->project.project_path.clear();select_index(s,0);load_project(s);reset_player(s);}else if(id==ID_OPEN){COMDLG_FILTERSPEC f[]={{L"Cubical Compare project",L"*.json;*.ccp;*.cts.json;*.ccx"},{L"All files",L"*.*"}};auto p=choose_shell_file(hwnd,false,L"Open project",f,2);if(!p.empty())import_project(s,p);}else if(id==ID_SAVE){fs::path p=s->project.project_path;if(p.empty()){COMDLG_FILTERSPEC f[]={{L"Cubical Compare project",L"*.json"}};auto w=choose_shell_file(hwnd,true,L"Save project",f,1,L"json");if(w.empty())return 0;p=w;}save_project(s,p);}else if(id==ID_INSERT)choose_and_import_data(s);else if(id==ID_MEGAPACK)choose_and_import_megapack(s);else if(id==ID_SHEET)choose_and_import_sheet(s);else if(id==ID_EXPORT)begin_export(s);else if(id==ID_MUSIC)open_controls(s,1);else if(id==ID_MODEL)open_controls(s,2);else if(id==ID_CONTROLS)open_controls(s,3);else if(id==ID_CHOOSE_IMAGE){COMDLG_FILTERSPEC f[]={{L"Images",L"*.png;*.jpg;*.jpeg;*.webp;*.bmp"}};auto p=choose_shell_file(hwnd,false,L"Choose card image",f,1);if(!p.empty()){SetWindowTextW(s->image,p.c_str());write_working(s);request_preview(s, s->current_time, false);}}else if(id==ID_ADD){if(s->busy)return 0;write_working(s);s->project.cards.push_back({"New card","","",""});select_index(s,static_cast<int>(s->project.cards.size())-1);rebuild_cards(s);load_card(s);reset_player(s);}else if(id==ID_REMOVE){if(s->busy)return 0;write_working(s);if(s->project.cards.size()>1){const int selected_row=static_cast<int>(SendMessageW(s->card_list,LB_GETCURSEL,0,0));std::string remove_id=s->selected_card_id;if(selected_row>=0&&selected_row<static_cast<int>(s->project.cards.size()))remove_id=s->project.cards[static_cast<std::size_t>(selected_row)].id;const int next=cubical::erase_card_by_id(s->project,remove_id);if(next>=0){select_index(s,next);rebuild_cards(s);load_card(s);reset_player(s);}else set_status(s,"The selected card could not be resolved.");}}else if(id==ID_TRIM){if(s->busy)return 0;write_working(s);int keep=selected_index(s)+1;if(keep>0&&keep<static_cast<int>(s->project.cards.size())){s->project.cards.resize(keep);rebuild_cards(s);load_card(s);reset_player(s);}}return 0;}case WM_HSCROLL:{if(reinterpret_cast<HWND>(lp)==s->seek&&!s->updating_seek){const int pos=static_cast<int>(SendMessageW(s->seek,TBM_GETPOS,0,0));const double value=s->duration>0.0?s->duration*pos/10000.0:0.0;s->current_time=value;if(s->playing){s->play_anchor_time=value;s->play_anchor=std::chrono::steady_clock::now();}request_preview(s,value,true);}return 0;}case WM_TIMER:{if(wp==TASK_TIMER){update_task_progress(s);return 0;}if(wp==PLAYER_TIMER&&s->playing){const auto now=std::chrono::steady_clock::now();const double elapsed=std::chrono::duration<double>(now-s->play_anchor).count();s->current_time=s->play_anchor_time+elapsed;if(s->current_time>=s->duration){s->current_time=s->duration;s->playing=false;}update_player_ui(s);start_preview_render(s,s->current_time);}return 0;}case WM_PREVIEW_READY:{std::unique_ptr<PreviewResult> payload(reinterpret_cast<PreviewResult*>(lp));s->preview_rendering=false;std::error_code ignored;fs::remove(payload->project_snapshot,ignored);if(payload->error.empty()&&fs::exists(payload->image_path)){RECT preview_rect{};GetClientRect(s->preview,&preview_rect);const int preview_width=std::max(1,static_cast<int>(preview_rect.right-preview_rect.left));const int preview_height=std::max(1,static_cast<int>(preview_rect.bottom-preview_rect.top));HBITMAP next=load_scaled_bitmap(payload->image_path,preview_width,preview_height);if(next){if(s->preview_bitmap)DeleteObject(s->preview_bitmap);s->preview_bitmap=next;SendMessageW(s->preview,STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(next));if(!s->playing)set_status(s,"Preview frame matches exported output at "+utf8(format_time(payload->time)));}else payload->error="Windows could not decode the rendered preview bitmap.";}if(!payload->error.empty())set_status(s,payload->error);fs::remove(payload->image_path,ignored);if(s->preview_pending){double next=s->pending_time;s->preview_pending=false;start_preview_render(s,next);}return 0;}case WM_TASK_DONE:{std::unique_ptr<TaskResult> payload(reinterpret_cast<TaskResult*>(lp));std::string status;if(payload->process.exit_code==0){if(payload->kind==TaskKind::ImportSheet||payload->kind==TaskKind::ImportData||payload->kind==TaskKind::ImportMegaPack){std::string error;if(cubical::load_ccx(s->project,payload->output_ccx,&error)){select_index(s,0);load_project(s);reset_player(s);status=payload->process.output.empty()?(payload->kind==TaskKind::ImportData?"Spreadsheet data applied.":payload->kind==TaskKind::ImportMegaPack?"MegaPack imported.":"Image sheet imported."):payload->process.output;}else status=error.empty()?"The imported project could not be loaded.":error;}else{const fs::path exported(payload->target_path);status=valid_mp4_file(exported)?"Exported "+exported.string():"Export failed: no usable MP4 was created.";}}else status=payload->process.output.empty()?"Operation failed.":payload->process.output;std::error_code ec;if(!payload->output_ccx.empty())fs::remove(payload->output_ccx,ec);finish_task(s,status);return 0;}case WM_CLOSE:if(s->busy){s->pending_close=true;std::ofstream(s->task_cancel_path)<<"cancel";set_status(s,"Cancelling the current operation before closing…");return 0;}s->closing=true;DestroyWindow(hwnd);return 0;case WM_DESTROY:s->closing=true;KillTimer(hwnd,PLAYER_TIMER);if(s->preview_bitmap)DeleteObject(s->preview_bitmap);PostQuitMessage(0);return 0;}return DefWindowProcW(hwnd,msg,wp,lp);}
+    app->cards = make_control(app,L"LISTBOX",L"",LBS_NOTIFY|WS_BORDER|WS_VSCROLL,ID_CARD_LIST);
+    app->preview = make_control(app,L"STATIC",L"",SS_BITMAP|SS_CENTERIMAGE|WS_BORDER,ID_PREVIEW);
+    app->timeline = make_control(app,TRACKBAR_CLASSW,L"",TBS_HORZ|TBS_NOTICKS,ID_TIMELINE);
+    app->frame_label = make_control(app,L"STATIC",L"Frame 0",SS_CENTER,ID_FRAME_LABEL);
+    app->title = make_control(app,L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL,ID_TITLE);
+    app->value = make_control(app,L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL,ID_VALUE);
+    app->description = make_control(app,L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL,ID_DESCRIPTION);
+    app->image = make_control(app,L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL,ID_IMAGE);
+    button(ID_CHOOSE_IMAGE,L"Choose artwork...");
+    app->soundtrack = make_control(app,L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL,ID_SOUNDTRACK);
+    button(ID_CHOOSE_SOUNDTRACK,L"Choose soundtrack...");
+    app->badges = make_control(app,L"BUTTON",L"Badges",BS_AUTOCHECKBOX,ID_BADGES);
+    app->credits = make_control(app,L"BUTTON",L"Credits",BS_AUTOCHECKBOX,ID_CREDITS);
+    app->progress = make_control(app,PROGRESS_CLASSW,L"",PBS_SMOOTH,ID_PROGRESS);
+    SendMessageW(app->progress, PBM_SETRANGE, 0, MAKELPARAM(0,100));
+    app->status = make_control(app,L"STATIC",L"Ready",SS_LEFT,ID_STATUS);
 }
 
-int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){
-int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);if(argv&&argc>1&&std::wstring(argv[1])==L"--self-test"){cubical::Project timing_project;timing_project.cards.assign(8,{"Card","1","",""});if(std::abs(cubical::timeline_duration(timing_project)-28.75)>1e-9){LocalFree(argv);return 3;}cubical::Project deletion_project;deletion_project.cards={{"First","1","",""},{"","2","",""},{"Third","3","",""}};const std::string untitled_id=deletion_project.cards[1].id;if(cubical::erase_card_by_id(deletion_project,untitled_id)!=1||deletion_project.cards.size()!=2||deletion_project.cards[0].title!="First"||deletion_project.cards[1].title!="Third"){LocalFree(argv);return 4;}
-const auto interchange_path=cubical::temporary_path("cubical-compare-interchange-self-test",".ccx");
-{
-    std::ofstream out(interchange_path,std::ios::binary);
-    out<<"CCX1\r\ncards.count=1\r\ncard.0.title=Q2FyZA==\r\ncard.0.value=MQ==\r\n"
-          "card.0.description=\r\ncard.0.image=\r\ncard.0.id=dGVzdA==\r\n";
+void new_project(App* app) {
+    commit_fields(app);
+    app->project = cubical::Project{};
+    app->project.name = "Untitled";
+    app->project.cards.clear();
+    app->project.cards.push_back(cubical::Card{"Card 1","1","",""});
+    app->project_path.clear();
+    app->selected = 0; app->current_frame = 0;
+    sync_project_ui(app);
+    status(app,"New project · exact renderer active");
 }
-cubical::Project interchange_project;std::string interchange_error;
-if(!cubical::load_ccx(interchange_project,interchange_path,&interchange_error)||interchange_project.cards.size()!=1||interchange_project.cards[0].title!="Card"||interchange_project.cards[0].value!="1"){
-    std::error_code cleanup;fs::remove(interchange_path,cleanup);LocalFree(argv);return 5;
+
+bool run_self_test() {
+    try {
+        cubical::Project project;
+        project.name = "Final Windows shell self-test";
+        project.cards = {
+            cubical::Card{"Card 1","1","",""},
+            cubical::Card{"Card 2","2","",""},
+            cubical::Card{"Card 3","3","",""},
+            cubical::Card{"Card 4","4","",""},
+            cubical::Card{"Card 5","7M YEARS AGO","",""},
+        };
+        const fs::path ccx = cubical::temporary_path("windows-final-self-test", ".ccx");
+        const fs::path bmp = cubical::temporary_path("windows-final-self-test", ".bmp");
+        std::string error;
+        if (!cubical::save_ccx(project, ccx, &error)) return false;
+        const auto result = cubical::run_engine({"render-preview",narrow_path(ccx),narrow_path(bmp),"--frame","700","--width","960","--height","540"});
+        std::error_code ec;
+        const bool ok = result.exit_code == 0 && fs::is_regular_file(bmp,ec) && fs::file_size(bmp,ec) > 4096;
+        fs::remove(ccx,ec); fs::remove(bmp,ec);
+        return ok;
+    } catch (...) { return false; }
 }
-std::error_code interchange_cleanup;fs::remove(interchange_path,interchange_cleanup);
-const auto progress_path=cubical::temporary_path("cubical-compare-progress-self-test",".txt");
-{std::ofstream progress(progress_path);progress<<"75 3 4\n";}
-int progress_percent=0,progress_done=0,progress_total=0;
-if(!read_task_progress(progress_path,progress_percent,progress_done,progress_total)||progress_percent!=75||progress_done!=3||progress_total!=4){
-    std::error_code cleanup;fs::remove(progress_path,cleanup);LocalFree(argv);return 6;
+
+LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    auto* app = reinterpret_cast<App*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_NCCREATE) {
+        auto* create = reinterpret_cast<CREATESTRUCTW*>(lparam);
+        app = reinterpret_cast<App*>(create->lpCreateParams);
+        SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(app));
+        app->window = window;
+    }
+    if (!app) return DefWindowProcW(window,message,wparam,lparam);
+
+    switch (message) {
+        case WM_CREATE:
+            create_ui(app);
+            app->working_ccx = cubical::temporary_path("final-studio", ".ccx");
+            new_project(app);
+            return 0;
+        case WM_SIZE:
+            layout(app, LOWORD(lparam), HIWORD(lparam));
+            return 0;
+        case WM_COMMAND: {
+            const int id = LOWORD(wparam);
+            const int code = HIWORD(wparam);
+            if (id == ID_CARD_LIST && code == LBN_SELCHANGE) {
+                commit_fields(app);
+                const int next = static_cast<int>(SendMessageW(app->cards,LB_GETCURSEL,0,0));
+                if (next >= 0) { app->selected = next; load_fields(app); request_preview(app); }
+                return 0;
+            }
+            if ((id == ID_TITLE || id == ID_VALUE || id == ID_DESCRIPTION || id == ID_IMAGE || id == ID_SOUNDTRACK) && code == EN_KILLFOCUS && !app->loading_fields) {
+                commit_fields(app); rebuild_card_list(app); request_preview(app); return 0;
+            }
+            if ((id == ID_BADGES || id == ID_CREDITS) && code == BN_CLICKED) { commit_fields(app); request_preview(app); return 0; }
+            switch (id) {
+                case ID_NEW: if (!app->busy) new_project(app); return 0;
+                case ID_OPEN: if (!app->busy) {
+                    const auto file = choose_file(window,false,L"Cubical Compare project (*.ccx)\0*.ccx\0All files\0*.*\0\0");
+                    if (!file.empty()) { cubical::Project loaded; std::string error; if (cubical::load_ccx(loaded,fs::path(file),&error)) { app->project=std::move(loaded); app->project_path=file; app->selected=0; app->current_frame=0; sync_project_ui(app); status(app,"Project opened"); } else MessageBoxW(window,wide(error).c_str(),L"Open failed",MB_ICONERROR); }
+                    return 0;
+                }
+                case ID_SAVE: if (!app->busy) save_project_as(app,false); return 0;
+                case ID_IMPORT_DATA: if (!app->busy) {
+                    const auto file=choose_file(window,false,L"Spreadsheet data\0*.csv;*.tsv;*.xlsx\0CSV\0*.csv\0Excel\0*.xlsx\0All files\0*.*\0\0");
+                    if(!file.empty())begin_import(app,TaskResult::Kind::ImportData,fs::path(file)); return 0;
+                }
+                case ID_IMPORT_PACK: if (!app->busy) {
+                    const auto file=choose_file(window,false,L"Cubical Compare MegaPack\0*.zip;*.megapack\0ZIP files\0*.zip\0All files\0*.*\0\0");
+                    if(!file.empty())begin_import(app,TaskResult::Kind::ImportPack,fs::path(file)); return 0;
+                }
+                case ID_ADD_CARD: if (!app->busy) {
+                    commit_fields(app); app->project.cards.push_back(cubical::Card{"New card","","",""}); app->selected=static_cast<int>(app->project.cards.size())-1; read_metadata(app); sync_project_ui(app,false); return 0;
+                }
+                case ID_DELETE_CARD: if (!app->busy && app->project.cards.size()>1 && app->selected>=0) {
+                    commit_fields(app); app->project.cards.erase(app->project.cards.begin()+app->selected); app->selected=std::min(app->selected,static_cast<int>(app->project.cards.size())-1); read_metadata(app); sync_project_ui(app,false); return 0;
+                }
+                case ID_CHOOSE_IMAGE: if (!app->busy && app->selected>=0) {
+                    const auto file=choose_file(window,false,L"Images\0*.png;*.jpg;*.jpeg;*.webp;*.bmp\0All files\0*.*\0\0");
+                    if(!file.empty()){SetWindowTextW(app->image,file.c_str());commit_fields(app);request_preview(app);} return 0;
+                }
+                case ID_CHOOSE_SOUNDTRACK: if (!app->busy) {
+                    const auto file=choose_file(window,false,L"Audio\0*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg\0All files\0*.*\0\0");
+                    if(!file.empty()){SetWindowTextW(app->soundtrack,file.c_str());commit_fields(app);} return 0;
+                }
+                case ID_EXPORT: if (!app->busy) {
+                    const auto file=choose_file(window,true,L"MP4 video\0*.mp4\0All files\0*.*\0\0",L"mp4");
+                    if(!file.empty())begin_export(app,fs::path(file)); return 0;
+                }
+                case ID_CANCEL: cancel_task(app); return 0;
+            }
+            break;
+        }
+        case WM_HSCROLL:
+            if (reinterpret_cast<HWND>(lparam) == app->timeline) {
+                app->current_frame = static_cast<int>(SendMessageW(app->timeline,TBM_GETPOS,0,0));
+                update_frame_label(app);
+                if (LOWORD(wparam) == TB_ENDTRACK || LOWORD(wparam) == TB_THUMBPOSITION) request_preview(app);
+                return 0;
+            }
+            break;
+        case WM_TIMER:
+            if (wparam == kProgressTimer && app->busy && !app->progress_file.empty()) {
+                std::ifstream input(app->progress_file);
+                int percent=0,done=0,total=0;
+                if(input>>percent>>done>>total){SendMessageW(app->progress,PBM_SETPOS,std::clamp(percent,0,100),0);status(app,"Exporting · "+std::to_string(percent)+"% · frame "+std::to_string(done)+" / "+std::to_string(total));}
+                return 0;
+            }
+            break;
+        case WM_PREVIEW_DONE: {
+            std::unique_ptr<PreviewResult> result(reinterpret_cast<PreviewResult*>(lparam));
+            if (result && result->generation == app->preview_generation.load()) {
+                if (result->error.empty()) {
+                    HBITMAP bitmap = static_cast<HBITMAP>(LoadImageW(nullptr,result->bitmap.wstring().c_str(),IMAGE_BITMAP,0,0,LR_LOADFROMFILE|LR_CREATEDIBSECTION));
+                    if(bitmap){replace_bitmap(app,bitmap);status(app,"Exact renderer preview · frame "+std::to_string(app->current_frame));}
+                    else status(app,"Preview bitmap could not be loaded.");
+                } else status(app,result->error);
+            }
+            if(result){std::error_code ec;fs::remove(result->bitmap,ec);}
+            return 0;
+        }
+        case WM_TASK_DONE: {
+            std::unique_ptr<TaskResult> task(reinterpret_cast<TaskResult*>(lparam));
+            KillTimer(window,kProgressTimer);
+            set_busy(app,false,"Ready");
+            if (!task) return 0;
+            if (task->process.exit_code != 0) {
+                status(app,task->process.output.empty()?"Operation failed.":task->process.output);
+            } else if (task->kind == TaskResult::Kind::Export) {
+                status(app,"Export finished · "+narrow_path(task->output));
+            } else {
+                cubical::Project imported; std::string error;
+                if(cubical::load_ccx(imported,task->output,&error)){app->project=std::move(imported);app->selected=0;app->current_frame=0;sync_project_ui(app);status(app,task->kind==TaskResult::Kind::ImportData?"Data imported through shared engine":"MegaPack imported through shared engine");}
+                else status(app,"Import result could not be opened: "+error);
+            }
+            std::error_code ec; fs::remove(task->output,ec); fs::remove(app->progress_file,ec); fs::remove(app->cancel_file,ec);
+            if(app->pending_close) DestroyWindow(window);
+            return 0;
+        }
+        case WM_CLOSE:
+            if(app->busy){app->pending_close=true;cancel_task(app);status(app,"Canceling current task before closing...");return 0;}
+            DestroyWindow(window); return 0;
+        case WM_DESTROY: {
+            ++app->preview_generation;
+            if(app->preview_bitmap)DeleteObject(app->preview_bitmap);
+            if(app->font)DeleteObject(app->font);
+            std::error_code ec;fs::remove(app->working_ccx,ec);fs::remove(app->preview_bmp,ec);fs::remove(app->progress_file,ec);fs::remove(app->cancel_file,ec);
+            PostQuitMessage(0); return 0;
+        }
+    }
+    return DefWindowProcW(window,message,wparam,lparam);
 }
-std::error_code progress_cleanup;fs::remove(progress_path,progress_cleanup);
-const auto directory=cubical::temporary_path("cubical-compare-native-self-test","");const auto result=cubical::run_engine({"self-test","--directory",directory.string()});std::error_code ignored;fs::remove_all(directory,ignored);LocalFree(argv);return result.exit_code;}if(argv)LocalFree(argv);
-CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);INITCOMMONCONTROLSEX cc{sizeof(cc),ICC_STANDARD_CLASSES|ICC_TAB_CLASSES|ICC_LISTVIEW_CLASSES|ICC_BAR_CLASSES};InitCommonControlsEx(&cc);AppState state;state.instance=instance;state.ui_font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");state.working_ccx=cubical::temporary_path("cubical-compare",".ccx");state.preview_path.clear();WNDCLASSW wc{};wc.lpfnWndProc=MainProc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);wc.lpszClassName=kMainClass;RegisterClassW(&wc);WNDCLASSW cw{};cw.lpfnWndProc=ControlsProc;cw.hInstance=instance;cw.hCursor=LoadCursorW(nullptr,IDC_ARROW);cw.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);cw.lpszClassName=kControlsClass;RegisterClassW(&cw);HWND window=CreateWindowExW(0,kMainClass,L"Cubical Compare",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,1180,640,nullptr,nullptr,instance,&state);ShowWindow(window,show);UpdateWindow(window);MSG m{};while(GetMessageW(&m,nullptr,0,0)>0){TranslateMessage(&m);DispatchMessageW(&m);}for(int i=0;i<100&&state.preview_jobs.load()>0;++i)Sleep(20);std::error_code ec;fs::remove(state.working_ccx,ec);fs::remove(state.preview_path,ec);DeleteObject(state.ui_font);CoUninitialize();return static_cast<int>(m.wParam);}
+
+} // namespace
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show) {
+    if (command_line && std::wstring(command_line).find(L"--self-test") != std::wstring::npos) return run_self_test() ? 0 : 2;
+
+    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES|ICC_BAR_CLASSES|ICC_PROGRESS_CLASS};
+    InitCommonControlsEx(&controls);
+
+    WNDCLASSEXW klass{sizeof(klass)};
+    klass.lpfnWndProc=window_proc; klass.hInstance=instance; klass.lpszClassName=kWindowClass;
+    klass.hCursor=LoadCursorW(nullptr,IDC_ARROW); klass.hIcon=LoadIconW(nullptr,IDI_APPLICATION); klass.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
+    if(!RegisterClassExW(&klass))return 1;
+
+    App app; app.instance=instance;
+    HWND window=CreateWindowExW(0,kWindowClass,L"Cubical Compare 2.0 · Final",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
+        CW_USEDEFAULT,CW_USEDEFAULT,1440,860,nullptr,nullptr,instance,&app);
+    if(!window)return 1;
+    ShowWindow(window,show);UpdateWindow(window);
+    MSG message{};
+    while(GetMessageW(&message,nullptr,0,0)>0){TranslateMessage(&message);DispatchMessageW(&message);}
+    return static_cast<int>(message.wParam);
+}
