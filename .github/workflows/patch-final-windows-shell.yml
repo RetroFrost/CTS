@@ -1,0 +1,34 @@
+name: Patch final Windows shell
+on:
+  push:
+    branches: [work/final-cross-platform-rebuild]
+    paths: [.github/workflows/patch-final-windows-shell.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: work/final-cross-platform-rebuild
+      - name: Apply final shell corrections
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('native/windows/main.cpp')
+          s = p.read_text()
+          s = s.replace('#include <chrono>\n', '#include <chrono>\n#include <cctype>\n#include <cstdlib>\n')
+          s = s.replace('#include <iomanip>\n', '#include <iomanip>\n#include <iterator>\n')
+          old = 'std::error_code ec; fs::remove(task->output,ec); fs::remove(app->progress_file,ec); fs::remove(app->cancel_file,ec);'
+          new = 'std::error_code ec; if(task->kind != TaskResult::Kind::Export) fs::remove(task->output,ec); fs::remove(app->progress_file,ec); fs::remove(app->cancel_file,ec);'
+          if old not in s:
+              raise SystemExit('expected cleanup line not found')
+          p.write_text(s.replace(old, new))
+          PY
+          rm .github/workflows/patch-final-windows-shell.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Preserve completed Windows exports"
+          git push origin HEAD:work/final-cross-platform-rebuild
