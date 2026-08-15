@@ -3,6 +3,7 @@ package io.github.retrofrost.cts.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -15,8 +16,7 @@ import io.github.retrofrost.cts.android.ui.theme.CtsTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Keep the editor on the classic CTS content metrics instead of forcing the
-        // modern edge-to-edge treatment that made the compact editor harder to use.
+        enableEdgeToEdge()
         setContent {
             CtsTheme {
                 val preferences = remember {

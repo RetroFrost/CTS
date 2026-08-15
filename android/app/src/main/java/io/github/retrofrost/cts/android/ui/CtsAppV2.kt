@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -68,6 +69,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -78,12 +80,12 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -144,7 +146,7 @@ import java.util.UUID
 
 private enum class WorkspaceSection(val label: String) {
     Data("Cards"),
-    Audio("Sound & pre-roll"),
+    Audio("Audio"),
     Export("Export"),
 }
 
@@ -203,6 +205,7 @@ fun CtsAndroidAppV2(
     var isImportingMegaPack by remember { mutableStateOf(false) }
     var megaPackWarnings by remember { mutableStateOf<List<String>>(emptyList()) }
     var pendingExportPermission by remember { mutableStateOf(false) }
+    var projectMenuExpanded by remember { mutableStateOf(false) }
     val duration = TimelineEngine.duration(project)
 
     fun message(text: String) {
@@ -525,26 +528,69 @@ fun CtsAndroidAppV2(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
+            TopAppBar(
                 title = {
-                    Column {
-                        Text("CTS", fontWeight = FontWeight.Black)
-                        Text(
-                            "Comparison Timeline Studio",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                        ) {
+                            Icon(
+                                Icons.Filled.Movie,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(8.dp).size(20.dp),
+                            )
+                        }
+                        Column {
+                            Text("CTS Studio", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                project.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { openProject.launch(arrayOf("application/json", "text/json", "*/*")) }) {
-                        Icon(Icons.Filled.FolderOpen, contentDescription = "Open project")
-                    }
-                    IconButton(onClick = { saveProject.launch("comparison-project.cts.json") }) {
-                        Icon(Icons.Filled.Save, contentDescription = "Save project")
-                    }
-                    IconButton(onClick = onReplaySetup) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Run setup again")
+                    Box {
+                        IconButton(onClick = { projectMenuExpanded = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "Project menu")
+                        }
+                        DropdownMenu(
+                            expanded = projectMenuExpanded,
+                            onDismissRequest = { projectMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Open project") },
+                                leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null) },
+                                onClick = {
+                                    projectMenuExpanded = false
+                                    openProject.launch(arrayOf("application/json", "text/json", "*/*"))
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Save project") },
+                                leadingIcon = { Icon(Icons.Filled.Save, contentDescription = null) },
+                                onClick = {
+                                    projectMenuExpanded = false
+                                    saveProject.launch("comparison-project.cts.json")
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Studio setup") },
+                                leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                                onClick = {
+                                    projectMenuExpanded = false
+                                    onReplaySetup()
+                                },
+                            )
+                        }
                     }
                 },
             )
@@ -559,22 +605,13 @@ fun CtsAndroidAppV2(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            ProgramMonitor(
+            RenderedProgramMonitor(
                 project = project,
                 positionSeconds = positionSeconds,
-                selectedCardId = selectedCardId,
-                onSelectCard = ::selectCard,
-                onImageTransformChanged = { cardId, transform ->
-                    applyProject(
-                        project.updateCard(cardId) { card ->
-                            card.copy(imageSubcard = card.imageSubcard.copy(transform = transform.clamped()))
-                        },
-                    )
-                },
+                isPlaying = isPlaying,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             )
 
             TimelineControlsV2(
@@ -591,16 +628,18 @@ fun CtsAndroidAppV2(
                 },
             )
 
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
             AnimatedContent(
                 targetState = section,
                 modifier = Modifier.weight(1f),
                 transitionSpec = {
                     (fadeIn(tween(220, 70, FastOutSlowInEasing)) +
-                        scaleIn(tween(220, 70, FastOutSlowInEasing), initialScale = 0.96f)) togetherWith
+                        scaleIn(tween(220, 70, FastOutSlowInEasing), initialScale = 0.97f)) togetherWith
                         (fadeOut(tween(110, easing = FastOutSlowInEasing)) +
-                            scaleOut(tween(110, easing = FastOutSlowInEasing), targetScale = 0.98f))
+                            scaleOut(tween(110, easing = FastOutSlowInEasing), targetScale = 0.99f))
                 },
-                label = "workspace-section",
+                label = "studio-section",
             ) { activeSection ->
                 when (activeSection) {
                     WorkspaceSection.Data -> CardsWorkspace2(
@@ -1267,29 +1306,48 @@ private fun TimelineControlsV2(
     onPlayPause: () -> Unit,
     onPositionChanged: (Float) -> Unit,
 ) {
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
-        IconButton(onClick = onPlayPause) {
-            Icon(
-                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play",
-            )
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilledTonalIconButton(onClick = onPlayPause, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause preview" else "Play preview",
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Slider(
+                    value = positionSeconds.coerceIn(0f, durationSeconds.coerceAtLeast(0.001f)),
+                    onValueChange = onPositionChanged,
+                    valueRange = 0f..durationSeconds.coerceAtLeast(0.001f),
+                    modifier = Modifier.fillMaxWidth().height(32.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        TimelineEngine.formatTime(positionSeconds),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        TimelineEngine.formatTime(durationSeconds),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
-        Slider(
-            value = positionSeconds.coerceIn(0f, durationSeconds.coerceAtLeast(0.001f)),
-            onValueChange = onPositionChanged,
-            valueRange = 0f..durationSeconds.coerceAtLeast(0.001f),
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            "${TimelineEngine.formatTime(positionSeconds)} / ${TimelineEngine.formatTime(durationSeconds)}",
-            style = MaterialTheme.typography.labelSmall,
-        )
     }
 }
 
@@ -1298,7 +1356,10 @@ private fun WorkspaceTabs(
     section: WorkspaceSection,
     onSectionChanged: (WorkspaceSection) -> Unit,
 ) {
-    NavigationBar(tonalElevation = 3.dp) {
+    NavigationBar(
+        tonalElevation = 0.dp,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
         WorkspaceSection.entries.forEach { item ->
             val icon = when (item) {
                 WorkspaceSection.Data -> Icons.Filled.TableRows
@@ -1316,32 +1377,6 @@ private fun WorkspaceTabs(
 }
 
 @Composable
-private fun readableOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Color.Black,
-    unfocusedTextColor = Color.Black,
-    focusedContainerColor = Color.White,
-    unfocusedContainerColor = Color.White,
-    cursorColor = Color.Black,
-    focusedLabelColor = Color.Black,
-    unfocusedLabelColor = Color.DarkGray,
-    focusedBorderColor = Color.Black,
-    unfocusedBorderColor = Color(0xFF737373),
-)
-
-@Composable
-private fun ReferenceOption(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onChecked(!checked) },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = checked, onCheckedChange = onChecked)
-        Text(label)
-    }
-}
-
-@Composable
 private fun AudioWorkspace(
     project: CtsProject,
     onProjectChanged: (CtsProject) -> Unit,
@@ -1351,25 +1386,24 @@ private fun AudioWorkspace(
     val encoders = remember { CodecCatalog.audioEncoders() }
     var showAdvanced by remember { mutableStateOf(false) }
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Text("Sound & pre-roll", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text("Audio", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Add an optional pre-roll, edit text content, and choose music. The reference model itself stays untouched.",
+                "Add a pre-roll, soundtrack, and the credits used by the locked reference timeline.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("Optional pre-roll", fontWeight = FontWeight.Black)
+                    Text("Pre-roll video", style = MaterialTheme.typography.titleMedium)
                     Text(
                         project.introVideo.displayName.ifBlank { "Choose an MP4 to play before the model starts." },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1377,6 +1411,7 @@ private fun AudioWorkspace(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = onChooseIntroVideo, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Filled.Movie, contentDescription = null)
+                            Spacer(Modifier.size(8.dp))
                             Text(if (project.introVideo.uri == null) "Choose MP4" else "Replace MP4")
                         }
                         OutlinedButton(
@@ -1409,10 +1444,10 @@ private fun AudioWorkspace(
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    Text("Credits", fontWeight = FontWeight.Black)
+                    Text("Credits", style = MaterialTheme.typography.titleMedium)
                     OutlinedTextField(
                         value = project.credits.heading,
                         onValueChange = { value ->
@@ -1458,33 +1493,36 @@ private fun AudioWorkspace(
             }
         }
         item {
-            Text("Soundtrack", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onChooseSoundtrack, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Filled.MusicNote, contentDescription = null)
-                    Text(if (project.soundtrack.uri == null) "Choose soundtrack" else "Replace soundtrack")
-                }
-                OutlinedButton(
-                    onClick = {
-                        onProjectChanged(project.copy(soundtrack = project.soundtrack.copy(uri = null, displayName = "")))
-                    },
-                    enabled = project.soundtrack.uri != null,
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Icon(Icons.Filled.Close, contentDescription = null)
-                    Text("Remove")
-                }
-            }
-        }
-        project.soundtrack.uri?.let {
-            item {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(project.soundtrack.displayName.ifBlank { "Selected audio" }, fontWeight = FontWeight.Bold)
+                    Text("Soundtrack", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        project.soundtrack.displayName.ifBlank { "No soundtrack selected" },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onChooseSoundtrack, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Filled.MusicNote, contentDescription = null)
+                            Spacer(Modifier.size(8.dp))
+                            Text(if (project.soundtrack.uri == null) "Choose audio" else "Replace audio")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onProjectChanged(
+                                    project.copy(soundtrack = project.soundtrack.copy(uri = null, displayName = "")),
+                                )
+                            },
+                            enabled = project.soundtrack.uri != null,
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = "Remove soundtrack")
+                        }
+                    }
+                    if (project.soundtrack.uri != null) {
                         Text("Volume ${"%.0f".format(project.soundtrack.volume * 100)}%")
                         Slider(
                             value = project.soundtrack.volume,
@@ -1493,7 +1531,16 @@ private fun AudioWorkspace(
                             },
                             valueRange = 0f..2f,
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onProjectChanged(
+                                        project.copy(soundtrack = project.soundtrack.copy(loop = !project.soundtrack.loop)),
+                                    )
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Checkbox(
                                 checked = project.soundtrack.loop,
                                 onCheckedChange = { checked ->
@@ -1583,15 +1630,14 @@ private fun ExportWorkspace(
         ?.getString(ExportWorker.KEY_DETAIL)
         .orEmpty()
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Text("Export video", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text("Export", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Review the reference output, then export. You can leave CTS while encoding continues.",
+                "Render the exact frame shown in the monitor. Encoding continues safely in the background.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -1608,7 +1654,7 @@ private fun ExportWorkspace(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(exportStage, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                                Text(exportStage, style = MaterialTheme.typography.titleMedium)
                                 if (exportDetail.isNotBlank()) {
                                     Text(
                                         exportDetail,
@@ -1619,7 +1665,7 @@ private fun ExportWorkspace(
                                     )
                                 }
                             }
-                            Text("$progressPercent%", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                            Text("$progressPercent%", style = MaterialTheme.typography.titleLarge)
                         }
                         LinearWavyProgressIndicator(
                             progress = { animatedProgress },
@@ -1642,10 +1688,10 @@ private fun ExportWorkspace(
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text("Reference output", fontWeight = FontWeight.Black)
+                    Text("Reference output", style = MaterialTheme.typography.titleMedium)
                     Text("${project.model.label} · fixed model timing")
                     Text(
                         "1920×1080 · 60 fps · model colors, geometry and animation locked",

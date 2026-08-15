@@ -2,79 +2,62 @@ package io.github.retrofrost.cts.android.export
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.Shader
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
-import android.text.Layout
-import android.text.StaticLayout
-import android.text.TextPaint
-import android.text.TextUtils
-import io.github.retrofrost.cts.android.layout.CardContentLayout
-import io.github.retrofrost.cts.android.model.CtsCard
 import io.github.retrofrost.cts.android.model.CtsProject
-import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.VisualModel
-import io.github.retrofrost.cts.android.render.ReferenceBadgePainter
-import io.github.retrofrost.cts.android.timeline.TimelineEngine
-import io.github.retrofrost.cts.android.timeline.CardPlacement
-import java.io.File
-import java.io.FileInputStream
-import java.io.InputStream
-import java.net.URL
-import java.util.LinkedHashMap
-import kotlin.math.max
-import kotlin.math.min
+import io.github.retrofrost.cts.android.rendering.BitmapPainter
+import io.github.retrofrost.cts.android.rendering.BitmapSourceCache
+import io.github.retrofrost.cts.android.rendering.ReferenceCardPainter
+import io.github.retrofrost.cts.android.rendering.ReferenceSceneBuilder
+import io.github.retrofrost.cts.android.rendering.TextBlockPainter
 
-/** Draws the exact Android reference layout into a Bitmap for MediaCodec export. */
+/**
+ * Frame-perfect renderer shared by the live preview and MediaCodec export.
+ * Timeline sampling, bitmap loading and text fitting are deliberately separate
+ * passes so a UI refactor cannot change the encoded video.
+ */
 class ReferenceFrameRenderer(
     private val context: Context,
     private val project: CtsProject,
     private val width: Int,
     private val height: Int,
-) {
-    private val missingImages = mutableSetOf<String>()
-    private val imageCache = object : LinkedHashMap<String, Bitmap>(8, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
-            val remove = size > MAX_CACHED_IMAGES
-            if (remove) eldest?.value?.takeUnless { it.isRecycled }?.recycle()
-            return remove
-        }
-    }
+) : AutoCloseable {
+    private val images = BitmapSourceCache(context)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
-    private val introRetriever: MediaMetadataRetriever? = project.introVideo.uri
-        ?.takeIf { it.isNotBlank() }
-        ?.let { source ->
-            runCatching {
-                MediaMetadataRetriever().apply {
-                    val uri = Uri.parse(source)
-                    if (uri.scheme.isNullOrBlank()) setDataSource(source) else setDataSource(context, uri)
-                }
-            }.getOrNull()
-        }
+    private val text = TextBlockPainter()
+    private val cards = ReferenceCardPainter(project, height, images, paint, text)
+    @Volatile
+    private var closed = false
+    private val introSource = project.introVideo.uri?.takeIf { it.isNotBlank() }
+    private var introRetriever: MediaMetadataRetriever? = null
 
+    @Synchronized
     fun render(target: Bitmap, outputTimeSeconds: Float) {
+        check(!closed) { "Renderer is closed" }
         require(target.width == width && target.height == height)
+        // No Paint state may leak from one encoded frame into the next.
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.isFilterBitmap = true
+        val scene = ReferenceSceneBuilder.build(project, outputTimeSeconds)
         val canvas = Canvas(target)
         canvas.drawColor(Color.BLACK)
-        if (TimelineEngine.customIntroVisible(project, outputTimeSeconds)) {
-            drawCustomIntro(canvas, outputTimeSeconds)
+        if (scene.customIntroVisible) {
+            drawCustomIntro(canvas, scene.outputTimeSeconds)
             return
         }
         val cardWidth = width / 4f
 
-        if (TimelineEngine.introCreditsVisible(project, outputTimeSeconds)) {
+        if (scene.introCreditsVisible) {
             ReferenceOverlayRenderer.drawIntroCredits(canvas, width, height, project.credits, paint)
         }
-        TimelineEngine.placements(project, outputTimeSeconds).forEach { placement ->
+        scene.placements.forEach { placement ->
             val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
             val cardX = cardWidth * placement.xInCards
             canvas.save()
@@ -97,61 +80,65 @@ class ReferenceFrameRenderer(
             } else {
                 canvas.clipRect(0f, 0f, cardWidth * placement.bodyReveal.coerceIn(0f, 1f), height.toFloat())
             }
-            drawCardBody(canvas, card, cardWidth, placement)
+            cards.drawBody(canvas, card, cardWidth, placement)
             if (project.model == VisualModel.Relationships) canvas.restore()
             canvas.restore()
             if (placement.badgeVisible) {
-                drawBadge(canvas, card, cardX, cardWidth, placement)
+                cards.drawBadge(canvas, card, cardX, cardWidth, placement)
             }
         }
 
-        if (project.model == VisualModel.Relationships) {
+        if (scene.relationships) {
             ReferenceOverlayRenderer.drawRelationshipsPrelude(
                 canvas,
                 width,
                 height,
-                TimelineEngine.relationshipsSourceFrame(project, outputTimeSeconds),
-                TimelineEngine.relationshipsDisclaimerAlpha(project, outputTimeSeconds),
+                scene.relationshipsSourceFrame,
+                scene.relationshipsDisclaimerAlpha,
                 true,
                 paint,
             )
         }
 
-        val cover = TimelineEngine.outroCoverProgress(project, outputTimeSeconds)
-        val content = TimelineEngine.outroContentAlpha(project, outputTimeSeconds)
-        if (project.model == VisualModel.Relationships) {
+        if (scene.relationships) {
             ReferenceOverlayRenderer.drawRelationshipsOutro(
                 canvas,
                 width,
                 height,
-                TimelineEngine.relationshipsOutroLocalFrame(project, outputTimeSeconds),
-                content,
+                scene.relationshipsOutroLocalFrame,
+                scene.outroContentAlpha,
                 project.credits,
                 paint,
             )
         } else {
-            ReferenceOverlayRenderer.drawOutro(canvas, width, height, cover, content, project.credits, paint)
+            ReferenceOverlayRenderer.drawOutro(
+                canvas,
+                width,
+                height,
+                scene.outroCoverProgress,
+                scene.outroContentAlpha,
+                project.credits,
+                paint,
+            )
         }
 
-        val fade = TimelineEngine.fadeAlpha(project, outputTimeSeconds).coerceIn(0f, 1f)
-        if (fade < 0.999f) {
+        if (scene.fadeAlpha < 0.999f) {
             paint.shader = null
-            paint.color = Color.argb(((1f - fade) * 255f).toInt(), 0, 0, 0)
+            paint.color = Color.argb(((1f - scene.fadeAlpha) * 255f).toInt(), 0, 0, 0)
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
         }
     }
 
-    fun close() {
-        imageCache.values.forEach { bitmap ->
-            if (!bitmap.isRecycled) bitmap.recycle()
-        }
-        imageCache.clear()
-        missingImages.clear()
+    @Synchronized
+    override fun close() {
+        if (closed) return
+        closed = true
+        images.close()
         introRetriever?.release()
     }
 
     private fun drawCustomIntro(canvas: Canvas, outputTimeSeconds: Float) {
-        val retriever = introRetriever ?: return
+        val retriever = introRetriever ?: createIntroRetriever()?.also { introRetriever = it } ?: return
         val timeUs = (outputTimeSeconds.coerceAtLeast(0f) * 1_000_000f).toLong()
         val frame = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -166,262 +153,25 @@ class ReferenceFrameRenderer(
             }
         }.getOrNull() ?: return
         try {
-            drawCenterCrop(canvas, frame, RectF(0f, 0f, width.toFloat(), height.toFloat()), 0.5f, 0.5f, 1f)
+            BitmapPainter.drawCenterCrop(
+                canvas = canvas,
+                bitmap = frame,
+                destination = RectF(0f, 0f, width.toFloat(), height.toFloat()),
+                paint = paint,
+            )
         } finally {
             if (!frame.isRecycled) frame.recycle()
         }
     }
 
-    private fun drawCardBody(canvas: Canvas, card: CtsCard, cardWidth: Float, placement: CardPlacement) {
-        val displayCard = card.withNormalizedText()
-        val frames = CardContentLayout.frames(project.model, displayCard)
-        val image = frameRect(frames.image, cardWidth)
-        val title = frames.title?.let { frameRect(it, cardWidth) }
-        val description = frames.description?.let { frameRect(it, cardWidth) }
-
-        // Reference-model colours are owned by the model and are never replaced by app content.
-        val topColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 105, 211) else Color.rgb(19, 141, 219)
-        val bottomColor = if (project.model == VisualModel.Relationships) Color.rgb(0, 88, 181) else Color.rgb(11, 116, 190)
-        paint.shader = LinearGradient(
-            image.left,
-            image.top,
-            image.left,
-            image.bottom,
-            intArrayOf(topColor, topColor, bottomColor),
-            floatArrayOf(0f, 0.72f, 1f),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawRect(image, paint)
-        paint.shader = null
-
-        loadImage(displayCard.imageSubcard.source)?.let { bitmap ->
-            val transform = displayCard.imageSubcard.transform.clamped()
-            val destination = RectF(
-                image.left + image.width() * transform.x,
-                image.top + image.height() * transform.y,
-                image.left + image.width() * (transform.x + transform.width),
-                image.top + image.height() * (transform.y + transform.height),
-            )
-            canvas.save()
-            canvas.clipRect(image)
-            drawCenterCrop(
-                canvas = canvas,
-                bitmap = bitmap,
-                destination = destination,
-                focusX = displayCard.imageSubcard.cropFocusX,
-                focusY = displayCard.imageSubcard.cropFocusY,
-                zoom = displayCard.imageSubcard.cropZoom,
-            )
-            canvas.restore()
-        }
-
-        val padding = cardWidth * 0.035f
-        title?.let {
-            paint.color = if (project.model == VisualModel.Relationships) {
-                Color.rgb(244, 242, 240)
-            } else Color.rgb(242, 242, 242)
-            canvas.drawRect(it, paint)
-            val textAlpha = if (project.model == VisualModel.Relationships) {
-                placement.titleReveal.coerceIn(0f, 1f)
-            } else 1f
-            val textLayer = if (textAlpha < 0.999f) {
-                canvas.saveLayerAlpha(it, (textAlpha * 255f).toInt())
-            } else null
-            drawTextBlock(
-                canvas = canvas,
-                text = displayCard.title,
-                rect = RectF(it.left + padding, it.top + 2f, it.right - padding, it.bottom - 2f),
-                color = if (project.model == VisualModel.Relationships) Color.rgb(24, 22, 20) else Color.rgb(2, 2, 2),
-                bold = project.model != VisualModel.Relationships,
-                maximumSize = height * (if (project.model == VisualModel.Relationships) 0.060f else 0.043f),
-                minimumSize = height * (if (project.model == VisualModel.Relationships) 0.022f else 0.018f),
-                maxLines = if (project.model == VisualModel.Relationships) 1 else 2,
-            )
-            textLayer?.let(canvas::restoreToCount)
-        }
-        description?.let {
-            paint.color = if (project.model == VisualModel.Relationships) {
-                Color.rgb(27, 27, 27)
-            } else Color.rgb(99, 94, 87)
-            canvas.drawRect(it, paint)
-            val textAlpha = if (project.model == VisualModel.Relationships) {
-                placement.descriptionReveal.coerceIn(0f, 1f)
-            } else 1f
-            val textLayer = if (textAlpha < 0.999f) {
-                canvas.saveLayerAlpha(it, (textAlpha * 255f).toInt())
-            } else null
-            drawTextBlock(
-                canvas = canvas,
-                text = displayCard.description,
-                rect = RectF(
-                    it.left + padding,
-                    it.top + 2f,
-                    it.right - padding,
-                    it.bottom - 2f,
-                ),
-                color = Color.WHITE,
-                bold = project.model != VisualModel.Relationships,
-                maximumSize = height * (if (project.model == VisualModel.Relationships) 0.036f else 0.027f),
-                minimumSize = height * (if (project.model == VisualModel.Relationships) 0.018f else 0.014f),
-                maxLines = if (project.model == VisualModel.Relationships) 4 else 3,
-            )
-            textLayer?.let(canvas::restoreToCount)
-        }
-
-        paint.color = Color.rgb(17, 16, 12)
-        val bottomRule = frameRect(CardContentLayout.bottomRule(), cardWidth)
-        canvas.drawRect(bottomRule, paint)
-
-        if (project.model == VisualModel.Relationships) {
-            if (placement.artworkReveal < 1f) {
-                paint.color = Color.rgb(31, 31, 31)
-                canvas.drawRect(
-                    image.left,
-                    image.top + image.height() * placement.artworkReveal.coerceIn(0f, 1f),
-                    image.right,
-                    image.bottom,
-                    paint,
-                )
+    private fun createIntroRetriever(): MediaMetadataRetriever? {
+        val source = introSource ?: return null
+        return runCatching {
+            MediaMetadataRetriever().apply {
+                val uri = Uri.parse(source)
+                if (uri.scheme.isNullOrBlank()) setDataSource(source) else setDataSource(context, uri)
             }
-            CardContentLayout.relationshipsRule(displayCard)?.let { ruleFrame ->
-                paint.color = Color.rgb(213, 126, 0)
-                val rule = frameRect(ruleFrame, cardWidth)
-                canvas.drawRect(rule, paint)
-            }
-        }
-    }
-
-    private fun drawBadge(
-        canvas: Canvas,
-        card: CtsCard,
-        cardX: Float,
-        cardWidth: Float,
-        placement: CardPlacement,
-    ) {
-        ReferenceBadgePainter.draw(
-            canvas = canvas,
-            card = card.withNormalizedText(),
-            model = project.model,
-            placement = placement,
-            cardLeft = cardX,
-            cardWidth = cardWidth,
-            frameHeight = height.toFloat(),
-        )
-    }
-
-    private fun frameRect(rect: NormalizedRect, cardWidth: Float): RectF = RectF(
-        cardWidth * rect.x,
-        height * rect.y,
-        cardWidth * (rect.x + rect.width),
-        height * (rect.y + rect.height),
-    )
-
-    private fun drawCenterCrop(
-        canvas: Canvas,
-        bitmap: Bitmap,
-        destination: RectF,
-        focusX: Float,
-        focusY: Float,
-        zoom: Float,
-    ) {
-        if (destination.width() <= 0f || destination.height() <= 0f) return
-        val scale = max(destination.width() / bitmap.width, destination.height() / bitmap.height) *
-            zoom.coerceIn(1f, 3f)
-        val scaledWidth = bitmap.width * scale
-        val scaledHeight = bitmap.height * scale
-        val translationX = (destination.centerX() - bitmap.width * focusX.coerceIn(0f, 1f) * scale)
-            .coerceIn(destination.right - scaledWidth, destination.left)
-        val translationY = (destination.centerY() - bitmap.height * focusY.coerceIn(0f, 1f) * scale)
-            .coerceIn(destination.bottom - scaledHeight, destination.top)
-        val matrix = Matrix().apply {
-            postScale(scale, scale)
-            postTranslate(translationX, translationY)
-        }
-        canvas.drawBitmap(bitmap, matrix, paint)
-    }
-
-    private fun drawTextBlock(
-        canvas: Canvas,
-        text: String,
-        rect: RectF,
-        color: Int,
-        bold: Boolean,
-        maximumSize: Float,
-        minimumSize: Float,
-        maxLines: Int,
-    ) {
-        val displayText = text.trim()
-        if (displayText.isEmpty() || rect.width() <= 2f || rect.height() <= 2f) return
-        textPaint.color = color
-        textPaint.typeface = if (bold) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-        var size = maximumSize.coerceAtLeast(minimumSize)
-        var layout: StaticLayout
-        while (true) {
-            textPaint.textSize = size
-            layout = StaticLayout.Builder.obtain(
-                displayText,
-                0,
-                displayText.length,
-                textPaint,
-                max(1, rect.width().toInt()),
-            )
-                .setAlignment(Layout.Alignment.ALIGN_CENTER)
-                .setIncludePad(false)
-                .setMaxLines(maxLines)
-                .setEllipsize(TextUtils.TruncateAt.END)
-                .build()
-            if ((layout.height <= rect.height() && layout.lineCount <= maxLines) || size <= minimumSize) break
-            size = max(minimumSize, size - 1f)
-        }
-        canvas.save()
-        canvas.translate(rect.left, rect.top + max(0f, (rect.height() - layout.height) / 2f))
-        layout.draw(canvas)
-        canvas.restore()
-    }
-
-    private fun loadImage(source: String?): Bitmap? {
-        val key = source?.trim().orEmpty()
-        if (key.isBlank()) return null
-        imageCache[key]?.let { bitmap ->
-            if (!bitmap.isRecycled) return bitmap
-            imageCache.remove(key)
-        }
-        if (key in missingImages) return null
-        val bitmap = runCatching {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            openImageStream(key)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) error("Could not read image bounds")
-            var sampleSize = 1
-            while (max(bounds.outWidth, bounds.outHeight) / (sampleSize * 2) >= MAX_DECODED_EDGE) {
-                sampleSize *= 2
-            }
-            openImageStream(key)?.use { stream ->
-                BitmapFactory.decodeStream(
-                    stream,
-                    null,
-                    BitmapFactory.Options().apply { inSampleSize = sampleSize },
-                )
-            } ?: error("Could not open image")
         }.getOrNull()
-        if (bitmap == null) missingImages += key else imageCache[key] = bitmap
-        return bitmap
     }
 
-    private fun openImageStream(key: String): InputStream? = when {
-        key.startsWith("http://", true) || key.startsWith("https://", true) ->
-            URL(key).openConnection().apply {
-                connectTimeout = 15_000
-                readTimeout = 20_000
-                setRequestProperty("User-Agent", "CTS-Android-Exporter")
-            }.getInputStream()
-        key.startsWith("content://", true) || key.startsWith("file://", true) ->
-            context.contentResolver.openInputStream(Uri.parse(key))
-        else -> FileInputStream(File(key))
-    }
-
-    private companion object {
-        const val MAX_CACHED_IMAGES = 6
-        const val MAX_DECODED_EDGE = 3_072
-        val BADGE_FRAME = NormalizedRect(0.245f, 0.063f, 0.51f, 0.263f)
-    }
 }

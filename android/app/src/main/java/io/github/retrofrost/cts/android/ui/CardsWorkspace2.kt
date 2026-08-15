@@ -1,7 +1,7 @@
 package io.github.retrofrost.cts.android.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,36 +10,34 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,13 +46,7 @@ import io.github.retrofrost.cts.android.model.CtsProject
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.VisualModel
 
-/**
- * CTS 2.0 card workspace.
- *
- * Reference models are sealed presets. The app may select a model and provide content/artwork,
- * but it never overrides model-owned colours, gradients, geometry, typography, timing,
- * animation, badge styling, disclaimer styling, ending styling, or other visual rules.
- */
+/** Focused card editor: model, data, selection and the active card—nothing else. */
 @Composable
 internal fun CardsWorkspace2(
     project: CtsProject,
@@ -69,24 +61,39 @@ internal fun CardsWorkspace2(
     isImportingMegaPack: Boolean,
     onInsertData: () -> Unit,
 ) {
-    val selected = project.cards.firstOrNull { it.id == selectedCardId }
-    var showCardDetails by remember { mutableStateOf(false) }
-    var showImports by remember { mutableStateOf(false) }
+    val selectedIndex = project.cards.indexOfFirst { it.id == selectedCardId }
+    val selected = project.cards.getOrNull(selectedIndex)
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Cards", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                Text(
-                    "${project.cards.size} cards · ${project.model.label}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text("Cards", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Build the comparison from data and artwork",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Text(
+                        "${project.cards.size}",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
 
@@ -94,50 +101,94 @@ internal fun CardsWorkspace2(
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("Reference model", fontWeight = FontWeight.Bold)
+                    Text("Reference model", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Pick the reference. Its visual design and animation are fixed by the model itself.",
-                        style = MaterialTheme.typography.bodySmall,
+                        "Geometry and animation stay locked to the source video.",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        VisualModel.entries.forEach { model ->
-                            FilterChip(
-                                selected = project.model == model,
-                                onClick = { onProjectChanged(project.copy(model = model)) },
-                                label = {
-                                    Text(model.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
+                        ModelChoice(
+                            title = "Males by age",
+                            selected = project.model == VisualModel.Males,
+                            onClick = { onProjectChanged(project.copy(model = VisualModel.Males)) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        ModelChoice(
+                            title = "Relationships",
+                            selected = project.model == VisualModel.Relationships,
+                            onClick = { onProjectChanged(project.copy(model = VisualModel.Relationships)) },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }
         }
 
         item {
-            Button(
-                onClick = onInsertData,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) {
-                Icon(Icons.Filled.TableRows, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text("Insert or edit all cards", fontWeight = FontWeight.Black)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = onInsertData,
+                    modifier = Modifier.weight(1f).height(52.dp),
+                ) {
+                    Icon(Icons.Filled.TableRows, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Import data")
+                }
+                FilledTonalButton(
+                    onClick = {
+                        val updated = project.addBlankCard()
+                        onProjectChanged(updated)
+                        updated.cards.lastOrNull()?.id?.let(onSelectCard)
+                    },
+                    modifier = Modifier.height(52.dp),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("Add")
+                }
+            }
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onImportCardStrip,
+                    enabled = project.cards.isNotEmpty() && !isImportingCardStrip && !isImportingMegaPack,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.Image, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text(if (isImportingCardStrip) "Reading…" else "Image sheet")
+                }
+                OutlinedButton(
+                    onClick = onImportMegaPack,
+                    enabled = !isImportingMegaPack && !isImportingCardStrip,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.FolderZip, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text(if (isImportingMegaPack) "Loading…" else "MegaPack")
+                }
             }
         }
 
         if (project.cards.isNotEmpty()) {
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(project.cards, key = { it.id }) { card ->
+                    itemsIndexed(project.cards, key = { _, card -> card.id }) { index, card ->
                         FilterChip(
                             selected = card.id == selectedCardId,
                             onClick = { onSelectCard(card.id) },
+                            modifier = Modifier.widthIn(max = 220.dp),
                             label = {
-                                Text(card.title.ifBlank { "Untitled" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    "${index + 1} · ${card.title.ifBlank { "Untitled" }}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             },
                         )
                     }
@@ -145,208 +196,178 @@ internal fun CardsWorkspace2(
             }
         }
 
-        if (selected == null) {
-            item {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text("No card selected", fontWeight = FontWeight.Bold)
-                        Text("Add cards or paste your comparison data to begin.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        FilledTonalButton(
-                            onClick = {
-                                val updated = project.addBlankCard()
-                                onProjectChanged(updated)
-                                updated.cards.lastOrNull()?.id?.let(onSelectCard)
-                            },
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = null)
-                            Spacer(Modifier.size(6.dp))
-                            Text("Add card")
-                        }
-                    }
-                }
-            }
-        } else {
-            item {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text("Edit selected card", fontWeight = FontWeight.Black)
-
-                        OutlinedTextField(
-                            value = selected.title,
-                            onValueChange = { value -> onUpdateSelectedCard { it.copy(title = value) } },
-                            label = { Text("Title") },
-                            colors = titleFieldColors2(),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onFocusChanged { state ->
-                                    if (!state.isFocused && selected.title != selected.title.trim()) {
-                                        onUpdateSelectedCard { it.copy(title = it.title.trim()) }
-                                    }
-                                },
-                        )
-
-                        OutlinedTextField(
-                            value = selected.description,
-                            onValueChange = { value -> onUpdateSelectedCard { it.copy(description = value) } },
-                            label = { Text("Description") },
-                            minLines = 2,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onFocusChanged { state ->
-                                    if (!state.isFocused && selected.description != selected.description.trim()) {
-                                        onUpdateSelectedCard { it.copy(description = it.description.trim()) }
-                                    }
-                                },
-                        )
-
-                        Button(onClick = onChooseImage, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Filled.Image, contentDescription = null)
-                            Spacer(Modifier.size(6.dp))
-                            Text(if (selected.imageSubcard.source.isNullOrBlank()) "Add artwork" else "Replace artwork")
-                        }
-
-                        OutlinedButton(
-                            onClick = { showCardDetails = !showCardDetails },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(if (showCardDetails) "Hide card details" else "Card details")
-                        }
-
-                        AnimatedVisibility(showCardDetails) {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                OutlinedTextField(
-                                    value = selected.badgePrimary,
-                                    onValueChange = { value -> onUpdateSelectedCard { it.copy(badgePrimary = value) } },
-                                    label = { Text("Badge value") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                OutlinedTextField(
-                                    value = selected.badgeSecondary,
-                                    onValueChange = { value -> onUpdateSelectedCard { it.copy(badgeSecondary = value) } },
-                                    label = { Text("Badge label") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                OutlinedButton(
-                                    onClick = {
-                                        onUpdateSelectedCard { card ->
-                                            card.copy(imageSubcard = card.imageSubcard.copy(transform = NormalizedRect.Full))
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Icon(Icons.Filled.RestartAlt, contentDescription = null)
-                                    Spacer(Modifier.size(6.dp))
-                                    Text("Reset artwork position")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(
-                        onClick = {
-                            val updated = project.addBlankCard()
-                            onProjectChanged(updated)
-                            updated.cards.lastOrNull()?.id?.let(onSelectCard)
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Spacer(Modifier.size(4.dp))
-                        Text("Add")
-                    }
-                    FilledTonalButton(
-                        onClick = {
-                            val id = selectedCardId ?: return@FilledTonalButton
-                            val updated = project.duplicateCard(id)
-                            onProjectChanged(updated)
-                            val index = updated.cards.indexOfFirst { it.id == id }
-                            updated.cards.getOrNull(index + 1)?.id?.let(onSelectCard)
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Filled.ContentCopy, contentDescription = null)
-                        Spacer(Modifier.size(4.dp))
-                        Text("Copy")
-                    }
-                    FilledTonalButton(
-                        onClick = {
-                            val id = selectedCardId ?: return@FilledTonalButton
-                            onProjectChanged(project.removeCard(id))
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Filled.Delete, contentDescription = null)
-                        Spacer(Modifier.size(4.dp))
-                        Text("Delete")
-                    }
-                }
-            }
-        }
-
         item {
-            HorizontalDivider()
-            Spacer(Modifier.height(2.dp))
-            OutlinedButton(
-                onClick = { showImports = !showImports },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (showImports) "Hide imports" else "Assets & imports")
+            if (selected == null) {
+                EmptyCards(onAdd = {
+                    val updated = project.addBlankCard()
+                    onProjectChanged(updated)
+                    updated.cards.lastOrNull()?.id?.let(onSelectCard)
+                })
+            } else {
+                SelectedCardEditor(
+                    card = selected,
+                    index = selectedIndex,
+                    total = project.cards.size,
+                    onUpdate = onUpdateSelectedCard,
+                    onChooseImage = onChooseImage,
+                    onDuplicate = {
+                        val updated = project.duplicateCard(selected.id)
+                        onProjectChanged(updated)
+                        updated.cards.getOrNull(selectedIndex + 1)?.id?.let(onSelectCard)
+                    },
+                    onDelete = {
+                        val updated = project.removeCard(selected.id)
+                        onProjectChanged(updated)
+                        updated.cards.getOrNull(selectedIndex.coerceAtMost(updated.cards.lastIndex))?.id?.let(onSelectCard)
+                    },
+                )
             }
         }
 
-        item {
-            AnimatedVisibility(showImports) {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        OutlinedButton(
-                            onClick = onImportCardStrip,
-                            enabled = project.cards.isNotEmpty() && !isImportingCardStrip,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Filled.Image, contentDescription = null)
-                            Spacer(Modifier.size(7.dp))
-                            Text(if (isImportingCardStrip) "Importing artwork…" else "Import one image for all cards")
-                        }
-                        OutlinedButton(
-                            onClick = onImportMegaPack,
-                            enabled = !isImportingMegaPack && !isImportingCardStrip,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Filled.FolderOpen, contentDescription = null)
-                            Spacer(Modifier.size(7.dp))
-                            Text(if (isImportingMegaPack) "Loading MegaPack…" else "Import MegaPack")
-                        }
-                    }
-                }
-            }
-        }
-
-        item { Spacer(Modifier.height(12.dp)) }
+        item { Spacer(Modifier.height(8.dp)) }
     }
 }
 
 @Composable
-private fun titleFieldColors2() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Color.Black,
-    unfocusedTextColor = Color.Black,
-    focusedContainerColor = Color.White,
-    unfocusedContainerColor = Color.White,
-    cursorColor = Color.Black,
-    focusedLabelColor = Color.Black,
-    unfocusedLabelColor = Color.DarkGray,
-    focusedBorderColor = Color.Black,
-    unfocusedBorderColor = Color(0xFF737373),
-)
+private fun ModelChoice(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val container = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+    val content = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    ElevatedCard(
+        onClick = onClick,
+        modifier = modifier,
+        colors = CardDefaults.elevatedCardColors(containerColor = container),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp, horizontal = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(title, color = content, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun EmptyCards(onAdd: () -> Unit) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("No cards yet", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Import a table or add the first card manually.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FilledTonalButton(onClick = onAdd) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.size(6.dp))
+                Text("Add first card")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectedCardEditor(
+    card: CtsCard,
+    index: Int,
+    total: Int,
+    onUpdate: ((CtsCard) -> CtsCard) -> Unit,
+    onChooseImage: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text("Card ${index + 1} of $total", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        card.title.ifBlank { "Untitled card" },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Row {
+                    IconButton(onClick = onDuplicate) {
+                        Icon(Icons.Filled.ContentCopy, contentDescription = "Duplicate card")
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete card")
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            OutlinedTextField(
+                value = card.title,
+                onValueChange = { value -> onUpdate { it.copy(title = value) } },
+                label = { Text("Title") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = card.badgePrimary,
+                    onValueChange = { value -> onUpdate { it.copy(badgePrimary = value) } },
+                    label = { Text("Badge value") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = card.badgeSecondary,
+                    onValueChange = { value -> onUpdate { it.copy(badgeSecondary = value) } },
+                    label = { Text("Badge label") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            OutlinedTextField(
+                value = card.description,
+                onValueChange = { value -> onUpdate { it.copy(description = value) } },
+                label = { Text("Description · optional") },
+                minLines = 2,
+                maxLines = 5,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Button(onClick = onChooseImage, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Image, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text(if (card.imageSubcard.source.isNullOrBlank()) "Choose artwork" else "Replace artwork")
+            }
+
+            if (!card.imageSubcard.source.isNullOrBlank()) {
+                OutlinedButton(
+                    onClick = {
+                        onUpdate { current ->
+                            current.copy(imageSubcard = current.imageSubcard.copy(transform = NormalizedRect.Full))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.RestartAlt, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Reset artwork crop")
+                }
+            }
+        }
+    }
+}
