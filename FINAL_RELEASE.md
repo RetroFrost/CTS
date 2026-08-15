@@ -18,6 +18,8 @@ The Android application shell was rewritten from scratch in Kotlin + Compose. It
 
 Every Android video frame is produced by the same Python `FrameRenderer` used by the desktop renderer. Android's MediaCodec pipeline only encodes those rendered frames into H.264/MP4 and optionally encodes/muxes the soundtrack.
 
+The Android unit-test suite was also rebuilt: tests belonging to the removed Kotlin renderer/model/timeline implementation were deleted rather than retained as compatibility baggage. The final tests cover the new 2.0 application identity and project contract, while repository-level tests enforce byte-for-byte renderer parity.
+
 ## Release gates
 
 CI rejects the release if:
