@@ -159,8 +159,11 @@ object TimelineEngine {
     const val RELATIONSHIPS_CONTENT_END_CANONICAL_FRAME = 10_738
     const val RELATIONSHIPS_END_WIPE_FRAMES = 42
     const val RELATIONSHIPS_END_RISE_FRAMES = 50
-    const val RELATIONSHIPS_END_HOLD_FRAMES = 270
-    const val RELATIONSHIPS_FADE_FRAMES = 30
+    // Raw source luminance begins falling at f11076 and remains non-black on
+    // the last source frame. Keep the 392-frame outro total while preserving
+    // its measured 54-frame fade instead of the old 30-frame approximation.
+    const val RELATIONSHIPS_END_HOLD_FRAMES = 246
+    const val RELATIONSHIPS_FADE_FRAMES = 54
     private const val RELATIONSHIPS_POSITION_STEP_FRAMES = 265.7158648f
     private val relationshipsOpeningStarts = intArrayOf(374, 521, 656, 795)
     private val relationshipsOpeningEnds = intArrayOf(521, 656, 795, 896)

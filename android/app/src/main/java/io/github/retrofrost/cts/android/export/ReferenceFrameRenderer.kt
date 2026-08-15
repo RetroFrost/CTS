@@ -217,16 +217,16 @@ class ReferenceFrameRenderer(
 
         val padding = cardWidth * 0.035f
         title?.let {
-            val alpha = if (project.model == VisualModel.Relationships) {
-                max(placement.bodyReveal, placement.titleReveal).coerceIn(0f, 1f)
-            } else 1f
-            val layer = if (alpha < 0.999f) {
-                canvas.saveLayerAlpha(it, (alpha * 255f).toInt())
-            } else null
             paint.color = if (project.model == VisualModel.Relationships) {
-                Color.rgb(232, 230, 226)
+                Color.rgb(244, 242, 240)
             } else Color.rgb(242, 242, 242)
             canvas.drawRect(it, paint)
+            val textAlpha = if (project.model == VisualModel.Relationships) {
+                placement.titleReveal.coerceIn(0f, 1f)
+            } else 1f
+            val textLayer = if (textAlpha < 0.999f) {
+                canvas.saveLayerAlpha(it, (textAlpha * 255f).toInt())
+            } else null
             drawTextBlock(
                 canvas = canvas,
                 text = displayCard.title,
@@ -237,19 +237,19 @@ class ReferenceFrameRenderer(
                 minimumSize = height * (if (project.model == VisualModel.Relationships) 0.022f else 0.018f),
                 maxLines = if (project.model == VisualModel.Relationships) 1 else 2,
             )
-            layer?.let(canvas::restoreToCount)
+            textLayer?.let(canvas::restoreToCount)
         }
         description?.let {
-            val alpha = if (project.model == VisualModel.Relationships) {
-                max(placement.bodyReveal, placement.descriptionReveal).coerceIn(0f, 1f)
-            } else 1f
-            val layer = if (alpha < 0.999f) {
-                canvas.saveLayerAlpha(it, (alpha * 255f).toInt())
-            } else null
             paint.color = if (project.model == VisualModel.Relationships) {
-                Color.rgb(24, 24, 24)
+                Color.rgb(27, 27, 27)
             } else Color.rgb(99, 94, 87)
             canvas.drawRect(it, paint)
+            val textAlpha = if (project.model == VisualModel.Relationships) {
+                placement.descriptionReveal.coerceIn(0f, 1f)
+            } else 1f
+            val textLayer = if (textAlpha < 0.999f) {
+                canvas.saveLayerAlpha(it, (textAlpha * 255f).toInt())
+            } else null
             drawTextBlock(
                 canvas = canvas,
                 text = displayCard.description,
@@ -265,7 +265,7 @@ class ReferenceFrameRenderer(
                 minimumSize = height * (if (project.model == VisualModel.Relationships) 0.018f else 0.014f),
                 maxLines = if (project.model == VisualModel.Relationships) 4 else 3,
             )
-            layer?.let(canvas::restoreToCount)
+            textLayer?.let(canvas::restoreToCount)
         }
 
         paint.color = Color.rgb(17, 16, 12)
@@ -284,14 +284,9 @@ class ReferenceFrameRenderer(
                 )
             }
             CardContentLayout.relationshipsRule(displayCard)?.let { ruleFrame ->
-                paint.color = Color.rgb(192, 111, 0)
+                paint.color = Color.rgb(213, 126, 0)
                 val rule = frameRect(ruleFrame, cardWidth)
-                val ruleAlpha = max(placement.bodyReveal, placement.descriptionReveal).coerceIn(0f, 1f)
-                val layer = if (ruleAlpha < 0.999f) {
-                    canvas.saveLayerAlpha(rule, (ruleAlpha * 255f).toInt())
-                } else null
                 canvas.drawRect(rule, paint)
-                layer?.let(canvas::restoreToCount)
             }
         }
     }

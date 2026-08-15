@@ -270,4 +270,14 @@ class TimelineEngineTest {
         assertTrue(duringShine.badgeAgeSeconds in 1.72f..2.24f)
         assertEquals(2.3f, settled.badgeAgeSeconds, 0.001f)
     }
+
+    @Test
+    fun relationshipsUsesMeasured54FrameFadeWithoutChangingTotalLength() {
+        assertEquals(246, TimelineEngine.RELATIONSHIPS_END_HOLD_FRAMES)
+        assertEquals(54, TimelineEngine.RELATIONSHIPS_FADE_FRAMES)
+        assertEquals(1f, ExactReferenceFrames.relationshipsFadeAlpha(11_075), 0f)
+        assertTrue(ExactReferenceFrames.relationshipsFadeAlpha(11_076) < 1f)
+        assertTrue(ExactReferenceFrames.relationshipsFadeAlpha(11_129) > 0f)
+        assertEquals(0f, ExactReferenceFrames.relationshipsFadeAlpha(11_130), 0f)
+    }
 }
