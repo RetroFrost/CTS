@@ -119,6 +119,10 @@ def test_cli_import_writes_ccx_and_finishes_progress(tmp_path: Path) -> None:
     ])
     assert args.func(args) == 0
 
+    raw_ccx = output.read_bytes()
+    assert raw_ccx.startswith(b"CCX1\n")
+    assert b"\r\n" not in raw_ccx
+
     project = engine_cli.read_ccx(output)
     assert project.name == "Language MegaPack"
     assert project.cards[0].value == "10 SECONDS OLD"

@@ -105,7 +105,13 @@ def write_ccx(project: Project, path: str | Path) -> None:
         put(f"card.{index}.image_crop_right", card.image_crop_right)
         put(f"card.{index}.image_crop_bottom", card.image_crop_bottom)
         puts(f"card.{index}.image_layer", card.image_layer)
-    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # CCX is consumed by the native loader in binary mode.  Force LF here so
+    # Windows does not silently translate the interchange file to CRLF.
+    Path(path).write_text(
+        "\n".join(lines) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def read_ccx(path: str | Path) -> Project:

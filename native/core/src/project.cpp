@@ -64,6 +64,9 @@ std::string decoded(const std::map<std::string, std::string>& values, const std:
 }
 
 double finite_number(double value, double fallback) { return std::isfinite(value) ? value : fallback; }
+void remove_carriage_return(std::string& line) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+}
 std::uint32_t even_dimension(std::uint32_t value, std::uint32_t fallback, std::uint32_t maximum) {
     value = std::clamp(value ? value : fallback, std::uint32_t{64}, maximum);
     if (value & 1U) value += value < maximum ? 1U : static_cast<std::uint32_t>(-1);
@@ -114,9 +117,17 @@ std::string base64_decode(const std::string& input) {
     std::array<int, 256> table{};
     table.fill(-1);
     for (int i = 0; i < 64; ++i) table[static_cast<unsigned char>(kBase64[i])] = i;
+    std::size_t encoded_size = input.size();
+    while (encoded_size > 0 && input[encoded_size - 1] == '=') --encoded_size;
+    const std::size_t padding_size = input.size() - encoded_size;
+    if (padding_size > 2 || input.find('=') < encoded_size) {
+        throw std::runtime_error("Invalid base64 data in project file");
+    }
     std::string out;
-    int val = 0, bits = -8;
-    for (unsigned char c : input) {
+    std::uint32_t val = 0;
+    int bits = -8;
+    for (std::size_t index = 0; index < encoded_size; ++index) {
+        const unsigned char c = static_cast<unsigned char>(input[index]);
         const int mapped = table[c];
         if (mapped < 0) throw std::runtime_error("Invalid base64 data in project file");
         val = (val << 6) + mapped;
@@ -188,12 +199,18 @@ bool load_ccx(Project& project, const std::filesystem::path& path, std::string* 
         return false;
     }
     std::string line;
-    if (!std::getline(in, line) || line != "CCX1") {
+    if (!std::getline(in, line)) {
+        if (error) *error = "Unsupported project interchange file";
+        return false;
+    }
+    remove_carriage_return(line);
+    if (line != "CCX1") {
         if (error) *error = "Unsupported project interchange file";
         return false;
     }
     std::map<std::string, std::string> values;
     while (std::getline(in, line)) {
+        remove_carriage_return(line);
         auto equals = line.find('=');
         if (equals == std::string::npos) continue;
         values[line.substr(0, equals)] = line.substr(equals + 1);
