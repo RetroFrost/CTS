@@ -3,6 +3,7 @@ from __future__ import annotations
 from ccengine.exact_reference_frames import continuous_card_x
 from ccengine.model_registry import MODEL_WHAT_MALES_LEARN
 from ccengine.models import Card, Project, ProjectSettings
+from ccengine.reference_profiles import get_reference_profile
 from ccengine.renderer import FrameRenderer
 from ccengine.scene import build_frame_scene
 from ccengine.timing import card_start_frames, content_frame_count, frame_to_seconds, total_frame_count
@@ -18,9 +19,7 @@ def test_middle_cards_use_exact_measured_conveyor_coordinates() -> None:
     project = _canonical_project()
     renderer = FrameRenderer()
     renderer._active_settings = project.settings
-    renderer._active_profile = renderer._active_profile = renderer._active_profile = __import__(
-        "ccengine.reference_profiles", fromlist=["get_reference_profile"]
-    ).get_reference_profile(MODEL_WHAT_MALES_LEARN)
+    renderer._active_profile = get_reference_profile(MODEL_WHAT_MALES_LEARN)
 
     frame = 660
     starts = card_start_frames(project)
