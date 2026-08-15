@@ -704,12 +704,13 @@ class FrameRenderer:
             return []
         if len(words) == 1:
             return words
-        if len(words) == 2:
-            return words
-        if words[-1] == "OLD":
-            middle = " ".join(words[1:-1])
-            return [words[0], middle, words[-1]] if middle else [words[0], words[-1]]
-        return [words[0], " ".join(words[1:-1]), words[-1]]
+        # The dense Evolution Of Language contact sheets show the current
+        # template consistently keeps the numeric/time token on the first
+        # line and the complete qualifier on one second line: e.g.
+        # ``7M`` + ``YEARS AGO`` and ``300K`` + ``YEARS AGO``. Splitting
+        # three-word values over three lines changes both the layout and the
+        # perceived text-entry motion, so preserve the source's two-line form.
+        return [words[0], " ".join(words[1:])]
 
     def _badge_shell(self) -> Image.Image:
         shape = self._active_profile.layout.badge_shape

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from ccengine.models import Card, Project
-from ccengine.renderer import badge_entry_affine, body_progress, post_badge_fall_affine
+from ccengine.renderer import FrameRenderer, badge_entry_affine, body_progress, post_badge_fall_affine
 from ccengine.timing import card_start_times, reference_duration, total_duration
 
 
@@ -61,3 +61,10 @@ def test_continuous_badge_fall_matches_contact_sheet_frames() -> None:
     }
     for frame, values in expected.items():
         assert post_badge_fall_affine(age(frame)) == pytest.approx(values, abs=1e-6)
+
+
+def test_badge_value_layout_matches_new_reference() -> None:
+    assert FrameRenderer._value_lines("7M YEARS AGO") == ["7M", "YEARS AGO"]
+    assert FrameRenderer._value_lines("300K YEARS AGO") == ["300K", "YEARS AGO"]
+    assert FrameRenderer._value_lines("7 YEARS OLD") == ["7", "YEARS OLD"]
+    assert FrameRenderer._value_lines("8000 BC") == ["8000", "BC"]
