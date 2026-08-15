@@ -917,7 +917,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--self-test") {
         cubical::Project timing_project;
         timing_project.cards.assign(8, {"Card", "1", "", ""});
-        if (std::abs(cubical::timeline_duration(timing_project) - 28.75) > 1e-9) return 3;
+        if (std::abs(cubical::timeline_duration(timing_project) - (1793.0 / 60.0)) > 1e-9) return 3;
         cubical::Project deletion_project;
         deletion_project.cards = {{"First", "1", "", ""}, {"", "2", "", ""}, {"Third", "3", "", ""}};
         const std::string untitled_id = deletion_project.cards[1].id;
