@@ -1,0 +1,45 @@
+name: Fix final rebuild integration gates
+on:
+  push:
+    branches: [work/final-cross-platform-rebuild]
+    paths: [.github/workflows/fix-final-ci-integration.yml]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: work/final-cross-platform-rebuild
+      - name: Update rebuilt-shell tests and Android build Python
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          alpha = Path('tests/test_alpha19_bugfixes.py')
+          text = alpha.read_text()
+          start = text.index('def test_native_ui_bugfix_contract() -> None:')
+          replacement = '''def test_native_ui_bugfix_contract() -> None:\n    root = Path(__file__).resolve().parents[1]\n    linux = (root / "native/linux-gtk/main.cpp").read_text(encoding="utf-8")\n    windows = (root / "native/windows/main.cpp").read_text(encoding="utf-8")\n\n    fields_block = linux.split("void fields_changed", 1)[1].split("void card_selected", 1)[0]\n    assert "rebuild_card_list" not in fields_block\n    assert 'g_object_set_data_full(G_OBJECT(row), "cubical-card-id"' in linux\n    assert "erase_card_by_id" in linux\n    assert 'g_object_get_data(G_OBJECT(row), "cubical-card-id")' in linux\n    assert "LB_GETCURSEL" in windows\n\n    # Linux keeps its historical native implementation. The final Windows shell\n    # was intentionally rewritten and delegates all rendering/import/export work\n    # to the private shared engine instead of duplicating those implementations.\n    assert "--progress-file" in linux\n    assert "--cancel-file" in linux\n    assert "Importing image sheet" in linux\n    assert "Rendering frame " in linux\n    assert "valid_mp4_file" in linux\n    assert "Export failed: no usable MP4 was created." in linux\n    assert "gtk_window_set_modal(GTK_WINDOW(s->task_window), TRUE)" in linux\n    assert "gtk_window_present(GTK_WINDOW(s->task_window))" in linux\n\n    assert "TaskResult::Kind::ImportData" in windows\n    assert "TaskResult::Kind::ImportPack" in windows\n    assert '"render-preview"' in windows\n    assert '"import-data"' in windows\n    assert '"import-megapack"' in windows\n    assert '"export"' in windows\n    assert '"--progress-file"' in windows\n    assert '"--cancel-file"' in windows\n    assert "std::thread" in windows\n    assert "cancel_task" in windows\n'''
+          alpha.write_text(text[:start] + replacement)
+
+          final_state = Path('tests/test_final_state.py')
+          text = final_state.read_text()
+          start = text.index('def test_native_windows_exposes_complete_workflow_and_async_import() -> None:')
+          replacement = '''def test_native_windows_exposes_complete_workflow_and_async_import() -> None:\n    source = (Path(__file__).parents[1] / "native/windows/main.cpp").read_text(encoding="utf-8")\n    assert 'L"Choose soundtrack..."' in source\n    assert "ID_CHOOSE_SOUNDTRACK" in source\n    assert "TaskResult::Kind::ImportData" in source\n    assert "TaskResult::Kind::ImportPack" in source\n    assert '"import-data"' in source\n    assert '"import-megapack"' in source\n    assert '"render-preview"' in source\n    assert '"export"' in source\n    assert '"--progress-file"' in source\n    assert '"--cancel-file"' in source\n    assert "std::thread" in source\n    assert "snapshot_project" in source\n    assert "Automatic video length" not in source\n    assert "Fixed length (seconds)" not in source\n'''
+          final_state.write_text(text[:start] + replacement)
+
+          workflow = Path('.github/workflows/final-cross-platform-release.yml')
+          text = workflow.read_text()
+          needle = '''      - uses: actions/setup-java@v5\n        with:\n          distribution: temurin\n          java-version: '17'\n\n      - uses: gradle/actions/setup-gradle@v4\n'''
+          replacement = '''      - uses: actions/setup-java@v5\n        with:\n          distribution: temurin\n          java-version: '17'\n\n      - uses: actions/setup-python@v6\n        with:\n          python-version: '3.13'\n\n      - uses: gradle/actions/setup-gradle@v4\n'''
+          if needle not in text:
+              raise SystemExit('Android Java/Gradle workflow block not found')
+          workflow.write_text(text.replace(needle, replacement, 1))
+          PY
+          rm .github/workflows/fix-final-ci-integration.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Align final rebuild tests and Android build host"
+          git push origin HEAD:work/final-cross-platform-rebuild
