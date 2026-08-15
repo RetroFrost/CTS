@@ -4,10 +4,7 @@ from argparse import Namespace
 import json
 from pathlib import Path
 
-from ccengine.model_registry import (
-    MODEL_TYPES_OF_RELATIONSHIPS,
-    MODEL_WHAT_MALES_LEARN,
-)
+from ccengine.model_registry import MODEL_WHAT_MALES_LEARN
 from engine_cli import (
     command_list_models,
     command_new,
@@ -16,13 +13,10 @@ from engine_cli import (
 )
 
 
-def test_list_models_exposes_exactly_two_locked_official_models(capsys) -> None:
+def test_list_models_exposes_the_single_locked_reference_model(capsys) -> None:
     assert command_list_models(Namespace()) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert [item["id"] for item in payload] == [
-        MODEL_TYPES_OF_RELATIONSHIPS,
-        MODEL_WHAT_MALES_LEARN,
-    ]
+    assert [item["id"] for item in payload] == [MODEL_WHAT_MALES_LEARN]
     for item in payload:
         assert item["locked"] is True
         assert item["output"] == {"width": 1920, "height": 1080, "fps": 60}
@@ -31,13 +25,13 @@ def test_list_models_exposes_exactly_two_locked_official_models(capsys) -> None:
 
 
 def test_new_project_locks_the_requested_model(tmp_path: Path) -> None:
-    output = tmp_path / "relationships.ccx"
+    output = tmp_path / "males.ccx"
     assert command_new(Namespace(
         output=str(output),
-        model=MODEL_TYPES_OF_RELATIONSHIPS,
+        model=MODEL_WHAT_MALES_LEARN,
     )) == 0
     project = read_ccx(output)
-    assert project.settings.model_id == MODEL_TYPES_OF_RELATIONSHIPS
+    assert project.settings.model_id == MODEL_WHAT_MALES_LEARN
     assert project.settings.model_revision == 1
     assert (project.settings.width, project.settings.height, project.settings.fps) == (1920, 1080, 60)
 

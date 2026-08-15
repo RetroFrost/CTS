@@ -8,12 +8,12 @@ from .reference_profiles import get_reference_profile
 
 
 SegmentKind = Literal[
-    "brand_intro",
     "card_cycle",
     "end_wipe",
     "end_rise",
     "end_hold",
     "fade",
+    "black_tail",
 ]
 
 
@@ -30,7 +30,7 @@ def _seconds(frames: int, fps: int) -> float:
 
 
 def intro_frame_count(project: Project) -> int:
-    return project.model.reference.first_content_frame if project.model.has_brand_intro else 0
+    return 0
 
 
 def intro_duration(project: Project) -> float:
@@ -114,12 +114,6 @@ def build_timeline(project: Project) -> list[Segment]:
 
     fps = project.settings.fps
     timeline: list[Segment] = []
-    intro_frames = intro_frame_count(project)
-    if intro_frames:
-        timeline.append(
-            Segment("brand_intro", _seconds(intro_frames, fps), frame_count=intro_frames)
-        )
-
     timeline.extend(
         Segment("card_cycle", _seconds(frames, fps), index, frames)
         for index, frames in enumerate(cycle_frame_counts(project))

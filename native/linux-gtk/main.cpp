@@ -139,10 +139,7 @@ void sync_project_from_ui(AppState* s) {
     s->project.name = entry_text(s->project_name);
     auto& st = s->project.settings;
     if (s->model) {
-        const guint selected_model = gtk_drop_down_get_selected(GTK_DROP_DOWN(s->model));
-        st.model_id = selected_model == 1
-            ? "types-of-relationships"
-            : "what-males-learn-at-each-age";
+        st.model_id = "what-males-learn-at-each-age";
         st.model_revision = 1;
     }
     st.credits_enabled = gtk_check_button_get_active(GTK_CHECK_BUTTON(s->credits_enabled));
@@ -218,10 +215,7 @@ void load_project_ui(AppState* s) {
     set_entry(s->project_name, s->project.name);
     auto& st = s->project.settings;
     if (s->model) {
-        gtk_drop_down_set_selected(
-            GTK_DROP_DOWN(s->model),
-            st.model_id == "types-of-relationships" ? 1U : 0U
-        );
+        gtk_drop_down_set_selected(GTK_DROP_DOWN(s->model), 0U);
     }
     gtk_check_button_set_active(GTK_CHECK_BUTTON(s->credits_enabled), st.credits_enabled);
     const std::vector<const std::string*> values = {
@@ -299,10 +293,7 @@ void reset_player(AppState* s);
 void model_changed(GObject*, GParamSpec*, gpointer data) {
     auto* s = static_cast<AppState*>(data);
     if (s->loading || !s->model) return;
-    const guint selected_model = gtk_drop_down_get_selected(GTK_DROP_DOWN(s->model));
-    s->project.settings.model_id = selected_model == 1
-        ? "types-of-relationships"
-        : "what-males-learn-at-each-age";
+    s->project.settings.model_id = "what-males-learn-at-each-age";
     s->project.settings.model_revision = 1;
     s->project.settings.width = 1920;
     s->project.settings.height = 1080;
@@ -864,21 +855,21 @@ void activate(GtkApplication* app, gpointer data) {
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), make_scrolled(audio_grid), gtk_label_new("Soundtrack"));
 
     GtkWidget* out_grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(out_grid), 8); gtk_grid_set_column_spacing(GTK_GRID(out_grid), 8); gtk_widget_set_margin_top(out_grid, 10); gtk_widget_set_margin_start(out_grid, 10); gtk_widget_set_margin_end(out_grid, 10);
-    GtkWidget* model_label = gtk_label_new("Official model");
+    GtkWidget* model_label = gtk_label_new("Reference model");
     gtk_label_set_xalign(GTK_LABEL(model_label), 0.0f);
     gtk_grid_attach(GTK_GRID(out_grid), model_label, 0, 0, 1, 1);
     const char* model_names[] = {
         "What Males Learn At Each Age",
-        "Types Of Relationships",
         nullptr
     };
     GtkStringList* model_list = gtk_string_list_new(model_names);
     s->model = gtk_drop_down_new(G_LIST_MODEL(model_list), nullptr);
     g_object_unref(model_list);
     gtk_widget_set_hexpand(s->model, TRUE);
+    gtk_widget_set_sensitive(s->model, FALSE);
     gtk_grid_attach(GTK_GRID(out_grid), s->model, 1, 0, 1, 1);
     g_signal_connect(s->model, "notify::selected", G_CALLBACK(model_changed), s);
-    GtkWidget* model_note = gtk_label_new("Layout, timing, easing, animation count, 1920×1080 and 60 FPS are locked by the selected model.");
+    GtkWidget* model_note = gtk_label_new("The Males reference locks layout, timing, easing, animation count, 1920×1080 and 60 FPS.");
     gtk_label_set_wrap(GTK_LABEL(model_note), TRUE);
     gtk_label_set_xalign(GTK_LABEL(model_note), 0.0f);
     gtk_widget_add_css_class(model_note, "dim-label");

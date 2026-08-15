@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from .model_registry import MODEL_TYPES_OF_RELATIONSHIPS
 from .models import Project
 from .timing import Segment, card_start_frames, content_frame_count, locate_frame, seconds_to_frame
 
@@ -19,7 +18,6 @@ class FrameScene:
     segment_start_frame: int
     content_end_frame: int
     card_starts: tuple[int, ...]
-    relationships: bool
 
 
 def build_frame_scene(project: Project, seconds: float) -> FrameScene:
@@ -47,5 +45,4 @@ def build_frame_scene(project: Project, seconds: float) -> FrameScene:
         segment_start_frame=segment_start,
         content_end_frame=content_frame_count(project),
         card_starts=tuple(card_start_frames(project)),
-        relationships=project.settings.model_id == MODEL_TYPES_OF_RELATIONSHIPS,
     )

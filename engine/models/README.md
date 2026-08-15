@@ -1,11 +1,10 @@
-# Cubical Compare 1.0 Official Models
+# Cubical Compare Reference Model
 
 Cubical Compare models are immutable reproduction contracts, not editable animation presets.
 
-The application currently ships with two official models:
+The application ships with one reference model:
 
 - `what-males-learn-at-each-age`
-- `types-of-relationships`
 
 Each model directory contains a `model.json` manifest identifying its canonical reference video, exact SHA-256, resolution, frame rate, frame count, scene order, editable content fields, and immutable mechanics.
 
@@ -60,7 +59,7 @@ Projects cannot override:
 - credits-panel movement
 - outro sequence
 
-Legacy project values for resolution, FPS, automatic/custom duration or model revision are normalised back to the selected official model.
+Legacy project values for resolution, FPS, automatic/custom duration, model identity, or model revision are normalised back to the Males reference.
 
 ## Reference analysis
 

@@ -36,10 +36,9 @@ python -m compileall -q engine
 g++ -std=c++20 -I native/core/include -c native/core/src/project.cpp -o /tmp/project.o
 
 UI_MARKERS=(
-  'Official model'
+  'Reference model'
   'Click to Insert Data'
   'What Males Learn At Each Age'
-  'Types Of Relationships'
   'Comparison Cards'
   'Card Content'
   'Live Preview'

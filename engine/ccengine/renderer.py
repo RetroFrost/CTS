@@ -12,27 +12,15 @@ import math
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from .models import Card, Project
-from .model_registry import MODEL_TYPES_OF_RELATIONSHIPS
 from .reference_profiles import get_reference_profile
 from .scene import build_frame_scene
-from .exact_reference_frames import continuous_card_x, relationships_fade_alpha, relationships_last_card_x
+from .exact_reference_frames import continuous_card_x, males_fade_alpha
 from .reference_motion import (
     age_later_badge_age,
     age_opening_badge_age,
     continuous_shift,
-    relationships_artwork_reveal,
-    relationships_badge_bbox,
-    relationships_badge_scale,
-    relationships_badge_text_age,
-    relationships_description_reveal,
-    relationships_shell_visible,
-    relationships_title_reveal,
 )
 from .assets import materialize_remote_asset
-from .brand_intro import (
-    INTRO_OVERLAY_END_FRAME, render_relationships_intro,
-    render_relationships_intro_overlay,
-)
 from .timing import content_frame_count, total_duration
 
 
@@ -625,8 +613,6 @@ class FrameRenderer:
             draw.rectangle((ix, title_top, ix + width, title_bottom), fill=layout.title_background)
         if has_description and desc_top < height:
             draw.rectangle((ix, desc_top, ix + width, height), fill=layout.description_background)
-        # Relationships uses the visible orange horizontal rule from the
-        # reference; Age uses narrow dark separators.
         if rule_height:
             draw.rectangle(
                 (ix, title_bottom, ix + width, desc_top - 1),
@@ -635,17 +621,16 @@ class FrameRenderer:
         draw.line((ix, 0, ix, height), fill=self.theme.divider, width=2)
         draw.line((ix + width - 1, 0, ix + width - 1, height), fill=self.theme.divider, width=2)
 
-        relationship = self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS
         if has_title:
-            title_size = int(width * (0.105 if relationship else 0.072))
+            title_size = int(width * 0.072)
             self._draw_fitted_text_block(
                 draw,
                 title,
                 (ix + 12, title_top + 2, ix + width - 12, title_bottom - 2),
                 maximum_size=max(27, title_size),
-                minimum_size=22 if not relationship else 24,
-                max_lines=1 if relationship else 2,
-                bold=not relationship,
+                minimum_size=22,
+                max_lines=2,
+                bold=True,
                 role="title",
                 fill=self.theme.title_text,
             )
@@ -653,7 +638,7 @@ class FrameRenderer:
         if has_description and desc_top < height:
             available_width = max(24, width - 34)
             available_height = max(12, height - desc_top - 12)
-            maximum_size = max(9, int(width * (0.050 if relationship else 0.044)))
+            maximum_size = max(9, int(width * 0.044))
             minimum_size = max(7, int(width * 0.026))
             chosen_font = self._font(maximum_size, False, "description")
             chosen_lines: list[str] = []
@@ -661,7 +646,7 @@ class FrameRenderer:
             for font_size in range(maximum_size, minimum_size - 1, -1):
                 candidate_font = self._font(font_size, False, "description")
                 line_height = max(9, int(font_size * 1.16))
-                max_lines = max(1, min(5 if relationship else 4, available_height // line_height))
+                max_lines = max(1, min(4, available_height // line_height))
                 lines = self._wrapped_lines(draw, description, candidate_font, available_width, max_lines=max_lines)
                 if lines and len(lines) * line_height <= available_height:
                     chosen_font = candidate_font
@@ -736,10 +721,7 @@ class FrameRenderer:
             return cached.copy()
 
         layer = Image.new("RGBA", BADGE_SOURCE_SIZE, (0, 0, 0, 0))
-        if shape == "octagon":
-            polygon = [(240, 18), (373, 83), (421, 245), (348, 363), (132, 363), (59, 245), (107, 83)]
-        else:
-            polygon = [(round(x), round(y)) for x, y in BADGE_POLYGON]
+        polygon = [(round(x), round(y)) for x, y in BADGE_POLYGON]
 
         shadow_mask = Image.new("L", BADGE_SOURCE_SIZE, 0)
         shadow_draw = ImageDraw.Draw(shadow_mask)
@@ -751,8 +733,7 @@ class FrameRenderer:
 
         draw = ImageDraw.Draw(layer)
         draw.polygon(polygon, fill=(*self.theme.badge, 255))
-        outline = (239, 194, 72, 255) if shape == "octagon" else (*self.theme.badge_dark, 145)
-        draw.line(polygon + [polygon[0]], fill=outline, width=3 if shape == "octagon" else 2, joint="curve")
+        draw.line(polygon + [polygon[0]], fill=(*self.theme.badge_dark, 145), width=2, joint="curve")
         self._badge_shell_cache[shape] = layer.copy()
         return layer
 
@@ -782,18 +763,6 @@ class FrameRenderer:
         return font
 
     def _text_layout(self, card: Card) -> list[tuple[str, float, int]]:
-        if self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS:
-            words = card.value.replace("\n", " ").split()
-            lowered = [word.lower() for word in words]
-            number = ""
-            if "in" in lowered:
-                position = lowered.index("in")
-                if position + 1 < len(words):
-                    number = words[position + 1]
-            if not number:
-                number = next((word for word in words if any(ch.isdigit() for ch in word)), card.value)
-            return [("1 in", 104.0, 48), (number, 208.0, 112), ("People", 306.0, 45)]
-
         lines = self._value_lines(card.value)
         if len(lines) == 1:
             return [(lines[0], 219.0, 72)]
@@ -1116,33 +1085,6 @@ class FrameRenderer:
         if not card.value or index >= len(starts):
             return
         local_frame = int(global_frame) - starts[index]
-        relationship = self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS
-
-        if relationship:
-            if not relationships_shell_visible(local_frame):
-                return
-            target = relationships_badge_bbox(local_frame)
-            if target is None:
-                return
-            if index < 4:
-                text_age = relationships_badge_text_age(local_frame)
-            else:
-                text_progress = clamp((local_frame - 18) / 32.0)
-                text_age = 0.9 + text_progress * 1.4
-            source = self._badge_source(card, text_age, sticker_entry=False)
-            target_x, target_y, target_w, target_h = target
-            # The source octagon occupies x=59..421 and y=18..363 in the
-            # 480x430 badge canvas.  Mapping those exact bounds reproduces the
-            # measured source component on every opening frame.
-            scale_x = target_w / 362.0
-            scale_y = target_h / 345.0
-            affine = (
-                scale_x, 0.0, 0.0, scale_y,
-                target_x - 59.0 * scale_x,
-                target_y - 18.0 * scale_y,
-            )
-            self._warp_badge(canvas, source, card_x, affine)
-            return
 
         if index < 4:
             if local_frame < 35:
@@ -1208,116 +1150,12 @@ class FrameRenderer:
             draw.text((panel_width / 2, panel_height - 38), settings.credits_footer, font=self._font(18, True, "credits"), fill=(165, 165, 165), anchor="mm")
         canvas.paste(panel, (x, 0))
 
-    def _draw_relationships_end_group(
-        self,
-        canvas: Image.Image,
-        project: Project,
-        outro_local_frame: int,
-    ) -> None:
-        # Geometry and text clocks measured from canonical frames
-        # 10780..11120.  The final card itself is drawn separately at x=780.
-        draw = ImageDraw.Draw(canvas)
-
-        # Watch-more panel: canonical settled bounds x=1314..1865, y=79..970.
-        panel_alpha = round(255 * clamp((outro_local_frame - 35) / 28.0))
-        if panel_alpha > 0:
-            panel = Image.new("RGBA", (552, 892), (0, 0, 0, 0))
-            pd = ImageDraw.Draw(panel)
-            pd.rounded_rectangle((0, 0, 551, 891), radius=18, fill=(31, 31, 31, panel_alpha))
-            canvas.paste(panel.convert("RGB"), (1314, 79), panel.getchannel("A"))
-            label_alpha = round(255 * clamp((outro_local_frame - 38) / 22.0))
-            if label_alpha:
-                draw.text(
-                    (1590, 94),
-                    "WATCH MORE",
-                    font=self._font(43, False, "title"),
-                    fill=(244, 244, 244, label_alpha),
-                    anchor="ma",
-                )
-
-        # Question begins at source frame ~10780 and is complete by ~10880.
-        question = "Which relationship type are you in right now?"
-        q_progress = clamp((outro_local_frame - 42) / 80.0)
-        visible = question[: round(len(question) * q_progress)]
-        if visible:
-            font = self._font(57, False, "title")
-            lines = self._wrapped_lines(draw, visible, font, 742, max_lines=3)
-            y = 211
-            for line in lines:
-                draw.text((26, y), line, font=font, fill=(255, 255, 255), anchor="la")
-                y += 58
-
-        # Orange CTA types immediately after the question (10880..10900).
-        comment = "Comment below!"
-        c_progress = clamp((outro_local_frame - 142) / 40.0)
-        c_text = comment[: round(len(comment) * c_progress)]
-        if c_text:
-            draw.text(
-                (22, 323), c_text,
-                font=self._font(64, False, "title"),
-                fill=(234, 127, 28), anchor="la",
-            )
-
-        # Subscription CTA types across 10960..11040, with the canonical red
-        # command followed by white continuation text on two lines.
-        sub_progress = clamp((outro_local_frame - 206) / 94.0)
-        full = "SUBSCRIBE for more comparison videos."
-        typed = full[: round(len(full) * sub_progress)]
-        if typed:
-            font = self._font(80, False, "title")
-            first = typed[:9]
-            rest = typed[9:]
-            x0, y0 = 18, 641
-            if first:
-                draw.text((x0, y0), first, font=font, fill=(238, 31, 35), anchor="la")
-            x_after = x0 + draw.textlength("SUBSCRIBE", font=font) + 12
-            # Keep "for more" on the first line and "comparison videos." on
-            # the second, matching the reference end screen.
-            if rest:
-                target1 = " for more"
-                line1 = rest[:len(target1)]
-                line2 = rest[len(target1):]
-                if line1:
-                    draw.text((x_after, y0), line1, font=font, fill=(244, 244, 244), anchor="la")
-                if line2:
-                    draw.text((18, y0 + 88), line2.lstrip(), font=font, fill=(244, 244, 244), anchor="la")
-
-    def _draw_relationships_final_card(
-        self,
-        canvas: Image.Image,
-        project: Project,
-        x: float,
-        global_frame: int,
-        starts: list[int],
-    ) -> None:
-        if not project.cards:
-            return
-        index = len(project.cards) - 1
-        layout = self._active_profile.layout
-        self._draw_card_body(
-            canvas,
-            project.cards[index],
-            x + layout.body_inset,
-            layout.body_width,
-            layout.body_height,
-        )
-        self._draw_badge(canvas, project, index, x, global_frame, starts)
-        self._draw_front_artwork(
-            canvas,
-            project.cards[index],
-            x + layout.body_inset,
-            layout.body_width,
-            layout.body_height,
-        )
-
     def _draw_end_group(self, canvas: Image.Image, top: float, project: Project) -> None:
-        # Canonical Age end-screen geometry measured at settled frames
-        # 16415..16669.  The first 1440 px are the end-screen region; the
-        # final card remains locked in the rightmost 480 px slot.
+        # The first 1440 px are the end-screen region. The final card remains
+        # locked in the rightmost source slot.
         layer = Image.new("RGBA", (1440, REFERENCE_HEIGHT), (0, 0, 0, 0))
         draw = ImageDraw.Draw(layer)
         red = (212, 9, 10, 255)
-        label_font = self._font(35, True)
 
         boxes = [
             (40, 210, 689, 669, project.settings.end_best_label),
@@ -1349,27 +1187,38 @@ class FrameRenderer:
         canvas.paste(layer.convert("RGB"), (0, int(round(top))), layer.getchannel("A"))
 
     @staticmethod
-    def _age_end_group_top(outro_local_frame: int) -> float:
-        # Absolute source-frame offsets measured from frames 16403..16413.
-        # The group drops in from above; it never rises from the bottom.
+    def _age_cover_y(outro_local_frame: int) -> int:
+        # Top-down black cover measured from the dense two-frame contact sheet.
+        values = (
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            28, 72, 128, 196, 273, 357, 445, 535, 626, 714, 798, 874,
+            942, 999, 1042, 1070, 1080, 1080, 1080, 1080, 1080, 1080,
+            1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080,
+            1080, 1080,
+        )
+        return values[min(max(0, int(outro_local_frame)), len(values) - 1)]
+
+    @staticmethod
+    def _age_end_group_top(outro_local_frame: int) -> float | None:
+        # Exact entrance measured from the final dense contact sheet. The
+        # end-card group first appears at source frame 11901 and settles at
+        # frame 11911.
         local = int(outro_local_frame)
         keys = (
-            (0, -1080.0),
-            (31, -671.0),
-            (32, -270.0),
-            (33, -224.0),
-            (34, -182.0),
-            (35, -144.0),
-            (36, -108.0),
-            (37, -78.0),
-            (38, -50.0),
-            (39, -30.0),
-            (40, -14.0),
-            (41, -4.0),
-            (42, 0.0),
+            (43, -210.0),
+            (44, -210.0),
+            (45, -183.0),
+            (46, -144.0),
+            (47, -108.0),
+            (48, -78.0),
+            (49, -51.0),
+            (50, -30.0),
+            (51, -14.0),
+            (52, -4.0),
+            (53, 0.0),
         )
-        if local <= keys[0][0]:
-            return keys[0][1]
+        if local < keys[0][0]:
+            return None
         if local >= keys[-1][0]:
             return 0.0
         for (f0, y0), (f1, y1) in zip(keys, keys[1:]):
@@ -1396,27 +1245,11 @@ class FrameRenderer:
             # source ranges and for non-reference models.
             for card_index in range(len(project.cards)):
                 x = continuous_card_x(self._active_profile.model_id, frame, card_index)
-                if (
-                    self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS
-                    and card_index == len(project.cards) - 1
-                ):
-                    final_x = relationships_last_card_x(frame)
-                    if final_x is not None:
-                        x = final_x
                 if x is None:
                     x = (card_index - shift) * pitch
                 if -pitch < x < REFERENCE_WIDTH + pitch:
                     positions[card_index] = x
             return positions
-
-        if self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS:
-            # The first four Relationships panels appear in fixed slots.  They
-            # do not use the Age model's left-to-right body slide.
-            return {
-                index: index * pitch
-                for index in range(min(4, len(project.cards)))
-                if index < len(starts) and frame >= starts[index]
-            }
 
         active = -1
         for index, start_frame in enumerate(starts[:4]):
@@ -1436,8 +1269,6 @@ class FrameRenderer:
         return positions
 
     def _credits_x_for_frame(self, global_frame: int, starts: list[int]) -> float | None:
-        if self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS:
-            return None
         pitch = self._active_profile.layout.slot_pitch
         frame = int(global_frame)
         active = -1
@@ -1457,74 +1288,6 @@ class FrameRenderer:
             return lerp(REFERENCE_WIDTH - pitch, REFERENCE_WIDTH, body_progress(local_time))
         return None
 
-    def _draw_relationships_opening_body(
-        self,
-        canvas: Image.Image,
-        card: Card,
-        x: float,
-        local_frame: int,
-    ) -> None:
-        layout = self._active_profile.layout
-        width, height = layout.body_width, layout.body_height
-        tile = Image.new("RGB", (width, height), (31, 31, 31))
-        self._draw_card_body_uncached(tile, card, 0, width, height)
-        draw = ImageDraw.Draw(tile)
-        has_title = bool(" ".join(str(card.title or "").split()))
-        has_description = bool(" ".join(str(card.description or "").split()))
-        description_height = max(0, layout.body_height - layout.description_top) if has_description else 0
-        rule_height = layout.divider_width if has_description else 0
-        title_height = layout.title_height if has_title else 0
-        image_height = max(0, height - description_height - rule_height - title_height)
-        title_bottom = image_height + title_height
-        description_top = title_bottom + rule_height
-
-        artwork = relationships_artwork_reveal(local_frame)
-        title = relationships_title_reveal(local_frame)
-        description = relationships_description_reveal(local_frame)
-        reveal_y = int(round(image_height * artwork))
-        if reveal_y < image_height:
-            draw.rectangle((0, reveal_y, width, image_height), fill=(31, 31, 31))
-        if has_title and title < 1.0:
-            draw.rectangle(
-                (0, image_height, width, title_bottom),
-                fill=layout.title_background,
-            )
-        if rule_height:
-            draw.rectangle(
-                (0, title_bottom, width, description_top - 1),
-                fill=layout.divider_color,
-            )
-        if has_description and description < 1.0:
-            draw.rectangle((0, description_top, width, height), fill=layout.description_background)
-
-        opacity = clamp((local_frame + 1) / 10.0)
-        left = int(round(x + layout.body_inset))
-        if opacity >= 1.0:
-            canvas.paste(tile, (left, 0))
-        else:
-            faded = Image.blend(Image.new("RGB", tile.size, self.theme.background), tile, opacity)
-            canvas.paste(faded, (left, 0))
-
-    def _draw_relationships_disclaimer(self, canvas: Image.Image, project: Project, global_frame: int) -> None:
-        if not project.settings.credits_enabled or global_frame < 434 or global_frame >= 795:
-            return
-        opacity = clamp((global_frame - 434) / 45.0)
-        pitch = self._active_profile.layout.slot_pitch
-        panel = Image.new("RGBA", (pitch, REFERENCE_HEIGHT), (18, 18, 18, int(170 * opacity)))
-        draw = ImageDraw.Draw(panel)
-        heading = "DISCLAIMER:"
-        body = project.settings.credits_top_text.strip() or (
-            "This comparison video is based on public data, surveys, public comments "
-            "and discussions. Values are approximate estimates and may vary."
-        )
-        draw.text((24, 298), heading, font=self._font(24, True, "credits"), fill=(224, 17, 27, int(255 * opacity)))
-        lines = self._wrapped_lines(draw, body, self._font(22, False, "credits"), pitch - 48, max_lines=12)
-        y = 332
-        for line in lines:
-            draw.text((24, y), line, font=self._font(22, False, "credits"), fill=(210, 210, 210, int(225 * opacity)))
-            y += 28
-        canvas.paste(panel.convert("RGB"), (REFERENCE_WIDTH - pitch, 0), panel.getchannel("A"))
-
     def _render_content_frame(
         self,
         base: Image.Image,
@@ -1534,39 +1297,27 @@ class FrameRenderer:
     ) -> None:
         positions = self._positions_for_frame(project, global_frame, starts)
         layout = self._active_profile.layout
-        relationship = self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS
 
         body_order = sorted(positions)
-        if not relationship and global_frame < self._active_profile.timeline.continuous_start_frame:
-            # During the Age opening the incoming body travels underneath the
+        if global_frame < self._active_profile.timeline.continuous_start_frame:
+            # During the opening the incoming body travels underneath the
             # already settled card at the exact boundary frame.
             active = max(body_order, default=-1)
             body_order = ([active] if active >= 0 else []) + [index for index in body_order if index != active]
 
         for card_index in body_order:
             slot_x = positions[card_index]
-            if relationship and card_index < 4 and global_frame < self._active_profile.timeline.continuous_start_frame:
-                self._draw_relationships_opening_body(
-                    base,
-                    project.cards[card_index],
-                    slot_x,
-                    global_frame - starts[card_index],
-                )
-            else:
-                self._draw_card_body(
-                    base,
-                    project.cards[card_index],
-                    slot_x + layout.body_inset,
-                    layout.body_width,
-                    layout.body_height,
-                )
+            self._draw_card_body(
+                base,
+                project.cards[card_index],
+                slot_x + layout.body_inset,
+                layout.body_width,
+                layout.body_height,
+            )
 
-        if relationship:
-            self._draw_relationships_disclaimer(base, project, global_frame)
-        else:
-            credits_x = self._credits_x_for_frame(global_frame, starts)
-            if credits_x is not None:
-                self._draw_credits_panel(base, credits_x, project)
+        credits_x = self._credits_x_for_frame(global_frame, starts)
+        if credits_x is not None:
+            self._draw_credits_panel(base, credits_x, project)
 
         for card_index in sorted(positions):
             self._draw_badge(base, project, card_index, positions[card_index], global_frame, starts)
@@ -1609,62 +1360,29 @@ class FrameRenderer:
         segment = scene.segment
         if segment is None:
             return ImageOps.pad(base, output_size, method=Image.Resampling.LANCZOS, color=self.theme.background) if output_size else base
-        p = scene.segment_progress
         content_end = scene.content_end_frame
-        relationship = scene.relationships
 
-        if segment.kind == "brand_intro":
-            base = render_relationships_intro(global_frame)
-
-        elif segment.kind == "card_cycle":
+        if segment.kind == "card_cycle":
             self._render_content_frame(base, project, global_frame, starts)
-            if relationship and global_frame < INTRO_OVERLAY_END_FRAME:
-                identity = render_relationships_intro_overlay(global_frame)
-                base.paste(identity.convert("RGB"), (0, 0), identity.getchannel("A"))
 
         elif segment.kind == "end_wipe":
             final = self._final_content_image(project, starts)
             local = max(0, global_frame - content_end)
-            if relationship:
-                # Source path: the remaining strip clears left, then the final
-                # card rebounds into the three-part end layout.
-                if local <= 32:
-                    x = lerp(960.0, 0.0, ease_in_out_cubic(local / 32.0))
-                else:
-                    x = lerp(0.0, 320.0, ease_out_cubic((local - 32) / 10.0))
-                self._draw_relationships_end_group(base, project, local)
-                self._draw_relationships_final_card(base, project, x, content_end - 1, starts)
-            else:
-                # The first three Age cards drop out in ten frames; the final
-                # card remains locked in the rightmost slot.
-                pitch = self._active_profile.layout.slot_pitch
-                drop = round(REFERENCE_HEIGHT * ease_in_out_cubic(p))
-                base.paste(final.crop((0, 0, pitch * 3, REFERENCE_HEIGHT)), (0, drop))
-                base.paste(final.crop((pitch * 3, 0, REFERENCE_WIDTH, REFERENCE_HEIGHT)), (pitch * 3, 0))
+            base = final.copy()
+            cover_y = self._age_cover_y(local)
+            if cover_y > 0:
+                ImageDraw.Draw(base).rectangle((0, 0, 1439, cover_y - 1), fill=self.theme.background)
 
         elif segment.kind in {"end_rise", "end_hold", "fade"}:
             final = self._final_content_image(project, starts)
             outro_local = max(0, global_frame - content_end)
-            if relationship:
-                self._draw_relationships_end_group(base, project, outro_local)
-                if segment.kind == "end_rise":
-                    local = outro_local - self._active_profile.timeline.end_wipe_frames
-                    if local <= 20:
-                        x = lerp(320.0, 928.0, ease_out_cubic(local / 20.0))
-                    elif local <= 35:
-                        x = lerp(928.0, 780.0, ease_in_out_cubic((local - 20) / 15.0))
-                    else:
-                        x = 780.0
-                else:
-                    x = 780.0
-                self._draw_relationships_final_card(base, project, x, content_end - 1, starts)
-            else:
-                pitch = self._active_profile.layout.slot_pitch
-                base.paste(final.crop((pitch * 3, 0, REFERENCE_WIDTH, REFERENCE_HEIGHT)), (pitch * 3, 0))
-                self._draw_end_group(base, self._age_end_group_top(outro_local), project)
+            base.paste(final.crop((1440, 0, REFERENCE_WIDTH, REFERENCE_HEIGHT)), (1440, 0))
+            end_group_top = self._age_end_group_top(outro_local)
+            if end_group_top is not None:
+                self._draw_end_group(base, end_group_top, project)
 
             if segment.kind == "fade":
-                fade_opacity = 1.0 - relationships_fade_alpha(global_frame) if relationship else p
+                fade_opacity = 1.0 - males_fade_alpha(global_frame)
                 fade = Image.new("RGBA", base.size, (0, 0, 0, int(255 * fade_opacity)))
                 base = Image.alpha_composite(base.convert("RGBA"), fade).convert("RGB")
 

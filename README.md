@@ -4,24 +4,21 @@ Cubical Compare is a native desktop editor for creating animated comparison vide
 
 The Windows and Linux applications use the same deterministic rendering engine for preview and MP4 export. That engine is bundled privately inside every package: users install and launch only Cubical Compare.
 
-## Official 1.0 models
+## Reference model
 
-Cubical Compare 1.0 contains two locked reproduction models:
+Cubical Compare contains one locked reproduction model:
 
 - **What Males Learn At Each Age**
-- **Types Of Relationships**
 
-The supplied reference videos are the source of truth. These models are not approximate themes or editable animation presets. Their scene order, frame count per motion, card geometry, badge deformation, text reveal, shine, credits movement, conveyor motion, outro, 1920×1080 output, and 60 FPS clock are model-owned and immutable.
+The supplied **Comparison: Evolution Of Language (400,000 BC–2026)** reference video is the source of truth. The model is not an approximate theme or editable animation preset. Its 57-card scene order, integer-frame motion, 476-pixel slot pitch, white title bands, badge deformation, credits movement, conveyor, outro, 1920×1080 output, and 60 FPS clock are model-owned and immutable.
 
 Users replace the content carried by the model—titles, values, descriptions, images, card order, music, credits text, and end-screen text. They cannot add, remove, reorder, shorten, lengthen, or restyle model animation.
 
-Projects persist a model ID and revision lock. Legacy project values that attempt to change model geometry, frame rate, cadence, or revision are normalised back to the selected official model.
-
-The **Types Of Relationships** model also contains its dedicated 374-frame opening identity scene. **What Males Learn At Each Age** begins directly with the first card and credits motion on frame zero.
+Projects persist a model ID and revision lock. Legacy project values that attempt to select a removed model or change model geometry, frame rate, cadence, or revision are normalised back to the Males reference.
 
 ## Workflow
 
-1. **Choose an official model** — the selected model locks all animation mechanics.
+1. **Use the Males reference model** — it locks all animation mechanics.
 2. **Click to Insert Data** — import CSV or XLSX data and replace the active cards.
 3. **Image Sheet** — split a continuous or gridded sheet into durable per-card assets.
 4. **Music** — select a soundtrack and configure looping, volume, offset, and fade-out.

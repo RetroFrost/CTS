@@ -749,16 +749,7 @@ class DashboardApp(tk.Tk):
     def new_project(self) -> None:
         if not self._confirm_discard():
             return
-        model_name = simpledialog.askstring(
-            "New comparison",
-            "Official model:\n\n1 — What Males Learn At Each Age\n2 — Types Of Relationships",
-            initialvalue="1",
-            parent=self,
-        )
-        if model_name is None:
-            return
-        model_id = "types-of-relationships" if model_name.strip().lower() in {"2", "relationships", "types of relationships"} else "what-males-learn-at-each-age"
-        self.project = self._new_project(model_id)
+        self.project = self._new_project("what-males-learn-at-each-age")
         self.project_path = None
         self.selected_index = 0
         self.source_var.set("No imported data")
@@ -1176,7 +1167,6 @@ class DashboardApp(tk.Tk):
         required = [
             "Comparison Cards", "Card Content", "Live Preview", "Imported Data",
             "Image Sheet", "Model & Export", "Soundtrack", "Fonts & Images", "What Males Learn At Each Age",
-            "Types Of Relationships",
         ]
         print("Cubical Compare dashboard self-test OK")
         print("UI markers:", ", ".join(required))

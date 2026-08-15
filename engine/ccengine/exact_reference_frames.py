@@ -5,24 +5,16 @@ import struct
 import zlib
 from functools import lru_cache
 
-from .model_registry import (
-    MODEL_TYPES_OF_RELATIONSHIPS,
-    MODEL_WHAT_MALES_LEARN,
-    normalize_model_id,
-)
+from .model_registry import MODEL_WHAT_MALES_LEARN, normalize_model_id
 
 MALES_CONVEYOR_START = 528
 MALES_CONVEYOR_END = 16_335
-RELATIONSHIPS_CONVEYOR_START = 896
-RELATIONSHIPS_CONVEYOR_END = 10_701
-RELATIONSHIPS_FINAL_START = 10_670
-RELATIONSHIPS_FINAL_END = 11_129
+MALES_CANONICAL_CONVEYOR_END = 11_841
 
 MALES_CARD_PITCH_PX = 476.0
-MALES_CARD_WIDTH_PX = 480.0
-RELATIONSHIPS_CARD_PITCH_PX = 483.0
-RELATIONSHIPS_CARD_WIDTH_PX = 475.0
-_SENTINEL = -32_768
+MALES_CARD_WIDTH_PX = 472.0
+MALES_FADE_START = 12_180
+MALES_FADE_END = 12_258
 
 _MALES_ORIGINS = (
     "eNqtW+1yGzEIzP++/zP2BVKPTyfdVPcpCRZYOWk6NxkHywgJWBb85+vrazv+5bLl+m9LOeXtXZac3/XneKR3ftVHqo9XfqX6+K6/"
@@ -50,31 +42,7 @@ _MALES_ORIGINS = (
     "vm2pHXFm4mx/jcnOsF3Hfh1Ifq/WqkSmqifmS0+z34ozk5foyKfZ+dmwHIl7oywb6lKnFlr/D935r3Q="
 )
 
-_RELATIONSHIPS_ORIGINS = (
-    "eNrFWtFy4zAIzP//aZ/u/SQ57cVugwQsC/L0ZjoZR1hCrGBBpH+ez+fj8eijf/19fchPe2D+mx/VvOnRl1Xn1WXI1PdoG7ebg2Xc"
-    "tiD2Vavfa4529JfCf+PXY/9+PD/FI5KpAVJWXRO9Jta0H+XA+Eb8BCeccUEmlI7BaTL3fYpSOKnl1V5IfE3ZBYPY3Oup2bv4QQ/v"
-    "cFUqZ8h5wv1HBABSvcrI1zScffh7FiFMbtFeIpbZawq01ACSxYd2wqAOhvB3CObwPZS0O47vWLa6FznvClTFupjJT5btmL7zuc3N"
-    "zOu3RXUyo/uvdeVZpu8RsmUhNSMXRHpeGzACyPQMLZtgRpvp71yDcEDYOtHeR7DnxBEgYPDyPVJoGNEHi8MEWsR6BAEmjkDlAQUJ"
-    "VhIHNRWR+JCE+93JNbRTmKp5qoLfknZkkbb4LXxZDOA6u4URNqWYY8dbUzypDq8WKNNBR7SF95wiqzTV5rjDkS2ggXkGy6+RUkhs"
-    "pDMZMLck1ZIktJf1ZbG5ChWATt4kzieel7dHafJdwzvhjob9lRAOTD7KGx8dgbpC66QQlS7ThWr8aKsXLChRB/QjVXvzEtxBdqG0"
-    "1R6APlUU+A6V37fFOVvd2xjx9X7Jnri+S94TQFXrt/gIy3SfJHH7gvlIJ/HEtSDOwq3YC8HA9GIz5J0Kw5edW0d1zzmqDb25HZ25"
-    "2t6yUZJRtq7SWzfUct/vv1whyQSWKgDcuNj57QDlMcF3ZM2IG2hkAyFDtXZJgDswUSlR8WFNw224ycWvalGq2iwt0dnlS4m4K2Z3"
-    "NeNSdk81cUUdlG4iuKtlk+nUYUnl4FfoWtrHL0MXZax8W7FSuqht+c13qntb9O+oZIubojdkYVsWp5y5tGy7P1dj3jf7D6iVTF/5"
-    "Y/xmqsVxcTUkatmM7ksK02r/N4C6lWRLFObiuH5IeSuuvyi+UyS0RbX0vHZ0P+0WCpbfKpiLVIvLgBdJIF+kfyAdnSlmMmbHqitO"
-    "QHUb6l0XVZ4cZDe3J82Jl7hUL8nNgeHvxyekVsR/"
-)
-
-_RELATIONSHIPS_LAST_X = (
-    "eNrtjskrxAEcxd/3vZ+RZYriYikXDmpuFAdOlBRRalIuiIvUlFDKcqFEzUFxcBBCSjkIB8tVZA6iIdukSZYkuyTL749w1Of41ljH"
-    "4zgOHTjf+tKnPvSuVz3rSQ+6151uda0rXSqqC0V0rlMd60hhHWhfewppU4uaUFA9alWdylWgHKVIemSEIa5xnmPsZxvrWcVi+pjB"
-    "eH7YtR3Zlq3YrI3agHVYs/mtzAot19LNaz94RBRhbGMdi5jGGIbQh3a0oB5+VKIURciHDznIQhpSkYRExCEWMXCQiXJ0YQERJFuJ"
-    "2zxnh+Zhnrs/zGWekcpWqRrUrRHNaElrWtWkBhWQX8Wu5tWb+3zH9U4xyF4G2MhaVrOCNWxiJwc5zgVucJcnvOELf+hRgpv655+/"
-    "5BcT1WjC"
-)
-
-_RELATIONSHIPS_FADE = (
-    "eNoBNgDJ//v59O/s6OPg3NbTz8vHxMC0sKyoo5+bmJOOi4eDf3p2cm9jX1tXU05LR0I/OjUyLSolIR4XEvoYHLk="
-)
+_MALES_FADE_ALPHA = "eNoBTwCw//7+/Pv49fTz8e7s6+nm5ODc2tfT0MzJxsO/vbi1s6+sqaWioJyZl5KQjYqHhHt7enh1c25raWViYF1ZV1NPTkpHREE3NzUzLiwoIx8ZEgD7nS0H"
 
 
 def _inflate(encoded: str) -> bytes:
@@ -98,18 +66,13 @@ def _decode_origins(encoded: str, frame_count: int) -> tuple[int, ...]:
     return tuple(values)
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=1)
 def _origins(model_id: str) -> tuple[int, ...]:
     normalized = normalize_model_id(model_id)
     if normalized == MODEL_WHAT_MALES_LEARN:
         return _decode_origins(
             _MALES_ORIGINS,
             MALES_CONVEYOR_END - MALES_CONVEYOR_START + 1,
-        )
-    if normalized == MODEL_TYPES_OF_RELATIONSHIPS:
-        return _decode_origins(
-            _RELATIONSHIPS_ORIGINS,
-            RELATIONSHIPS_CONVEYOR_END - RELATIONSHIPS_CONVEYOR_START + 1,
         )
     raise KeyError(normalized)
 
@@ -127,55 +90,27 @@ def continuous_card_x(
     if normalized == MODEL_WHAT_MALES_LEARN:
         if frame < MALES_CONVEYOR_START:
             return None
-        held_frame = min(frame, MALES_CONVEYOR_END)
+        held_frame = min(frame, MALES_CANONICAL_CONVEYOR_END)
         origin = _origins(normalized)[held_frame - MALES_CONVEYOR_START] / 2.0
         return origin + (index + 1) * MALES_CARD_PITCH_PX - MALES_CARD_WIDTH_PX
-
-    if normalized == MODEL_TYPES_OF_RELATIONSHIPS:
-        if frame < RELATIONSHIPS_CONVEYOR_START or frame > RELATIONSHIPS_CONVEYOR_END:
-            return None
-        origin = _origins(normalized)[frame - RELATIONSHIPS_CONVEYOR_START] / 2.0
-        return (
-            origin
-            + (index + 1) * RELATIONSHIPS_CARD_PITCH_PX
-            - RELATIONSHIPS_CARD_WIDTH_PX
-        )
 
     return None
 
 
 @lru_cache(maxsize=1)
-def _relationships_last_x_values() -> tuple[int, ...]:
-    packed = _inflate(_RELATIONSHIPS_LAST_X)
-    expected = (RELATIONSHIPS_FINAL_END - RELATIONSHIPS_FINAL_START + 1) * 2
-    if len(packed) != expected:
-        raise ValueError(
-            f"Invalid Relationships last-card payload: expected {expected} bytes, got {len(packed)}"
-        )
-    return tuple(struct.unpack(f"<{expected // 2}h", packed))
-
-
-def relationships_last_card_x(global_frame: int) -> float | None:
-    frame = int(global_frame)
-    if frame < RELATIONSHIPS_FINAL_START or frame > RELATIONSHIPS_FINAL_END:
-        return None
-    value = _relationships_last_x_values()[frame - RELATIONSHIPS_FINAL_START]
-    return None if value == _SENTINEL else float(value)
-
-
-@lru_cache(maxsize=1)
-def _relationships_fade_values() -> bytes:
-    values = _inflate(_RELATIONSHIPS_FADE)
-    if len(values) != 54:
-        raise ValueError(f"Invalid Relationships fade payload: expected 54 bytes, got {len(values)}")
+def _males_fade_values() -> tuple[int, ...]:
+    values = tuple(_inflate(_MALES_FADE_ALPHA))
+    expected = MALES_FADE_END - MALES_FADE_START + 1
+    if len(values) != expected:
+        raise ValueError(f"Invalid fade payload: expected {expected} bytes, got {len(values)}")
     return values
 
 
-def relationships_fade_alpha(global_frame: int) -> float:
-    """Measured remaining-image alpha for source frames f11076..f11129."""
+def males_fade_alpha(global_frame: int) -> float:
+    """Return the measured remaining-image opacity for the canonical fade."""
     frame = int(global_frame)
-    if frame < 11_076:
+    if frame < MALES_FADE_START:
         return 1.0
-    if frame > 11_129:
+    if frame > MALES_FADE_END:
         return 0.0
-    return _relationships_fade_values()[frame - 11_076] / 255.0
+    return _males_fade_values()[frame - MALES_FADE_START] / 255.0

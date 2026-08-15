@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from .model_registry import MODEL_TYPES_OF_RELATIONSHIPS, MODEL_WHAT_MALES_LEARN, normalize_model_id
+from .model_registry import MODEL_WHAT_MALES_LEARN, normalize_model_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +38,7 @@ class TimelineProfile:
     fade_frames: int
     black_tail_frames: int
     canonical_card_count: int
+    canonical_content_end_frame: int
 
     @property
     def outro_frames(self) -> int:
@@ -59,6 +60,8 @@ class TimelineProfile:
     def content_end_frame(self, card_count: int) -> int:
         if card_count <= 0:
             return 0
+        if card_count == self.canonical_card_count:
+            return self.canonical_content_end_frame
         if card_count <= 4:
             return self.opening_card_ends[card_count - 1]
         return self.continuous_start_frame + (card_count - 4 + self.continuous_tail_steps) * self.continuous_step_frames
@@ -77,7 +80,7 @@ _PROFILES: Final[dict[str, ReferenceProfile]] = {
     MODEL_WHAT_MALES_LEARN: ReferenceProfile(
         model_id=MODEL_WHAT_MALES_LEARN,
         layout=LayoutProfile(
-            slot_pitch=477,
+            slot_pitch=476,
             body_inset=9,
             body_width=471,
             body_height=1080,
@@ -94,48 +97,19 @@ _PROFILES: Final[dict[str, ReferenceProfile]] = {
             opening_card_starts=(0, 120, 240, 360),
             # The four-card opening is followed by one source-only 55-frame
             # pause.  It is not repeated in each later conveyor step.
-            opening_card_ends=(120, 240, 360, 535),
-            continuous_start_frame=535,
+            opening_card_ends=(120, 240, 360, 528),
+            continuous_start_frame=528,
             continuous_step_frames=214,
             continuous_tail_steps=0,
-            # Frames 16371..16740 in the 78-card source.
-            end_wipe_frames=10,
-            end_rise_frames=29,
-            end_hold_frames=270,
-            fade_frames=61,
-            black_tail_frames=0,
-            canonical_card_count=78,
-        ),
-    ),
-    MODEL_TYPES_OF_RELATIONSHIPS: ReferenceProfile(
-        model_id=MODEL_TYPES_OF_RELATIONSHIPS,
-        layout=LayoutProfile(
-            slot_pitch=480,
-            body_inset=0,
-            body_width=475,
-            body_height=1080,
-            image_height=788,
-            title_height=118,
-            description_top=916,
-            divider_width=10,
-            divider_color=(213, 126, 0),
-            title_background=(244, 242, 240),
-            description_background=(27, 27, 27),
-            badge_shape="octagon",
-        ),
-        timeline=TimelineProfile(
-            opening_card_starts=(374, 521, 656, 795),
-            opening_card_ends=(521, 656, 795, 896),
-            continuous_start_frame=896,
-            continuous_step_frames=266,
-            continuous_tail_steps=1,
-            # Frames 10738..11129 in the 41-card source.
-            end_wipe_frames=42,
-            end_rise_frames=50,
-            end_hold_frames=246,
-            fade_frames=54,
-            black_tail_frames=0,
-            canonical_card_count=40,
+            # Contact-sheet addresses: visible cover f11868, end group f11901,
+            # fade f12180..f12258, then eight fully black frames.
+            end_wipe_frames=43,
+            end_rise_frames=11,
+            end_hold_frames=268,
+            fade_frames=79,
+            black_tail_frames=8,
+            canonical_card_count=57,
+            canonical_content_end_frame=11_858,
         ),
     ),
 }

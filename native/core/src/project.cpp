@@ -74,22 +74,15 @@ std::uint32_t even_dimension(std::uint32_t value, std::uint32_t fallback, std::u
 
 double timeline_duration(const Project& project) {
     if (project.cards.empty()) return 0.0;
-    constexpr double relationships_intro = 374.0 / 60.0;
-    constexpr double opening_interval = 2.0;
-    constexpr double fourth_interval = 3.0;
-    constexpr double main_interval = 3.4;
-    constexpr double outro = 0.42 + 0.38 + 4.55 + 0.80;
-    double content = 0.0;
     const std::size_t count = project.cards.size();
-    for (std::size_t index = 0; index < count; ++index) {
-        if (index == count - 1) content += index <= 3 ? fourth_interval : main_interval;
-        else if (index < 3) content += opening_interval;
-        else if (index == 3) content += fourth_interval;
-        else content += main_interval;
-    }
-    const double intro = project.settings.model_id == "types-of-relationships"
-        ? relationships_intro : 0.0;
-    const double minimum = intro + content + outro;
+    constexpr std::uint32_t opening_ends[] = {120, 240, 360, 528};
+    constexpr std::uint32_t outro_frames = 409;
+    const std::uint32_t content_frames = count == 57
+        ? 11858
+        : count <= 4
+            ? opening_ends[count - 1]
+            : static_cast<std::uint32_t>(528 + (count - 4) * 214);
+    const double minimum = static_cast<double>(content_frames + outro_frames) / 60.0;
     if (!project.settings.auto_length) return std::max(finite_number(project.settings.custom_length_seconds, minimum), minimum);
     return minimum;
 }
@@ -208,11 +201,7 @@ bool load_ccx(Project& project, const std::filesystem::path& path, std::string* 
     Project loaded;
     auto& s = loaded.settings;
     loaded.name = decoded(values, "project.name", loaded.name);
-    s.model_id = decoded(values, "project.model_id", s.model_id);
-    if (s.model_id != "types-of-relationships" &&
-        s.model_id != "what-males-learn-at-each-age") {
-        s.model_id = "what-males-learn-at-each-age";
-    }
+    s.model_id = "what-males-learn-at-each-age";
     s.model_revision = number(values, "project.model_revision", std::uint32_t{1});
     s.model_revision = 1;
     s.width = number(values, "project.width", s.width);

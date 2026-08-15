@@ -14,13 +14,13 @@ def test_males_uses_the_measured_integer_frame_contract() -> None:
         2.0,
         4.0,
         6.0,
-        535 / 60,
-        749 / 60,
-        963 / 60,
-        1177 / 60,
+        528 / 60,
+        742 / 60,
+        956 / 60,
+        1170 / 60,
     ])
-    assert total_duration(project) == pytest.approx(1761 / 60)
-    assert reference_duration(project) == pytest.approx(1761 / 60)
+    assert total_duration(project) == pytest.approx(1793 / 60)
+    assert reference_duration(project) == pytest.approx(1793 / 60)
 
 
 def test_body_motion_samples_are_unchanged() -> None:

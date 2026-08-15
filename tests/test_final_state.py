@@ -117,7 +117,7 @@ def test_native_windows_exposes_complete_workflow_and_async_import() -> None:
     assert 'L"Music",ID_MUSIC' in source
     assert 'L"Model",ID_MODEL' in source
     assert 'What Males Learn At Each Age' in source
-    assert 'Types Of Relationships' in source
+    assert source.count('CB_ADDSTRING') >= 1
     assert 'Automatic video length' not in source
     assert 'Fixed length (seconds)' not in source
     assert 'TaskKind::ImportData' in source
