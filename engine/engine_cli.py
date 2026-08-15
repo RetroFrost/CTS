@@ -35,8 +35,24 @@ def write_progress_file(path: Path | None, done: int, total: int) -> None:
     done = max(0, min(int(done), total))
     percent = int(done * 100 / total)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(f"{percent} {done} {total}\n", encoding="utf-8")
-    os.replace(temporary, path)
+    payload = f"{percent} {done} {total}\n"
+    try:
+        temporary.write_text(payload, encoding="utf-8", newline="\n")
+        os.replace(temporary, path)
+        return
+    except OSError:
+        # Win32 readers can briefly deny replacement even when the file is
+        # opened only for progress polling. Progress reporting is auxiliary:
+        # fall back to an in-place update and never abort the real operation.
+        try:
+            path.write_text(payload, encoding="utf-8", newline="\n")
+        except OSError:
+            pass
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def b64e(value: str) -> str:

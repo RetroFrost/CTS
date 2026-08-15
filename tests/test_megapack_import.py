@@ -133,6 +133,40 @@ def test_cli_import_writes_ccx_and_finishes_progress(tmp_path: Path) -> None:
     assert progress.read_text(encoding="utf-8").startswith("100 ")
 
 
+def test_cli_import_survives_windows_progress_replace_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = tmp_path / "language.zip"
+    output = tmp_path / "project.ccx"
+    assets = tmp_path / "assets"
+    progress = tmp_path / "progress.txt"
+    progress.write_text("0 0 1\n", encoding="utf-8")
+    _make_pack(pack)
+
+    real_replace = engine_cli.os.replace
+
+    def deny_progress_replacement(source: object, destination: object) -> None:
+        if Path(destination) == progress:
+            raise PermissionError(5, "Access is denied", str(destination))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(engine_cli.os, "replace", deny_progress_replacement)
+    args = engine_cli.parser().parse_args([
+        "import-megapack",
+        str(pack),
+        str(output),
+        str(assets),
+        "--progress-file",
+        str(progress),
+    ])
+
+    assert args.func(args) == 0
+    assert output.is_file()
+    assert progress.read_text(encoding="utf-8") == "100 1 1\n"
+    assert not progress.with_suffix(".txt.tmp").exists()
+
+
 def test_missing_manifest_rejects_and_cleans_destination(tmp_path: Path) -> None:
     pack = tmp_path / "invalid.zip"
     assets = tmp_path / "assets"

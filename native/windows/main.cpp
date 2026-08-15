@@ -483,9 +483,19 @@ void finish_task(AppState* s,const std::string& status){
     s->busy=false;s->task_is_export=false;set_status(s,status);
     if(s->pending_close){s->closing=true;DestroyWindow(s->window);}
 }
+bool read_task_progress(const fs::path& path,int& percent,int& done,int& total){
+    HANDLE file=CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(file==INVALID_HANDLE_VALUE)return false;
+    char buffer[128]{};DWORD bytes_read=0;
+    const BOOL read_ok=ReadFile(file,buffer,sizeof(buffer)-1,&bytes_read,nullptr);
+    CloseHandle(file);
+    if(!read_ok||bytes_read==0)return false;
+    std::istringstream input(std::string(buffer,bytes_read));
+    return bool(input>>percent>>done>>total);
+}
 void update_task_progress(AppState* s){
     if(!s->busy||!s->task_dialog)return;
-    int percent=0,done=0,total=0;std::ifstream in(s->task_progress_path);if(in)in>>percent>>done>>total;
+    int percent=0,done=0,total=0;read_task_progress(s->task_progress_path,percent,done,total);
     percent=std::clamp(percent,0,100);s->task_dialog->SetProgress(percent,100);
     if(done>0&&total>0){
         const std::wstring line=s->task_is_export
@@ -598,5 +608,12 @@ if(!cubical::load_ccx(interchange_project,interchange_path,&interchange_error)||
     std::error_code cleanup;fs::remove(interchange_path,cleanup);LocalFree(argv);return 5;
 }
 std::error_code interchange_cleanup;fs::remove(interchange_path,interchange_cleanup);
+const auto progress_path=cubical::temporary_path("cubical-compare-progress-self-test",".txt");
+{std::ofstream progress(progress_path);progress<<"75 3 4\n";}
+int progress_percent=0,progress_done=0,progress_total=0;
+if(!read_task_progress(progress_path,progress_percent,progress_done,progress_total)||progress_percent!=75||progress_done!=3||progress_total!=4){
+    std::error_code cleanup;fs::remove(progress_path,cleanup);LocalFree(argv);return 6;
+}
+std::error_code progress_cleanup;fs::remove(progress_path,progress_cleanup);
 const auto directory=cubical::temporary_path("cubical-compare-native-self-test","");const auto result=cubical::run_engine({"self-test","--directory",directory.string()});std::error_code ignored;fs::remove_all(directory,ignored);LocalFree(argv);return result.exit_code;}if(argv)LocalFree(argv);
 CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);INITCOMMONCONTROLSEX cc{sizeof(cc),ICC_STANDARD_CLASSES|ICC_TAB_CLASSES|ICC_LISTVIEW_CLASSES|ICC_BAR_CLASSES};InitCommonControlsEx(&cc);AppState state;state.instance=instance;state.ui_font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");state.working_ccx=cubical::temporary_path("cubical-compare",".ccx");state.preview_path.clear();WNDCLASSW wc{};wc.lpfnWndProc=MainProc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);wc.lpszClassName=kMainClass;RegisterClassW(&wc);WNDCLASSW cw{};cw.lpfnWndProc=ControlsProc;cw.hInstance=instance;cw.hCursor=LoadCursorW(nullptr,IDC_ARROW);cw.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);cw.lpszClassName=kControlsClass;RegisterClassW(&cw);HWND window=CreateWindowExW(0,kMainClass,L"Cubical Compare",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,1180,640,nullptr,nullptr,instance,&state);ShowWindow(window,show);UpdateWindow(window);MSG m{};while(GetMessageW(&m,nullptr,0,0)>0){TranslateMessage(&m);DispatchMessageW(&m);}for(int i=0;i<100&&state.preview_jobs.load()>0;++i)Sleep(20);std::error_code ec;fs::remove(state.working_ccx,ec);fs::remove(state.preview_path,ec);DeleteObject(state.ui_font);CoUninitialize();return static_cast<int>(m.wParam);}
