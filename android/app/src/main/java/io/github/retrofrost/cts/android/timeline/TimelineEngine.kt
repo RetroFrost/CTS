@@ -157,7 +157,9 @@ object TimelineEngine {
         }
 
     private fun sourceFrameAt(seconds: Float, fps: Int): Int =
-        floor(seconds.coerceAtLeast(0f) * fps + 0.000001f).toInt()
+        // Recover exact n / fps timestamps after Float division without rounding
+        // arbitrary in-between playback positions up to the next source frame.
+        floor(seconds.coerceAtLeast(0f) * fps + 0.0001f).toInt()
 
     fun customIntroDuration(project: CtsProject): Float = if (
         !project.introVideo.uri.isNullOrBlank()
