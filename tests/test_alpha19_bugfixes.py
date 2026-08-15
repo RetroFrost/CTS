@@ -74,19 +74,28 @@ def test_native_ui_bugfix_contract() -> None:
     assert "rebuild_card_list" not in fields_block
     assert 'g_object_set_data_full(G_OBJECT(row), "cubical-card-id"' in linux
     assert "erase_card_by_id" in linux
-    assert "erase_card_by_id" in windows
     assert 'g_object_get_data(G_OBJECT(row), "cubical-card-id")' in linux
-    assert "LB_GETCURSEL" in windows
 
-    for source in (linux, windows):
-        assert "--progress-file" in source
-        assert "--cancel-file" in source
-        assert "Importing image sheet" in source
-        assert "Rendering frame " in source
-        assert "valid_mp4_file" in source
-        assert "Export failed: no usable MP4 was created." in source
-
+    # Linux keeps its established native implementation.
+    assert "--progress-file" in linux
+    assert "--cancel-file" in linux
+    assert "Importing image sheet" in linux
+    assert "Rendering frame " in linux
+    assert "valid_mp4_file" in linux
+    assert "Export failed: no usable MP4 was created." in linux
     assert "gtk_window_set_modal(GTK_WINDOW(s->task_window), TRUE)" in linux
     assert "gtk_window_present(GTK_WINDOW(s->task_window))" in linux
-    assert "PROGDLG_MODAL" in windows
-    assert "PROGDLG_NOMINIMIZE" in windows
+
+    # Windows was intentionally rebuilt from scratch. Its regression contract is
+    # now the shared-engine architecture rather than the removed shell internals.
+    assert "LB_GETCURSEL" in windows
+    assert "TaskResult::Kind::ImportData" in windows
+    assert "TaskResult::Kind::ImportPack" in windows
+    assert '"render-preview"' in windows
+    assert '"import-data"' in windows
+    assert '"import-megapack"' in windows
+    assert '"export"' in windows
+    assert '"--progress-file"' in windows
+    assert '"--cancel-file"' in windows
+    assert "std::thread" in windows
+    assert "cancel_task" in windows
