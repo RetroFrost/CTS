@@ -277,7 +277,5 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: Cubical-Compare-${{ env.VERSION }}-Windows-x64
-          path: |
-            dist/Cubical-Compare-${{ env.VERSION }}-windows-x64.zip
-            dist/SHA256SUMS-windows.txt
+          path: dist
           if-no-files-found: error
