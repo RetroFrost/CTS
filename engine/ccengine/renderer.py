@@ -49,8 +49,8 @@ TEXT_LINE_DELAY = 0.10
 TEXT_LINE_SECONDS = 0.42
 # The diagonal gloss begins before the badge is fully settled and clears it in
 # just under half a second.
-SHINE_START = 1.72
-SHINE_SECONDS = 0.52
+SHINE_START = 2.18
+SHINE_SECONDS = 0.72
 DEEMPHASIS_SECONDS = 1.00
 
 # The active source badge is about 298 x 344 px. Older badges step down twice,
@@ -69,54 +69,51 @@ BADGE_POLYGON = (
     (72.0, 104.0),
 )
 
-# Opening-only affine keyframes reconstructed from the actual badge contour.
-# They reproduce the sticker-like stretch, clockwise lean, skew and long settle
-# used while the first four cards progressively fill the canvas.
-# Matrix maps canonical local points to animated local points:
-# x' = m00*x + m01*y + tx; y' = m10*x + m11*y + ty.
-BADGE_AFFINE_KEYFRAMES = (
-    # The first five keys are intentionally extreme. During the opening the
-    # badge is already moving while its card body is being revealed, leaving a
-    # bright red, motion-blurred slice before the full hexagon comes into view.
-    (0.00, 0.3200, 0.0400, -0.4300, 1.0500, -230.00, -220.00),
-    (0.10, 0.3300, 0.0400, -0.4300, 1.0500, -190.00, -170.00),
-    (0.20, 0.3400, 0.0400, -0.4300, 1.0500, -185.00, -130.00),
-    (0.30, 0.3500, 0.0380, -0.4300, 1.0500, -215.00, -115.00),
-    (0.40, 0.3600, 0.0360, -0.4300, 1.0500, -154.00, -107.00),
-    (0.50, 0.7200, -0.0300, -0.7200, 2.3500, -160.00, -454.00),
-    (0.65, 0.9600, -0.0250, -0.5400, 2.0500, -145.00, -325.00),
-    (0.80, 1.1818, -0.0169, -0.3636, 1.7548, -150.25, -235.22),
-    (0.90, 1.2222, -0.0181, -0.2694, 1.6357, -141.90, -203.87),
-    (1.00, 1.2492, 0.0509, -0.2054, 1.5002, -152.51, -164.83),
-    (1.20, 1.2559, 0.0158, -0.1010, 1.4099, -121.12, -140.77),
-    (1.50, 1.2088, -0.0758, -0.0337, 1.2452, -56.12, -83.62),
-    (1.80, 1.1302, -0.0309, -0.0064, 1.1508, -37.57, -46.97),
-    (2.30, 1.0808, 0.0209, 0.0000, 1.0698, -25.80, -16.16),
-    (2.50, 1.0202, 0.0110, 0.0067, 1.0114, -9.13, -1.95),
-    (2.70, 1.0067, 0.0114, -0.0067, 0.9886, -3.95, 5.95),
-    (2.90, 1.0000, 0.0000, 0.0000, 1.0000, 0.00, 0.00),
+# Opening badge affine states measured from dense contact sheets of the
+# 1920x1080/60 Evolution Of Language reference.  The old renderer used a
+# handful of exaggerated hand-tuned transforms which made the badge far too
+# large through the middle of its ingress.  These keys are source-frame
+# measurements; interpolation is deliberately linear between nearby measured
+# states so the renderer does not introduce a second easing curve.
+OPENING_BADGE_FRAME_KEYFRAMES = (
+    (35, 0.493398, -0.085460, -0.331527, 1.161492, -150.997648, -39.870887),
+    (40, 0.592169, -0.078765, -0.283855, 1.188568, -125.999331, -19.155194),
+    (44, 0.653847, -0.078786, -0.293365, 1.172057, -105.417801, -5.568381),
+    (48, 0.696013, -0.090493, -0.273790, 1.202435, -82.436779, -19.898183),
+    (52, 0.721844, -0.076480, -0.273350, 1.200237, -60.473294, -18.705733),
+    (56, 0.729938, -0.029255, -0.225309, 1.111702, -45.263002, -10.894799),
+    (60, 0.774691, -0.031915, -0.189815, 1.114362, -38.958629, -14.476950),
+    (64, 0.817901, -0.031915, -0.168210, 1.114362, -34.569740, -17.032506),
+    (68, 0.859568, -0.039894, -0.121914, 1.087766, -30.989953, -17.599882),
+    (72, 0.898148, -0.037234, -0.114198, 1.069149, -29.794326, -14.969267),
+    (76, 0.922840, -0.026596, -0.101852, 1.053191, -28.178487, -11.698582),
+    (80, 0.945988, -0.029255, -0.067901, 1.058511, -23.818558, -15.196217),
+    (84, 0.964506, -0.018617, -0.064815, 1.042553, -23.258274, -10.258865),
+    (88, 0.979938, -0.023936, -0.038580, 1.039894, -19.316194, -13.121158),
+    (92, 0.987654, -0.021277, -0.023148, 1.029255, -16.898345, -10.625887),
+    (96, 1.001543, -0.013298, -0.021605, 1.021277, -15.978132, -8.657210),
+    (100, 1.010802, -0.013298, -0.006173, 1.005319, -14.144799, -6.608747),
+    (104, 1.013889, -0.007979, -0.006173, 1.010638, -11.420213, -6.661939),
+    (108, 1.010802, 0.002660, -0.015432, 1.015957, -8.304374, -3.548463),
+    (112, 1.021605, -0.010638, 0.009259, 1.005319, -4.449173, -6.219858),
+    (116, 1.024691, -0.010638, 0.020062, 0.986702, -2.171395, -1.311466),
+    (120, 1.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000),
 )
 
-# Cards 5 onward do not repeat the opening sticker deformation. The shell is
-# already recognizably hexagonal and falls from above, briefly passing its rest
-# point before a small rebound. Times use the same 0..2.9 animation-age clock
-# as the text and gloss so all three parts remain synchronized.
-#
-# Each key is: age, scale, vertical_offset. Scale is performed around the badge
-# center, so the badge remains horizontally centered over the incoming card.
-POST_BADGE_FALL_KEYFRAMES = (
-    (0.00, 1.120, -420.0),
-    (0.28, 1.118, -376.0),
-    (0.55, 1.112, -292.0),
-    (0.82, 1.102, -194.0),
-    (1.05, 1.090, -105.0),
-    (1.25, 1.075, -38.0),
-    (1.42, 1.058, 16.0),
-    (1.60, 1.034, -9.0),
-    (1.80, 1.016, 5.0),
-    (2.02, 1.005, -2.0),
-    (2.25, 1.000, 0.0),
-    (2.90, 1.000, 0.0),
+# Cards 5 onward use a constant-size hexagon.  Dense contact sheets show that
+# the visible shell does not perform the old 1.12x scale/bounce animation; it
+# simply drops from above on this measured vertical clock and is settled by
+# source frame 734.  Frame numbers are for the first continuous card, whose
+# card cycle begins at source frame 528.
+POST_BADGE_FALL_FRAME_OFFSETS = (
+    (650, -430.0), (670, -410.0), (679, -386.0),
+    (680, -381.0), (682, -381.0), (684, -341.0), (686, -321.0),
+    (688, -300.0), (690, -279.0), (692, -266.0), (694, -246.0),
+    (696, -226.0), (698, -206.0), (700, -187.0), (702, -175.0),
+    (704, -156.0), (706, -138.0), (708, -121.0), (710, -105.0),
+    (712, -94.0), (714, -80.0), (716, -66.0), (718, -53.0),
+    (720, -41.0), (722, -34.0), (724, -25.0), (726, -17.0),
+    (728, -10.0), (730, -5.0), (732, -2.0), (734, 0.0),
 )
 
 # Measured body travel. Sampling this curve is more faithful than a generic
@@ -184,46 +181,46 @@ def body_progress(local_time: float) -> float:
     return _sample_scalar(BODY_PROGRESS_KEYFRAMES, max(0.0, local_time))
 
 
-def badge_entry_affine(age: float) -> tuple[float, float, float, float, float, float]:
-    if age >= BADGE_ENTRY_END:
-        return 1.0, 0.0, 0.0, 1.0, 0.0, 0.0
-    if age <= BADGE_AFFINE_KEYFRAMES[0][0]:
-        return BADGE_AFFINE_KEYFRAMES[0][1:]
+def _sample_affine_source_frame(
+    keys: tuple[tuple[float, float, float, float, float, float, float], ...],
+    source_frame: float,
+) -> tuple[float, float, float, float, float, float]:
+    if source_frame <= keys[0][0]:
+        return keys[0][1:]
+    if source_frame >= keys[-1][0]:
+        return keys[-1][1:]
+    for left, right in zip(keys, keys[1:]):
+        if source_frame <= right[0]:
+            amount = (source_frame - left[0]) / max(1e-9, right[0] - left[0])
+            return tuple(lerp(left[index], right[index], amount) for index in range(1, 7))  # type: ignore[return-value]
+    return keys[-1][1:]
 
-    for left, right in zip(BADGE_AFFINE_KEYFRAMES, BADGE_AFFINE_KEYFRAMES[1:]):
-        if age <= right[0]:
-            local = smoothstep((age - left[0]) / max(1e-9, right[0] - left[0]))
-            return tuple(lerp(left[i], right[i], local) for i in range(1, 7))  # type: ignore[return-value]
-    return 1.0, 0.0, 0.0, 1.0, 0.0, 0.0
+
+def _sample_source_offset(keys: tuple[tuple[int, float], ...], source_frame: float) -> float:
+    if source_frame <= keys[0][0]:
+        return keys[0][1]
+    if source_frame >= keys[-1][0]:
+        return keys[-1][1]
+    for left, right in zip(keys, keys[1:]):
+        if source_frame <= right[0]:
+            amount = (source_frame - left[0]) / max(1e-9, right[0] - left[0])
+            return lerp(left[1], right[1], amount)
+    return keys[-1][1]
+
+
+def badge_entry_affine(age: float) -> tuple[float, float, float, float, float, float]:
+    # Opening animation age 0..2.9 maps exactly to source frames 35..120.
+    source_frame = 35.0 + clamp(age / BADGE_ENTRY_END) * 85.0
+    return _sample_affine_source_frame(OPENING_BADGE_FRAME_KEYFRAMES, source_frame)
 
 
 def post_badge_fall_affine(age: float) -> tuple[float, float, float, float, float, float]:
-    """Return a centered, vertical-only falling transform for cards 5+."""
-    if age >= BADGE_ENTRY_END:
-        return 1.0, 0.0, 0.0, 1.0, 0.0, 0.0
-    if age <= POST_BADGE_FALL_KEYFRAMES[0][0]:
-        scale = POST_BADGE_FALL_KEYFRAMES[0][1]
-        vertical = POST_BADGE_FALL_KEYFRAMES[0][2]
-    else:
-        scale = 1.0
-        vertical = 0.0
-        for left, right in zip(POST_BADGE_FALL_KEYFRAMES, POST_BADGE_FALL_KEYFRAMES[1:]):
-            if age <= right[0]:
-                local = smoothstep((age - left[0]) / max(1e-9, right[0] - left[0]))
-                scale = lerp(left[1], right[1], local)
-                vertical = lerp(left[2], right[2], local)
-                break
-
-    cx, cy = BADGE_CENTER
-    return (
-        scale,
-        0.0,
-        0.0,
-        scale,
-        cx * (1.0 - scale),
-        cy * (1.0 - scale) + vertical,
-    )
-
+    # The later-badge age clock maps source frame 650 to age 0 and advances
+    # 103 source frames over 2.25 age units.  Keep the shell at source scale;
+    # only its measured vertical translation changes.
+    source_frame = 650.0 + max(0.0, age) * (103.0 / 2.25)
+    vertical = _sample_source_offset(POST_BADGE_FALL_FRAME_OFFSETS, source_frame)
+    return 1.0, 0.0, 0.0, 1.0, 0.0, vertical
 
 @dataclass(slots=True)
 class RenderTheme:
@@ -1093,13 +1090,13 @@ class FrameRenderer:
                 return
             age = age_opening_badge_age(local_frame)
             source = self._badge_source(card, age, sticker_entry=True)
-            affine = badge_entry_affine(age) if age < BADGE_ENTRY_END else (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+            affine = badge_entry_affine(age)
         else:
             age = age_later_badge_age(local_frame)
             if age < 0.0:
                 return
             source = self._badge_source(card, age, sticker_entry=False)
-            affine = post_badge_fall_affine(age) if age < 2.25 else (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+            affine = post_badge_fall_affine(age)
         affine = self._compose_source_scale(affine, self._age_deemphasis_scale(index, int(global_frame), starts))
         self._warp_badge(canvas, source, card_x, affine)
 
@@ -1187,6 +1184,121 @@ class FrameRenderer:
             fill=(244, 244, 244, 255), anchor="ma",
         )
         canvas.paste(layer.convert("RGB"), (0, int(round(top))), layer.getchannel("A"))
+
+    @staticmethod
+    def _outro_action_bar_bounds(outro_local_frame: int) -> tuple[int, int, int, int] | None:
+        # Dense two-frame contact-sheet measurements. The white action bar
+        # begins as a 42x8 dash at source f11912 and reaches 540x130 at f11958.
+        keys = (
+            (54, 716, 98, 42, 8), (56, 696, 93, 82, 18),
+            (58, 665, 85, 143, 33), (60, 632, 77, 211, 49),
+            (62, 580, 64, 314, 75), (64, 563, 60, 349, 84),
+            (66, 548, 56, 379, 91), (68, 536, 53, 403, 97),
+            (70, 517, 49, 441, 106), (72, 510, 47, 455, 109),
+            (74, 503, 45, 469, 113), (76, 498, 44, 479, 115),
+            (78, 489, 42, 497, 120), (80, 485, 41, 505, 122),
+            (82, 482, 40, 511, 123), (84, 479, 39, 517, 125),
+            (86, 474, 38, 526, 127), (88, 473, 38, 529, 127),
+            (90, 471, 37, 533, 129), (92, 471, 37, 533, 129),
+            (94, 470, 37, 535, 129), (96, 468, 37, 539, 129),
+            (98, 468, 37, 539, 130), (100, 468, 37, 540, 130),
+            (102, 468, 37, 540, 130),
+        )
+        local = int(outro_local_frame)
+        if local < keys[0][0]:
+            return None
+        if local >= keys[-1][0]:
+            return keys[-1][1:]
+        for left, right in zip(keys, keys[1:]):
+            if local <= right[0]:
+                amount = (local - left[0]) / max(1, right[0] - left[0])
+                return tuple(int(round(lerp(left[i], right[i], amount))) for i in range(1, 5))  # type: ignore[return-value]
+        return keys[-1][1:]
+
+    @staticmethod
+    def _outro_subscribe_bounds(outro_local_frame: int) -> tuple[int, int, int, int] | None:
+        keys = (
+            (74, 796, 103, 22, 7), (76, 782, 98, 52, 15),
+            (78, 754, 89, 110, 32), (80, 746, 86, 128, 37),
+            (82, 740, 84, 140, 40), (84, 735, 82, 150, 44),
+            (86, 728, 80, 164, 48), (88, 726, 79, 169, 49),
+            (90, 724, 78, 173, 51), (92, 724, 78, 173, 51),
+            (94, 722, 78, 177, 51), (96, 720, 78, 182, 52),
+            (98, 719, 77, 183, 53), (100, 718, 77, 185, 53),
+            (102, 718, 77, 185, 53),
+        )
+        local = int(outro_local_frame)
+        if local < keys[0][0]:
+            return None
+        if local >= keys[-1][0]:
+            return keys[-1][1:]
+        for left, right in zip(keys, keys[1:]):
+            if local <= right[0]:
+                amount = (local - left[0]) / max(1, right[0] - left[0])
+                return tuple(int(round(lerp(left[i], right[i], amount))) for i in range(1, 5))  # type: ignore[return-value]
+        return keys[-1][1:]
+
+    @staticmethod
+    def _draw_thumb_icon(draw: ImageDraw.ImageDraw, x: float, y: float, scale: float, *, down: bool = False) -> None:
+        if scale <= 0.02:
+            return
+        s = max(0.02, float(scale))
+        # Compact vector silhouette matching the source action-bar icon family.
+        points = [
+            (x + 8 * s, y + 15 * s), (x + 17 * s, y + 15 * s),
+            (x + 24 * s, y + 4 * s), (x + 29 * s, y + 6 * s),
+            (x + 28 * s, y + 15 * s), (x + 39 * s, y + 15 * s),
+            (x + 42 * s, y + 20 * s), (x + 38 * s, y + 34 * s),
+            (x + 17 * s, y + 34 * s), (x + 17 * s, y + 38 * s),
+            (x + 8 * s, y + 38 * s),
+        ]
+        if down:
+            cy = y + 21 * s
+            points = [(px, 2 * cy - py) for px, py in points]
+        draw.polygon(points, fill=(38, 38, 38, 255))
+
+    @staticmethod
+    def _draw_bell_icon(draw: ImageDraw.ImageDraw, x: float, y: float, scale: float) -> None:
+        if scale <= 0.02:
+            return
+        s = max(0.02, float(scale))
+        box = (x + 6 * s, y + 8 * s, x + 38 * s, y + 39 * s)
+        draw.arc(box, start=195, end=345, fill=(48, 48, 48, 255), width=max(1, int(round(3 * s))))
+        draw.line((x + 8 * s, y + 27 * s, x + 4 * s, y + 38 * s, x + 40 * s, y + 38 * s, x + 36 * s, y + 27 * s), fill=(48, 48, 48, 255), width=max(1, int(round(3 * s))), joint="curve")
+        draw.ellipse((x + 19 * s, y + 40 * s, x + 25 * s, y + 46 * s), fill=(48, 48, 48, 255))
+
+    def _draw_outro_action_bar(self, canvas: Image.Image, outro_local_frame: int) -> None:
+        bounds = self._outro_action_bar_bounds(outro_local_frame)
+        if bounds is None:
+            return
+        x, y, width, height = bounds
+        layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
+        radius = max(2, min(24, height // 4, width // 8))
+        draw.rounded_rectangle((x, y, x + width, y + height), radius=radius, fill=(236, 236, 236, 255))
+
+        subscribe = self._outro_subscribe_bounds(outro_local_frame)
+        if subscribe is not None:
+            sx, sy, sw, sh = subscribe
+            sr = max(1, min(8, sh // 5))
+            draw.rounded_rectangle((sx, sy, sx + sw, sy + sh), radius=sr, fill=(253, 67, 69, 255))
+            if sh >= 28 and sw >= 90:
+                font = self._font_for_width("Subscribe", max(11, int(sh * 0.49)), max(20, sw - 16), bold=True, role="credits", minimum=9)
+                draw.text((sx + sw / 2, sy + sh / 2 - 1), "Subscribe", font=font, fill=(255, 255, 255, 255), anchor="mm")
+
+        local = int(outro_local_frame)
+        like_p = smoothstep((local - 86) / 26.0)
+        dislike_p = smoothstep((local - 92) / 26.0)
+        bell_p = smoothstep((local - 88) / 16.0)
+        line_p = smoothstep((local - 102) / 18.0)
+
+        self._draw_thumb_icon(draw, 516, 58, like_p)
+        self._draw_thumb_icon(draw, 607, 58, dislike_p, down=True)
+        self._draw_bell_icon(draw, 925, 61, bell_p)
+        if line_p > 0.0:
+            draw.line((508, 138, lerp(508, 684, line_p), 138), fill=(32, 32, 32, 255), width=4)
+
+        canvas.paste(layer.convert("RGB"), (0, 0), layer.getchannel("A"))
 
     @staticmethod
     def _age_cover_y(outro_local_frame: int) -> int:
@@ -1382,6 +1494,7 @@ class FrameRenderer:
             end_group_top = self._age_end_group_top(outro_local)
             if end_group_top is not None:
                 self._draw_end_group(base, end_group_top, project)
+            self._draw_outro_action_bar(base, outro_local)
 
             if segment.kind == "fade":
                 fade_opacity = 1.0 - males_fade_alpha(global_frame)

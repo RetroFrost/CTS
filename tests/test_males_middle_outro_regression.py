@@ -78,3 +78,13 @@ def test_outro_handoffs_match_dense_contact_sheet_frames() -> None:
     assert final_x == continuous_card_x(MODEL_WHAT_MALES_LEARN, 11_857, 56)
     assert final_x == continuous_card_x(MODEL_WHAT_MALES_LEARN, 11_901, 56)
     assert final_x == continuous_card_x(MODEL_WHAT_MALES_LEARN, 12_266, 56)
+
+
+def test_outro_action_bar_uses_measured_contact_sheet_bounds() -> None:
+    renderer = FrameRenderer()
+    assert renderer._outro_action_bar_bounds(53) is None
+    assert renderer._outro_action_bar_bounds(54) == (716, 98, 42, 8)
+    assert renderer._outro_action_bar_bounds(62) == (580, 64, 314, 75)
+    assert renderer._outro_action_bar_bounds(78) == (489, 42, 497, 120)
+    assert renderer._outro_action_bar_bounds(100) == (468, 37, 540, 130)
+    assert renderer._outro_action_bar_bounds(140) == (468, 37, 540, 130)

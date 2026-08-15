@@ -35,26 +35,29 @@ def test_body_motion_samples_are_unchanged() -> None:
         assert body_progress(timestamp) == pytest.approx(value, abs=1e-12)
 
 
-def test_opening_badge_transform_is_unchanged() -> None:
-    expected = {
-        0.0: (0.32, 0.04, -0.43, 1.05, -230.0, -220.0),
-        0.4: (0.36, 0.036, -0.43, 1.05, -154.0, -107.0),
-        0.9: (1.2222, -0.0181, -0.2694, 1.6357, -141.9, -203.87),
-        1.5: (1.2088, -0.0758, -0.0337, 1.2452, -56.12, -83.62),
-        2.3: (1.0808, 0.0209, 0.0, 1.0698, -25.8, -16.16),
-        2.9: (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
-    }
-    for timestamp, values in expected.items():
-        assert badge_entry_affine(timestamp) == pytest.approx(values, abs=1e-10)
+def test_opening_badge_transform_matches_contact_sheet_frames() -> None:
+    def age(frame: int) -> float:
+        return (frame - 35) * 2.9 / 85.0
 
-
-def test_continuous_badge_fall_is_unchanged() -> None:
     expected = {
-        0.0: (1.12, 0.0, 0.0, 1.12, -28.8, -443.76),
-        0.55: (1.112, 0.0, 0.0, 1.112, -26.88, -314.176),
-        1.05: (1.09, 0.0, 0.0, 1.09, -21.6, -122.82),
-        1.42: (1.058, 0.0, 0.0, 1.058, -13.92, 4.516),
-        2.25: (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+        40: (0.592169, -0.078765, -0.283855, 1.188568, -125.999331, -19.155194),
+        60: (0.774691, -0.031915, -0.189815, 1.114362, -38.958629, -14.476950),
+        80: (0.945988, -0.029255, -0.067901, 1.058511, -23.818558, -15.196217),
+        100: (1.010802, -0.013298, -0.006173, 1.005319, -14.144799, -6.608747),
+        120: (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
     }
-    for timestamp, values in expected.items():
-        assert post_badge_fall_affine(timestamp) == pytest.approx(values, abs=1e-10)
+    for frame, values in expected.items():
+        assert badge_entry_affine(age(frame)) == pytest.approx(values, abs=1e-6)
+
+def test_continuous_badge_fall_matches_contact_sheet_frames() -> None:
+    def age(frame: int) -> float:
+        return (frame - 650) * 2.25 / 103.0
+
+    expected = {
+        680: (1.0, 0.0, 0.0, 1.0, 0.0, -381.0),
+        700: (1.0, 0.0, 0.0, 1.0, 0.0, -187.0),
+        720: (1.0, 0.0, 0.0, 1.0, 0.0, -41.0),
+        734: (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+    }
+    for frame, values in expected.items():
+        assert post_badge_fall_affine(age(frame)) == pytest.approx(values, abs=1e-6)
