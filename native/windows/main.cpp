@@ -8,9 +8,12 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -570,7 +573,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 if(cubical::load_ccx(imported,task->output,&error)){app->project=std::move(imported);app->selected=0;app->current_frame=0;sync_project_ui(app);status(app,task->kind==TaskResult::Kind::ImportData?"Data imported through shared engine":"MegaPack imported through shared engine");}
                 else status(app,"Import result could not be opened: "+error);
             }
-            std::error_code ec; fs::remove(task->output,ec); fs::remove(app->progress_file,ec); fs::remove(app->cancel_file,ec);
+            std::error_code ec; if(task->kind != TaskResult::Kind::Export) fs::remove(task->output,ec); fs::remove(app->progress_file,ec); fs::remove(app->cancel_file,ec);
             if(app->pending_close) DestroyWindow(window);
             return 0;
         }
