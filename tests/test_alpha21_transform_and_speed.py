@@ -57,7 +57,9 @@ def test_front_layer_can_cover_model_text_band(tmp_path: Path) -> None:
     )
     project = Project(cards=[card])
     renderer = FrameRenderer()
-    frame = renderer.render(project, 2.8)
+    # Sample the last content frame. With the measured one-card clock, frame
+    # 168 is already in the outro and intentionally drops the card away.
+    frame = renderer.render(project, 119 / 60)
     # Front artwork is composited after both text bands and the badge.
     assert frame.getpixel((240, 900))[0] > 240
     assert frame.getpixel((240, 900))[2] > 240

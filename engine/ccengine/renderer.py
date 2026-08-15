@@ -649,8 +649,13 @@ class FrameRenderer:
         source = self._load_image(card.image)
         if source is None:
             return
-        description = bool(" ".join(str(card.description or "").split()))
-        image_height = int(height * 0.768) if description else height - min(max(34, int(height * 0.105)), max(1, height - 1))
+        layout = self._active_profile.layout
+        has_title = bool(" ".join(str(card.title or "").split()))
+        has_description = bool(" ".join(str(card.description or "").split()))
+        description_height = max(0, layout.body_height - layout.description_top) if has_description else 0
+        rule_height = layout.divider_width if has_description else 0
+        title_height = layout.title_height if has_title else 0
+        image_height = max(0, height - description_height - rule_height - title_height)
         layer = self._free_transform_artwork(source, card, width, height, image_height)
         canvas.paste(layer.convert("RGB"), (int(round(x)), 0), layer.getchannel("A"))
 
