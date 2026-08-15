@@ -9,7 +9,6 @@ import io.github.retrofrost.cts.android.shared.SharedContract
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 const val REVEAL_SECONDS = SharedContract.REVEAL_SECONDS
 const val SCROLL_SECONDS = SharedContract.SCROLL_SECONDS
@@ -68,21 +67,19 @@ private data class TimelineParts(
 object TimelineEngine {
     /** Exact Reference maps one output frame to one measured source frame. */
     const val EXACT_REFERENCE_PLAYBACK_RATE = 1f
-    const val MALES_REFERENCE_FRAMES = 16_741
+    const val MALES_REFERENCE_FRAMES = 12_267
     const val MALES_REFERENCE_FPS = 60
-    private const val MALES_CANONICAL_CARD_COUNT = 78
+    private const val MALES_CANONICAL_CARD_COUNT = 57
     private const val MALES_CONVEYOR_START_FRAME = 528
     private const val MALES_STEADY_START_FRAME = 620
     private const val MALES_STEADY_START_SHIFT = 0.614439f
-    private const val MALES_STEADY_END_FRAME = 16_335
-    private const val MALES_STEADY_END_SHIFT = 74f
     private const val MALES_STEADY_PERIOD_FRAMES = 214.14294f
-    private const val MALES_FINAL_HOLD_FRAMES = 37
-    private const val MALES_OUTRO_START_FRAME = 16_372
-    private const val MALES_END_WIPE_FRAMES = 25
-    private const val MALES_END_RISE_FRAMES = 23
-    private const val MALES_END_HOLD_FRAMES = 273
-    private const val MALES_FADE_FRAMES = 48
+    private const val MALES_FINAL_HOLD_FRAMES = 17
+    private const val MALES_END_WIPE_FRAMES = 43
+    private const val MALES_END_RISE_FRAMES = 11
+    private const val MALES_END_HOLD_FRAMES = 268
+    private const val MALES_FADE_FRAMES = 79
+    private const val MALES_BLACK_TAIL_FRAMES = 8
     private const val MALES_BADGE_DEEMPHASIS_SECONDS = 1f
     private const val MALES_BADGE_ACTIVE_SCALE = 1f
     private const val MALES_BADGE_MEDIUM_SCALE = 272f / 298f
@@ -104,9 +101,6 @@ object TimelineEngine {
         620f to MALES_STEADY_START_SHIFT,
     )
     const val MALES_BODY_SECONDS = 1.34f
-    private const val MALES_CONVEYOR_STRIDE = 477f / 480f
-    private const val MALES_PHASE_PULL_START_FRAME = 535
-    private const val MALES_PHASE_PULL_END_FRAME = 620
     private const val MALES_POST_BADGE_DELAY = 2.06f
     private const val MALES_POST_BADGE_DURATION = 1.10f
     private const val MALES_BADGE_ENTRY_END = 2.90f
@@ -149,36 +143,11 @@ object TimelineEngine {
         floatArrayOf(1.80f, 1.016f, 5f), floatArrayOf(2.02f, 1.005f, -2f),
         floatArrayOf(2.25f, 1.000f, 0f), floatArrayOf(2.90f, 1.000f, 0f),
     )
-    const val RELATIONSHIPS_REFERENCE_FRAMES = 11_130
-    const val RELATIONSHIPS_REFERENCE_FPS = 60
-    const val RELATIONSHIPS_REFERENCE_SECONDS = 185.5f
-    const val RELATIONSHIPS_INTRO_FRAMES = 374
-    const val RELATIONSHIPS_INTRO_OVERLAY_END_FRAME = 550
-    const val RELATIONSHIPS_CONTINUOUS_START_FRAME = 896
-    const val RELATIONSHIPS_CONTINUOUS_STEP_FRAMES = 266
-    const val RELATIONSHIPS_CONTENT_END_CANONICAL_FRAME = 10_738
-    const val RELATIONSHIPS_END_WIPE_FRAMES = 42
-    const val RELATIONSHIPS_END_RISE_FRAMES = 50
-    // Raw source luminance begins falling at f11076 and remains non-black on
-    // the last source frame. Keep the 392-frame outro total while preserving
-    // its measured 54-frame fade instead of the old 30-frame approximation.
-    const val RELATIONSHIPS_END_HOLD_FRAMES = 246
-    const val RELATIONSHIPS_FADE_FRAMES = 54
-    private const val RELATIONSHIPS_POSITION_STEP_FRAMES = 265.7158648f
-    private val relationshipsOpeningStarts = intArrayOf(374, 521, 656, 795)
-    private val relationshipsOpeningEnds = intArrayOf(521, 656, 795, 896)
-
     private fun isSealedReference(project: CtsProject): Boolean =
-        project.model == VisualModel.Males || project.model == VisualModel.Relationships
-
-    private fun isLockedRelationships(project: CtsProject): Boolean =
-        project.model == VisualModel.Relationships
+        project.model == VisualModel.Males
 
     private fun isCanonicalMales(project: CtsProject): Boolean =
         project.model == VisualModel.Males && project.cards.size == MALES_CANONICAL_CARD_COUNT
-
-    private fun isCanonicalRelationships(project: CtsProject): Boolean =
-        project.model == VisualModel.Relationships && project.cards.size == 40
 
     private fun playbackRate(project: CtsProject): Float =
         if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) {
@@ -188,7 +157,7 @@ object TimelineEngine {
         }
 
     private fun sourceFrameAt(seconds: Float, fps: Int): Int =
-        (seconds * fps).roundToInt()
+        floor(seconds.coerceAtLeast(0f) * fps + 0.000001f).toInt()
 
     fun customIntroDuration(project: CtsProject): Float = if (
         !project.introVideo.uri.isNullOrBlank()
@@ -206,26 +175,14 @@ object TimelineEngine {
     private fun contentOutputTime(project: CtsProject, outputTimeSeconds: Float): Float =
         (outputTimeSeconds - customIntroDuration(project)).coerceAtLeast(0f)
 
-    private fun builtInIntroEnabled(project: CtsProject): Boolean =
-        isSealedReference(project) || project.showIntro
-
     private fun outputDuration(project: CtsProject, modelDurationSeconds: Float): Float =
         modelDurationSeconds / playbackRate(project)
 
-    private fun preludeSeconds(project: CtsProject): Float = when (project.model) {
-        VisualModel.Males -> 0f
-        VisualModel.Relationships -> if (builtInIntroEnabled(project)) RELATIONSHIPS_INTRO_FRAMES / 60f else 0f
-    }
+    private fun preludeSeconds(project: CtsProject): Float = 0f
 
-    private fun revealSeconds(project: CtsProject): Float = when (project.model) {
-        VisualModel.Males -> REVEAL_SECONDS
-        VisualModel.Relationships -> RELATIONSHIPS_CONTINUOUS_STEP_FRAMES / 60f
-    }
+    private fun revealSeconds(project: CtsProject): Float = REVEAL_SECONDS
 
-    private fun baseScrollSeconds(project: CtsProject): Float = when (project.model) {
-        VisualModel.Males -> SCROLL_SECONDS
-        VisualModel.Relationships -> RELATIONSHIPS_CONTINUOUS_STEP_FRAMES / 60f
-    }
+    private fun baseScrollSeconds(project: CtsProject): Float = SCROLL_SECONDS
 
     private fun tailSeconds(project: CtsProject): Float = if (isSealedReference(project) || project.showOutro) {
         END_HOLD_SECONDS + OUTRO_COVER_SECONDS + OUTRO_CONTENT_DELAY_SECONDS + OUTRO_HOLD_SECONDS + FADE_SECONDS
@@ -251,41 +208,11 @@ object TimelineEngine {
         return parts.introSeconds + parts.automaticScrollSeconds + parts.fixedTailSeconds
     }
 
-    private fun relationshipsContentEndFrame(cardCount: Int): Int = when {
-        cardCount <= 0 -> 0
-        cardCount <= 4 -> relationshipsOpeningEnds[cardCount - 1]
-        else -> RELATIONSHIPS_CONTINUOUS_START_FRAME +
-            (cardCount - 4 + 1) * RELATIONSHIPS_CONTINUOUS_STEP_FRAMES
-    }
-
-    private fun relationshipsIntroOffset(project: CtsProject): Int =
-        if (builtInIntroEnabled(project)) 0 else RELATIONSHIPS_INTRO_FRAMES
-
-    fun relationshipsSourceFrame(project: CtsProject, outputTimeSeconds: Float): Int =
-        sourceFrameAt(
-            contentOutputTime(project, outputTimeSeconds) * playbackRate(project),
-            RELATIONSHIPS_REFERENCE_FPS,
-        ) +
-            relationshipsIntroOffset(project)
-
-    fun relationshipsOutroLocalFrame(project: CtsProject, outputTimeSeconds: Float): Int =
-        relationshipsSourceFrame(project, outputTimeSeconds) - relationshipsContentEndFrame(project.cards.size)
-
     fun automaticDuration(project: CtsProject): Float {
         val parts = timelineParts(project)
         if (project.model == VisualModel.Males && isSealedReference(project)) {
             return customIntroDuration(project) +
                 malesReferenceFrameCount(project.cards.size) / MALES_REFERENCE_FPS.toFloat()
-        }
-        if (isLockedRelationships(project)) {
-            val content = relationshipsContentEndFrame(project.cards.size)
-            val outro = if (isSealedReference(project) || project.showOutro) {
-                RELATIONSHIPS_END_WIPE_FRAMES + RELATIONSHIPS_END_RISE_FRAMES +
-                    RELATIONSHIPS_END_HOLD_FRAMES + RELATIONSHIPS_FADE_FRAMES
-            } else 0
-            val sourceDuration = (content - relationshipsIntroOffset(project) + outro)
-                .coerceAtLeast(0) / RELATIONSHIPS_REFERENCE_FPS.toFloat()
-            return customIntroDuration(project) + outputDuration(project, sourceDuration)
         }
         return customIntroDuration(project) + outputDuration(
             project,
@@ -307,7 +234,6 @@ object TimelineEngine {
 
     private fun chosenScrollDuration(project: CtsProject, parts: TimelineParts): Float {
         if (parts.scrollSteps <= 0) return 0f
-        if (isLockedRelationships(project)) return parts.automaticScrollSeconds
         if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) return parts.automaticScrollSeconds
         if (DurationRuntime.resolve(project.customDurationSeconds) == null) {
             return parts.automaticScrollSeconds
@@ -383,19 +309,6 @@ object TimelineEngine {
         return modelTime(project, outputTimeSeconds) < timelineParts(project).introSeconds
     }
 
-    fun relationshipsInfinityProgress(project: CtsProject, outputTimeSeconds: Float): Float {
-        if (project.model != VisualModel.Relationships || !builtInIntroEnabled(project)) return 0f
-        return relationshipsSourceFrame(project, outputTimeSeconds) /
-            RELATIONSHIPS_INTRO_FRAMES.toFloat()
-    }
-
-    fun relationshipsDisclaimerAlpha(project: CtsProject, outputTimeSeconds: Float): Float {
-        if (project.model != VisualModel.Relationships || (!isSealedReference(project) && !project.showDisclaimer)) return 0f
-        val frame = relationshipsSourceFrame(project, outputTimeSeconds)
-        if (frame !in 434 until 795) return 0f
-        return ((frame - 434) / 45f).coerceIn(0f, 1f)
-    }
-
     fun outroCoverProgress(project: CtsProject, outputTimeSeconds: Float): Float {
         if (project.model == VisualModel.Males && isSealedReference(project)) {
             val frame = sourceFrameAt(contentOutputTime(project, outputTimeSeconds), MALES_REFERENCE_FPS)
@@ -403,10 +316,6 @@ object TimelineEngine {
             return smoothStep((frame - malesOutroStartFrame(project.cards.size)) / MALES_END_WIPE_FRAMES.toFloat())
         }
         if (!isSealedReference(project) && !project.showOutro) return 0f
-        if (isLockedRelationships(project)) {
-            return (relationshipsOutroLocalFrame(project, outputTimeSeconds) /
-                RELATIONSHIPS_END_WIPE_FRAMES.toFloat()).coerceIn(0f, 1f)
-        }
         val elapsed = modelTime(project, outputTimeSeconds) - outroStart(project)
         return materialEase(elapsed / OUTRO_COVER_SECONDS.coerceAtLeast(0.001f))
     }
@@ -415,13 +324,12 @@ object TimelineEngine {
         if (project.model == VisualModel.Males && isSealedReference(project)) {
             val frame = sourceFrameAt(contentOutputTime(project, outputTimeSeconds), MALES_REFERENCE_FPS)
             val riseStart = malesOutroStartFrame(project.cards.size) + MALES_END_WIPE_FRAMES
+            if (isCanonicalMales(project)) {
+                return if (ExactReferenceFrames.malesOutroContentYOffsetPx(frame) != null) 1f else 0f
+            }
             return ((frame - riseStart) / MALES_END_RISE_FRAMES.toFloat()).coerceIn(0f, 1f)
         }
         if (!isSealedReference(project) && !project.showOutro) return 0f
-        if (isLockedRelationships(project)) {
-            return ((relationshipsOutroLocalFrame(project, outputTimeSeconds) - 35) / 28f)
-                .coerceIn(0f, 1f)
-        }
         val start = outroStart(project) + OUTRO_COVER_SECONDS + OUTRO_CONTENT_DELAY_SECONDS
         return smoothStep((modelTime(project, outputTimeSeconds) - start) / 0.12f)
     }
@@ -429,10 +337,6 @@ object TimelineEngine {
     fun placements(project: CtsProject, outputTimeSeconds: Float): List<CardPlacement> {
         val cardCount = project.cards.size
         if (cardCount <= 0) return emptyList()
-        if (isLockedRelationships(project)) {
-            return relationshipsPlacements(project, outputTimeSeconds)
-        }
-
         val modelTime = modelTime(project, outputTimeSeconds)
         val activeDuration = if (project.model == VisualModel.Males && isSealedReference(project)) {
             malesReferenceFrameCount(project.cards.size) / MALES_REFERENCE_FPS.toFloat()
@@ -546,65 +450,6 @@ object TimelineEngine {
         }
     }
 
-    private fun relationshipsPlacements(
-        project: CtsProject,
-        outputTimeSeconds: Float,
-    ): List<CardPlacement> {
-        val frame = relationshipsSourceFrame(project, outputTimeSeconds)
-        val cardCount = project.cards.size
-        val contentEnd = relationshipsContentEndFrame(cardCount)
-        if (frame >= contentEnd) {
-            if ((!isSealedReference(project) && !project.showOutro) ||
-                frame >= contentEnd + RELATIONSHIPS_END_WIPE_FRAMES +
-                RELATIONSHIPS_END_RISE_FRAMES + RELATIONSHIPS_END_HOLD_FRAMES + RELATIONSHIPS_FADE_FRAMES
-            ) return emptyList()
-            val local = frame - contentEnd
-            val x = ExactReferenceFrames.relationshipsFinalLastCardX(frame)?.div(480f) ?: when {
-                local <= 32 -> lerp(2f, 0f, smoothStep(local / 32f))
-                local <= 42 -> lerp(0f, 320f / 480f, 1f - (1f - (local - 32) / 10f).coerceIn(0f, 1f).let { it * it * it })
-                local <= 62 -> lerp(320f / 480f, 928f / 480f, 1f - (1f - (local - 42) / 20f).coerceIn(0f, 1f).let { it * it * it })
-                local <= 77 -> lerp(928f / 480f, 780f / 480f, smoothStep((local - 62) / 15f))
-                else -> 780f / 480f
-            }
-            return listOf(
-                CardPlacement(
-                    cardIndex = cardCount - 1,
-                    xInCards = x,
-                    bodyReveal = 1f,
-                    badgeVisible = true,
-                    badgeSettle = 1f,
-                    badgeRect = relationshipsBadgeRect(61),
-                ),
-            )
-        }
-
-        if (frame < RELATIONSHIPS_CONTINUOUS_START_FRAME) {
-            return buildList {
-                for (index in 0 until min(4, cardCount)) {
-                    val start = ExactReferenceFrames.relationshipsCardStartFrame(index)
-                    if (frame < start) continue
-                    val local = frame - start
-                    add(relationshipsPlacement(index, index.toFloat(), local, opening = true, sourceFrame = frame))
-                }
-            }
-        }
-
-        return buildList {
-            for (index in 0 until cardCount) {
-                val finalCardX = if (index == cardCount - 1) {
-                    ExactReferenceFrames.relationshipsFinalLastCardX(frame)?.div(480f)
-                } else null
-                val x = finalCardX
-                    ?: ExactReferenceFrames.relationshipsConveyorCardX(frame, index)?.div(480f)
-                    ?: index - (frame - RELATIONSHIPS_CONTINUOUS_START_FRAME) /
-                    RELATIONSHIPS_POSITION_STEP_FRAMES
-                if (x <= -1f || x >= 5f) continue
-                val start = ExactReferenceFrames.relationshipsCardStartFrame(index)
-                add(relationshipsPlacement(index, x, frame - start, opening = index < 4, sourceFrame = frame))
-            }
-        }
-    }
-
     private fun malesConveyorShift(
         sourceFrame: Int,
         maximumShift: Float,
@@ -661,12 +506,20 @@ object TimelineEngine {
             else -> kotlin.math.ceil(malesFrameForShift((cardCount - 4).toFloat()).toDouble()).toInt()
         }
         return settledFrame + MALES_FINAL_HOLD_FRAMES +
-            MALES_END_WIPE_FRAMES + MALES_END_RISE_FRAMES + MALES_END_HOLD_FRAMES + MALES_FADE_FRAMES
+            MALES_END_WIPE_FRAMES + MALES_END_RISE_FRAMES + MALES_END_HOLD_FRAMES +
+            MALES_FADE_FRAMES + MALES_BLACK_TAIL_FRAMES
     }
 
     private fun malesOutroStartFrame(cardCount: Int): Int =
         malesReferenceFrameCount(cardCount) -
-            (MALES_END_WIPE_FRAMES + MALES_END_RISE_FRAMES + MALES_END_HOLD_FRAMES + MALES_FADE_FRAMES)
+            (MALES_END_WIPE_FRAMES + MALES_END_RISE_FRAMES + MALES_END_HOLD_FRAMES +
+                MALES_FADE_FRAMES + MALES_BLACK_TAIL_FRAMES)
+
+    fun outroContentYOffsetPx(project: CtsProject, outputTimeSeconds: Float): Float? {
+        if (!isCanonicalMales(project)) return null
+        val frame = sourceFrameAt(contentOutputTime(project, outputTimeSeconds), MALES_REFERENCE_FPS)
+        return ExactReferenceFrames.malesOutroContentYOffsetPx(frame)
+    }
 
     private fun malesBadgeClockFrame(index: Int, animationAge: Float): Float {
         val start = malesCardStartFrame(index)
@@ -769,92 +622,6 @@ object TimelineEngine {
         return BadgeAffine(scale, 0f, 0f, scale, cx * (1f - scale), cy * (1f - scale) + key[2])
     }
 
-    private fun relationshipsPlacement(
-        index: Int,
-        x: Float,
-        localFrame: Int,
-        opening: Boolean,
-        sourceFrame: Int,
-    ): CardPlacement {
-        val exactBody = if (opening) {
-            ExactReferenceFrames.relationshipsOpeningTransform(sourceFrame, index)
-        } else null
-        val artwork = if (opening) {
-            ExactReferenceFrames.relationshipsArtworkReveal(sourceFrame, index)
-        } else 1f
-        val title = if (opening) ((localFrame - 96) / 10f).coerceIn(0f, 1f) else 1f
-        val description = if (opening) ((localFrame - 105) / 15f).coerceIn(0f, 1f) else 1f
-        val textStart = if (opening) 88 else 18
-        val textProgress = ((localFrame - textStart) / 32f).coerceIn(0f, 1f)
-        return CardPlacement(
-            cardIndex = index,
-            xInCards = x,
-            bodyReveal = if (opening) {
-                // The measured transform only covers the 121-frame entrance.
-                // Once that table ends the card is fully settled, not hidden.
-                if (localFrame > 120 || exactBody != null) 1f else 0f
-            } else 1f,
-            badgeVisible = localFrame >= 11,
-            badgeSettle = relationshipsBadgeScale(localFrame),
-            artworkReveal = artwork,
-            titleReveal = title,
-            descriptionReveal = description,
-            // The compressed table tracks the inner red component. The full
-            // badge renderer needs the measured outer octagon bounds here.
-            badgeRect = relationshipsBadgeRect(localFrame),
-            badgeTextAlpha = textProgress,
-            // The Relationships reference drives its gloss from the same
-            // canonical 0.9..2.3 badge clock used by the desktop renderer.
-            badgeAgeSeconds = 0.9f + textProgress * 1.4f,
-            bodyTransform = exactBody,
-        )
-    }
-
-    private val relationshipsBadgeBounds = arrayOf(
-        floatArrayOf(11f, 208f, 170.3f, 256f, 217.7f),
-        floatArrayOf(15f, 144f, 107f, 320f, 281f),
-        floatArrayOf(19f, 88f, 51.6f, 376f, 336.4f),
-        floatArrayOf(23f, 40f, 4.2f, 424f, 383.8f),
-        floatArrayOf(27f, 16f, -19.5f, 448f, 407.5f),
-        floatArrayOf(30f, 32f, -3.7f, 432f, 391.7f),
-        floatArrayOf(33f, 56f, 20f, 408f, 368f),
-        floatArrayOf(36f, 72f, 35.8f, 392f, 352.2f),
-        floatArrayOf(40f, 56f, 20f, 408f, 368f),
-        floatArrayOf(44f, 48f, 12.1f, 416f, 375.9f),
-        floatArrayOf(48f, 48f, 12.1f, 416f, 375.9f),
-        floatArrayOf(50f, 56f, 20f, 408f, 368f),
-        floatArrayOf(60f, 56f, 20f, 408f, 368f),
-    )
-
-    private fun relationshipsBadgeScale(localFrame: Int): Float {
-        val rect = relationshipsBadgeRect(localFrame) ?: return 0f
-        return rect.width / (352f / 480f)
-    }
-
-    private fun relationshipsBadgeRect(localFrame: Int): NormalizedRect? {
-        if (localFrame < 11) return null
-        val values = if (localFrame >= relationshipsBadgeBounds.last()[0]) {
-            relationshipsBadgeBounds.last()
-        } else {
-            val right = relationshipsBadgeBounds.indexOfFirst { localFrame <= it[0] }
-            if (right <= 0) relationshipsBadgeBounds.first() else {
-                val left = relationshipsBadgeBounds[right - 1]
-                val upper = relationshipsBadgeBounds[right]
-                val t = (localFrame - left[0]) / (upper[0] - left[0])
-                floatArrayOf(
-                    localFrame.toFloat(), lerp(left[1], upper[1], t), lerp(left[2], upper[2], t),
-                    lerp(left[3], upper[3], t), lerp(left[4], upper[4], t),
-                )
-            }
-        }
-        return NormalizedRect(
-            values[1] / 480f,
-            values[2] / 1080f,
-            (values[3] - values[1]) / 480f,
-            (values[4] - values[2]) / 1080f,
-        )
-    }
-
     private fun lerp(start: Float, end: Float, amount: Float): Float =
         start + (end - start) * amount.coerceIn(0f, 1f)
 
@@ -862,21 +629,11 @@ object TimelineEngine {
         if (project.model == VisualModel.Males && isSealedReference(project)) {
             val frame = sourceFrameAt(contentOutputTime(project, outputTimeSeconds), MALES_REFERENCE_FPS)
             if (isCanonicalMales(project)) return ExactReferenceFrames.malesFadeAlpha(frame)
-            val fadeStart = malesReferenceFrameCount(project.cards.size) - MALES_FADE_FRAMES
+            val fadeStart = malesReferenceFrameCount(project.cards.size) -
+                MALES_BLACK_TAIL_FRAMES - MALES_FADE_FRAMES
             return 1f - ((frame - fadeStart) / MALES_FADE_FRAMES.toFloat()).coerceIn(0f, 1f)
         }
         if (!isSealedReference(project) && !project.showOutro) return 1f
-        if (isLockedRelationships(project)) {
-            if (isCanonicalRelationships(project)) {
-                return ExactReferenceFrames.relationshipsFadeAlpha(
-                    relationshipsSourceFrame(project, outputTimeSeconds),
-                )
-            }
-            val fadeStart = RELATIONSHIPS_END_WIPE_FRAMES + RELATIONSHIPS_END_RISE_FRAMES +
-                RELATIONSHIPS_END_HOLD_FRAMES
-            return 1f - ((relationshipsOutroLocalFrame(project, outputTimeSeconds) - fadeStart) /
-                RELATIONSHIPS_FADE_FRAMES.toFloat()).coerceIn(0f, 1f)
-        }
         val modelTime = modelTime(project, outputTimeSeconds)
         val fadeStart = modelDuration(project) - FADE_SECONDS
         if (modelTime <= fadeStart) return 1f
@@ -886,15 +643,6 @@ object TimelineEngine {
     fun editingTimeForCard(project: CtsProject, cardIndex: Int): Float {
         if (project.cards.isEmpty()) return 0f
         val safeIndex = cardIndex.coerceIn(0, project.cards.lastIndex)
-        if (isLockedRelationships(project)) {
-            val frame = if (safeIndex < 4) relationshipsOpeningStarts[safeIndex] else {
-                RELATIONSHIPS_CONTINUOUS_START_FRAME +
-                    (safeIndex - 4) * RELATIONSHIPS_CONTINUOUS_STEP_FRAMES
-            }
-            val sourceSeconds = (frame - relationshipsIntroOffset(project)).coerceAtLeast(0) /
-                RELATIONSHIPS_REFERENCE_FPS.toFloat()
-            return (sourceSeconds / playbackRate(project)).coerceAtMost(duration(project))
-        }
         val parts = timelineParts(project)
         val initialCount = min(project.cards.size, project.model.visibleCards)
         val scrollStart = parts.introSeconds

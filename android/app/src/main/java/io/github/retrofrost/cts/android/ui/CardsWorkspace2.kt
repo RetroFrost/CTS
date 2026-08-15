@@ -111,16 +111,10 @@ internal fun CardsWorkspace2(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ModelChoice(
-                            title = "Males by age",
+                            title = "Males reference",
                             selected = project.model == VisualModel.Males,
                             onClick = { onProjectChanged(project.copy(model = VisualModel.Males)) },
-                            modifier = Modifier.weight(1f),
-                        )
-                        ModelChoice(
-                            title = "Relationships",
-                            selected = project.model == VisualModel.Relationships,
-                            onClick = { onProjectChanged(project.copy(model = VisualModel.Relationships)) },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }

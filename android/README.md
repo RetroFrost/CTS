@@ -8,9 +8,9 @@ Implemented now:
 
 - Premiere-inspired dark mobile editor shell
 - flagship **Click to Insert Data** workflow
-- Separate **What Males Learn at Each Age** and **Types of Relationships** models
+- One canonical **Males** reference model, measured from the complete Evolution of Language source
 - **Exact Reference** mode locks each source-derived motion profile and plays it at 0.5× speed; **Custom** unlocks timing
-- Relationships uses the measured 60 fps frame contract (374-frame brand intro, frame-896 conveyor, 11,130-frame canonical 40-card timeline)
+- Native 1920×1080/60 FPS frame clock with a 12,267-frame canonical 57-card timeline
 - built-in or user-selected MP4 intro, editable credits, disclaimer, badges, and ending/fade
 - CTS desktop timing: 2-second reveals and 10/3-second card scrolling
 - parent-card → child-image-subcard scene hierarchy
@@ -29,7 +29,7 @@ Implemented now:
 - soundtrack selection, looping, volume, AAC bitrate, and encoder selection
 - native H.264/HEVC MP4 export
 - foreground WorkManager export with persistent progress, cancellation, and cleanup of incomplete output
-- regression tests for the measured Males and Relationships timing, conveyor motion, and badge geometry
+- regression tests for measured Males timing, conveyor motion, attached title bands, badge geometry, and outro
 - GitHub Actions debug APK build
 
 The Android preview and background exporter use the same timing engine. Each image is a child subcard owned by exactly one parent card, so its crop, position, and size remain attached to the card during animation and export.
@@ -77,7 +77,7 @@ A MegaPack is a ZIP with `megapack.json` at its root and referenced media stored
 }
 ```
 
-`model` accepts `males` or `relationships`. `background` fills the complete card; a transparent `subject` is composed above it but below the badge. Version-1 `image` entries remain supported as legacy single-layer artwork. Crop fields are optional: focus values range from 0 to 1 and zoom ranges from 1 to 3. Intro, credits, and soundtrack are optional. Referenced ZIP paths must be relative. Limits are 1 GB for the ZIP, 512 MB extracted, 64 MB per file, 1,000 entries, and 500 cards.
+`model` accepts `males`. `background` fills the complete card; a transparent `subject` is composed above it but below the badge. Version-1 `image` entries remain supported as legacy single-layer artwork. Crop fields are optional: focus values range from 0 to 1 and zoom ranges from 1 to 3. Intro, credits, and soundtrack are optional. Referenced ZIP paths must be relative. Limits are 1 GB for the ZIP, 512 MB extracted, 64 MB per file, 1,000 entries, and 500 cards.
 
 ## Build on Ubuntu
 

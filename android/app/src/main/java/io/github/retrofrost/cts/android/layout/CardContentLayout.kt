@@ -11,8 +11,8 @@ data class CardContentFrames(
 )
 
 /**
- * Pixel geometry measured from the supplied 1920 x 1080 source videos. Both reference
- * models collapse empty text bands and give the recovered space to the artwork.
+ * Pixel geometry measured from the canonical 1920 x 1080 Males reference video.
+ * Empty text bands collapse and give the recovered space to the artwork.
  */
 object CardContentLayout {
     private const val SOURCE_WIDTH = 480f
@@ -24,33 +24,9 @@ object CardContentLayout {
     private const val MALES_TITLE_HEIGHT_PX = 93f
     private const val MALES_DESCRIPTION_HEIGHT_PX = 115f
 
-    private const val RELATIONSHIPS_WIDTH_PX = 475f
-    private const val RELATIONSHIPS_IMAGE_HEIGHT_PX = 788f
-    private const val RELATIONSHIPS_TITLE_HEIGHT_PX = 118f
-    private const val RELATIONSHIPS_DESCRIPTION_TOP_PX = 916f
-    private const val RELATIONSHIPS_DESCRIPTION_HEIGHT_PX = 164f
-    private const val RELATIONSHIPS_RULE_HEIGHT_PX = 10f
+    fun frames(model: VisualModel, card: CtsCard): CardContentFrames = malesFrames(card)
 
-    fun frames(model: VisualModel, card: CtsCard): CardContentFrames = when (model) {
-        VisualModel.Males -> malesFrames(card)
-        VisualModel.Relationships -> relationshipsFrames(card)
-    }
-
-    fun artworkAspect(model: VisualModel): Float = when (model) {
-        VisualModel.Males -> MALES_WIDTH_PX / MALES_IMAGE_HEIGHT_PX
-        VisualModel.Relationships -> RELATIONSHIPS_WIDTH_PX / RELATIONSHIPS_IMAGE_HEIGHT_PX
-    }
-
-    fun relationshipsRule(card: CtsCard): NormalizedRect? {
-        val frames = relationshipsFrames(card)
-        val description = frames.description ?: return null
-        return NormalizedRect(
-            x = 0f,
-            y = (description.y - RELATIONSHIPS_RULE_HEIGHT_PX / SOURCE_HEIGHT).coerceAtLeast(0f),
-            width = RELATIONSHIPS_WIDTH_PX / SOURCE_WIDTH,
-            height = RELATIONSHIPS_RULE_HEIGHT_PX / SOURCE_HEIGHT,
-        )
-    }
+    fun artworkAspect(model: VisualModel): Float = MALES_WIDTH_PX / MALES_IMAGE_HEIGHT_PX
 
     fun bottomRule(): NormalizedRect = NormalizedRect(
         x = 0f,
@@ -86,31 +62,4 @@ object CardContentLayout {
         )
     }
 
-    private fun relationshipsFrames(card: CtsCard): CardContentFrames {
-        val displayCard = card.withNormalizedText()
-        val width = RELATIONSHIPS_WIDTH_PX / SOURCE_WIDTH
-        val titleHeight = RELATIONSHIPS_TITLE_HEIGHT_PX / SOURCE_HEIGHT
-        val descriptionHeight = RELATIONSHIPS_DESCRIPTION_HEIGHT_PX / SOURCE_HEIGHT
-        val ruleHeight = RELATIONSHIPS_RULE_HEIGHT_PX / SOURCE_HEIGHT
-        var cursor = 1f
-        val description = if (displayCard.description.isNotEmpty()) {
-            cursor -= descriptionHeight
-            val frame = NormalizedRect(0f, cursor, width, descriptionHeight)
-            cursor -= ruleHeight
-            frame
-        } else {
-            null
-        }
-        val title = if (displayCard.title.isNotEmpty()) {
-            cursor -= titleHeight
-            NormalizedRect(0f, cursor, width, titleHeight)
-        } else {
-            null
-        }
-        return CardContentFrames(
-            image = NormalizedRect(0f, 0f, width, cursor.coerceAtLeast(0f)),
-            title = title,
-            description = description,
-        )
-    }
 }

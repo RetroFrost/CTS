@@ -1,7 +1,6 @@
 package io.github.retrofrost.cts.android.rendering
 
 import io.github.retrofrost.cts.android.model.CtsProject
-import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.timeline.CardPlacement
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 
@@ -16,13 +15,10 @@ data class ReferenceScene(
     val customIntroVisible: Boolean,
     val introCreditsVisible: Boolean,
     val placements: List<CardPlacement>,
-    val relationshipsSourceFrame: Int,
-    val relationshipsDisclaimerAlpha: Float,
-    val relationshipsOutroLocalFrame: Int,
     val outroCoverProgress: Float,
     val outroContentAlpha: Float,
+    val outroContentYOffsetPx: Float?,
     val fadeAlpha: Float,
-    val relationships: Boolean,
 )
 
 object ReferenceSceneBuilder {
@@ -33,13 +29,10 @@ object ReferenceSceneBuilder {
             customIntroVisible = TimelineEngine.customIntroVisible(project, time),
             introCreditsVisible = TimelineEngine.introCreditsVisible(project, time),
             placements = TimelineEngine.placements(project, time),
-            relationshipsSourceFrame = TimelineEngine.relationshipsSourceFrame(project, time),
-            relationshipsDisclaimerAlpha = TimelineEngine.relationshipsDisclaimerAlpha(project, time),
-            relationshipsOutroLocalFrame = TimelineEngine.relationshipsOutroLocalFrame(project, time),
             outroCoverProgress = TimelineEngine.outroCoverProgress(project, time),
             outroContentAlpha = TimelineEngine.outroContentAlpha(project, time),
+            outroContentYOffsetPx = TimelineEngine.outroContentYOffsetPx(project, time),
             fadeAlpha = TimelineEngine.fadeAlpha(project, time).coerceIn(0f, 1f),
-            relationships = project.model == VisualModel.Relationships,
         )
     }
 }

@@ -20,7 +20,7 @@ class CardStripGeometryTest {
     }
 
     @Test
-    fun verticalRelationshipsSheetDropsTwoPixelSeparators() {
+    fun verticalCardSheetDropsTwoPixelSeparators() {
         val layout = CardStripGeometry.split(
             imageWidth = 475,
             imageHeight = 3 * 788 + 2 * 2,

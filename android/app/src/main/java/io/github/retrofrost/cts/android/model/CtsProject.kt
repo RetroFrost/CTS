@@ -24,18 +24,11 @@ enum class VisualModel(
         "What Males Learn at Each Age",
         SharedContract.VISIBLE_CARDS,
     ),
-    Relationships(
-        "types-of-relationships",
-        "Types of Relationships",
-        4,
-    ),
     ;
 
     companion object {
-        fun fromId(id: String?): VisualModel = when (id) {
-            Relationships.id, "relationships", "relationship_reference", "relationships_exact_reference" -> Relationships
-            else -> Males
-        }
+        /** Removed model ids deliberately migrate to the sole supported Males model. */
+        fun fromId(id: String?): VisualModel = Males
     }
 }
 
@@ -207,7 +200,7 @@ data class CtsProject(
 ) {
     fun normalized(): CtsProject {
         val safeExport = export.normalized()
-        val sealedReference = model == VisualModel.Males || model == VisualModel.Relationships
+        val sealedReference = model == VisualModel.Males
         val modelExport = if (sealedReference) {
             safeExport.copy(width = 1920, height = 1080, fps = 60)
         } else {

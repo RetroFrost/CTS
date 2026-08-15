@@ -61,17 +61,10 @@ internal const val MALES_CONTENT_Y =
         "eNpjaGDAAfX+6/33/F/wf8r/Tf/P/n/0/9P/P/8ZyAIAJuoWbw=="
 
 internal const val MALES_FADE =
-        "eNr7+/fXzw9vnz5+9PDe3du3bly/fOHs6WN7Nm1bs3LZklnTJk/s6WqsLS7IyUpNCg8J8HVxsLbQ11BVVpAUFeLnYmNkQAYAIpEh" +
-        "fw=="
-
-internal const val RELATIONSHIPS_FADE =
-        "eNoBNgDJ//v59O/s6OPg3NbTz8vHxMC0sKyoo5+bmJOOi4eDf3p2cm9jX1tXU05LR0I/OjUyLSolIR4XEvoYHLk="
+        "eNoBTwCw//7+/Pv49fTz8e7s6+nm5ODc2tfT0MzJxsO/vbi1s6+sqaWioJyZl5KQjYqHhHt7enh1c25raWViYF1ZV1NPTkpH" +
+        "REE3NzUzLiwoIx8ZEgD7nS0H"
 
 internal const val MALES_STARTS =
         "eNoBnABj/wAAeADwAGgBEAK9ApMDaQQ/BRYG7AbCB5gIbwlFChsL8gvJDJ4NdA5LDyEQ9xDOEaQSehNQFCcV/RXTFqkXfxhVGSwa" +
         "AhvYG68chR1aHjEfByDdILQhiiJgIzYkDSXjJbkmiidhKDcpDSrkKrorkCxmLTwuEi/pL78wlTFrMkIzGDTuNMQ1mjZwN0c4HTnz" +
         "Oco6oDt2PEw9Iz75Po5uL7U="
-
-internal const val RELATIONSHIPS_STARTS =
-        "eNoBUACv/3YBCQKQAhsDhAOPBJgFoQaqB7MIvAnFCs4L1wzgDekO8w/8EAUSDhMXFCAVKRYyFzsYRBlOGlcbYBxpHXIeex+EII0h" +
-        "liKfI6kksiW7JsQnjI8XUQ=="

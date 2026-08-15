@@ -25,43 +25,7 @@ internal const val MALES_ORIGINS =
         "Ya7U1PJkbO+Tkj2a4I6jWO6yPq1/j2xXvDicNH8ex9chbV4crnw3xaUaimyV88eIId93uRZqR2Da4FeUtIXDLkZ/LXqbtjlluyCy" +
         "vm2pHXFm4mx/jcnOsF3Hfh1Ifq/WqkSmqifmS0+z34ozk5foyKfZ+dmwHIl7oywb6lKnFlr/D935r3Q="
 
-internal const val RELATIONSHIPS_ORIGINS =
-        "eNrFWtFy4zAIzP//aZ/u/SQ57cVugwQsC/L0ZjoZR1hCrGBBpH+ez+fj8eijf/19fchPe2D+mx/VvOnRl1Xn1WXI1PdoG7ebg2Xc" +
-        "tiD2Vavfa4529JfCf+PXY/9+PD/FI5KpAVJWXRO9Jta0H+XA+Eb8BCeccUEmlI7BaTL3fYpSOKnl1V5IfE3ZBYPY3Oup2bv4QQ/v" +
-        "cFUqZ8h5wv1HBABSvcrI1zScffh7FiFMbtFeIpbZawq01ACSxYd2wqAOhvB3CObwPZS0O47vWLa6FznvClTFupjJT5btmL7zuc3N" +
-        "zOu3RXUyo/uvdeVZpu8RsmUhNSMXRHpeGzACyPQMLZtgRpvp71yDcEDYOtHeR7DnxBEgYPDyPVJoGNEHi8MEWsR6BAEmjkDlAQUJ" +
-        "VhIHNRWR+JCE+93JNbRTmKp5qoLfknZkkbb4LXxZDOA6u4URNqWYY8dbUzypDq8WKNNBR7SF95wiqzTV5rjDkS2ggXkGy6+RUkhs" +
-        "pDMZMLck1ZIktJf1ZbG5ChWATt4kzieel7dHafJdwzvhjob9lRAOTD7KGx8dgbpC66QQlS7ThWr8aKsXLChRB/QjVXvzEtxBdqG0" +
-        "1R6APlUU+A6V37fFOVvd2xjx9X7Jnri+S94TQFXrt/gIy3SfJHH7gvlIJ/HEtSDOwq3YC8HA9GIz5J0Kw5edW0d1zzmqDb25HZ25" +
-        "2t6yUZJRtq7SWzfUct/vv1whyQSWKgDcuNj57QDlMcF3ZM2IG2hkAyFDtXZJgDswUSlR8WFNw224ycWvalGq2iwt0dnlS4m4K2Z3" +
-        "NeNSdk81cUUdlG4iuKtlk+nUYUnl4FfoWtrHL0MXZax8W7FSuqht+c13qntb9O+oZIubojdkYVsWp5y5tGy7P1dj3jf7D6iVTF/5" +
-        "Y/xmqsVxcTUkatmM7ksK02r/N4C6lWRLFObiuH5IeSuuvyi+UyS0RbX0vHZ0P+0WCpbfKpiLVIvLgBdJIF+kfyAdnSlmMmbHqitO" +
-        "QHUb6l0XVZ4cZDe3J82Jl7hUL8nNgeHvxyekVsR/"
-
 internal const val MALES_OPENING =
         "eNqtwjsLQXEAxuH3txkMZ7GxmSwmk8Uq21llstlYbFIWFovFoJzBoAxKkZSUJLlELrk7n8E38E8+gp5HRf145JUln/wKKqyoEkop" +
         "p7KaGmglV2+BRYAQEWLEsUmSJkOWPAVKVKhSo04DhxZtOnTp0WfIiDETpsyYs2DJmg1bduw5cOTEmQtX48adh/E0Xl/u330A3+VR" +
         "hw=="
-
-internal const val RELATIONSHIPS_LAST_X =
-        "eNrtjskrxAEcxd/3vZ+RZYriYikXDmpuFAdOlBRRalIuiIvUlFDKcqFEzUFxcBBCSjkIB8tVZA6iIdukSZYkuyTL749w1Of41ljH" +
-        "4zgOHTjf+tKnPvSuVz3rSQ+6151uda0rXSqqC0V0rlMd60hhHWhfewppU4uaUFA9alWdylWgHKVIemSEIa5xnmPsZxvrWcVi+pjB" +
-        "eH7YtR3Zlq3YrI3agHVYs/mtzAot19LNaz94RBRhbGMdi5jGGIbQh3a0oB5+VKIURciHDznIQhpSkYRExCEWMXCQiXJ0YQERJFuJ" +
-        "2zxnh+Zhnrs/zGWekcpWqRrUrRHNaElrWtWkBhWQX8Wu5tWb+3zH9U4xyF4G2MhaVrOCNWxiJwc5zgVucJcnvOELf+hRgpv655+/" +
-        "5BcT1WjC"
-
-internal const val RELATIONSHIPS_TRANSFORM =
-        "eNrtz7ErBHAUB/Dv933JdXW5cF2kLjKepIRMhEUmycSiLFeicE4SlhuQyWQ1GdSNl8HCKINBunApKetZjzy/uvIfWK7f8On33vu9" +
-        "937YQzj3GLIBxHCFaZtHEudYtDy6cYKcFZDGLo6thEFkcGYNHMMcipbmFMZxazOcRT/KluUCUqjYKZfQDOmSywBa9MgNt0vv3HZ7" +
-        "VeG+O6wq8+6oZAfupCJ26E64R+6IvkO+T5+hvkcf3HE7VGbOjeuB64giohuuIg6q6PPa8GUFZpBA1S7cWjyKJl1zBY2I6Y5r/r7V" +
-        "9/o1qWduup16DX1TeuPWn31r91q+XS+hPqmn8K+ESsE2N1u37r/4Aw4frrk="
-
-internal const val RELATIONSHIPS_ARTWORK =
-        "eNpjYMAGNBiYsYqzM0gxaDNYMdgDSRkGPhyq8ANmBn4GZQYLBh+GBIYShg6GOQwbGY4y3GR4y8DIKMaoxWjHGMSYxljFOIFxCeN2" +
-        "xtOM9xk/M3IwyTAZMrkyRTLlMjUyTWNaybSP6RLTMyYRZtIhADycFYA="
-
-internal const val RELATIONSHIPS_BADGE =
-        "eNrtz10rA2AYxvH/5cxL8rJwsC1qKRkh2xTaMCx52ZmNvMy0mVkUUZIcbNHICTlwJqIc+wJK+QDOHfkSztzNZ5CU7oNfT8/13E8X" +
-        "R/zIvPFIO15euGbC5olT1slwxwFFjrlkwxL3FFjilWd2ifLBO2uMgD6Zw49TDk3Thk8dGsbNpMLyU09ScXkpZ085eYATHcplXqmg" +
-        "RvNGRTnMB52rwbzVmdzmhfJqpYy89tVJBTvKykctKS2onybiimoIF1Ma1RgthDWoCB6CCpQMmWGaiSioEE6iGteAvYtpRn04WNas" +
-        "em1f2vZ1U01OSXVRxZbS9l8l28qUzptKqcfus1qxfI3lF61XHauaV8D6JaxfwPYlFPszfvf/97f8Ai6fkBI="

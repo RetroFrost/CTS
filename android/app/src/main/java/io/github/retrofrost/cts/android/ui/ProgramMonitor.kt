@@ -89,9 +89,6 @@ fun ProgramMonitor(
     val showIntroCredits = TimelineEngine.introCreditsVisible(project, positionSeconds)
     val outroCover = TimelineEngine.outroCoverProgress(project, positionSeconds)
     val outroContent = TimelineEngine.outroContentAlpha(project, positionSeconds)
-    val relationshipsFrame = TimelineEngine.relationshipsSourceFrame(project, positionSeconds)
-    val disclaimerAlpha = TimelineEngine.relationshipsDisclaimerAlpha(project, positionSeconds)
-    val relationshipsOutroFrame = TimelineEngine.relationshipsOutroLocalFrame(project, positionSeconds)
 
     Surface(modifier = modifier, color = Color.Black, shadowElevation = 4.dp) {
         BoxWithConstraints(
@@ -102,13 +99,6 @@ fun ProgramMonitor(
         ) {
             val cardWidth = maxWidth / 4
             if (showIntroCredits) ReferenceIntroCreditsPanel(cardWidth, project.credits)
-            if (project.model == VisualModel.Relationships &&
-                relationshipsFrame in 1 until TimelineEngine.RELATIONSHIPS_INTRO_OVERLAY_END_FRAME
-            ) {
-                RelationshipsInfinityIntro(relationshipsFrame)
-            }
-            if (disclaimerAlpha > 0f) RelationshipsDisclaimer(disclaimerAlpha, cardWidth)
-
             placements.forEach { placement ->
                 val card = project.cards.getOrNull(placement.cardIndex) ?: return@forEach
                 ReferenceParentCard(
@@ -131,11 +121,7 @@ fun ProgramMonitor(
                 )
             }
 
-            if (project.model == VisualModel.Relationships) {
-                RelationshipsOutroOverlay(cardWidth, relationshipsOutroFrame, outroContent, project.credits)
-            } else {
-                ReferenceOutroOverlay(cardWidth, outroCover, outroContent, project.credits)
-            }
+            ReferenceOutroOverlay(cardWidth, outroCover, outroContent, project.credits)
             if (fadeAlpha < 0.999f) {
                 Box(
                     Modifier
@@ -247,7 +233,7 @@ private fun ReferenceParentCard(
         // stretches, so text, artwork, and dividers remain exactly where they settle.
         Box(
             modifier = Modifier
-                .width(if (model == VisualModel.Relationships) fullCardWidth else fullCardWidth * reveal)
+                .width(fullCardWidth * reveal)
                 .fillMaxHeight()
                 .graphicsLayer {
                     placement.bodyTransform?.let { transform ->
@@ -258,7 +244,7 @@ private fun ReferenceParentCard(
                         transformOrigin = TransformOrigin(0f, 0f)
                     }
                 }
-                .alpha(if (model == VisualModel.Relationships) reveal else 1f)
+                .alpha(1f)
                 .clipToBounds(),
         ) {
             Box(
@@ -322,9 +308,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     val frames = CardContentLayout.frames(model, card)
     Frame(
         frames.image,
-        Modifier.background(
-            if (model == VisualModel.Relationships) Color(0xFF1F1F1F) else Color.Transparent,
-        ),
+        Modifier.background(Color.Transparent),
     ) {
         Box(
             modifier = Modifier
@@ -332,13 +316,7 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
                 .fillMaxHeight(artworkReveal.coerceIn(0f, 1f))
                 .align(Alignment.TopCenter)
                 .background(
-                    Brush.verticalGradient(
-                        if (model == VisualModel.Relationships) {
-                            listOf(Color(0xFF0069D3), Color(0xFF0058B5))
-                        } else {
-                            listOf(Color(0xFF138DDB), Color(0xFF0B74BE))
-                        },
-                    ),
+                    Brush.verticalGradient(listOf(Color(0xFF138DDB), Color(0xFF0B74BE))),
                 ),
         ) {
             ImageSubcardFrame(
@@ -354,19 +332,15 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     frames.title?.let { titleFrame ->
         Frame(
             titleFrame,
-            Modifier.background(
-                if (model == VisualModel.Relationships) Color(0xFFF4F2F0) else Color(0xFFF2F2F2),
-            ),
+            Modifier.background(Color(0xFFF2F2F2)),
         ) {
             CardText(
                 text = displayCard.title,
-                color = if (model == VisualModel.Relationships) Color(0xFF181614) else Color(0xFF020202),
-                fontWeight = if (model == VisualModel.Relationships) FontWeight.Normal else FontWeight.Black,
-                fontSize = if (model == VisualModel.Relationships) 12.sp else 8.4.sp,
-                maxLines = if (model == VisualModel.Relationships) 1 else 2,
-                modifier = Modifier.alpha(
-                    if (model == VisualModel.Relationships) titleReveal.coerceIn(0f, 1f) else 1f,
-                ),
+                color = Color(0xFF020202),
+                fontWeight = FontWeight.Black,
+                fontSize = 8.4.sp,
+                maxLines = 2,
+                modifier = Modifier.alpha(1f),
             )
         }
     }
@@ -374,31 +348,19 @@ private fun BoxWithConstraintsScope.ReferenceCardBody(
     frames.description?.let { descriptionFrame ->
         Frame(
             descriptionFrame,
-            Modifier.background(
-                if (model == VisualModel.Relationships) Color(0xFF1B1B1B) else Color(0xFF635E57),
-            ),
+            Modifier.background(Color(0xFF635E57)),
         ) {
             CardText(
                 text = displayCard.description,
                 color = Color.White,
-                fontWeight = if (model == VisualModel.Relationships) FontWeight.Normal else FontWeight.SemiBold,
-                fontSize = if (model == VisualModel.Relationships) 6.5.sp else 5.4.sp,
-                maxLines = if (model == VisualModel.Relationships) 4 else 3,
-                modifier = Modifier.alpha(
-                    if (model == VisualModel.Relationships) descriptionReveal.coerceIn(0f, 1f) else 1f,
-                ),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 5.4.sp,
+                maxLines = 3,
+                modifier = Modifier.alpha(1f),
             )
         }
     }
 
-    if (model == VisualModel.Relationships) {
-        CardContentLayout.relationshipsRule(displayCard)?.let { rule ->
-            Frame(
-                rule,
-                Modifier.background(Color(0xFFD57E00)),
-            )
-        }
-    }
     Frame(CardContentLayout.bottomRule(), Modifier.background(Color(0xFF11100C)))
 }
 

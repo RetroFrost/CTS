@@ -757,10 +757,7 @@ private fun CardStripReviewScreen(
         }
     }
     val layout = layoutResult.getOrNull()
-    val slot = when (state.model) {
-        VisualModel.Males -> "471×872"
-        VisualModel.Relationships -> "475×788"
-    }
+    val slot = "471×872"
 
     Scaffold(
         topBar = {

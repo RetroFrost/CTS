@@ -255,10 +255,7 @@ private fun ModelPage(
                             fontWeight = FontWeight.Black,
                         )
                         Text(
-                            text = when (option) {
-                                VisualModel.Males -> "Measured age-comparison card conveyor and badge animation."
-                                VisualModel.Relationships -> "Measured relationship intro, octagon badges, conveyor and ending."
-                            },
+                            text = "Measured Males card conveyor, attached title bands, badges, credits and ending.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -267,7 +264,7 @@ private fun ModelPage(
             }
         }
         Text(
-            text = "You can choose the other model for another project. Reference visuals stay fixed either way.",
+            text = "CTS uses one frame-addressed Males reference model. Its visuals stay fixed.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

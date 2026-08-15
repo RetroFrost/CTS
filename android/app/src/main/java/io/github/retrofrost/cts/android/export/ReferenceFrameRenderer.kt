@@ -10,7 +10,6 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import io.github.retrofrost.cts.android.model.CtsProject
-import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.rendering.BitmapPainter
 import io.github.retrofrost.cts.android.rendering.BitmapSourceCache
 import io.github.retrofrost.cts.android.rendering.ReferenceCardPainter
@@ -69,58 +68,24 @@ class ReferenceFrameRenderer(
                 )
                 canvas.scale(transform.scaleX, transform.scaleY)
             }
-            if (project.model == VisualModel.Relationships) {
-                canvas.saveLayerAlpha(
-                    0f,
-                    0f,
-                    cardWidth,
-                    height.toFloat(),
-                    (255 * placement.bodyReveal.coerceIn(0f, 1f)).toInt(),
-                )
-            } else {
-                canvas.clipRect(0f, 0f, cardWidth * placement.bodyReveal.coerceIn(0f, 1f), height.toFloat())
-            }
+            canvas.clipRect(0f, 0f, cardWidth * placement.bodyReveal.coerceIn(0f, 1f), height.toFloat())
             cards.drawBody(canvas, card, cardWidth, placement)
-            if (project.model == VisualModel.Relationships) canvas.restore()
             canvas.restore()
             if (placement.badgeVisible) {
                 cards.drawBadge(canvas, card, cardX, cardWidth, placement)
             }
         }
 
-        if (scene.relationships) {
-            ReferenceOverlayRenderer.drawRelationshipsPrelude(
-                canvas,
-                width,
-                height,
-                scene.relationshipsSourceFrame,
-                scene.relationshipsDisclaimerAlpha,
-                true,
-                paint,
-            )
-        }
-
-        if (scene.relationships) {
-            ReferenceOverlayRenderer.drawRelationshipsOutro(
-                canvas,
-                width,
-                height,
-                scene.relationshipsOutroLocalFrame,
-                scene.outroContentAlpha,
-                project.credits,
-                paint,
-            )
-        } else {
-            ReferenceOverlayRenderer.drawOutro(
-                canvas,
-                width,
-                height,
-                scene.outroCoverProgress,
-                scene.outroContentAlpha,
-                project.credits,
-                paint,
-            )
-        }
+        ReferenceOverlayRenderer.drawOutro(
+            canvas,
+            width,
+            height,
+            scene.outroCoverProgress,
+            scene.outroContentAlpha,
+            scene.outroContentYOffsetPx,
+            project.credits,
+            paint,
+        )
 
         if (scene.fadeAlpha < 0.999f) {
             paint.shader = null

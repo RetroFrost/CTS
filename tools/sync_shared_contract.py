@@ -445,7 +445,7 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
 
     monitor = PROGRAM_MONITOR_PATH.read_text(encoding="utf-8")
     # Exact-reference card frames are model-specific and owned by CardContentLayout;
-    # its unit tests lock the measured Males and Relationships geometry. Keep this
+    # its unit tests lock the measured Males geometry. Keep this
     # integration check here so preview cannot silently return to duplicated frames.
     if "CardContentLayout.frames(model, card)" not in monitor:
         errors.append("Android ProgramMonitor does not use the canonical card content layout")
