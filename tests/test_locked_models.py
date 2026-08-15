@@ -85,9 +85,26 @@ def test_relationships_intro_offsets_every_card_by_374_frames() -> None:
 
     assert intro_frame_count(relationships) == 374
     assert intro_frame_count(ages) == 0
-    assert card_start_frames(relationships) == [374, 494, 614, 734, 914]
-    assert card_start_frames(ages) == [0, 120, 240, 360, 540]
-    assert total_frame_count(relationships) - total_frame_count(ages) == 374
+    assert card_start_frames(relationships) == [374, 521, 656, 795, 896]
+    assert card_start_frames(ages) == [0, 120, 240, 360, 535]
+    assert total_frame_count(relationships) == 1820
+    assert total_frame_count(ages) == 1119
+
+
+def test_canonical_projects_have_the_exact_reference_frame_counts() -> None:
+    relationships = Project(
+        cards=[Card(str(index), str(index)) for index in range(40)],
+        settings=ProjectSettings(model_id=MODEL_TYPES_OF_RELATIONSHIPS),
+    )
+    ages = Project(
+        cards=[Card(str(index), str(index)) for index in range(78)],
+        settings=ProjectSettings(model_id=MODEL_WHAT_MALES_LEARN),
+    )
+    normalize_project(relationships)
+    normalize_project(ages)
+
+    assert total_frame_count(relationships) == 11130
+    assert total_frame_count(ages) == 16741
 
 
 def test_project_json_contains_model_lock() -> None:

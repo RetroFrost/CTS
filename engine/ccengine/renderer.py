@@ -14,7 +14,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 from .models import Card, Project
 from .model_registry import MODEL_TYPES_OF_RELATIONSHIPS
 from .reference_profiles import get_reference_profile
-from .exact_reference_frames import continuous_card_x, relationships_last_card_x
+from .exact_reference_frames import continuous_card_x, relationships_fade_alpha, relationships_last_card_x
 from .reference_motion import (
     age_later_badge_age,
     age_opening_badge_age,
@@ -513,15 +513,24 @@ class FrameRenderer:
 
     def _draw_card_body_uncached(self, canvas: Image.Image, card: Card, x: float, width: int, height: int) -> None:
         ix = int(round(x))
+        title = " ".join(str(card.title or "").split())
+        has_title = bool(title)
         description = " ".join(str(card.description or "").split())
         has_description = bool(description)
         layout = self._active_profile.layout
 
         # Geometry is owned by the selected reference model. It is never
         # recomputed from percentages because that drifts by several pixels.
-        image_height = min(height, layout.image_height)
-        title_height = min(max(1, layout.title_height), max(1, height - image_height))
-        desc_top = min(height, layout.description_top if has_description else image_height + title_height)
+        # Empty optional bands collapse and donate their exact source pixels to
+        # the artwork; this mirrors Android and prevents invisible blank gaps.
+        canonical_description_height = max(0, layout.body_height - layout.description_top)
+        description_height = min(height, canonical_description_height) if has_description else 0
+        rule_height = layout.divider_width if has_description else 0
+        title_height = min(layout.title_height, max(0, height - description_height - rule_height)) if has_title else 0
+        image_height = max(0, height - title_height - rule_height - description_height)
+        title_top = image_height
+        title_bottom = title_top + title_height
+        desc_top = title_bottom + rule_height
 
         source = self._load_image(card.image)
         image_box = (ix, 0, ix + width, image_height)
@@ -553,36 +562,37 @@ class FrameRenderer:
                 canvas.paste(transformed_layer.convert("RGB"), (ix, 0), transformed_layer.getchannel("A"))
 
         draw = ImageDraw.Draw(canvas)
-        draw.rectangle((ix, image_height, ix + width, desc_top), fill=layout.title_background)
+        if has_title:
+            draw.rectangle((ix, title_top, ix + width, title_bottom), fill=layout.title_background)
         if has_description and desc_top < height:
             draw.rectangle((ix, desc_top, ix + width, height), fill=layout.description_background)
         # Relationships uses the visible orange horizontal rule from the
         # reference; Age uses narrow dark separators.
-        if layout.divider_width:
+        if rule_height:
             draw.rectangle(
-                (ix, max(image_height, desc_top - layout.divider_width), ix + width, desc_top - 1),
+                (ix, title_bottom, ix + width, desc_top - 1),
                 fill=layout.divider_color,
             )
         draw.line((ix, 0, ix, height), fill=self.theme.divider, width=2)
         draw.line((ix + width - 1, 0, ix + width - 1, height), fill=self.theme.divider, width=2)
 
         relationship = self._active_profile.model_id == MODEL_TYPES_OF_RELATIONSHIPS
-        title_size = int(width * (0.105 if relationship else 0.072))
-        title_font = self._font(max(27, title_size), not relationship, "title")
-        title = card.title or "Untitled"
-        title_box = draw.textbbox((0, 0), title, font=title_font)
-        minimum = 22 if not relationship else 24
-        while getattr(title_font, "size", minimum) > minimum and title_box[2] > width - 24:
-            title_font = self._font(getattr(title_font, "size", minimum + 2) - 2, not relationship, "title")
+        if has_title:
+            title_size = int(width * (0.105 if relationship else 0.072))
+            title_font = self._font(max(27, title_size), not relationship, "title")
             title_box = draw.textbbox((0, 0), title, font=title_font)
-        draw.text(
-            (ix + width / 2, image_height + title_height / 2),
-            title,
-            font=title_font,
-            fill=self.theme.title_text,
-            anchor="mm",
-            align="center",
-        )
+            minimum = 22 if not relationship else 24
+            while getattr(title_font, "size", minimum) > minimum and title_box[2] > width - 24:
+                title_font = self._font(getattr(title_font, "size", minimum + 2) - 2, not relationship, "title")
+                title_box = draw.textbbox((0, 0), title, font=title_font)
+            draw.text(
+                (ix + width / 2, title_top + title_height / 2),
+                title,
+                font=title_font,
+                fill=self.theme.title_text,
+                anchor="mm",
+                align="center",
+            )
 
         if has_description and desc_top < height:
             available_width = max(24, width - 34)
@@ -1398,24 +1408,33 @@ class FrameRenderer:
         tile = Image.new("RGB", (width, height), (31, 31, 31))
         self._draw_card_body_uncached(tile, card, 0, width, height)
         draw = ImageDraw.Draw(tile)
+        has_title = bool(" ".join(str(card.title or "").split()))
+        has_description = bool(" ".join(str(card.description or "").split()))
+        description_height = max(0, layout.body_height - layout.description_top) if has_description else 0
+        rule_height = layout.divider_width if has_description else 0
+        title_height = layout.title_height if has_title else 0
+        image_height = max(0, height - description_height - rule_height - title_height)
+        title_bottom = image_height + title_height
+        description_top = title_bottom + rule_height
 
         artwork = relationships_artwork_reveal(local_frame)
         title = relationships_title_reveal(local_frame)
         description = relationships_description_reveal(local_frame)
-        reveal_y = int(round(layout.image_height * artwork))
-        if reveal_y < layout.image_height:
-            draw.rectangle((0, reveal_y, width, layout.image_height), fill=(31, 31, 31))
-        if title < 1.0:
+        reveal_y = int(round(image_height * artwork))
+        if reveal_y < image_height:
+            draw.rectangle((0, reveal_y, width, image_height), fill=(31, 31, 31))
+        if has_title and title < 1.0:
             draw.rectangle(
-                (0, layout.image_height, width, layout.description_top),
+                (0, image_height, width, title_bottom),
                 fill=layout.title_background,
             )
+        if rule_height:
             draw.rectangle(
-                (0, layout.description_top - layout.divider_width, width, layout.description_top - 1),
+                (0, title_bottom, width, description_top - 1),
                 fill=layout.divider_color,
             )
-        if description < 1.0:
-            draw.rectangle((0, layout.description_top, width, height), fill=layout.description_background)
+        if has_description and description < 1.0:
+            draw.rectangle((0, description_top, width, height), fill=layout.description_background)
 
         opacity = clamp((local_frame + 1) / 10.0)
         left = int(round(x + layout.body_inset))
@@ -1583,7 +1602,8 @@ class FrameRenderer:
                 self._draw_end_group(base, self._age_end_group_top(outro_local), project)
 
             if segment.kind == "fade":
-                fade = Image.new("RGBA", base.size, (0, 0, 0, int(255 * p)))
+                fade_opacity = 1.0 - relationships_fade_alpha(global_frame) if relationship else p
+                fade = Image.new("RGBA", base.size, (0, 0, 0, int(255 * fade_opacity)))
                 base = Image.alpha_composite(base.convert("RGBA"), fade).convert("RGB")
 
         elif segment.kind == "black_tail":

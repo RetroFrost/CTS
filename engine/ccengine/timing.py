@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .models import Project
+from .reference_profiles import get_reference_profile
 
 
 SegmentKind = Literal[
@@ -24,17 +25,6 @@ class Segment:
     frame_count: int = 0
 
 
-# Cadence measured from the supplied 60 FPS references. These remain integer
-# frame counts so preview and export cannot disagree through float rounding.
-OPENING_INTERVAL_FRAMES = 120
-FOURTH_INTERVAL_FRAMES = 180
-MAIN_INTERVAL_FRAMES = 204
-END_WIPE_FRAMES = 25
-END_RISE_FRAMES = 23
-END_HOLD_FRAMES = 273
-FADE_FRAMES = 48
-
-
 def _seconds(frames: int, fps: int) -> float:
     return frames / max(1, fps)
 
@@ -47,28 +37,24 @@ def intro_duration(project: Project) -> float:
     return _seconds(intro_frame_count(project), project.settings.fps)
 
 
-def _reference_cycle_frame_counts(card_count: int) -> list[int]:
+def _reference_cycle_frame_counts(project: Project) -> list[int]:
+    card_count = len(project.cards)
     if card_count <= 0:
         return []
-
-    frames: list[int] = []
-    for index in range(card_count):
-        if index == card_count - 1:
-            frames.append(FOURTH_INTERVAL_FRAMES if index <= 3 else MAIN_INTERVAL_FRAMES)
-        elif index < 3:
-            frames.append(OPENING_INTERVAL_FRAMES)
-        elif index == 3:
-            frames.append(FOURTH_INTERVAL_FRAMES)
-        else:
-            frames.append(MAIN_INTERVAL_FRAMES)
-    return frames
+    timeline = get_reference_profile(project.settings.model_id).timeline
+    starts = [timeline.card_start_frame(index) for index in range(card_count)]
+    end = timeline.content_end_frame(card_count)
+    return [
+        (starts[index + 1] if index + 1 < card_count else end) - start
+        for index, start in enumerate(starts)
+    ]
 
 
 def cycle_frame_counts(project: Project) -> list[int]:
     # Locked models never stretch or truncate animation to meet a requested
     # duration. The card count changes how many canonical cycles are emitted;
     # every cycle itself remains byte-for-byte deterministic in timing.
-    return _reference_cycle_frame_counts(len(project.cards))
+    return _reference_cycle_frame_counts(project)
 
 
 def cycle_durations(project: Project) -> list[float]:
@@ -76,16 +62,16 @@ def cycle_durations(project: Project) -> list[float]:
     return [_seconds(frames, fps) for frames in cycle_frame_counts(project)]
 
 
-def outro_frame_count() -> int:
-    return END_WIPE_FRAMES + END_RISE_FRAMES + END_HOLD_FRAMES + FADE_FRAMES
+def outro_frame_count(project: Project) -> int:
+    return get_reference_profile(project.settings.model_id).timeline.outro_frames
 
 
 def outro_duration(project: Project) -> float:
-    return _seconds(outro_frame_count(), project.settings.fps)
+    return _seconds(outro_frame_count(project), project.settings.fps)
 
 
 def reference_frame_count(project: Project) -> int:
-    return intro_frame_count(project) + sum(cycle_frame_counts(project)) + outro_frame_count()
+    return intro_frame_count(project) + sum(cycle_frame_counts(project)) + outro_frame_count(project)
 
 
 def reference_duration(project: Project) -> float:
@@ -97,12 +83,8 @@ def minimum_duration(project: Project) -> float:
 
 
 def card_start_frames(project: Project) -> list[int]:
-    starts: list[int] = []
-    cursor = intro_frame_count(project)
-    for frames in cycle_frame_counts(project):
-        starts.append(cursor)
-        cursor += frames
-    return starts
+    timeline = get_reference_profile(project.settings.model_id).timeline
+    return [timeline.card_start_frame(index) for index in range(len(project.cards))]
 
 
 def card_start_times(project: Project) -> list[float]:
@@ -142,13 +124,18 @@ def build_timeline(project: Project) -> list[Segment]:
         Segment("card_cycle", _seconds(frames, fps), index, frames)
         for index, frames in enumerate(cycle_frame_counts(project))
     )
+    profile = get_reference_profile(project.settings.model_id).timeline
+    outro_segments = (
+        ("end_wipe", profile.end_wipe_frames),
+        ("end_rise", profile.end_rise_frames),
+        ("end_hold", profile.end_hold_frames),
+        ("fade", profile.fade_frames),
+        ("black_tail", profile.black_tail_frames),
+    )
     timeline.extend(
-        [
-            Segment("end_wipe", _seconds(END_WIPE_FRAMES, fps), frame_count=END_WIPE_FRAMES),
-            Segment("end_rise", _seconds(END_RISE_FRAMES, fps), frame_count=END_RISE_FRAMES),
-            Segment("end_hold", _seconds(END_HOLD_FRAMES, fps), frame_count=END_HOLD_FRAMES),
-            Segment("fade", _seconds(FADE_FRAMES, fps), frame_count=FADE_FRAMES),
-        ]
+        Segment(kind, _seconds(frames, fps), frame_count=frames)
+        for kind, frames in outro_segments
+        if frames > 0
     )
     return timeline
 

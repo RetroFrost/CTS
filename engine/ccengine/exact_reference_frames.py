@@ -72,6 +72,10 @@ _RELATIONSHIPS_LAST_X = (
     "5BcT1WjC"
 )
 
+_RELATIONSHIPS_FADE = (
+    "eNoBNgDJ//v59O/s6OPg3NbTz8vHxMC0sKyoo5+bmJOOi4eDf3p2cm9jX1tXU05LR0I/OjUyLSolIR4XEvoYHLk="
+)
+
 
 def _inflate(encoded: str) -> bytes:
     return zlib.decompress(base64.b64decode(encoded))
@@ -157,3 +161,21 @@ def relationships_last_card_x(global_frame: int) -> float | None:
         return None
     value = _relationships_last_x_values()[frame - RELATIONSHIPS_FINAL_START]
     return None if value == _SENTINEL else float(value)
+
+
+@lru_cache(maxsize=1)
+def _relationships_fade_values() -> bytes:
+    values = _inflate(_RELATIONSHIPS_FADE)
+    if len(values) != 54:
+        raise ValueError(f"Invalid Relationships fade payload: expected 54 bytes, got {len(values)}")
+    return values
+
+
+def relationships_fade_alpha(global_frame: int) -> float:
+    """Measured remaining-image alpha for source frames f11076..f11129."""
+    frame = int(global_frame)
+    if frame < 11_076:
+        return 1.0
+    if frame > 11_129:
+        return 0.0
+    return _relationships_fade_values()[frame - 11_076] / 255.0

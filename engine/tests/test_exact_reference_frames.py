@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from ccengine.exact_reference_frames import continuous_card_x, relationships_last_card_x
+from ccengine.exact_reference_frames import continuous_card_x, relationships_fade_alpha, relationships_last_card_x
 from ccengine.model_registry import MODEL_TYPES_OF_RELATIONSHIPS, MODEL_WHAT_MALES_LEARN
 from ccengine.reference_motion import continuous_shift
 
@@ -35,6 +35,12 @@ class ExactReferenceFramesTest(unittest.TestCase):
 
     def test_compatibility_shift_resolves_from_the_exact_card_position(self) -> None:
         self.assertAlmostEqual(376.0 / 477.0, continuous_shift(MODEL_WHAT_MALES_LEARN, 660))
+
+    def test_relationships_uses_the_measured_54_frame_fade(self) -> None:
+        self.assertEqual(1.0, relationships_fade_alpha(11_075))
+        self.assertLess(relationships_fade_alpha(11_076), 1.0)
+        self.assertGreater(relationships_fade_alpha(11_129), 0.0)
+        self.assertEqual(0.0, relationships_fade_alpha(11_130))
 
 
 if __name__ == "__main__":

@@ -7,11 +7,20 @@ from ccengine.renderer import badge_entry_affine, body_progress, post_badge_fall
 from ccengine.timing import card_start_times, reference_duration, total_duration
 
 
-def test_locked_model_timing_contract_is_unchanged() -> None:
+def test_males_uses_the_measured_integer_frame_contract() -> None:
     project = Project(cards=[Card(str(index), str(index)) for index in range(8)])
-    assert card_start_times(project) == pytest.approx([0.0, 2.0, 4.0, 6.0, 9.0, 12.4, 15.8, 19.2])
-    assert total_duration(project) == pytest.approx(28.75)
-    assert reference_duration(project) == pytest.approx(28.75)
+    assert card_start_times(project) == pytest.approx([
+        0.0,
+        2.0,
+        4.0,
+        6.0,
+        535 / 60,
+        749 / 60,
+        963 / 60,
+        1177 / 60,
+    ])
+    assert total_duration(project) == pytest.approx(1761 / 60)
+    assert reference_duration(project) == pytest.approx(1761 / 60)
 
 
 def test_body_motion_samples_are_unchanged() -> None:

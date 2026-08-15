@@ -399,7 +399,10 @@ class DashboardApp(tk.Tk):
         if self.loading_fields:
             return
         if self.field_after:
-            self.after_cancel(self.field_after)
+            try:
+                self.after_cancel(self.field_after)
+            except tk.TclError:
+                pass
         self.field_after = self.after(100, self._commit_fields)
 
     def _on_description_modified(self, _event=None) -> None:
@@ -419,10 +422,19 @@ class DashboardApp(tk.Tk):
         card.value = self.value_var.get().strip()
         card.description = self.description_text.get("1.0", "end-1c")
         card.image = self.image_var.get().strip()
-        card.image_scale = max(0.05, float(self.image_scale_var.get()))
-        card.image_x = float(self.image_x_var.get())
-        card.image_y = float(self.image_y_var.get())
-        card.image_rotation = float(self.image_rotation_var.get())
+        # Tk variables can temporarily contain an empty or partial number while
+        # a Spinbox is being edited. Keep the last valid transform instead of
+        # letting that transient state terminate the UI callback.
+        def numeric(variable: tk.Variable, previous: float) -> float:
+            try:
+                return float(variable.get())
+            except (TypeError, ValueError, tk.TclError):
+                return float(previous)
+
+        card.image_scale = max(0.05, numeric(self.image_scale_var, card.image_scale))
+        card.image_x = numeric(self.image_x_var, card.image_x)
+        card.image_y = numeric(self.image_y_var, card.image_y)
+        card.image_rotation = numeric(self.image_rotation_var, card.image_rotation)
         card.image_layer = "front" if self.image_layer_var.get() == "front" else "behind"
         self._mark_dirty()
         self._refresh_card_tree(keep_selection=True)
@@ -1121,7 +1133,11 @@ class DashboardApp(tk.Tk):
                     self._finish_export()
         except queue.Empty:
             pass
-        self.after(100, self._poll_worker_events)
+        try:
+            if self.winfo_exists():
+                self.after(100, self._poll_worker_events)
+        except tk.TclError:
+            pass
 
     def _finish_image_sheet_import(self, status: str) -> None:
         self.sheet_import_active = False
