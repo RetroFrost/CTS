@@ -85,7 +85,9 @@ def test_imports_android_v2_layers_soundtrack_and_credits(tmp_path: Path) -> Non
     assert card.value == "10 SECONDS OLD"
     assert card.description == "A baby's first breath."
     assert result.project.settings.model_id == "what-males-learn-at-each-age"
-    assert result.project.settings.show_badges is False
+    # Badge data wins over a stale Relationships-era hide flag because the
+    # imported project now targets the locked Males reference model.
+    assert result.project.settings.show_badges is True
     assert result.project.settings.soundtrack_volume == pytest.approx(0.8)
     assert result.project.settings.soundtrack_loop is False
     assert Path(result.project.settings.soundtrack).read_bytes().startswith(b"ID3")
@@ -126,7 +128,7 @@ def test_cli_import_writes_ccx_and_finishes_progress(tmp_path: Path) -> None:
     project = engine_cli.read_ccx(output)
     assert project.name == "Language MegaPack"
     assert project.cards[0].value == "10 SECONDS OLD"
-    assert project.settings.show_badges is False
+    assert project.settings.show_badges is True
     assert Path(project.cards[0].image).is_file()
     assert progress.read_text(encoding="utf-8").startswith("100 ")
 

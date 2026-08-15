@@ -332,7 +332,12 @@ def import_megapack(
                 height=model.height,
                 fps=model.fps,
             )
-            settings.show_badges = bool(manifest.get("show_badges", True))
+            # The remaining locked Males model owns a visible badge animation.
+            # Older Relationships packs can incorrectly request hidden badges
+            # while still supplying rank/value text.  Preserve that data and
+            # render the model badge instead of silently discarding it.
+            has_badge_data = any(card.value.strip() for card in cards)
+            settings.show_badges = bool(manifest.get("show_badges", True)) or has_badge_data
             soundtrack_object = manifest.get("soundtrack")
             if isinstance(soundtrack_object, dict):
                 soundtrack_reference = _first_string(soundtrack_object, "file", "path", "audio")
