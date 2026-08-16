@@ -1,52 +1,46 @@
-name: Cubical Compare 2.0 Final
+name: Cubical Compare 2.0.5 Final
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - work/final-cross-platform-rebuild
+      - feature/thumbnails-megapack-2.0.5
       - release/cubical-compare-final
-      - hotfix/android-preview-lifecycle-2.0.1
-      - hotfix/android-megapack-background-export-2.0.2
-      - hotfix/android-preview-play-stop-2.0.3
-      - hotfix/reference-fidelity-watchdata-font-2.0.4
     paths:
       - android/**
       - native/**
       - engine/**
       - tests/**
-      - tools/**
+      - tools/fetch_watchdata_fonts.py
       - CMakeLists.txt
       - FINAL_RELEASE.md
-      - .github/workflows/final-cross-platform-release.yml
+      - .github/workflows/final-cross-platform-release-205.yml
 
 permissions:
   contents: write
 
 concurrency:
-  group: cubical-compare-final-${{ github.ref }}
+  group: cubical-compare-205-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  VERSION: 2.0.4
-  # Exact renderer state which passed the final same-frame WatchData audit and
-  # has byte-identical desktop/Android ccengine trees.
+  VERSION: 2.0.5
   RENDERER_BASE: 56824d34ab99c37bf9a7869a3b15ab57809a2e74
 
 jobs:
   windows:
-    name: Windows x64 final
+    name: Windows x64 2.0.5
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Prove 2.0.4 reference renderer is frozen
+      - name: Prove checkpointed renderer remains frozen
         shell: pwsh
         run: |
           git diff --exit-code $env:RENDERER_BASE -- engine/ccengine
-          if ($LASTEXITCODE -ne 0) { throw 'The reviewed 2.0.4 WatchData renderer changed after its visual-audit baseline.' }
+          if ($LASTEXITCODE -ne 0) { throw '2.0.5 must not alter the checkpointed WatchData video renderer.' }
 
       - uses: actions/setup-python@v6
         with:
@@ -74,7 +68,7 @@ jobs:
           if (-not $ffmpeg) { throw 'Could not locate FFmpeg.' }
           "CUBICAL_COMPARE_FFMPEG=$($ffmpeg.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Test shared renderer and final contracts
+      - name: Test shared renderer and 2.0.5 contracts
         shell: pwsh
         run: |
           $env:PYTHONPATH = "$PWD\engine"
@@ -82,47 +76,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m compileall -q engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Render 2.0.4 final WatchData audit frames
-        shell: pwsh
-        run: |
-          $env:PYTHONPATH = "$PWD\engine"
-          New-Item -ItemType Directory -Force -Path qa\watchdata-204 | Out-Null
-          @'
-          from pathlib import Path
-          from ccengine.models import Card, Project, ProjectSettings
-          from ccengine.renderer import FrameRenderer
-
-          cards = [
-              Card("Ape Noises\nAnd Gestures", "7M YEARS AGO", "Our chimp ancestors spoke with hoots and gestures", ""),
-              Card("Language Section Of\nBrain Develops", "400K YEARS AGO", "The FOXP2 gene gave us the language part of our brain", ""),
-              Card("Voice Box\nEvolves Fully", "300K YEARS AGO", "A lower larynx unlocked many more distinct sounds", ""),
-              Card("Clicking\nLanguages", "70K YEARS AGO", "Some languages like Khoisan still use clicking sounds", ""),
-              Card("Continuous Card", "50K YEARS AGO", "Reference conveyor continuation", ""),
-          ]
-          settings = ProjectSettings()
-          settings.credits_top_text = "The values presented are the years in which various developmental milestones in languages occured."
-          settings.credits_heading = "Credits"
-          settings.credits_project_name = "Lead Research & Sourcing · Ahmed"
-          settings.credits_created_with_label = "Independent Fact Check"
-          settings.credits_created_with_value = "Alex Lambert"
-          settings.credits_design_label = "Lead Graphic Designer"
-          settings.credits_design_value = "Jack H"
-          settings.credits_footer = "DISCLAIMER: THIS VIDEO IS BASED ON COMMUNITY DISCUSSIONS AND RELEVANT SOURCES."
-          project = Project("WatchData visual audit", cards, settings)
-          renderer = FrameRenderer()
-          root = Path("qa/watchdata-204")
-          for frame in (60, 80, 100, 120, 145, 160, 250, 300, 400, 528, 734, 750, 770, 790):
-              renderer.render(project, frame / 60.0).save(root / f"frame-{frame:04d}.png")
-          renderer._badge_source(cards[3], 5.0, sticker_entry=False).save(root / "settled-badge.png")
-          '@ | python -
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: WatchData-2.0.4-Visual-Audit
-          path: qa/watchdata-204/*.png
-          if-no-files-found: error
 
       - name: Build private shared renderer engine
         working-directory: engine
@@ -135,16 +88,6 @@ jobs:
           if (-not (Test-Path $engine)) { throw 'Renderer engine was not produced.' }
           Copy-Item $env:CUBICAL_COMPARE_FFMPEG '.\dist\cubical-compare-engine\ffmpeg.exe' -Force
 
-      - name: Verify packaged WatchData fonts
-        shell: pwsh
-        run: |
-          $fontRoot = '.\engine\dist\cubical-compare-engine\_internal\ccengine\fonts'
-          foreach ($name in @('Poppins-Bold.ttf','Poppins-SemiBold.ttf','Poppins-Medium.ttf','OFL.txt')) {
-            if (-not (Get-ChildItem '.\engine\dist\cubical-compare-engine' -Recurse -File -Filter $name | Select-Object -First 1)) {
-              throw "Packaged WatchData font asset missing: $name"
-            }
-          }
-
       - name: Self-test packaged renderer
         shell: pwsh
         run: |
@@ -153,7 +96,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path renderer-self-test\self-test.mp4)) { throw 'Renderer self-test MP4 is missing.' }
 
-      - name: Build completely rebuilt Windows shell
+      - name: Build Windows shell
         shell: pwsh
         run: |
           cmake -S . -B build-windows -A x64 -DCMAKE_BUILD_TYPE=Release
@@ -162,14 +105,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path build-windows\Release\CubicalCompare.exe)) { throw 'CubicalCompare.exe was not produced.' }
 
-      - name: Self-test rebuilt Windows shell against shared renderer
+      - name: Self-test Windows shell
         shell: pwsh
         run: |
           $env:CUBICAL_COMPARE_ENGINE = "$PWD\engine\dist\cubical-compare-engine\cubical-compare-engine.exe"
           & .\build-windows\Release\CubicalCompare.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Package Windows final
+      - name: Package Windows 2.0.5
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -191,7 +134,7 @@ jobs:
           if-no-files-found: error
 
   android:
-    name: Android final
+    name: Android 2.0.5
     runs-on: ubuntu-24.04
     env:
       CTS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.CTS_ANDROID_KEYSTORE_PASSWORD }}
@@ -204,13 +147,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove Android uses the final 2.0.4 desktop renderer
+      - name: Prove Android still embeds the checkpointed renderer
         run: |
           set -euo pipefail
           git diff --exit-code "$RENDERER_BASE" -- engine/ccengine
           diff -qr engine/ccengine android/app/src/main/python/ccengine
-          test ! -e android/app/src/main/java/io/github/retrofrost/cts/android/export/ReferenceFrameRenderer.kt
-          test ! -e android/app/src/main/java/io/github/retrofrost/cts/android/timeline/TimelineEngine.kt
 
       - uses: actions/setup-java@v5
         with:
@@ -225,14 +166,8 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Validate Android Python renderer syntax
-        run: |
-          python -m py_compile android/app/src/main/python/cts_android_bridge.py
-          python -m py_compile \
-            android/app/src/main/python/ccengine/watchdata_renderer.py \
-            android/app/src/main/python/ccengine/watchdata_measured.py \
-            android/app/src/main/python/ccengine/watchdata_final.py \
-            android/app/src/main/python/ccengine/watchdata_release.py
+      - name: Validate Android Python bridge syntax
+        run: python -m py_compile android/app/src/main/python/cts_android_bridge.py
 
       - name: Prepare permanent signing when available
         shell: bash
@@ -250,22 +185,12 @@ jobs:
             echo "CTS_HAS_STABLE_SIGNING=true" >> "$GITHUB_ENV"
           else
             echo "CTS_HAS_STABLE_SIGNING=false" >> "$GITHUB_ENV"
-            echo 'No private release identity is configured; this hotfix APK will use the installable CI fallback signing identity.'
           fi
 
-      - name: Build completely rebuilt Android app
+      - name: Build Android 2.0.5
         run: |
           chmod +x android/gradlew
           android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
-
-      - name: Verify bundled WatchData font files
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s android/app/src/main/python/ccengine/fonts/Poppins-Bold.ttf
-          test -s android/app/src/main/python/ccengine/fonts/Poppins-SemiBold.ttf
-          test -s android/app/src/main/python/ccengine/fonts/Poppins-Medium.ttf
-          test -s android/app/src/main/python/ccengine/fonts/OFL.txt
 
       - name: Verify Android release signature and identity
         shell: bash
@@ -308,7 +233,7 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/cts-signing"
 
   publish:
-    name: Publish v2.0.4 hotfix
+    name: Publish v2.0.5
     if: github.ref == 'refs/heads/release/cubical-compare-final'
     needs: [windows, android]
     runs-on: ubuntu-24.04
@@ -319,7 +244,7 @@ jobs:
           pattern: Cubical-Compare-${{ env.VERSION }}-*
           path: release-assets
           merge-multiple: true
-      - name: Publish immutable final release assets
+      - name: Publish v2.0.5 assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

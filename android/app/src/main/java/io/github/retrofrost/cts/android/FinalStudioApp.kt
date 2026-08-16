@@ -161,7 +161,7 @@ fun FinalStudioApp() {
             project = project.copy(soundtrack = uri.toString()); message = "Soundtrack selected"
         }
     }
-    val exportVideo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
+    val exportFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             isPlaying = false
             runCatching {
@@ -171,7 +171,7 @@ fun FinalStudioApp() {
                 )
             }
             FinalExportService.start(context, project.toJson(), uri)
-            message = "Background export started · safe to leave the app or turn off the screen"
+            message = "Background export started · MP4 and thumbnails will be saved in this folder"
         }
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -194,7 +194,7 @@ fun FinalStudioApp() {
                         isPlaying = false
                         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        exportVideo.launch("Cubical-Compare-2.0.4.mp4")
+                        exportFolder.launch(null)
                     }
                     if (exportState.running) Action("Cancel", Icons.Default.Cancel) { FinalExportService.cancel(context) }
                 }

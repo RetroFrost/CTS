@@ -139,6 +139,8 @@ struct TaskResult {
     cubical::ProcessResult process;
     fs::path output;
     fs::path assets;
+    int thumbnail_count{0};
+    std::string thumbnail_error;
 };
 
 HWND make_control(App* app, const wchar_t* cls, const wchar_t* text, DWORD style, int id) {
@@ -347,13 +349,30 @@ void begin_export(App* app, const fs::path& output) {
     const fs::path input = app->working_ccx;
     const fs::path progress = app->progress_file;
     const fs::path cancel = app->cancel_file;
-    std::thread([input, output, progress, cancel, window]() {
+    const int total_frames = app->total_frames;
+    std::thread([input, output, progress, cancel, window, total_frames]() {
         auto* task = new TaskResult();
         task->kind = TaskResult::Kind::Export; task->output = output;
         task->process = cubical::run_engine({
             "export", narrow_path(input), narrow_path(output),
             "--progress-file", narrow_path(progress), "--cancel-file", narrow_path(cancel)
         });
+        if (task->process.exit_code == 0) {
+            const double fractions[] = {0.16, 0.48, 0.78};
+            for (int index = 0; index < 3; ++index) {
+                const int frame = std::clamp(static_cast<int>((std::max(1, total_frames) - 1) * fractions[index]), 0, std::max(0, total_frames - 1));
+                const fs::path thumb = output.parent_path() / (output.stem().wstring() + L" - Thumbnail " + std::to_wstring(index + 1) + L".jpg");
+                const auto rendered = cubical::run_engine({
+                    "render-preview", narrow_path(input), narrow_path(thumb),
+                    "--frame", std::to_string(frame), "--width", "1280", "--height", "720"
+                });
+                if (rendered.exit_code != 0) {
+                    task->thumbnail_error = rendered.output.empty() ? "Thumbnail rendering failed." : rendered.output;
+                    break;
+                }
+                ++task->thumbnail_count;
+            }
+        }
         PostMessageW(window, WM_TASK_DONE, 0, reinterpret_cast<LPARAM>(task));
     }).detach();
 }
@@ -567,7 +586,11 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             if (task->process.exit_code != 0) {
                 status(app,task->process.output.empty()?"Operation failed.":task->process.output);
             } else if (task->kind == TaskResult::Kind::Export) {
-                status(app,"Export finished · "+narrow_path(task->output));
+                if (task->thumbnail_error.empty()) {
+                    status(app,"Export finished · "+std::to_string(task->thumbnail_count)+" thumbnails saved beside "+narrow_path(task->output));
+                } else {
+                    status(app,"MP4 saved · thumbnail warning: "+task->thumbnail_error);
+                }
             } else {
                 cubical::Project imported; std::string error;
                 if(cubical::load_ccx(imported,task->output,&error)){app->project=std::move(imported);app->selected=0;app->current_frame=0;sync_project_ui(app);status(app,task->kind==TaskResult::Kind::ImportData?"Data imported through shared engine":"MegaPack imported through shared engine");}
@@ -605,7 +628,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show)
     if(!RegisterClassExW(&klass))return 1;
 
     App app; app.instance=instance;
-    HWND window=CreateWindowExW(0,kWindowClass,L"Cubical Compare 2.0 · Final",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
+    HWND window=CreateWindowExW(0,kWindowClass,L"Cubical Compare 2.0.5 · Final",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
         CW_USEDEFAULT,CW_USEDEFAULT,1440,860,nullptr,nullptr,instance,&app);
     if(!window)return 1;
     ShowWindow(window,show);UpdateWindow(window);
