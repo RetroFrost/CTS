@@ -1,35 +1,38 @@
-# Cubical Compare 2.0.2 — Final Hotfix
+# Cubical Compare 2.0.3 — Final Hotfix
 
-Cubical Compare 2.0.2 fixes Android MegaPack memory crashes and makes long exports persist as true background media-processing jobs.
+Cubical Compare 2.0.3 adds explicit Play and Stop controls to the Android renderer preview while preserving the 2.0.2 MegaPack and background-export fixes.
 
 Release channel: `release/cubical-compare-final`.
-Build promotion: tested hotfix head `f99a7e2718b07c878d1c3b371c999dcf918ed29a`.
 
-## 2.0.2 Android fixes
+## 2.0.3 Android changes
 
-- MegaPack import no longer runs on the Compose/activity thread.
-- Android now processes MegaPack artwork one card at a time instead of retaining every referenced compressed image in memory. The 44-card `CTS_MegaPack_Most_Improper_Liquids_Felix.zip` expands to roughly 264 MB of RGBA source pixels, so the previous import strategy could exceed a phone process heap.
-- Partial MegaPack destinations are removed after a failed import, and the source cache copy is deleted when import finishes.
-- The editor shows an indeterminate import progress state and disables duplicate MegaPack/import-dependent export actions while loading.
-- Export runs in a persistent `mediaProcessing` foreground service with a partial wake lock, notification progress and cancel action.
-- The export destination URI is persisted when the document provider permits it, and the active project/destination request is stored so Android can recreate the service and redeliver the export after process/service interruption.
-- Swiping the editor task away no longer stops the export service. Screen-off export remains supported.
-- Completed, canceled and failed exports now leave a final notification state instead of an orphaned in-progress notification.
-- Default exported filename is `Cubical-Compare-2.0.2.mp4`.
+- The preview now has labeled **Play** and **Stop** buttons directly under the timeline slider.
+- Play begins from the current playhead. If the playhead is already on the final frame, playback restarts from frame zero.
+- Stop halts playback immediately and leaves the playhead on the currently displayed frame.
+- Dragging the timeline slider automatically stops playback and switches back to exact single-frame preview rendering.
+- Opening/importing a project, importing a MegaPack, creating a new project, editing the card set or starting export stops preview playback cleanly.
+- Preview playback is clocked from the project's real FPS. If a phone cannot render every 960x540 preview frame in real time, intermediate preview frames are skipped so playback timing stays correct instead of running in slow motion.
+- This preview-only frame skipping does **not** affect export. Export still renders and encodes every frame at the locked 60 FPS reference cadence.
+- Default exported filename is `Cubical-Compare-2.0.3.mp4`.
+
+## 2.0.2 fixes retained
+
+- MegaPack import remains off the Compose/activity thread and processes artwork one card at a time to avoid the large-memory crash seen with the 44-card liquids MegaPack.
+- Export remains a persistent `mediaProcessing` foreground service with wake lock, notification progress, cancellation, screen-off support and service recreation support.
 
 ## Renderer contract
 
-The visual renderer remains frozen from commit `a75020c120ac788ca10d57a113775e221e907a94`, after dense contact-sheet verification against the 1920×1080 60 fps reference. This hotfix does not modify `engine/ccengine`.
+The visual renderer remains frozen from commit `a75020c120ac788ca10d57a113775e221e907a94`, after dense contact-sheet verification against the 1920x1080 60 FPS reference. This hotfix does not modify `engine/ccengine`.
 
-Android still embeds a byte-for-byte copy of `engine/ccengine` under `android/app/src/main/python/ccengine`. The new memory-bounded MegaPack logic is only in the Android bridge around that renderer; there is still no second Kotlin animation implementation.
+Android still embeds a byte-for-byte copy of `engine/ccengine` under `android/app/src/main/python/ccengine`. Playback controls only schedule which exact renderer frame is requested for the live preview.
 
 ## Windows
 
-The Windows application and renderer are unchanged functionally from the reviewed final rebuild. CI rebuilds and re-verifies Windows for this release so cross-platform renderer freeze checks remain enforced.
+The Windows application and renderer are unchanged functionally. CI rebuilds and re-verifies Windows so the cross-platform renderer freeze remains enforced.
 
 ## Android signing
 
-The release pipeline uses a permanent Android release identity whenever one is configured through private repository secrets and verifies its expected certificate fingerprint. When those private secrets are absent, CI signs the APK with its installable fallback identity. The certificate SHA-256 fingerprint and signing mode are shipped beside the APK as `Cubical-Compare-2.0.2-Android.signing.txt`; no private key is committed or published.
+The release pipeline uses a permanent Android release identity whenever one is configured through private repository secrets and verifies its expected certificate fingerprint. When those private secrets are absent, CI signs the APK with its installable fallback identity. The certificate SHA-256 fingerprint and signing mode are shipped beside the APK as `Cubical-Compare-2.0.3-Android.signing.txt`; no private key is committed or published.
 
 ## Release gates
 
