@@ -3,6 +3,7 @@
 Cubical Compare 2.0.3 adds explicit Play and Stop controls to the Android renderer preview while preserving the 2.0.2 MegaPack and background-export fixes.
 
 Release channel: `release/cubical-compare-final`.
+Build promotion: tested hotfix head `81274ae34b70db4e541a85688fa00e9db6761802`.
 
 ## 2.0.3 Android changes
 
