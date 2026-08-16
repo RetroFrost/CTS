@@ -18,6 +18,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service android:name=".FinalExportService" android:exported="false" android:foregroundServiceType="mediaProcessing" />
+        <service
+            android:name=".FinalExportService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="mediaProcessing" />
     </application>
 </manifest>
