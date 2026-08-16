@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -35,6 +36,7 @@ fun FinalStudioApp() {
     var frame by remember { mutableIntStateOf(0) }
     var metadata by remember { mutableStateOf(RenderMetadata(1, 0.0, 60)) }
     var preview by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Shared Windows renderer ready") }
     val exportState by FinalExportState.state.collectAsState()
     val packState by MegaPackImportManager.state.collectAsState()
@@ -42,6 +44,7 @@ fun FinalStudioApp() {
 
     LaunchedEffect(packState.resultId, packState.project) {
         val imported = packState.project ?: return@LaunchedEffect
+        isPlaying = false
         project = imported
         selected = 0
         frame = 0
@@ -50,6 +53,7 @@ fun FinalStudioApp() {
     }
 
     LaunchedEffect(projectJson) {
+        isPlaying = false
         try {
             val next = withContext(Dispatchers.Default) { SharedRenderer.metadata(project) }
             metadata = next
@@ -60,7 +64,9 @@ fun FinalStudioApp() {
             message = "Renderer metadata failed: ${error.message}"
         }
     }
-    LaunchedEffect(projectJson, frame) {
+
+    LaunchedEffect(projectJson, frame, isPlaying) {
+        if (isPlaying) return@LaunchedEffect
         try {
             val bitmap = withContext(Dispatchers.Default) { SharedRenderer.render(project, frame, 960, 540) }
             preview?.recycle()
@@ -72,8 +78,53 @@ fun FinalStudioApp() {
         }
     }
 
+    LaunchedEffect(isPlaying, projectJson, metadata.frameCount, metadata.fps) {
+        if (!isPlaying) return@LaunchedEffect
+        val maxFrame = (metadata.frameCount - 1).coerceAtLeast(0)
+        val fps = metadata.fps.coerceAtLeast(1)
+        val startFrame = if (frame >= maxFrame) 0 else frame.coerceIn(0, maxFrame)
+        if (frame != startFrame) frame = startFrame
+        val startedAt = System.nanoTime()
+        var lastRendered = -1
+
+        try {
+            while (true) {
+                val elapsedNanos = (System.nanoTime() - startedAt).coerceAtLeast(0L)
+                val elapsedFrames = ((elapsedNanos * fps) / 1_000_000_000L).toInt()
+                val targetFrame = (startFrame + elapsedFrames).coerceAtMost(maxFrame)
+
+                if (targetFrame != lastRendered) {
+                    val bitmap = withContext(Dispatchers.Default) {
+                        SharedRenderer.render(project, targetFrame, 960, 540)
+                    }
+                    preview?.recycle()
+                    preview = bitmap
+                    frame = targetFrame
+                    lastRendered = targetFrame
+                }
+
+                if (targetFrame >= maxFrame) {
+                    isPlaying = false
+                    message = "Preview finished"
+                    break
+                }
+
+                val nextFrame = (lastRendered + 1).coerceAtLeast(startFrame)
+                val nextFrameNanos = startedAt + ((nextFrame - startFrame) * 1_000_000_000L / fps)
+                val waitMillis = ((nextFrameNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(1L)
+                delay(waitMillis)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            isPlaying = false
+            message = "Playback failed: ${error.message}"
+        }
+    }
+
     val openProject = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
+            isPlaying = false
             val raw = context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
             project = StudioProject.fromJson(raw); selected = 0; frame = 0; message = "Project opened"
         }.onFailure { message = "Open failed: ${it.message}" }
@@ -85,12 +136,14 @@ fun FinalStudioApp() {
     }
     val importData = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
+            isPlaying = false
             project = SharedRenderer.importData(project, SharedRenderer.materialize(context, uri, "data").absolutePath)
             selected = 0; frame = 0; message = "Imported ${project.cards.size} cards through shared engine"
         }.onFailure { message = "Import failed: ${it.message}" }
     }
     val importPack = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
+            isPlaying = false
             MegaPackImportManager.start(context, uri)
             message = "MegaPack import started in background"
         }
@@ -110,6 +163,7 @@ fun FinalStudioApp() {
     }
     val exportVideo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
         if (uri != null) {
+            isPlaying = false
             runCatching {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
@@ -126,19 +180,21 @@ fun FinalStudioApp() {
         topBar = {
             Surface(Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Action("New", Icons.Default.Add) { project = StudioProject(); selected = 0; frame = 0; message = "New project" }
-                    Action("Open", Icons.Default.FolderOpen) { openProject.launch(arrayOf("application/json", "text/plain")) }
+                    Action("New", Icons.Default.Add) { isPlaying = false; project = StudioProject(); selected = 0; frame = 0; message = "New project" }
+                    Action("Open", Icons.Default.FolderOpen) { isPlaying = false; openProject.launch(arrayOf("application/json", "text/plain")) }
                     Action("Save", Icons.Default.Save) { saveProject.launch("Cubical-Compare-project.json") }
-                    Action("Data", Icons.Default.TableChart) { importData.launch(arrayOf("text/csv", "text/tab-separated-values", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) }
-                    Action("MegaPack", Icons.Default.Inventory2, enabled = !packState.running) { importPack.launch(arrayOf("application/zip", "application/octet-stream")) }
+                    Action("Data", Icons.Default.TableChart) { isPlaying = false; importData.launch(arrayOf("text/csv", "text/tab-separated-values", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) }
+                    Action("MegaPack", Icons.Default.Inventory2, enabled = !packState.running) { isPlaying = false; importPack.launch(arrayOf("application/zip", "application/octet-stream")) }
                     Action("Add card", Icons.Default.AddBox) {
+                        isPlaying = false
                         val cards = project.cards + StudioCard(title = "New card")
                         project = project.copy(cards = cards); selected = cards.lastIndex
                     }
                     Action("Export", Icons.Default.MovieCreation, enabled = !exportState.running && !packState.running) {
+                        isPlaying = false
                         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        exportVideo.launch("Cubical-Compare-2.0.2.mp4")
+                        exportVideo.launch("Cubical-Compare-2.0.3.mp4")
                     }
                     if (exportState.running) Action("Cancel", Icons.Default.Cancel) { FinalExportService.cancel(context) }
                 }
@@ -165,7 +221,16 @@ fun FinalStudioApp() {
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding).padding(10.dp)) {
             if (maxWidth < 760.dp) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PreviewPanel(preview, frame, metadata) { frame = it }
+                    PreviewPanel(
+                        preview,
+                        frame,
+                        metadata,
+                        isPlaying = isPlaying,
+                        playEnabled = !packState.running,
+                        onPlay = { isPlaying = true },
+                        onStop = { isPlaying = false; message = "Preview stopped at frame $frame" },
+                        onFrame = { isPlaying = false; frame = it },
+                    )
                     HorizontalCardPicker(project, selected) { selected = it }
                     Inspector(project, selected, onProject = { project = it }, onChooseImage = { chooseImage.launch(arrayOf("image/*")) }, onChooseSoundtrack = { chooseSoundtrack.launch(arrayOf("audio/*")) })
                 }
@@ -173,7 +238,16 @@ fun FinalStudioApp() {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CardList(project, selected, Modifier.width(250.dp).fillMaxHeight(), onSelect = { selected = it }, onProject = { next -> project = next; selected = selected.coerceIn(0, next.cards.lastIndex.coerceAtLeast(0)) })
                     Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PreviewPanel(preview, frame, metadata) { frame = it }
+                        PreviewPanel(
+                            preview,
+                            frame,
+                            metadata,
+                            isPlaying = isPlaying,
+                            playEnabled = !packState.running,
+                            onPlay = { isPlaying = true },
+                            onStop = { isPlaying = false; message = "Preview stopped at frame $frame" },
+                            onFrame = { isPlaying = false; frame = it },
+                        )
                         Text("Exact shared renderer · ${metadata.frameCount} frames · ${"%.2f".format(metadata.duration)} s", style = MaterialTheme.typography.labelMedium)
                     }
                     Inspector(project, selected, Modifier.width(330.dp).fillMaxHeight().verticalScroll(rememberScrollState()), onProject = { project = it }, onChooseImage = { chooseImage.launch(arrayOf("image/*")) }, onChooseSoundtrack = { chooseSoundtrack.launch(arrayOf("audio/*")) })
@@ -191,7 +265,16 @@ private fun Action(label: String, icon: androidx.compose.ui.graphics.vector.Imag
 }
 
 @Composable
-private fun PreviewPanel(bitmap: android.graphics.Bitmap?, frame: Int, metadata: RenderMetadata, onFrame: (Int) -> Unit) {
+private fun PreviewPanel(
+    bitmap: android.graphics.Bitmap?,
+    frame: Int,
+    metadata: RenderMetadata,
+    isPlaying: Boolean,
+    playEnabled: Boolean,
+    onPlay: () -> Unit,
+    onStop: () -> Unit,
+    onFrame: (Int) -> Unit,
+) {
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentAlignment = Alignment.Center) {
@@ -199,7 +282,27 @@ private fun PreviewPanel(bitmap: android.graphics.Bitmap?, frame: Int, metadata:
             }
             val max = (metadata.frameCount - 1).coerceAtLeast(1)
             Slider(frame.toFloat().coerceIn(0f, max.toFloat()), { onFrame(it.toInt()) }, valueRange = 0f..max.toFloat())
-            Text("Frame $frame / ${metadata.frameCount - 1}", style = MaterialTheme.typography.labelSmall)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilledTonalButton(onClick = onPlay, enabled = playEnabled && !isPlaying) {
+                    Icon(Icons.Default.PlayArrow, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Play")
+                }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = onStop, enabled = isPlaying) {
+                    Icon(Icons.Default.Stop, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Stop")
+                }
+            }
+            Text(
+                if (isPlaying) "Playing · Frame $frame / ${metadata.frameCount - 1}" else "Frame $frame / ${metadata.frameCount - 1}",
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
     }
 }
