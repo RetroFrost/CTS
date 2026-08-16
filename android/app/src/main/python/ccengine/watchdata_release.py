@@ -64,6 +64,9 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
         left, top, right, bottom = box
         available_width = max(1, right - left)
         available_height = max(1, bottom - top)
+        # Reference f528: long authored lines top out around 374 px while
+        # shorter two-line titles stay larger. Width, not a single fixed font
+        # size, is the controlling measurement.
         target_width = min(380, available_width)
         chosen_font = self._font(30, True, "title")
         chosen_size = 30
@@ -104,6 +107,9 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
     ) -> None:
         if not description or top >= bottom:
             return
+        # f528 measurements keep the description block around 350-365 px wide.
+        # This is what moves "with" to the second line on card one while still
+        # keeping the FOXP2 sentence on the same two lines as the source.
         target_width = min(365, max(1, width - 34))
         chosen_font = self._font(18, False, "description")
         chosen_lines: list[str] = []
