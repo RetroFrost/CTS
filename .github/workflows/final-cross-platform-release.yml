@@ -29,9 +29,9 @@ concurrency:
 
 env:
   VERSION: 2.0.4
-  # First commit where the 2.0.4 renderer source and Android mirror were both
-  # complete. Later app/build changes must not silently alter that renderer.
-  RENDERER_BASE: 485f64be1ad65764e72b3758d5f11c3666aa27c2
+  # First commit where the corrected 2.0.4 renderer source and Android mirror
+  # both passed the rendered visual-audit correction.
+  RENDERER_BASE: 0aabbdcc9118f8fd82876d8b8ec2ee54b0fcbeb6
 
 jobs:
   windows:
