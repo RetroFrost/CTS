@@ -8,6 +8,7 @@ on:
       - release/cubical-compare-final
       - hotfix/android-preview-lifecycle-2.0.1
       - hotfix/android-megapack-background-export-2.0.2
+      - hotfix/android-preview-play-stop-2.0.3
     paths:
       - android/**
       - native/**
@@ -25,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION: 2.0.2
+  VERSION: 2.0.3
   RENDERER_BASE: a75020c120ac788ca10d57a113775e221e907a94
 
 jobs:
@@ -231,7 +232,7 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/cts-signing"
 
   publish:
-    name: Publish v2.0.2 hotfix
+    name: Publish v2.0.3 hotfix
     if: github.ref == 'refs/heads/release/cubical-compare-final'
     needs: [windows, android]
     runs-on: ubuntu-24.04
