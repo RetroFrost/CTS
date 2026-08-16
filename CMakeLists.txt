@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(CubicalCompare VERSION 2.0.0 LANGUAGES CXX)
+project(CubicalCompare VERSION 2.0.5 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 

@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,7 +65,7 @@ class FinalExportService : Service() {
         val uriText = intent?.getStringExtra(EXTRA_URI)
             ?: preferences.getString(PREF_URI, null)
             ?: return stopMissingRequest(startId)
-        val uri = Uri.parse(uriText)
+        val folderUri = Uri.parse(uriText)
 
         preferences.edit().putString(PREF_PROJECT, json).putString(PREF_URI, uriText).apply()
         cancelled = false
@@ -79,18 +80,41 @@ class FinalExportService : Service() {
         activeJob = scope.launch {
             try {
                 val project = StudioProject.fromJson(json)
+                val folder = DocumentFile.fromTreeUri(applicationContext, folderUri)
+                    ?: error("The selected export folder could not be opened.")
+                require(folder.canWrite()) { "The selected export folder is not writable." }
+                val baseName = exportBaseName(project)
+                val video = replaceDocument(folder, "video/mp4", "$baseName.mp4")
                 FinalExportEngine(applicationContext, project, { cancelled }) { percent, stage, detail ->
-                    FinalExportState.update(ExportProgress(true, percent, stage, detail))
+                    val mapped = (percent.coerceIn(0, 100) * 94 / 100).coerceIn(0, 94)
+                    FinalExportState.update(ExportProgress(true, mapped, stage, detail))
                     getSystemService(NotificationManager::class.java).notify(
                         NOTIFICATION_ID,
-                        notification(percent, "$stage · $detail", true),
+                        notification(mapped, "$stage · $detail", true),
                     )
-                }.export(uri)
+                }.export(video.uri)
+
+                if (cancelled) throw CancellationException("Export cancelled")
+                FinalExportState.update(ExportProgress(true, 95, "Thumbnails", "Creating WatchData-inspired thumbnails"))
+                val thumbnails = ThumbnailGenerator.create(project, baseName)
+                thumbnails.forEachIndexed { index, thumbnail ->
+                    if (cancelled) throw CancellationException("Export cancelled")
+                    val document = replaceDocument(folder, "image/jpeg", thumbnail.fileName)
+                    contentResolver.openOutputStream(document.uri, "w")?.use { output ->
+                        output.write(thumbnail.jpeg)
+                    } ?: error("Could not write ${thumbnail.fileName}.")
+                    val progress = 96 + index
+                    FinalExportState.update(ExportProgress(true, progress, "Thumbnails", "Saved ${thumbnail.fileName}"))
+                    getSystemService(NotificationManager::class.java).notify(
+                        NOTIFICATION_ID,
+                        notification(progress, "Thumbnails · ${index + 1} / ${thumbnails.size}", true),
+                    )
+                }
                 preferences.edit().clear().apply()
-                FinalExportState.update(ExportProgress(false, 100, "Finished", "MP4 saved"))
+                FinalExportState.update(ExportProgress(false, 100, "Finished", "MP4 + ${thumbnails.size} thumbnails saved"))
                 getSystemService(NotificationManager::class.java).notify(
                     NOTIFICATION_ID,
-                    notification(100, "Export finished · MP4 saved", false),
+                    notification(100, "Export finished · MP4 + ${thumbnails.size} thumbnails saved", false),
                 )
             } catch (_: CancellationException) {
                 preferences.edit().clear().apply()
@@ -116,6 +140,18 @@ class FinalExportService : Service() {
             }
         }
         return START_REDELIVER_INTENT
+    }
+
+    private fun replaceDocument(folder: DocumentFile, mime: String, name: String): DocumentFile {
+        folder.findFile(name)?.delete()
+        return requireNotNull(folder.createFile(mime, name)) { "Could not create $name in the selected folder." }
+    }
+
+    private fun exportBaseName(project: StudioProject): String {
+        val raw = project.name.trim().takeIf { it.isNotBlank() && !it.equals("Untitled", true) }
+            ?: "Cubical-Compare-2.0.5"
+        val safe = raw.replace(Regex("[\\/:*?\"<>|]"), "-").replace(Regex("\s+"), " ").trim().take(96)
+        return safe.ifBlank { "Cubical-Compare-2.0.5" }
     }
 
     private fun stopMissingRequest(startId: Int): Int {
