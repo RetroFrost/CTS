@@ -1,35 +1,34 @@
-# Cubical Compare 2.0.1 — Final Hotfix
+# Cubical Compare 2.0.2 — Final Hotfix
 
-Cubical Compare 2.0.1 is the Android lifecycle and system-inset hotfix for the final Windows + Android rebuild.
+Cubical Compare 2.0.2 fixes Android MegaPack memory crashes and makes long exports persist as true background media-processing jobs.
 
 Release channel: `release/cubical-compare-final`.
 
-## 2.0.1 Android fixes
+## 2.0.2 Android fixes
 
-- Preview recomposition no longer reports `The coroutine scope left the composition` as a renderer failure. Superseded preview jobs now propagate coroutine cancellation normally instead of turning expected cancellation into an error message.
-- The top action bar now respects the Android status bar inset, so status icons no longer overlap New, Open, Save, Data, or MegaPack.
-- The bottom status/export bar now respects the navigation-bar inset instead of sitting underneath the system navigation controls.
-- The default exported filename is updated to `Cubical-Compare-2.0.1.mp4`.
+- MegaPack import no longer runs on the Compose/activity thread.
+- Android now processes MegaPack artwork one card at a time instead of retaining every referenced compressed image in memory. The 44-card `CTS_MegaPack_Most_Improper_Liquids_Felix.zip` expands to roughly 264 MB of RGBA source pixels, so the previous import strategy could exceed a phone process heap.
+- Partial MegaPack destinations are removed after a failed import, and the source cache copy is deleted when import finishes.
+- The editor shows an indeterminate import progress state and disables duplicate MegaPack/import-dependent export actions while loading.
+- Export runs in a persistent `mediaProcessing` foreground service with a partial wake lock, notification progress and cancel action.
+- The export destination URI is persisted when the document provider permits it, and the active project/destination request is stored so Android can recreate the service and redeliver the export after process/service interruption.
+- Swiping the editor task away no longer stops the export service. Screen-off export remains supported.
+- Completed, canceled and failed exports now leave a final notification state instead of an orphaned in-progress notification.
+- Default exported filename is `Cubical-Compare-2.0.2.mp4`.
 
 ## Renderer contract
 
 The visual renderer remains frozen from commit `a75020c120ac788ca10d57a113775e221e907a94`, after dense contact-sheet verification against the 1920×1080 60 fps reference. This hotfix does not modify `engine/ccengine`.
 
-Android embeds a byte-for-byte copy of `engine/ccengine` under `android/app/src/main/python/ccengine` and calls it through the Chaquopy bridge. There is no second Kotlin animation implementation.
+Android still embeds a byte-for-byte copy of `engine/ccengine` under `android/app/src/main/python/ccengine`. The new memory-bounded MegaPack logic is only in the Android bridge around that renderer; there is still no second Kotlin animation implementation.
 
 ## Windows
 
-The Windows application shell remains the rebuilt native Win32 studio from 2.0.0. It owns project editing, card management, file dialogs, timeline control, background tasks, progress and cancellation. Preview, spreadsheet import, MegaPack import and MP4 export are delegated to the private shared renderer engine.
-
-## Android
-
-The Android application shell is Kotlin + Compose and provides adaptive phone/tablet editing, project open/save, spreadsheet import, MegaPack import, artwork and soundtrack selection, exact frame preview, and foreground MP4 export which continues with the screen off and can be canceled from the app or notification.
-
-Every Android video frame is produced by the same Python `FrameRenderer` used by the desktop renderer. Android's MediaCodec pipeline only encodes those rendered frames into H.264/MP4 and optionally encodes/muxes the soundtrack.
+The Windows application and renderer are unchanged functionally from the reviewed final rebuild. CI rebuilds and re-verifies Windows for this release so cross-platform renderer freeze checks remain enforced.
 
 ## Android signing
 
-The release pipeline uses a permanent Android release identity whenever one is configured through private repository secrets and verifies its expected certificate fingerprint. This public repository currently contains no permanent private signing key. When those private secrets are absent, CI signs the APK with its local installable fallback identity instead of publishing an unsigned APK. The certificate SHA-256 fingerprint and signing mode are shipped beside the APK as `Cubical-Compare-2.0.1-Android.signing.txt`; no private key is committed or published.
+The release pipeline uses a permanent Android release identity whenever one is configured through private repository secrets and verifies its expected certificate fingerprint. When those private secrets are absent, CI signs the APK with its installable fallback identity. The certificate SHA-256 fingerprint and signing mode are shipped beside the APK as `Cubical-Compare-2.0.2-Android.signing.txt`; no private key is committed or published.
 
 ## Release gates
 
@@ -37,9 +36,10 @@ CI rejects the release if:
 
 - `engine/ccengine` differs from the verified renderer baseline.
 - the Android renderer copy differs byte-for-byte from `engine/ccengine`.
+- the Android Python bridge does not compile.
 - any former Kotlin reference/timeline renderer returns.
 - renderer regression tests fail.
 - the Windows native shell or private renderer self-test fails.
-- the Android release APK fails to assemble.
+- Android unit tests or release assembly fail.
 - the Android APK is not cryptographically signed.
 - a configured permanent Android release identity has the wrong certificate fingerprint.
