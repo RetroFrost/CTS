@@ -20,8 +20,8 @@ android {
         applicationId = "io.github.retrofrost.cts.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20000
-        versionName = "2.0.0"
+        versionCode = 20001
+        versionName = "2.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
@@ -40,7 +40,7 @@ android {
             isMinifyEnabled = false
             // Use the permanent release identity when configured. On a clean
             // public CI runner with no private signing secret, use Android's
-            // local debug identity so the one final APK is still installable.
+            // local debug identity so the hotfix APK is still installable.
             // The fallback private key never enters this public repository.
             signingConfig = if (stableSigningReady) signingConfigs.getByName("ctsStable") else signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
