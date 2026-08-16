@@ -6,16 +6,20 @@ import urllib.request
 from PyInstaller.utils.hooks import collect_submodules
 
 
-# 2.0.4 uses the typeface visually matched against the supplied WatchData
-# reference. Font binaries are intentionally not committed to CTS: fetch the
-# exact official google/fonts blobs at build time and verify the Git blob SHA-1
-# before they enter the private renderer package.
+# 2.0.4 uses the Poppins family visually matched against the supplied
+# WatchData reference. Font binaries are intentionally not committed to CTS:
+# fetch the exact official google/fonts blobs at build time and verify the Git
+# blob SHA-1 before they enter the private renderer package.
 FONT_ROOT = Path("ccengine") / "fonts"
 FONT_ROOT.mkdir(parents=True, exist_ok=True)
 FONT_FILES = {
     "Poppins-ExtraBold.ttf": (
         "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-ExtraBold.ttf",
         "167667d203d98f5b27c3ff58d486eea9c5287fe4",
+    ),
+    "Poppins-Bold.ttf": (
+        "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf",
+        "1982f38ab21303459aa1155265052ca599fa58d1",
     ),
     "Poppins-SemiBold.ttf": (
         "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-SemiBold.ttf",
