@@ -1,0 +1,262 @@
+name: Cubical Compare 2.0.5 Final
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/thumbnails-megapack-2.0.5
+      - release/cubical-compare-final
+    paths:
+      - android/**
+      - native/**
+      - engine/**
+      - tests/**
+      - tools/fetch_watchdata_fonts.py
+      - CMakeLists.txt
+      - FINAL_RELEASE.md
+      - .github/workflows/final-cross-platform-release-205.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cubical-compare-205-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERSION: 2.0.5
+  RENDERER_BASE: 56824d34ab99c37bf9a7869a3b15ab57809a2e74
+
+jobs:
+  windows:
+    name: Windows x64 2.0.5
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Prove checkpointed renderer remains frozen
+        shell: pwsh
+        run: |
+          git diff --exit-code $env:RENDERER_BASE -- engine/ccengine
+          if ($LASTEXITCODE -ne 0) { throw '2.0.5 must not alter the checkpointed WatchData video renderer.' }
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: engine/requirements-build.txt
+
+      - name: Fetch verified WatchData-matched Poppins fonts
+        shell: pwsh
+        run: |
+          python tools/fetch_watchdata_fonts.py --dest engine/ccengine/fonts --dest android/app/src/main/python/ccengine/fonts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install Windows build dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install ffmpeg -y --no-progress
+          python -m pip install --upgrade pip
+          python -m pip install -r engine/requirements-build.txt
+          $ffmpeg = Get-ChildItem 'C:\ProgramData\chocolatey\lib\ffmpeg' -Recurse -File -Filter ffmpeg.exe |
+            Where-Object { $_.Length -gt 1000000 } |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+          if (-not $ffmpeg) { throw 'Could not locate FFmpeg.' }
+          "CUBICAL_COMPARE_FFMPEG=$($ffmpeg.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Test shared renderer and 2.0.5 contracts
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "$PWD\engine"
+          pytest -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m compileall -q engine
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build private shared renderer engine
+        working-directory: engine
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "$PWD"
+          pyinstaller --noconfirm --clean cubical-compare-engine.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $engine = '.\dist\cubical-compare-engine\cubical-compare-engine.exe'
+          if (-not (Test-Path $engine)) { throw 'Renderer engine was not produced.' }
+          Copy-Item $env:CUBICAL_COMPARE_FFMPEG '.\dist\cubical-compare-engine\ffmpeg.exe' -Force
+
+      - name: Self-test packaged renderer
+        shell: pwsh
+        run: |
+          Remove-Item renderer-self-test -Recurse -Force -ErrorAction SilentlyContinue
+          & .\engine\dist\cubical-compare-engine\cubical-compare-engine.exe self-test --directory renderer-self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path renderer-self-test\self-test.mp4)) { throw 'Renderer self-test MP4 is missing.' }
+
+      - name: Build Windows shell
+        shell: pwsh
+        run: |
+          cmake -S . -B build-windows -A x64 -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-windows --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path build-windows\Release\CubicalCompare.exe)) { throw 'CubicalCompare.exe was not produced.' }
+
+      - name: Self-test Windows shell
+        shell: pwsh
+        run: |
+          $env:CUBICAL_COMPARE_ENGINE = "$PWD\engine\dist\cubical-compare-engine\cubical-compare-engine.exe"
+          & .\build-windows\Release\CubicalCompare.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package Windows 2.0.5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = "dist\Cubical-Compare-$env:VERSION-Windows-x64"
+          New-Item -ItemType Directory -Force -Path "$root\engine" | Out-Null
+          Copy-Item build-windows\Release\CubicalCompare.exe "$root\CubicalCompare.exe"
+          Copy-Item engine\dist\cubical-compare-engine\* "$root\engine" -Recurse -Force
+          Copy-Item FINAL_RELEASE.md "$root\FINAL_RELEASE.md"
+          Compress-Archive -Path "$root\*" -DestinationPath "dist\Cubical-Compare-$env:VERSION-Windows-x64.zip" -Force
+          $hash = (Get-FileHash "dist\Cubical-Compare-$env:VERSION-Windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  Cubical-Compare-$env:VERSION-Windows-x64.zip" | Out-File "dist\Cubical-Compare-$env:VERSION-Windows-x64.zip.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Cubical-Compare-${{ env.VERSION }}-Windows-x64
+          path: |
+            dist/Cubical-Compare-${{ env.VERSION }}-Windows-x64.zip
+            dist/Cubical-Compare-${{ env.VERSION }}-Windows-x64.zip.sha256
+          if-no-files-found: error
+
+  android:
+    name: Android 2.0.5
+    runs-on: ubuntu-24.04
+    env:
+      CTS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.CTS_ANDROID_KEYSTORE_PASSWORD }}
+      CTS_ANDROID_KEY_ALIAS: ${{ secrets.CTS_ANDROID_KEY_ALIAS }}
+      CTS_ANDROID_KEY_PASSWORD: ${{ secrets.CTS_ANDROID_KEY_PASSWORD }}
+      CTS_EXPECTED_CERT_SHA256: ${{ secrets.CTS_ANDROID_CERT_SHA256 }}
+      CTS_ANDROID_KEYSTORE_B64: ${{ secrets.CTS_ANDROID_KEYSTORE_B64 }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Prove Android still embeds the checkpointed renderer
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$RENDERER_BASE" -- engine/ccengine
+          diff -qr engine/ccengine android/app/src/main/python/ccengine
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Validate Android Python bridge syntax
+        run: python -m py_compile android/app/src/main/python/cts_android_bridge.py
+
+      - name: Prepare permanent signing when available
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in CTS_ANDROID_KEYSTORE_B64 CTS_ANDROID_KEYSTORE_PASSWORD CTS_ANDROID_KEY_ALIAS CTS_ANDROID_KEY_PASSWORD CTS_EXPECTED_CERT_SHA256; do
+            if [ -z "${!name:-}" ]; then missing=1; fi
+          done
+          if [ "$missing" -eq 0 ]; then
+            install -d -m 700 "$RUNNER_TEMP/cts-signing"
+            printf '%s' "$CTS_ANDROID_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/cts-signing/cts-release.keystore"
+            chmod 600 "$RUNNER_TEMP/cts-signing/cts-release.keystore"
+            echo "CTS_ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/cts-signing/cts-release.keystore" >> "$GITHUB_ENV"
+            echo "CTS_HAS_STABLE_SIGNING=true" >> "$GITHUB_ENV"
+          else
+            echo "CTS_HAS_STABLE_SIGNING=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Android 2.0.5
+        run: |
+          chmod +x android/gradlew
+          android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
+
+      - name: Verify Android release signature and identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n1)"
+          test -n "$APK" && test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          ACTUAL="$($APKSIGNER verify --print-certs "$APK" | sed -n 's/^.*certificate SHA-256 digest: //p' | head -n1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          test -n "$ACTUAL"
+          if [ "$CTS_HAS_STABLE_SIGNING" = true ]; then
+            EXPECTED="$(printf '%s' "$CTS_EXPECTED_CERT_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+            test "$ACTUAL" = "$EXPECTED"
+            SIGNING_KIND="permanent configured release identity"
+          else
+            SIGNING_KIND="CI fallback identity (installable; private key is not stored in the repository)"
+          fi
+          mkdir -p dist
+          cp "$APK" "dist/Cubical-Compare-$VERSION-Android.apk"
+          sha256sum "dist/Cubical-Compare-$VERSION-Android.apk" > "dist/Cubical-Compare-$VERSION-Android.apk.sha256"
+          {
+            echo "Cubical Compare $VERSION Android signing"
+            echo "certificate_sha256=$ACTUAL"
+            echo "identity=$SIGNING_KIND"
+          } > "dist/Cubical-Compare-$VERSION-Android.signing.txt"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Cubical-Compare-${{ env.VERSION }}-Android
+          path: |
+            dist/Cubical-Compare-${{ env.VERSION }}-Android.apk
+            dist/Cubical-Compare-${{ env.VERSION }}-Android.apk.sha256
+            dist/Cubical-Compare-${{ env.VERSION }}-Android.signing.txt
+          if-no-files-found: error
+
+      - name: Remove signing material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/cts-signing"
+
+  publish:
+    name: Publish v2.0.5
+    if: github.ref == 'refs/heads/release/cubical-compare-final'
+    needs: [windows, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: Cubical-Compare-${{ env.VERSION }}-*
+          path: release-assets
+          merge-multiple: true
+      - name: Publish v2.0.5 assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          mapfile -t FILES < <(find release-assets -maxdepth 1 -type f -print | sort)
+          test "${#FILES[@]}" -ge 5
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${FILES[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "Cubical Compare $VERSION — Final" \
+              --notes-file FINAL_RELEASE.md
+          fi
