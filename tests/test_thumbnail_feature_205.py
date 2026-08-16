@@ -21,6 +21,7 @@ def test_android_exports_to_a_folder_and_writes_sibling_thumbnails() -> None:
     assert "private const val HEIGHT = 720" in generator
     assert 'doubleArrayOf(0.16, 0.48, 0.78)' in generator
     assert 'Bitmap.CompressFormat.JPEG, 94' in generator
+    assert 'Typeface.createFromAsset(context.assets, "fonts/Poppins-Bold.ttf")' in generator
 
 
 def test_windows_creates_three_jpgs_beside_the_mp4() -> None:

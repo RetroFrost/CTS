@@ -96,7 +96,7 @@ class FinalExportService : Service() {
 
                 if (cancelled) throw CancellationException("Export cancelled")
                 FinalExportState.update(ExportProgress(true, 95, "Thumbnails", "Creating WatchData-inspired thumbnails"))
-                val thumbnails = ThumbnailGenerator.create(project, baseName)
+                val thumbnails = ThumbnailGenerator.create(applicationContext, project, baseName)
                 thumbnails.forEachIndexed { index, thumbnail ->
                     if (cancelled) throw CancellationException("Export cancelled")
                     val document = replaceDocument(folder, "image/jpeg", thumbnail.fileName)

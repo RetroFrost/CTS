@@ -1,5 +1,6 @@
 package io.github.retrofrost.cts.android
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -23,7 +24,7 @@ object ThumbnailGenerator {
     private const val WIDTH = 1280
     private const val HEIGHT = 720
 
-    fun create(project: StudioProject, baseName: String): List<Thumbnail> {
+    fun create(context: Context, project: StudioProject, baseName: String): List<Thumbnail> {
         val metadata = SharedRenderer.metadata(project)
         val last = (metadata.frameCount - 1).coerceAtLeast(0)
         val fractions = doubleArrayOf(0.16, 0.48, 0.78)
@@ -37,7 +38,7 @@ object ThumbnailGenerator {
             val source = SharedRenderer.render(project, frame, WIDTH, HEIGHT)
             try {
                 val card = project.cards.getOrNull(cardIndices[index])
-                val composed = compose(source, card?.title.orEmpty(), card?.value.orEmpty(), project.name)
+                val composed = compose(context, source, card?.title.orEmpty(), card?.value.orEmpty(), project.name)
                 try {
                     val bytes = ByteArrayOutputStream().use { output ->
                         check(composed.compress(Bitmap.CompressFormat.JPEG, 94, output))
@@ -53,7 +54,7 @@ object ThumbnailGenerator {
         }
     }
 
-    private fun compose(source: Bitmap, cardTitle: String, value: String, projectName: String): Bitmap {
+    private fun compose(context: Context, source: Bitmap, cardTitle: String, value: String, projectName: String): Bitmap {
         val bitmap = source.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(bitmap)
         val scrim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -70,7 +71,7 @@ object ThumbnailGenerator {
         val headline = shortHeadline(rawHeadline)
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = thumbnailTypeface(context)
             textSize = 82f
             setShadowLayer(7f, 0f, 4f, Color.argb(190, 0, 0, 0))
         }
@@ -85,7 +86,7 @@ object ThumbnailGenerator {
             val label = value.trim().uppercase().take(28)
             val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = thumbnailTypeface(context)
                 textSize = 38f
             }
             val w = valuePaint.measureText(label) + 56f
@@ -95,6 +96,12 @@ object ThumbnailGenerator {
             canvas.drawText(label, 90f, y + 69f, valuePaint)
         }
         return bitmap
+    }
+
+    private fun thumbnailTypeface(context: Context): Typeface = runCatching {
+        Typeface.createFromAsset(context.assets, "fonts/Poppins-Bold.ttf")
+    }.getOrElse {
+        Typeface.create("sans-serif", Typeface.BOLD)
     }
 
     private fun shortHeadline(value: String): String {

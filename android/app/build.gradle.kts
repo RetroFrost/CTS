@@ -62,6 +62,12 @@ val downloadWatchDataFonts = tasks.register("downloadWatchDataFonts") {
             }
             destination.writeBytes(payload)
         }
+        val thumbnailFontDir = layout.projectDirectory.dir("src/main/assets/fonts").asFile
+        thumbnailFontDir.mkdirs()
+        fontDir.resolve("Poppins-Bold.ttf").copyTo(
+            thumbnailFontDir.resolve("Poppins-Bold.ttf"),
+            overwrite = true,
+        )
     }
 }
 
