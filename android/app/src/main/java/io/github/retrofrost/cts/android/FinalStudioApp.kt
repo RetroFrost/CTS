@@ -26,7 +26,6 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
 @Composable
 fun FinalStudioApp() {
@@ -38,7 +37,17 @@ fun FinalStudioApp() {
     var preview by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var message by remember { mutableStateOf("Shared Windows renderer ready") }
     val exportState by FinalExportState.state.collectAsState()
+    val packState by MegaPackImportManager.state.collectAsState()
     val projectJson = remember(project) { project.toJson() }
+
+    LaunchedEffect(packState.resultId, packState.project) {
+        val imported = packState.project ?: return@LaunchedEffect
+        project = imported
+        selected = 0
+        frame = 0
+        message = "MegaPack loaded · ${imported.cards.size} cards"
+        MegaPackImportManager.consumeResult(packState.resultId)
+    }
 
     LaunchedEffect(projectJson) {
         try {
@@ -81,11 +90,10 @@ fun FinalStudioApp() {
         }.onFailure { message = "Import failed: ${it.message}" }
     }
     val importPack = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) runCatching {
-            val local = SharedRenderer.materialize(context, uri, "megapack")
-            project = SharedRenderer.importMegaPack(local.absolutePath, File(context.filesDir, "megapacks/${System.currentTimeMillis()}"))
-            selected = 0; frame = 0; message = "MegaPack loaded through shared engine"
-        }.onFailure { message = "MegaPack failed: ${it.message}" }
+        if (uri != null) {
+            MegaPackImportManager.start(context, uri)
+            message = "MegaPack import started in background"
+        }
     }
     val chooseImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null && selected in project.cards.indices) runCatching {
@@ -101,7 +109,16 @@ fun FinalStudioApp() {
         }
     }
     val exportVideo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
-        if (uri != null) { FinalExportService.start(context, project.toJson(), uri); message = "Export started in background" }
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            FinalExportService.start(context, project.toJson(), uri)
+            message = "Background export started · safe to leave the app or turn off the screen"
+        }
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -113,15 +130,15 @@ fun FinalStudioApp() {
                     Action("Open", Icons.Default.FolderOpen) { openProject.launch(arrayOf("application/json", "text/plain")) }
                     Action("Save", Icons.Default.Save) { saveProject.launch("Cubical-Compare-project.json") }
                     Action("Data", Icons.Default.TableChart) { importData.launch(arrayOf("text/csv", "text/tab-separated-values", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) }
-                    Action("MegaPack", Icons.Default.Inventory2) { importPack.launch(arrayOf("application/zip", "application/octet-stream")) }
+                    Action("MegaPack", Icons.Default.Inventory2, enabled = !packState.running) { importPack.launch(arrayOf("application/zip", "application/octet-stream")) }
                     Action("Add card", Icons.Default.AddBox) {
                         val cards = project.cards + StudioCard(title = "New card")
                         project = project.copy(cards = cards); selected = cards.lastIndex
                     }
-                    Action("Export", Icons.Default.MovieCreation, enabled = !exportState.running) {
+                    Action("Export", Icons.Default.MovieCreation, enabled = !exportState.running && !packState.running) {
                         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        exportVideo.launch("Cubical-Compare-2.0.1.mp4")
+                        exportVideo.launch("Cubical-Compare-2.0.2.mp4")
                     }
                     if (exportState.running) Action("Cancel", Icons.Default.Cancel) { FinalExportService.cancel(context) }
                 }
@@ -129,8 +146,19 @@ fun FinalStudioApp() {
         },
         bottomBar = {
             Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
-                if (exportState.running) LinearProgressIndicator(progress = { exportState.percent / 100f }, modifier = Modifier.fillMaxWidth())
-                Text(if (exportState.running) "${exportState.stage} · ${exportState.detail}" else message, style = MaterialTheme.typography.bodySmall)
+                when {
+                    packState.running -> {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Text(packState.detail, style = MaterialTheme.typography.bodySmall)
+                    }
+                    exportState.running -> {
+                        LinearProgressIndicator(progress = { exportState.percent / 100f }, modifier = Modifier.fillMaxWidth())
+                        Text("${exportState.stage} · ${exportState.detail}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    packState.detail.startsWith("MegaPack failed") || packState.detail.contains("out of memory") ->
+                        Text(packState.detail, style = MaterialTheme.typography.bodySmall)
+                    else -> Text(message, style = MaterialTheme.typography.bodySmall)
+                }
             }
         },
     ) { padding ->
