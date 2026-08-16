@@ -1,0 +1,81 @@
+name: WatchData 2.0.4 measured visual audit
+
+on:
+  push:
+    branches:
+      - hotfix/reference-fidelity-watchdata-font-2.0.4
+    paths:
+      - engine/ccengine/**
+      - android/app/src/main/python/ccengine/**
+      - tests/**
+      - tools/fetch_watchdata_fonts.py
+      - .github/workflows/watchdata-204-measured-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install renderer dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install Pillow==11.0.0 openpyxl==3.1.5 pytest
+      - name: Fetch exact Poppins build inputs
+        run: |
+          python tools/fetch_watchdata_fonts.py \
+            --dest engine/ccengine/fonts \
+            --dest android/app/src/main/python/ccengine/fonts
+      - name: Verify shared renderer parity and tests
+        run: |
+          diff -qr engine/ccengine android/app/src/main/python/ccengine
+          PYTHONPATH=engine pytest -q tests/test_watchdata_204_fidelity.py tests/test_final_cross_platform_contract.py tests/test_animation_contract.py tests/test_males_middle_outro_regression.py
+          python -m py_compile \
+            engine/ccengine/watchdata_renderer.py \
+            engine/ccengine/watchdata_measured.py \
+            engine/ccengine/watchdata_final.py \
+            engine/ccengine/watchdata_release.py
+      - name: Render reference-address audit frames
+        run: |
+          mkdir -p qa/watchdata-204-measured
+          PYTHONPATH=engine python - <<'PY'
+          from pathlib import Path
+          from ccengine.models import Card, Project, ProjectSettings
+          from ccengine.renderer import FrameRenderer
+
+          # The supplied WatchData source has authored title-line breaks. 2.0.4
+          # now preserves them rather than normalising them away.
+          cards = [
+              Card("Ape Noises\nAnd Gestures", "7M YEARS AGO", "Our chimp ancestors spoke with hoots and gestures", ""),
+              Card("Language Section Of\nBrain Develops", "400K YEARS AGO", "The FOXP2 gene gave us the language part of our brain", ""),
+              Card("Voice Box\nEvolves Fully", "300K YEARS AGO", "A lower larynx unlocked many more distinct sounds", ""),
+              Card("Clicking\nLanguages", "70K YEARS AGO", "Some languages like Khoisan still use clicking sounds", ""),
+              Card("Continuous Card", "50K YEARS AGO", "Reference conveyor continuation", ""),
+          ]
+          settings = ProjectSettings()
+          settings.credits_top_text = "The values presented are the years in which various developmental milestones in languages occured."
+          settings.credits_heading = "Credits"
+          settings.credits_project_name = "Lead Research & Sourcing · Ahmed"
+          settings.credits_created_with_label = "Independent Fact Check"
+          settings.credits_created_with_value = "Alex Lambert"
+          settings.credits_design_label = "Lead Graphic Designer"
+          settings.credits_design_value = "Jack H"
+          settings.credits_footer = "DISCLAIMER: THIS VIDEO IS BASED ON COMMUNITY DISCUSSIONS AND RELEVANT SOURCES."
+          project = Project("WatchData visual audit", cards, settings)
+          renderer = FrameRenderer()
+          out = Path("qa/watchdata-204-measured")
+          for frame in (60, 80, 100, 120, 145, 160, 250, 300, 400, 528, 734, 750, 770, 790):
+              renderer.render(project, frame / 60.0).save(out / f"frame-{frame:04d}.png")
+          renderer._badge_source(cards[3], 5.0, sticker_entry=False).save(out / "settled-badge.png")
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: WatchData-2.0.4-Measured-Audit
+          path: qa/watchdata-204-measured/*.png
+          if-no-files-found: error

@@ -14,3 +14,5 @@ dist/
 *.video-part.mp4
 qa/*.mp4
 qa/model-assets/
+engine/ccengine/fonts/*.ttf
+android/app/src/main/python/ccengine/fonts/*.ttf

@@ -1,50 +1,66 @@
-# Cubical Compare 2.0.3 — Final Hotfix
+# Cubical Compare 2.0.4 — WatchData Fidelity Hotfix
 
-Cubical Compare 2.0.3 adds explicit Play and Stop controls to the Android renderer preview while preserving the 2.0.2 MegaPack and background-export fixes.
+Cubical Compare 2.0.4 corrects the visible renderer drift found by comparing a real Android export against the supplied 1920x1080 60 FPS WatchData-style reference at identical source frames.
 
 Release channel: `release/cubical-compare-final`.
-Build promotion: tested hotfix head `81274ae34b70db4e541a85688fa00e9db6761802`.
+Renderer visual-audit baseline: `56824d34ab99c37bf9a7869a3b15ab57809a2e74`.
 
-## 2.0.3 Android changes
+## 2.0.4 renderer corrections
 
-- The preview now has labeled **Play** and **Stop** buttons directly under the timeline slider.
-- Play begins from the current playhead. If the playhead is already on the final frame, playback restarts from frame zero.
-- Stop halts playback immediately and leaves the playhead on the currently displayed frame.
-- Dragging the timeline slider automatically stops playback and switches back to exact single-frame preview rendering.
-- Opening/importing a project, importing a MegaPack, creating a new project, editing the card set or starting export stops preview playback cleanly.
-- Preview playback is clocked from the project's real FPS. If a phone cannot render every 960x540 preview frame in real time, intermediate preview frames are skipped so playback timing stays correct instead of running in slow motion.
-- This preview-only frame skipping does **not** affect export. Export still renders and encodes every frame at the locked 60 FPS reference cadence.
-- Default exported filename is `Cubical-Compare-2.0.3.mp4`.
+- The exact decoded card-conveyor positions remain unchanged. 2.0.4 corrects the rendered appearance around that measured timeline instead of replacing it with generic easing.
+- The settled active badge now uses the measured 298x344 WatchData contour and measured opening-card scale hierarchy.
+- Opening badge ingress receives source-frame contour corrections while preserving the existing measured skew/rotation path.
+- Later badge fall remains source-frame driven; its gloss clock now follows the observed settle-and-sweep interval.
+- Settled and older badges return to flat red after the moving gloss passes instead of retaining a diagonal white stripe.
+- Badge text sizing, shadow strength and two-line value layout were re-measured against the reference.
+- WatchData-authored title line breaks are preserved, and title size is chosen by the measured line-width target instead of one fixed size.
+- Description wrapping uses the narrower reference text measure so line breaks track the supplied video more closely.
+- Credits typography and spacing were adjusted from rendered reference crops.
 
-## 2.0.2 fixes retained
+## WatchData-matched typography
 
-- MegaPack import remains off the Compose/activity thread and processes artwork one card at a time to avoid the large-memory crash seen with the 44-card liquids MegaPack.
-- Export remains a persistent `mediaProcessing` foreground service with wake lock, notification progress, cancellation, screen-off support and service recreation support.
+The supplied video glyphs were visually matched to the Poppins family. 2.0.4 therefore bundles official SIL Open Font License Poppins files from the Google Fonts repository instead of depending on Android or Windows system fonts.
 
-## Renderer contract
+- Main badge values: Poppins Bold.
+- Badge qualifiers such as `YEARS AGO`: Poppins SemiBold.
+- Card titles: Poppins SemiBold.
+- Descriptions/supporting text: Poppins Medium.
 
-The visual renderer remains frozen from commit `a75020c120ac788ca10d57a113775e221e907a94`, after dense contact-sheet verification against the 1920x1080 60 FPS reference. This hotfix does not modify `engine/ccengine`.
+Builds fetch the official font files and verify their Git blob SHA-1 values before packaging. Font binaries are not committed to the CTS source repository. The SIL OFL license notice is bundled with the renderer.
 
-Android still embeds a byte-for-byte copy of `engine/ccengine` under `android/app/src/main/python/ccengine`. Playback controls only schedule which exact renderer frame is requested for the live preview.
+## Cross-platform renderer contract
+
+Windows and Android use byte-identical `ccengine` renderer source trees. Android still runs the same Python renderer through Chaquopy rather than using a second Kotlin animation implementation.
+
+CI renders representative frames from the opening, settled opening-card hierarchy, continuous transition and later badge shine windows before packaging. It also rejects the release if the renderer differs from the reviewed 2.0.4 visual-audit baseline.
+
+## Android fixes retained
+
+- Play and Stop preview controls from 2.0.3 remain available.
+- Preview playback remains clocked to real video time and may skip preview-only frames on slower devices; final export still renders every output frame.
+- MegaPack import remains off the activity/Compose thread and processes artwork one card at a time.
+- Background export remains a persistent `mediaProcessing` foreground service with wake lock, notification progress, cancellation, screen-off support and service recreation support.
+- Default exported filename is `Cubical-Compare-2.0.4.mp4`.
 
 ## Windows
 
-The Windows application and renderer are unchanged functionally. CI rebuilds and re-verifies Windows so the cross-platform renderer freeze remains enforced.
+The rebuilt native Windows studio remains the desktop shell. It uses the same final 2.0.4 renderer and bundled Poppins assets as Android.
 
 ## Android signing
 
-The release pipeline uses a permanent Android release identity whenever one is configured through private repository secrets and verifies its expected certificate fingerprint. When those private secrets are absent, CI signs the APK with its installable fallback identity. The certificate SHA-256 fingerprint and signing mode are shipped beside the APK as `Cubical-Compare-2.0.3-Android.signing.txt`; no private key is committed or published.
+The release pipeline uses a permanent Android release identity whenever one is configured through private repository secrets and verifies its expected certificate fingerprint. When those private secrets are absent, CI signs the APK with its installable fallback identity. The certificate SHA-256 fingerprint and signing mode are shipped beside the APK as `Cubical-Compare-2.0.4-Android.signing.txt`; no private key is committed or published.
 
 ## Release gates
 
 CI rejects the release if:
 
-- `engine/ccengine` differs from the verified renderer baseline.
-- the Android renderer copy differs byte-for-byte from `engine/ccengine`.
-- the Android Python bridge does not compile.
-- any former Kotlin reference/timeline renderer returns.
+- `engine/ccengine` differs from the reviewed 2.0.4 renderer baseline.
+- the Android renderer copy differs byte-for-byte from the desktop `ccengine` tree.
+- the required Poppins font assets cannot be fetched or fail hash verification.
+- the required Poppins font assets are missing from the built package.
+- the WatchData renderer source does not compile.
 - renderer regression tests fail.
-- the Windows native shell or private renderer self-test fails.
+- the Windows private renderer or native-shell self-test fails.
 - Android unit tests or release assembly fail.
 - the Android APK is not cryptographically signed.
 - a configured permanent Android release identity has the wrong certificate fingerprint.
