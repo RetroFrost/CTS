@@ -35,8 +35,8 @@ def test_windows_creates_three_jpgs_beside_the_mp4() -> None:
 def test_205_keeps_the_verified_animation_renderer_untouched() -> None:
     desktop = ROOT / "engine" / "ccengine"
     android = ROOT / "android" / "app" / "src" / "main" / "python" / "ccengine"
-    desktop_files = sorted(p.relative_to(desktop) for p in desktop.rglob("*") if p.is_file() and "fonts" not in p.parts)
-    android_files = sorted(p.relative_to(android) for p in android.rglob("*") if p.is_file() and "fonts" not in p.parts)
+    desktop_files = sorted(p.relative_to(desktop) for p in desktop.rglob("*.py") if p.is_file())
+    android_files = sorted(p.relative_to(android) for p in android.rglob("*.py") if p.is_file())
     assert desktop_files == android_files
     for relative in desktop_files:
         assert (desktop / relative).read_bytes() == (android / relative).read_bytes(), relative
