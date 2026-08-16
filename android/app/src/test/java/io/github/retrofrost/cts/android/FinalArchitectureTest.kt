@@ -7,9 +7,9 @@ import org.junit.Test
 
 class FinalArchitectureTest {
     @Test
-    fun releaseIdentityIsTwoPointZeroPointThreeHotfix() {
-        assertEquals("2.0.3", BuildConfig.VERSION_NAME)
-        assertEquals(20003, BuildConfig.VERSION_CODE)
+    fun releaseIdentityIsTwoPointZeroPointFourHotfix() {
+        assertEquals("2.0.4", BuildConfig.VERSION_NAME)
+        assertEquals(20004, BuildConfig.VERSION_CODE)
     }
 
     @Test
