@@ -106,6 +106,8 @@ class FinalWatchDataFrameRenderer(MeasuredWatchDataFrameRenderer):
                             anchor="mm",
                         )
 
+            # The reference has a soft, offset lower-right text shadow. The
+            # previous ExtraBold build made this almost black and too strong.
             text_draw.text(
                 (239.5, y + 6),
                 text,
@@ -133,6 +135,10 @@ class FinalWatchDataFrameRenderer(MeasuredWatchDataFrameRenderer):
         width: int,
         height: int,
     ) -> None:
+        # Reuse the complete measured artwork/body path, then repaint the two
+        # text bands with the final WatchData weight/size fit. The larger max
+        # size is important: short titles wrap earlier at a larger size while
+        # long titles automatically shrink, matching the source behavior.
         super()._draw_card_body_uncached(canvas, card, x, width, height)
 
         ix = int(round(x))
