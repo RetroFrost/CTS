@@ -36,7 +36,11 @@ jobs:
         run: |
           diff -qr engine/ccengine android/app/src/main/python/ccengine
           PYTHONPATH=engine pytest -q tests/test_watchdata_204_fidelity.py tests/test_final_cross_platform_contract.py tests/test_animation_contract.py tests/test_males_middle_outro_regression.py
-          python -m py_compile engine/ccengine/watchdata_renderer.py engine/ccengine/watchdata_measured.py
+          python -m py_compile \
+            engine/ccengine/watchdata_renderer.py \
+            engine/ccengine/watchdata_measured.py \
+            engine/ccengine/watchdata_final.py \
+            engine/ccengine/watchdata_release.py
       - name: Render reference-address audit frames
         run: |
           mkdir -p qa/watchdata-204-measured
@@ -45,11 +49,13 @@ jobs:
           from ccengine.models import Card, Project, ProjectSettings
           from ccengine.renderer import FrameRenderer
 
+          # The supplied WatchData source has authored title-line breaks. 2.0.4
+          # now preserves them rather than normalising them away.
           cards = [
-              Card("Ape Noises And Gestures", "7M YEARS AGO", "Our chimp ancestors spoke with hoots and gestures", ""),
-              Card("Language Section Of Brain Develops", "400K YEARS AGO", "The FOXP2 gene gave us the language part of our brain", ""),
-              Card("Voice Box Evolves Fully", "300K YEARS AGO", "A lower larynx unlocked many more distinct sounds", ""),
-              Card("Clicking Languages", "70K YEARS AGO", "Some languages like Khoisan still use clicking sounds", ""),
+              Card("Ape Noises\nAnd Gestures", "7M YEARS AGO", "Our chimp ancestors spoke with hoots and gestures", ""),
+              Card("Language Section Of\nBrain Develops", "400K YEARS AGO", "The FOXP2 gene gave us the language part of our brain", ""),
+              Card("Voice Box\nEvolves Fully", "300K YEARS AGO", "A lower larynx unlocked many more distinct sounds", ""),
+              Card("Clicking\nLanguages", "70K YEARS AGO", "Some languages like Khoisan still use clicking sounds", ""),
               Card("Continuous Card", "50K YEARS AGO", "Reference conveyor continuation", ""),
           ]
           settings = ProjectSettings()
