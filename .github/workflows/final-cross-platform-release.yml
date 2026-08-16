@@ -6,6 +6,7 @@ on:
     branches:
       - work/final-cross-platform-rebuild
       - release/cubical-compare-final
+      - hotfix/android-preview-lifecycle-2.0.1
     paths:
       - android/**
       - native/**
@@ -23,7 +24,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION: 2.0.0
+  VERSION: 2.0.1
   RENDERER_BASE: a75020c120ac788ca10d57a113775e221e907a94
 
 jobs:
@@ -177,7 +178,7 @@ jobs:
             echo "CTS_HAS_STABLE_SIGNING=true" >> "$GITHUB_ENV"
           else
             echo "CTS_HAS_STABLE_SIGNING=false" >> "$GITHUB_ENV"
-            echo 'No private release identity is configured; this one final APK will use the installable CI fallback signing identity.'
+            echo 'No private release identity is configured; this hotfix APK will use the installable CI fallback signing identity.'
           fi
 
       - name: Build completely rebuilt Android app
@@ -201,7 +202,7 @@ jobs:
             test "$ACTUAL" = "$EXPECTED"
             SIGNING_KIND="permanent configured release identity"
           else
-            SIGNING_KIND="one-release CI fallback identity (installable; private key is not stored in the repository)"
+            SIGNING_KIND="CI fallback identity (installable; private key is not stored in the repository)"
           fi
           mkdir -p dist
           cp "$APK" "dist/Cubical-Compare-$VERSION-Android.apk"
@@ -226,7 +227,7 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/cts-signing"
 
   publish:
-    name: Publish v2.0.0 final
+    name: Publish v2.0.1 hotfix
     if: github.ref == 'refs/heads/release/cubical-compare-final'
     needs: [windows, android]
     runs-on: ubuntu-24.04
