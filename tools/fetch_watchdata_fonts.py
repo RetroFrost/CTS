@@ -11,6 +11,10 @@ FONT_FILES = {
         "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-ExtraBold.ttf",
         "167667d203d98f5b27c3ff58d486eea9c5287fe4",
     ),
+    "Poppins-Bold.ttf": (
+        "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf",
+        "1982f38ab21303459aa1155265052ca599fa58d1",
+    ),
     "Poppins-SemiBold.ttf": (
         "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-SemiBold.ttf",
         "c30ad104723a0e6e00e54768626cb02c5fdf6aee",
