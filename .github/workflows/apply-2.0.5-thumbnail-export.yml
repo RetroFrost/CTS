@@ -7,6 +7,7 @@ on:
       - feature/thumbnails-megapack-2.0.5
     paths:
       - tools/apply_205_thumbnail_export.py
+      - .github/workflows/apply-2.0.5-thumbnail-export.yml
 
 permissions:
   contents: write
