@@ -3,6 +3,7 @@
 Cubical Compare 2.0.2 fixes Android MegaPack memory crashes and makes long exports persist as true background media-processing jobs.
 
 Release channel: `release/cubical-compare-final`.
+Build promotion: tested hotfix head `f99a7e2718b07c878d1c3b371c999dcf918ed29a`.
 
 ## 2.0.2 Android fixes
 
