@@ -4,13 +4,13 @@ from pathlib import Path
 
 from ccengine.models import Card, ProjectSettings
 from ccengine.renderer import FrameRenderer
+from ccengine.watchdata_measured import MeasuredWatchDataFrameRenderer
 from ccengine.watchdata_renderer import (
     POPPINS_EXTRA_BOLD,
     POPPINS_MEDIUM,
     POPPINS_SEMI_BOLD,
     WATCHDATA_BADGE_FILL,
     WATCHDATA_BADGE_POLYGON,
-    WatchDataFrameRenderer,
 )
 
 
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_package_routes_every_renderer_call_through_watchdata_204() -> None:
-    assert FrameRenderer is WatchDataFrameRenderer
+    assert FrameRenderer is MeasuredWatchDataFrameRenderer
 
 
 def test_settled_badge_polygon_matches_reference_frame_528() -> None:
@@ -35,9 +35,20 @@ def test_settled_badge_face_is_flat_after_shine() -> None:
     renderer._active_settings = ProjectSettings()
     card = Card(title="Reference", value="70K YEARS AGO")
     badge = renderer._badge_source(card, 5.0, sticker_entry=False)
-    # This sample is inside the upper-right red face and outside both text
-    # lines, shadow and outline. A cached shine/streak would make it lighter.
     assert badge.getpixel((300, 90)) == (*WATCHDATA_BADGE_FILL, 255)
+
+
+def test_measured_opening_stage_uses_reference_widths() -> None:
+    renderer = FrameRenderer()
+    assert renderer._opening_stage_scale(250) == 1.0
+    assert abs(renderer._opening_stage_scale(300) - 273.0 / 298.0) < 1e-9
+    assert abs(renderer._opening_stage_scale(420) - 248.0 / 298.0) < 1e-9
+
+
+def test_measured_shine_clocks_finish_flat() -> None:
+    renderer = FrameRenderer()
+    assert renderer._opening_source_age(160) > 2.9
+    assert renderer._later_source_age(262) > 2.9
 
 
 def test_watchdata_font_contract_uses_poppins_weights() -> None:
@@ -53,7 +64,8 @@ def test_watchdata_font_contract_uses_poppins_weights() -> None:
     assert "167667d203d98f5b27c3ff58d486eea9c5287fe4" in gradle
 
 
-def test_android_and_desktop_watchdata_renderer_source_are_identical() -> None:
-    desktop = ROOT / "engine" / "ccengine" / "watchdata_renderer.py"
-    android = ROOT / "android" / "app" / "src" / "main" / "python" / "ccengine" / "watchdata_renderer.py"
-    assert desktop.read_bytes() == android.read_bytes()
+def test_android_and_desktop_watchdata_renderer_sources_are_identical() -> None:
+    for name in ("watchdata_renderer.py", "watchdata_measured.py"):
+        desktop = ROOT / "engine" / "ccengine" / name
+        android = ROOT / "android" / "app" / "src" / "main" / "python" / "ccengine" / name
+        assert desktop.read_bytes() == android.read_bytes()
