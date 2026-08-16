@@ -2,6 +2,8 @@
 
 Cubical Compare 2.0.1 is the Android lifecycle and system-inset hotfix for the final Windows + Android rebuild.
 
+Release channel: `release/cubical-compare-final`.
+
 ## 2.0.1 Android fixes
 
 - Preview recomposition no longer reports `The coroutine scope left the composition` as a renderer failure. Superseded preview jobs now propagate coroutine cancellation normally instead of turning expected cancellation into an error message.
