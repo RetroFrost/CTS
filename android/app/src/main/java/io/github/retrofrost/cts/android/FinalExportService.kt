@@ -150,7 +150,11 @@ class FinalExportService : Service() {
     private fun exportBaseName(project: StudioProject): String {
         val raw = project.name.trim().takeIf { it.isNotBlank() && !it.equals("Untitled", true) }
             ?: "Cubical-Compare-2.0.5"
-        val safe = raw.replace(Regex("[\\/:*?\"<>|]"), "-").replace(Regex("\s+"), " ").trim().take(96)
+        val safe = raw
+            .replace(Regex("""[\\/:*?"<>|]"""), "-")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .take(96)
         return safe.ifBlank { "Cubical-Compare-2.0.5" }
     }
 
@@ -186,7 +190,7 @@ class FinalExportService : Service() {
                     "Cancel",
                     PendingIntent.getService(
                         this@FinalExportService,
-                        1,
+                        2,
                         Intent(this@FinalExportService, FinalExportService::class.java).setAction(ACTION_CANCEL),
                         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                     ),
@@ -195,14 +199,7 @@ class FinalExportService : Service() {
         }
         .build()
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        // Deliberately do not stop: export is a user-requested long-running
-        // media-processing task and must continue after the editor is swiped away.
-        super.onTaskRemoved(rootIntent)
-    }
-
     override fun onDestroy() {
-        cancelled = true
         scope.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
         super.onDestroy()
@@ -212,23 +209,23 @@ class FinalExportService : Service() {
 
     companion object {
         private const val CHANNEL = "cubical_compare_export"
-        private const val NOTIFICATION_ID = 2200
-        private const val ACTION_START = "io.github.retrofrost.cts.android.EXPORT"
+        private const val NOTIFICATION_ID = 1205
+        private const val ACTION_START = "io.github.retrofrost.cts.android.START_EXPORT"
         private const val ACTION_CANCEL = "io.github.retrofrost.cts.android.CANCEL_EXPORT"
         private const val EXTRA_PROJECT = "project"
         private const val EXTRA_URI = "uri"
-        private const val PREFS = "background_export"
+        private const val PREFS = "final_export_request"
         private const val PREF_PROJECT = "project"
         private const val PREF_URI = "uri"
 
-        fun start(context: Context, projectJson: String, destination: Uri) {
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, FinalExportService::class.java)
-                    .setAction(ACTION_START)
-                    .putExtra(EXTRA_PROJECT, projectJson)
-                    .putExtra(EXTRA_URI, destination.toString()),
-            )
+        fun start(context: Context, projectJson: String, uri: Uri) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(PREF_PROJECT, projectJson).putString(PREF_URI, uri.toString()).apply()
+            val intent = Intent(context, FinalExportService::class.java)
+                .setAction(ACTION_START)
+                .putExtra(EXTRA_PROJECT, projectJson)
+                .putExtra(EXTRA_URI, uri.toString())
+            ContextCompat.startForegroundService(context, intent)
         }
 
         fun cancel(context: Context) {
