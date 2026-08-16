@@ -196,7 +196,7 @@ class WatchDataFrameRenderer(_base.FrameRenderer):
         # Never cache a shine/streak frame as the settled badge. The released
         # Android export showed a diagonal highlight stuck on old badges; the
         # reference returns to a flat red face after the sweep is gone.
-        settled = age >= (_base.SHINE_START + _base.SHINE_SECONDS + 1e-6)
+        settled = age >= (_base.SHINE_START + _base.SHINE_SECONDS - 1e-6)
         custom_font = getattr(self._active_settings, "font_badge", "") if self._active_settings else ""
         cache_key = (
             "watchdata-v204|" + self._active_profile.model_id + "|" + card.value.upper().strip(),
@@ -326,7 +326,7 @@ class WatchDataFrameRenderer(_base.FrameRenderer):
 
         draw.line((50, 232, panel_width - 50, 232), fill=(184, 184, 184), width=2)
         if settings.credits_heading.strip():
-            heading = self._font_from_bundle(POPPINS_EXTRA_BOLD, 50, fallback_bold=True)
+            heading = self._font_from_bundle(POPPINS_MEDIUM, 50, fallback_bold=False)
             draw.text(
                 (panel_width / 2, 300),
                 settings.credits_heading,
@@ -346,7 +346,7 @@ class WatchDataFrameRenderer(_base.FrameRenderer):
         if settings.credits_design_label.strip() or settings.credits_design_value.strip():
             rows.append((settings.credits_design_label.strip(), settings.credits_design_value.strip()))
 
-        y = 388
+        y = 410
         for role_text, value_text in rows:
             if role_text:
                 fitted_role = self._font_for_width(role_text, 24, panel_width - 60, bold=True, role="credits", minimum=17)

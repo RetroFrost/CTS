@@ -194,7 +194,7 @@ fun FinalStudioApp() {
                         isPlaying = false
                         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        exportVideo.launch("Cubical-Compare-2.0.3.mp4")
+                        exportVideo.launch("Cubical-Compare-2.0.4.mp4")
                     }
                     if (exportState.running) Action("Cancel", Icons.Default.Cancel) { FinalExportService.cancel(context) }
                 }
