@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -40,14 +41,26 @@ fun FinalStudioApp() {
     val projectJson = remember(project) { project.toJson() }
 
     LaunchedEffect(projectJson) {
-        runCatching { withContext(Dispatchers.Default) { SharedRenderer.metadata(project) } }
-            .onSuccess { metadata = it; frame = frame.coerceIn(0, (it.frameCount - 1).coerceAtLeast(0)) }
-            .onFailure { message = "Renderer metadata failed: ${it.message}" }
+        try {
+            val next = withContext(Dispatchers.Default) { SharedRenderer.metadata(project) }
+            metadata = next
+            frame = frame.coerceIn(0, (next.frameCount - 1).coerceAtLeast(0))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            message = "Renderer metadata failed: ${error.message}"
+        }
     }
     LaunchedEffect(projectJson, frame) {
-        runCatching { withContext(Dispatchers.Default) { SharedRenderer.render(project, frame, 960, 540) } }
-            .onSuccess { bitmap -> preview?.recycle(); preview = bitmap }
-            .onFailure { message = "Preview failed: ${it.message}" }
+        try {
+            val bitmap = withContext(Dispatchers.Default) { SharedRenderer.render(project, frame, 960, 540) }
+            preview?.recycle()
+            preview = bitmap
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            message = "Preview failed: ${error.message}"
+        }
     }
 
     val openProject = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -94,7 +107,7 @@ fun FinalStudioApp() {
 
     Scaffold(
         topBar = {
-            Surface(tonalElevation = 3.dp) {
+            Surface(Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Action("New", Icons.Default.Add) { project = StudioProject(); selected = 0; frame = 0; message = "New project" }
                     Action("Open", Icons.Default.FolderOpen) { openProject.launch(arrayOf("application/json", "text/plain")) }
@@ -108,14 +121,14 @@ fun FinalStudioApp() {
                     Action("Export", Icons.Default.MovieCreation, enabled = !exportState.running) {
                         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        exportVideo.launch("Cubical-Compare-2.0.0.mp4")
+                        exportVideo.launch("Cubical-Compare-2.0.1.mp4")
                     }
                     if (exportState.running) Action("Cancel", Icons.Default.Cancel) { FinalExportService.cancel(context) }
                 }
             }
         },
         bottomBar = {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
                 if (exportState.running) LinearProgressIndicator(progress = { exportState.percent / 100f }, modifier = Modifier.fillMaxWidth())
                 Text(if (exportState.running) "${exportState.stage} · ${exportState.detail}" else message, style = MaterialTheme.typography.bodySmall)
             }
