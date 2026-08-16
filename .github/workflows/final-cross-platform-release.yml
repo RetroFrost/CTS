@@ -7,6 +7,7 @@ on:
       - work/final-cross-platform-rebuild
       - release/cubical-compare-final
       - hotfix/android-preview-lifecycle-2.0.1
+      - hotfix/android-megapack-background-export-2.0.2
     paths:
       - android/**
       - native/**
@@ -24,7 +25,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION: 2.0.1
+  VERSION: 2.0.2
   RENDERER_BASE: a75020c120ac788ca10d57a113775e221e907a94
 
 jobs:
@@ -162,6 +163,9 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Validate Android Python bridge syntax
+        run: python -m py_compile android/app/src/main/python/cts_android_bridge.py
+
       - name: Prepare permanent signing when available
         shell: bash
         run: |
@@ -227,7 +231,7 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/cts-signing"
 
   publish:
-    name: Publish v2.0.1 hotfix
+    name: Publish v2.0.2 hotfix
     if: github.ref == 'refs/heads/release/cubical-compare-final'
     needs: [windows, android]
     runs-on: ubuntu-24.04
