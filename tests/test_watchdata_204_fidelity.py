@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ccengine.models import Card, ProjectSettings
 from ccengine.renderer import FrameRenderer
-from ccengine.watchdata_measured import MeasuredWatchDataFrameRenderer
+from ccengine.watchdata_final import FinalWatchDataFrameRenderer, POPPINS_BOLD
 from ccengine.watchdata_renderer import (
     POPPINS_EXTRA_BOLD,
     POPPINS_MEDIUM,
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_package_routes_every_renderer_call_through_watchdata_204() -> None:
-    assert FrameRenderer is MeasuredWatchDataFrameRenderer
+    assert FrameRenderer is FinalWatchDataFrameRenderer
 
 
 def test_settled_badge_polygon_matches_reference_frame_528() -> None:
@@ -53,19 +53,21 @@ def test_measured_shine_clocks_finish_flat() -> None:
 
 def test_watchdata_font_contract_uses_poppins_weights() -> None:
     assert POPPINS_EXTRA_BOLD == "Poppins-ExtraBold.ttf"
+    assert POPPINS_BOLD == "Poppins-Bold.ttf"
     assert POPPINS_SEMI_BOLD == "Poppins-SemiBold.ttf"
     assert POPPINS_MEDIUM == "Poppins-Medium.ttf"
-    spec = (ROOT / "engine" / "cubical-compare-engine.spec").read_text(encoding="utf-8")
-    gradle = (ROOT / "android" / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-    for name in (POPPINS_EXTRA_BOLD, POPPINS_SEMI_BOLD, POPPINS_MEDIUM):
-        assert name in spec
-        assert name in gradle
-    assert "167667d203d98f5b27c3ff58d486eea9c5287fe4" in spec
-    assert "167667d203d98f5b27c3ff58d486eea9c5287fe4" in gradle
+    fetcher = (ROOT / "tools" / "fetch_watchdata_fonts.py").read_text(encoding="utf-8")
+    for name in (POPPINS_BOLD, POPPINS_SEMI_BOLD, POPPINS_MEDIUM):
+        assert name in fetcher
+    assert "1982f38ab21303459aa1155265052ca599fa58d1" in fetcher
 
 
 def test_android_and_desktop_watchdata_renderer_sources_are_identical() -> None:
-    for name in ("watchdata_renderer.py", "watchdata_measured.py"):
+    for name in (
+        "watchdata_renderer.py",
+        "watchdata_measured.py",
+        "watchdata_final.py",
+    ):
         desktop = ROOT / "engine" / "ccengine" / name
         android = ROOT / "android" / "app" / "src" / "main" / "python" / "ccengine" / name
         assert desktop.read_bytes() == android.read_bytes()
