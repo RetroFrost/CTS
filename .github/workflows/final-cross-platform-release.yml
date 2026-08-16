@@ -29,9 +29,9 @@ concurrency:
 
 env:
   VERSION: 2.0.4
-  # First commit where the corrected 2.0.4 renderer source and Android mirror
-  # both passed the rendered visual-audit correction.
-  RENDERER_BASE: 0aabbdcc9118f8fd82876d8b8ec2ee54b0fcbeb6
+  # Exact renderer state which passed the final same-frame WatchData audit and
+  # has byte-identical desktop/Android ccengine trees.
+  RENDERER_BASE: 56824d34ab99c37bf9a7869a3b15ab57809a2e74
 
 jobs:
   windows:
@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           git diff --exit-code $env:RENDERER_BASE -- engine/ccengine
-          if ($LASTEXITCODE -ne 0) { throw 'The reviewed 2.0.4 reference renderer changed after its baseline commit.' }
+          if ($LASTEXITCODE -ne 0) { throw 'The reviewed 2.0.4 WatchData renderer changed after its visual-audit baseline.' }
 
       - uses: actions/setup-python@v6
         with:
@@ -83,7 +83,7 @@ jobs:
           python -m compileall -q engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Render 2.0.4 visual-audit frames
+      - name: Render 2.0.4 final WatchData audit frames
         shell: pwsh
         run: |
           $env:PYTHONPATH = "$PWD\engine"
@@ -94,10 +94,10 @@ jobs:
           from ccengine.renderer import FrameRenderer
 
           cards = [
-              Card("Ape Noises And Gestures", "7M YEARS AGO", "Our chimp ancestors spoke with hoots and gestures", ""),
-              Card("Language Section Of Brain Develops", "400K YEARS AGO", "The FOXP2 gene gave us the language part of our brain", ""),
-              Card("Voice Box Evolves Fully", "300K YEARS AGO", "A lower larynx unlocked many more distinct sounds", ""),
-              Card("Clicking Languages", "70K YEARS AGO", "Some languages like Khoisan still use clicking sounds", ""),
+              Card("Ape Noises\nAnd Gestures", "7M YEARS AGO", "Our chimp ancestors spoke with hoots and gestures", ""),
+              Card("Language Section Of\nBrain Develops", "400K YEARS AGO", "The FOXP2 gene gave us the language part of our brain", ""),
+              Card("Voice Box\nEvolves Fully", "300K YEARS AGO", "A lower larynx unlocked many more distinct sounds", ""),
+              Card("Clicking\nLanguages", "70K YEARS AGO", "Some languages like Khoisan still use clicking sounds", ""),
               Card("Continuous Card", "50K YEARS AGO", "Reference conveyor continuation", ""),
           ]
           settings = ProjectSettings()
@@ -112,10 +112,9 @@ jobs:
           project = Project("WatchData visual audit", cards, settings)
           renderer = FrameRenderer()
           root = Path("qa/watchdata-204")
-          renderer.render(project, 100 / 60.0).save(root / "frame-0100.png")
-          renderer.render(project, 528 / 60.0).save(root / "frame-0528.png")
-          badge = renderer._badge_source(cards[3], 5.0, sticker_entry=False)
-          badge.save(root / "settled-badge.png")
+          for frame in (60, 80, 100, 120, 145, 160, 250, 300, 400, 528, 734, 750, 770, 790):
+              renderer.render(project, frame / 60.0).save(root / f"frame-{frame:04d}.png")
+          renderer._badge_source(cards[3], 5.0, sticker_entry=False).save(root / "settled-badge.png")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -135,6 +134,16 @@ jobs:
           $engine = '.\dist\cubical-compare-engine\cubical-compare-engine.exe'
           if (-not (Test-Path $engine)) { throw 'Renderer engine was not produced.' }
           Copy-Item $env:CUBICAL_COMPARE_FFMPEG '.\dist\cubical-compare-engine\ffmpeg.exe' -Force
+
+      - name: Verify packaged WatchData fonts
+        shell: pwsh
+        run: |
+          $fontRoot = '.\engine\dist\cubical-compare-engine\_internal\ccengine\fonts'
+          foreach ($name in @('Poppins-Bold.ttf','Poppins-SemiBold.ttf','Poppins-Medium.ttf','OFL.txt')) {
+            if (-not (Get-ChildItem '.\engine\dist\cubical-compare-engine' -Recurse -File -Filter $name | Select-Object -First 1)) {
+              throw "Packaged WatchData font asset missing: $name"
+            }
+          }
 
       - name: Self-test packaged renderer
         shell: pwsh
@@ -195,7 +204,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove Android uses the 2.0.4 desktop renderer
+      - name: Prove Android uses the final 2.0.4 desktop renderer
         run: |
           set -euo pipefail
           git diff --exit-code "$RENDERER_BASE" -- engine/ccengine
@@ -216,10 +225,14 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Validate Android Python bridge syntax
+      - name: Validate Android Python renderer syntax
         run: |
           python -m py_compile android/app/src/main/python/cts_android_bridge.py
-          python -m py_compile android/app/src/main/python/ccengine/watchdata_renderer.py
+          python -m py_compile \
+            android/app/src/main/python/ccengine/watchdata_renderer.py \
+            android/app/src/main/python/ccengine/watchdata_measured.py \
+            android/app/src/main/python/ccengine/watchdata_final.py \
+            android/app/src/main/python/ccengine/watchdata_release.py
 
       - name: Prepare permanent signing when available
         shell: bash
@@ -249,9 +262,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -s android/app/src/main/python/ccengine/fonts/Poppins-ExtraBold.ttf
+          test -s android/app/src/main/python/ccengine/fonts/Poppins-Bold.ttf
           test -s android/app/src/main/python/ccengine/fonts/Poppins-SemiBold.ttf
           test -s android/app/src/main/python/ccengine/fonts/Poppins-Medium.ttf
+          test -s android/app/src/main/python/ccengine/fonts/OFL.txt
 
       - name: Verify Android release signature and identity
         shell: bash
