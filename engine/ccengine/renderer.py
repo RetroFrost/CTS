@@ -2,12 +2,14 @@ from __future__ import annotations
 
 """Compatibility doorway for Cubical Compare Canary.
 
-All actual frame rendering lives in canary_renderer.py and all measured motion
-lives in canary_reference.py.  The helpers below remain only for old callers
-and tests; the Canary renderer never uses them to animate the source model.
+All actual frame rendering lives in the Canary renderer modules and all
+measured motion lives in Canary reference tables. The helpers below remain
+only for old callers and tests; Canary rendering does not use them to animate
+the source model.
 """
 
-from .canary_renderer import FrameRenderer, clamp, lerp, smoothstep
+from .canary_renderer_v2 import FrameRenderer
+from .canary_renderer import clamp, lerp, smoothstep
 
 
 # Legacy helper API retained so existing integrations do not break while the
@@ -96,5 +98,5 @@ def post_badge_fall_affine(age: float) -> tuple[float,float,float,float,float,fl
         y=keys[-1][1]
         for a,b in zip(keys,keys[1:]):
             if frame <= b[0]:
-                y=lerp(a[1],b[1],(frame-a[0])/max(1e-9,b[0]-a[0]));break
+                y=lerp(a[1],b[1],(frame-a[0])/max(1e-9,b[0]-a[0]);break
     return 1.0,0.0,0.0,1.0,0.0,y
