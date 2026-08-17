@@ -1,0 +1,145 @@
+name: Cubical Compare Canary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - canary/cubical-compare
+    paths:
+      - engine/**
+      - tests/**
+      - native/**
+      - CMakeLists.txt
+      - .github/workflows/cubical-compare-canary.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cubical-compare-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CANARY_VERSION: 0.1.0
+
+jobs:
+  linux:
+    name: Canary Linux amd64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: engine/requirements-build.txt
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake g++ libgtk-4-dev ninja-build pkg-config
+          python -m pip install --upgrade pip
+          python -m pip install -r engine/requirements-build.txt
+
+      - name: Verify frame-addressed Canary contract
+        env:
+          PYTHONPATH: ${{ github.workspace }}/engine
+        run: |
+          pytest -q \
+            tests/test_canary_reference_contract.py \
+            tests/test_animation_contract.py \
+            tests/test_frame_perfect_layout.py \
+            tests/test_males_middle_outro_regression.py
+          python -m compileall -q engine
+
+      - name: Build Canary engine
+        working-directory: engine
+        env:
+          PYTHONPATH: ${{ github.workspace }}/engine
+        run: |
+          pyinstaller --noconfirm --clean cubical-compare-engine.spec
+          test -x dist/cubical-compare-engine/cubical-compare-engine
+
+      - name: Build Canary native app
+        run: |
+          cmake -S . -B build-canary -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-canary --parallel 2
+          test -x build-canary/cubical-compare-canary
+
+      - name: Package Canary
+        run: |
+          root="dist/Cubical-Compare-Canary-${CANARY_VERSION}-linux-amd64"
+          rm -rf dist
+          mkdir -p "$root/engine"
+          cp build-canary/cubical-compare-canary "$root/"
+          cp -a engine/dist/cubical-compare-engine/. "$root/engine/"
+          printf 'Cubical Compare Canary %s\nFrame-addressed experimental renderer.\n' "$CANARY_VERSION" > "$root/CANARY.txt"
+          tar -C dist -czf "dist/Cubical-Compare-Canary-${CANARY_VERSION}-linux-amd64.tar.gz" "Cubical-Compare-Canary-${CANARY_VERSION}-linux-amd64"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Cubical-Compare-Canary-${{ env.CANARY_VERSION }}-Linux-amd64
+          path: dist/Cubical-Compare-Canary-${{ env.CANARY_VERSION }}-linux-amd64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: Canary Windows x64
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: engine/requirements-build.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r engine/requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify frame-addressed Canary contract
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "$PWD\engine"
+          pytest -q tests/test_canary_reference_contract.py tests/test_animation_contract.py tests/test_frame_perfect_layout.py tests/test_males_middle_outro_regression.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m compileall -q engine
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Canary engine
+        working-directory: engine
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "$PWD"
+          pyinstaller --noconfirm --clean cubical-compare-engine.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Canary native app
+        shell: pwsh
+        run: |
+          cmake -S . -B build-canary -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-canary --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path '.\build-canary\Release\CubicalCompareCanary.exe')) { throw 'Canary executable was not produced.' }
+
+      - name: Package Canary
+        shell: pwsh
+        run: |
+          $root = "dist\Cubical-Compare-Canary-$env:CANARY_VERSION-windows-x64"
+          New-Item -ItemType Directory -Force "$root\engine" | Out-Null
+          Copy-Item '.\build-canary\Release\CubicalCompareCanary.exe' "$root\"
+          Copy-Item '.\engine\dist\cubical-compare-engine\*' "$root\engine\" -Recurse
+          "Cubical Compare Canary $env:CANARY_VERSION`r`nFrame-addressed experimental renderer." | Set-Content "$root\CANARY.txt"
+          Compress-Archive -Path "$root\*" -DestinationPath "dist\Cubical-Compare-Canary-$env:CANARY_VERSION-windows-x64.zip" -Force
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Cubical-Compare-Canary-${{ env.CANARY_VERSION }}-Windows-x64
+          path: dist/Cubical-Compare-Canary-${{ env.CANARY_VERSION }}-windows-x64.zip
+          if-no-files-found: error
