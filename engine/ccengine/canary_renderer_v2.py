@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Second Canary renderer pass: source-measured badge-bound alignment.
 
-This remains entirely inside the clean Canary renderer family.  It subclasses
+This remains entirely inside the clean Canary renderer family. It subclasses
 Canary v1 only to keep the already verified card/outro implementation and
-replaces the post-opening badge compositor with dense MP4 measurements.
+replaces the badge compositor wherever dense source measurements exist.
 """
 
 from PIL import Image
@@ -14,8 +14,10 @@ from .canary_badge_reference import continuous_badge_red_bounds
 from .canary_renderer import FrameRenderer as CanaryFrameRendererV1, clamp
 
 
-# Effective red polygon bounds inside Canary v1's 469x400 badge source,
-# measured from v1 output before its old transparent crop was applied.
+# Effective visible-red bounds inside Canary v1's 469x400 badge source. These
+# coordinates were recovered from v1's rendered shell before its transparent
+# crop was applied, so mapping them to source measurements preserves the
+# surrounding shadow instead of cropping it away.
 _SOURCE_RED_LEFT = 72.0
 _SOURCE_RED_TOP = 13.0
 _SOURCE_RED_WIDTH = 330.0
@@ -23,24 +25,18 @@ _SOURCE_RED_HEIGHT = 373.0
 
 
 class FrameRenderer(CanaryFrameRendererV1):
-    """Canary renderer with direct continuous-badge source-frame bounds."""
+    """Canary renderer with direct source-frame badge-bound placement."""
 
-    def _draw_source_to_red_bounds(
+    def _place_source_on_red_bounds(
         self,
         canvas: Image.Image,
-        card,
+        source: Image.Image,
         body_x: int,
-        local_frame: int,
         red_bounds: tuple[int, int, int, int],
     ) -> None:
         x_offset, y, width, height = red_bounds
         if width <= 0 or height <= 0:
             return
-
-        # By local frame 200 both value lines are fully present in the source.
-        # Keep the measured gloss clock, but never re-introduce a geometry ease.
-        shine = clamp((local_frame - 205) / 40.0) if 205 <= local_frame <= 245 else -1.0
-        source = self._badge_source(card, 1.0, shine)
 
         scale_x = width / _SOURCE_RED_WIDTH
         scale_y = height / _SOURCE_RED_HEIGHT
@@ -56,11 +52,37 @@ class FrameRenderer(CanaryFrameRendererV1):
             return
         canvas.paste(scaled.convert("RGB"), (destination_x, destination_y), scaled.getchannel("A"))
 
+    def _draw_continuous_precise(
+        self,
+        canvas: Image.Image,
+        card,
+        body_x: int,
+        local_frame: int,
+        red_bounds: tuple[int, int, int, int],
+    ) -> None:
+        # The source value is fully present by local frame 200. Gloss crosses
+        # the face on the measured continuous-card clock.
+        shine = clamp((local_frame - 205) / 40.0) if 205 <= local_frame <= 245 else -1.0
+        source = self._badge_source(card, 1.0, shine)
+        self._place_source_on_red_bounds(canvas, source, body_x, red_bounds)
+
+    def _draw_opening_stage_precise(
+        self,
+        canvas: Image.Image,
+        card,
+        body_x: int,
+        effective_local_frame: int,
+        red_bounds: tuple[int, int, int, int],
+    ) -> None:
+        # At the old affine->stage handoff (effective frame 120) v1 restarted
+        # text_progress from zero, visibly deleting the value. The reference
+        # keeps both value lines continuously present. Its opening gloss is
+        # still crossing the hex around f120 and has cleared by ~f131.
+        shine = clamp((effective_local_frame - 100) / 30.0) if 100 <= effective_local_frame <= 130 else -1.0
+        source = self._badge_source(card, 1.0, shine)
+        self._place_source_on_red_bounds(canvas, source, body_x, red_bounds)
+
     def _draw_badge(self, canvas, project, index: int, body_x: int, frame: int) -> None:
-        # Opening cards keep the separately measured opening affine/stage path.
-        if index < 4:
-            super()._draw_badge(canvas, project, index, body_x, frame)
-            return
         if not getattr(project.settings, "show_badges", True):
             return
         card = project.cards[index]
@@ -68,11 +90,26 @@ class FrameRenderer(CanaryFrameRendererV1):
             return
 
         local_frame = int(frame) - ref.card_start_frame(index)
-        precise = continuous_badge_red_bounds(local_frame)
-        if precise is not None:
-            self._draw_source_to_red_bounds(canvas, card, body_x, local_frame, precise)
+
+        if index < 4:
+            delay = ref.FOURTH_OPENING_BADGE_DELAY if index == 3 else 0
+            effective = local_frame - delay
+            # Preserve v1's dense affine table while the opening badge is
+            # actually deforming. Only the settled/staged handoff is replaced.
+            if effective < ref.OPENING_ENTRY_LAST_LOCAL_FRAME:
+                super()._draw_badge(canvas, project, index, body_x, frame)
+                return
+            stage = ref.opening_badge_stage(index, int(frame))
+            if stage is None:
+                return
+            self._draw_opening_stage_precise(canvas, card, body_x, effective, stage)
             return
 
-        # Frames before 200 are still partly above the 1080p canvas.  The v1
-        # full-shell table retains the correct off-screen clipping for them.
+        precise = continuous_badge_red_bounds(local_frame)
+        if precise is not None:
+            self._draw_continuous_precise(canvas, card, body_x, local_frame, precise)
+            return
+
+        # Frames before 200 are still partly above the 1080p canvas. V1's
+        # full-shell table retains the correct off-screen clipping there.
         super()._draw_badge(canvas, project, index, body_x, frame)
