@@ -9,7 +9,7 @@
         android:allowBackup="true"
         android:icon="@drawable/ic_cts_final"
         android:roundIcon="@drawable/ic_cts_final"
-        android:label="Cubical Compare"
+        android:label="Cubical Compare Lab"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true">
