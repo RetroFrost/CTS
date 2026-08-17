@@ -42,7 +42,7 @@ class LabFrameRenderer(FrameRenderer):
         polygon = [(round(x), round(y)) for x, y in BADGE_POLYGON]
         layer = Image.new("RGBA", BADGE_SOURCE_SIZE, (0, 0, 0, 0))
 
-        # Gemini experiment: a more obvious fixed directional shadow.
+        # Lab experiment: stronger depth without inventing a white keyline.
         shadow_mask = Image.new("L", BADGE_SOURCE_SIZE, 0)
         shadow_draw = ImageDraw.Draw(shadow_mask)
         shadow_draw.polygon([(x + 5, y + 7) for x, y in polygon], fill=180)
@@ -53,8 +53,8 @@ class LabFrameRenderer(FrameRenderer):
 
         draw = ImageDraw.Draw(layer)
         draw.polygon(polygon, fill=(*self.theme.badge, 255))
-        # Lab-only high-contrast white keyline, then a thin dark inner edge.
-        draw.line(polygon + [polygon[0]], fill=(255, 255, 255, 255), width=10, joint="curve")
+        # Keep only the subtle dark edge. The supplied reference has no thick
+        # white outline around the badge.
         draw.line(polygon + [polygon[0]], fill=(*self.theme.badge_dark, 170), width=2, joint="curve")
         self._badge_shell_cache[shape] = layer.copy()
         return layer
@@ -145,8 +145,8 @@ class LabFrameRenderer(FrameRenderer):
     def _draw_card_body_uncached(self, canvas, card, x: float, width: int, height: int) -> None:
         super()._draw_card_body_uncached(canvas, card, x, width, height)
 
-        # Gemini experiment: give title/description banners a small physical
-        # separation without touching the stable typography or wrap algorithm.
+        # Lab experiment: subtle dark separation only. Do not add white rules
+        # which are absent from the supplied reference.
         title = " ".join(str(card.title or "").split())
         description = " ".join(str(card.description or "").split())
         layout = self._active_profile.layout
@@ -157,8 +157,7 @@ class LabFrameRenderer(FrameRenderer):
         ix = int(round(x))
         draw = ImageDraw.Draw(canvas)
         if title_height:
-            draw.line((ix, image_height, ix + width - 1, image_height), fill=(255, 255, 255), width=2)
-            draw.line((ix, image_height + 2, ix + width - 1, image_height + 2), fill=(30, 30, 30), width=2)
+            draw.line((ix, image_height, ix + width - 1, image_height), fill=(30, 30, 30), width=2)
         if description_height:
             desc_top = image_height + title_height + rule_height
             draw.line((ix, desc_top, ix + width - 1, desc_top), fill=(35, 35, 35), width=3)
