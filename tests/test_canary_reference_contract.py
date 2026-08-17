@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ccengine import canary_reference as ref
+from ccengine.canary_badge_reference import continuous_badge_red_bounds
 from ccengine.models import Card, Project
 from ccengine.renderer import FrameRenderer
 
@@ -54,6 +55,48 @@ def test_continuous_badge_geometry_is_frame_addressed() -> None:
     assert ref.continuous_badge_state(815) == (254, 294, 62)
     assert ref.continuous_badge_state(850) == (248, 286, 66)
     assert ref.continuous_badge_state(999) == (248, 286, 66)
+
+
+def test_dense_visible_badge_bounds_match_reference_components() -> None:
+    assert continuous_badge_red_bounds(200) == (73, 12, 324, 364)
+    assert continuous_badge_red_bounds(213) == (73, 20, 325, 366)
+    assert continuous_badge_red_bounds(390) == (82, 28, 306, 350)
+    assert continuous_badge_red_bounds(600) == (94, 44, 283, 324)
+    assert continuous_badge_red_bounds(815) == (108, 62, 254, 292)
+    assert continuous_badge_red_bounds(850) == (111, 68, 249, 284)
+
+
+def _red_bbox_near(image, expected: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    ex, ey, ew, eh = expected
+    left = max(0, ex - 20)
+    top = max(0, ey - 20)
+    right = min(image.width, ex + ew + 20)
+    bottom = min(image.height, ey + eh + 20)
+    found: list[tuple[int, int]] = []
+    for y in range(top, bottom):
+        for x in range(left, right):
+            r, g, b = image.getpixel((x, y))
+            if r > 120 and r > g * 2.2 and r > b * 2.2:
+                found.append((x, y))
+    assert found
+    xs = [p[0] for p in found]
+    ys = [p[1] for p in found]
+    return min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+
+
+def test_rendered_badge_bounds_land_on_reference_pixels() -> None:
+    cards = [Card("", "", "", "") for _ in range(57)]
+    cards[4].value = "7M YEARS AGO"
+    project = Project(cards=cards)
+    renderer = FrameRenderer()
+
+    for global_frame, expected in (
+        (918, (1046, 28, 306, 350)),
+        (1128, (592, 44, 283, 324)),
+    ):
+        image = renderer.render(project, global_frame / 60.0)
+        actual = _red_bbox_near(image, expected)
+        assert all(abs(a - e) <= 2 for a, e in zip(actual, expected)), (global_frame, actual, expected)
 
 
 def test_canonical_movie_is_exactly_12267_frames() -> None:
