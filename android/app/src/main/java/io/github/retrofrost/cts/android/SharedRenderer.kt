@@ -10,7 +10,7 @@ import java.io.File
 
 object SharedRenderer {
     private val lock = Any()
-    private val module by lazy { Python.getInstance().getModule("cts_android_bridge") }
+    private val module by lazy { Python.getInstance().getModule("cts_android_bridge_lab") }
 
     fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
         val json = JSONObject(module.callAttr("metadata", project.toJson()).toString())
