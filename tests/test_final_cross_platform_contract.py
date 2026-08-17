@@ -42,8 +42,10 @@ def test_old_android_renderer_is_completely_removed() -> None:
 def test_android_preview_and_export_call_shared_renderer() -> None:
     bridge = (ROOT / "android" / "app" / "src" / "main" / "java" / "io" / "github" / "retrofrost" / "cts" / "android" / "SharedRenderer.kt").read_text(encoding="utf-8")
     exporter = (ROOT / "android" / "app" / "src" / "main" / "java" / "io" / "github" / "retrofrost" / "cts" / "android" / "FinalExportEngine.kt").read_text(encoding="utf-8")
-    python_bridge = (ROOT / "android" / "app" / "src" / "main" / "python" / "cts_android_bridge.py").read_text(encoding="utf-8")
-    assert 'getModule("cts_android_bridge")' in bridge
+    stable_python_bridge = (ROOT / "android" / "app" / "src" / "main" / "python" / "cts_android_bridge.py").read_text(encoding="utf-8")
+    lab_python_bridge = (ROOT / "android" / "app" / "src" / "main" / "python" / "cts_android_bridge_lab.py").read_text(encoding="utf-8")
+    assert 'getModule("cts_android_bridge_lab")' in bridge
     assert "SharedRenderer.render(project, frame" in exporter
-    assert "FrameRenderer" in python_bridge
-    assert "_renderer.render(" in python_bridge
+    assert "FrameRenderer" in stable_python_bridge
+    assert "LabFrameRenderer" in lab_python_bridge
+    assert "stable._renderer = LabFrameRenderer()" in lab_python_bridge
