@@ -79,11 +79,11 @@ android {
     namespace = "io.github.retrofrost.cts.android"
     compileSdk = 36
     defaultConfig {
-        applicationId = "io.github.retrofrost.cts.android"
+        applicationId = "io.github.retrofrost.cts.android.lab"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20005
-        versionName = "2.0.5"
+        versionCode = 200051
+        versionName = "2.0.5-lab-gemini1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
