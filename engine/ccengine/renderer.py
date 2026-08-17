@@ -60,12 +60,14 @@ _POST_BADGE_FALL_FRAME_OFFSETS = (
 
 
 def _sample_scalar(points: tuple[tuple[float, float], ...], value: float) -> float:
-    if value <= points[0][0]: return points[0][1]
-    if value >= points[-1][0]: return points[-1][1]
-    for (x0,y0),(x1,y1) in zip(points,points[1:]):
+    if value <= points[0][0]:
+        return points[0][1]
+    if value >= points[-1][0]:
+        return points[-1][1]
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
         if value <= x1:
-            p=smoothstep((value-x0)/max(1e-9,x1-x0))
-            return lerp(y0,y1,p)
+            p = smoothstep((value - x0) / max(1e-9, x1 - x0))
+            return lerp(y0, y1, p)
     return points[-1][1]
 
 
@@ -73,30 +75,35 @@ def body_progress(local_time: float) -> float:
     return _sample_scalar(_BODY_PROGRESS_KEYFRAMES, max(0.0, local_time))
 
 
-def _sample_affine(frame: float) -> tuple[float,float,float,float,float,float]:
-    keys=_OPENING_BADGE_FRAME_KEYFRAMES
-    if frame <= keys[0][0]: return keys[0][1:]
-    if frame >= keys[-1][0]: return keys[-1][1:]
-    for a,b in zip(keys,keys[1:]):
+def _sample_affine(frame: float) -> tuple[float, float, float, float, float, float]:
+    keys = _OPENING_BADGE_FRAME_KEYFRAMES
+    if frame <= keys[0][0]:
+        return keys[0][1:]
+    if frame >= keys[-1][0]:
+        return keys[-1][1:]
+    for a, b in zip(keys, keys[1:]):
         if frame <= b[0]:
-            p=(frame-a[0])/max(1e-9,b[0]-a[0])
-            return tuple(lerp(a[i],b[i],p) for i in range(1,7))
+            p = (frame - a[0]) / max(1e-9, b[0] - a[0])
+            return tuple(lerp(a[i], b[i], p) for i in range(1, 7))
     return keys[-1][1:]
 
 
-def badge_entry_affine(age: float) -> tuple[float,float,float,float,float,float]:
-    frame=35.0+clamp(age/2.9)*85.0
+def badge_entry_affine(age: float) -> tuple[float, float, float, float, float, float]:
+    frame = 35.0 + clamp(age / 2.9) * 85.0
     return _sample_affine(frame)
 
 
-def post_badge_fall_affine(age: float) -> tuple[float,float,float,float,float,float]:
-    frame=650.0+max(0.0,age)*(103.0/2.25)
-    keys=_POST_BADGE_FALL_FRAME_OFFSETS
-    if frame <= keys[0][0]: y=keys[0][1]
-    elif frame >= keys[-1][0]: y=keys[-1][1]
+def post_badge_fall_affine(age: float) -> tuple[float, float, float, float, float, float]:
+    frame = 650.0 + max(0.0, age) * (103.0 / 2.25)
+    keys = _POST_BADGE_FALL_FRAME_OFFSETS
+    if frame <= keys[0][0]:
+        y = keys[0][1]
+    elif frame >= keys[-1][0]:
+        y = keys[-1][1]
     else:
-        y=keys[-1][1]
-        for a,b in zip(keys,keys[1:]):
+        y = keys[-1][1]
+        for a, b in zip(keys, keys[1:]):
             if frame <= b[0]:
-                y=lerp(a[1],b[1],(frame-a[0])/max(1e-9,b[0]-a[0]);break
-    return 1.0,0.0,0.0,1.0,0.0,y
+                y = lerp(a[1], b[1], (frame - a[0]) / max(1e-9, b[0] - a[0]))
+                break
+    return 1.0, 0.0, 0.0, 1.0, 0.0, y
