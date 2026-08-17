@@ -99,6 +99,33 @@ def test_rendered_badge_bounds_land_on_reference_pixels() -> None:
         assert all(abs(a - e) <= 2 for a, e in zip(actual, expected)), (global_frame, actual, expected)
 
 
+def test_opening_stage_bounds_and_text_do_not_reset() -> None:
+    cards = [Card("", "", "", "") for _ in range(57)]
+    cards[0].value = "7M YEARS AGO"
+    project = Project(cards=cards)
+    renderer = FrameRenderer()
+
+    source_bounds = (
+        (120, (72, 14, 332, 372)),
+        (180, (94, 32, 300, 344)),
+        (300, (106, 50, 274, 314)),
+        (450, (120, 68, 248, 284)),
+    )
+    for global_frame, expected in source_bounds:
+        image = renderer.render(project, global_frame / 60.0)
+        actual = _red_bbox_near(image, expected)
+        assert all(abs(a - e) <= 4 for a, e in zip(actual, expected)), (global_frame, actual, expected)
+
+    frame120 = renderer.render(project, 120 / 60.0)
+    white_pixels = 0
+    for y in range(70, 260):
+        for x in range(80, 390):
+            r, g, b = frame120.getpixel((x, y))
+            if r > 220 and g > 220 and b > 220:
+                white_pixels += 1
+    assert white_pixels > 1000
+
+
 def test_canonical_movie_is_exactly_12267_frames() -> None:
     assert ref.content_end_frame(57) == 11858
     assert ref.total_frame_count(57) == 12267
