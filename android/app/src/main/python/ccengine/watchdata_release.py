@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw, ImageFont
 
+from . import renderer as _base
 from .models import Card
 from .watchdata_final import FinalWatchDataFrameRenderer, POPPINS_BOLD
 from .watchdata_renderer import POPPINS_MEDIUM, POPPINS_SEMI_BOLD
 
 
 class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
-    """2.0.4 release layer for WatchData-authored title blocks."""
+    """2.0.5 release renderer with final badge-shine and long-text fixes."""
 
     def _font(
         self,
@@ -44,6 +45,148 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
             return self._load_font(str(candidate), max(1, int(size)))
         return super()._font(size, bold, role)
 
+    @staticmethod
+    def _full_wrap(
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        font: ImageFont.ImageFont,
+        max_width: int,
+        max_lines: int,
+    ) -> tuple[list[str], bool]:
+        """Wrap all text without turning the final visible line into an ellipsis."""
+        normalized = " ".join(str(text or "").split())
+        if not normalized or max_width <= 0 or max_lines <= 0:
+            return [], True
+
+        def measured(value: str) -> int:
+            bounds = draw.textbbox((0, 0), value, font=font)
+            return bounds[2] - bounds[0]
+
+        lines: list[str] = []
+        current = ""
+        words = normalized.split()
+
+        def push(value: str) -> bool:
+            if not value:
+                return True
+            if len(lines) >= max_lines:
+                return False
+            lines.append(value)
+            return True
+
+        for word in words:
+            candidate = word if not current else f"{current} {word}"
+            if measured(candidate) <= max_width:
+                current = candidate
+                continue
+
+            if current:
+                if not push(current):
+                    return lines[:max_lines], False
+                current = ""
+
+            if measured(word) <= max_width:
+                current = word
+                continue
+
+            chunk = ""
+            for char in word:
+                candidate = chunk + char
+                if chunk and measured(candidate) > max_width:
+                    if not push(chunk):
+                        return lines[:max_lines], False
+                    chunk = char
+                else:
+                    chunk = candidate
+            current = chunk
+
+        if current and not push(current):
+            return lines[:max_lines], False
+        return lines[:max_lines], True
+
+    def _draw_readable_text_block(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        box: tuple[int, int, int, int],
+        *,
+        maximum_size: int,
+        minimum_size: int,
+        max_lines: int,
+        bold: bool,
+        role: str,
+        fill: tuple[int, int, int],
+        line_spacing: float = 1.08,
+    ) -> None:
+        normalized = " ".join(str(text or "").split())
+        left, top, right, bottom = box
+        available_width = max(1, right - left)
+        available_height = max(1, bottom - top)
+        if not normalized:
+            return
+
+        chosen_font = self._font(minimum_size, bold, role)
+        chosen_lines: list[str] = []
+        chosen_line_height = max(1, int(round(minimum_size * line_spacing)))
+
+        for size in range(maximum_size, minimum_size - 1, -1):
+            font = self._font(size, bold, role)
+            line_height = max(1, int(round(size * line_spacing)))
+            line_limit = max(1, min(max_lines, available_height // line_height))
+            lines, complete = self._full_wrap(
+                draw,
+                normalized,
+                font,
+                available_width,
+                line_limit,
+            )
+            if complete and lines and len(lines) * line_height <= available_height:
+                chosen_font = font
+                chosen_lines = lines
+                chosen_line_height = line_height
+                break
+
+        if not chosen_lines:
+            line_limit = max(1, min(max_lines, available_height // chosen_line_height))
+            chosen_lines, _ = self._full_wrap(
+                draw,
+                normalized,
+                chosen_font,
+                available_width,
+                line_limit,
+            )
+
+        block_height = len(chosen_lines) * chosen_line_height
+        y = top + max(0, (available_height - block_height) // 2)
+        center_x = (left + right) / 2.0
+        for line in chosen_lines:
+            draw.text(
+                (center_x, y),
+                line,
+                font=chosen_font,
+                fill=fill,
+                anchor="ma",
+            )
+            y += chosen_line_height
+
+    def _add_badge_shine(self, layer: Image.Image, age: float) -> None:
+        """Finish the diagonal sweep cleanly instead of leaving a bright strip."""
+        shine_start = _base.SHINE_START
+        shine_end = shine_start + _base.SHINE_SECONDS
+        progress = (float(age) - shine_start) / _base.SHINE_SECONDS
+        if progress <= 0.0 or float(age) >= shine_end - 1e-6:
+            return
+
+        overlay = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+        super()._add_badge_shine(overlay, age)
+        if progress > 0.78:
+            fade = 1.0 - _base.smoothstep((progress - 0.78) / 0.22)
+            alpha = overlay.getchannel("A").point(
+                lambda value: int(round(value * max(0.0, min(1.0, fade))))
+            )
+            overlay.putalpha(alpha)
+        layer.alpha_composite(overlay)
+
     def _draw_explicit_title(
         self,
         draw: ImageDraw.ImageDraw,
@@ -57,34 +200,35 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
             " ".join(line.split())
             for line in raw_title.replace("\r", "").split("\n")
         ]
-        lines = [line for line in lines if line][:2]
+        lines = [line for line in lines if line][:3]
         if not lines:
             return True
 
         left, top, right, bottom = box
         available_width = max(1, right - left)
         available_height = max(1, bottom - top)
-        # Reference f528: long authored lines top out around 374 px while
-        # shorter two-line titles stay larger. Width, not a single fixed font
-        # size, is the controlling measurement.
         target_width = min(380, available_width)
-        chosen_font = self._font(30, True, "title")
-        chosen_size = 30
-        for size in range(50, 29, -1):
+        chosen_font = self._font(20, True, "title")
+        chosen_size = 20
+        for size in range(50, 19, -1):
             font = self._font(size, True, "title")
             widths = []
             for line in lines:
                 bounds = draw.textbbox((0, 0), line, font=font)
                 widths.append(bounds[2] - bounds[0])
-            if max(widths, default=0) <= target_width:
+            line_height = max(23, int(round(size * 1.05)))
+            if (
+                max(widths, default=0) <= target_width
+                and line_height * len(lines) <= available_height
+            ):
                 chosen_font = font
                 chosen_size = size
                 break
 
-        line_height = max(34, int(round(chosen_size * 1.05)))
+        line_height = max(23, int(round(chosen_size * 1.05)))
         block_height = line_height * len(lines)
         center_x = (left + right) / 2.0
-        center_y = top + (available_height - block_height) / 2.0 + line_height / 2.0 + 3.0
+        center_y = top + (available_height - block_height) / 2.0 + line_height / 2.0 + 2.0
         for line in lines:
             draw.text(
                 (center_x, center_y),
@@ -107,48 +251,19 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
     ) -> None:
         if not description or top >= bottom:
             return
-        # f528 measurements keep the description block around 350-365 px wide.
-        # This is what moves "with" to the second line on card one while still
-        # keeping the FOXP2 sentence on the same two lines as the source.
         target_width = min(365, max(1, width - 34))
-        chosen_font = self._font(18, False, "description")
-        chosen_lines: list[str] = []
-        chosen_line_height = 26
-        for font_size in range(25, 17, -1):
-            font = self._font(font_size, False, "description")
-            line_height = max(21, int(round(font_size * 1.13)))
-            lines = self._wrapped_lines(
-                draw,
-                description,
-                font,
-                target_width,
-                4,
-            )
-            if lines and not any(line.endswith("…") for line in lines):
-                chosen_font = font
-                chosen_lines = lines
-                chosen_line_height = line_height
-                break
-        if not chosen_lines:
-            chosen_lines = self._wrapped_lines(
-                draw,
-                description,
-                chosen_font,
-                target_width,
-                4,
-            )
-
-        y = top + 8
-        center_x = ix + width / 2.0
-        for line in chosen_lines:
-            draw.text(
-                (center_x, y),
-                line,
-                font=chosen_font,
-                fill=self.theme.description_text,
-                anchor="ma",
-            )
-            y += chosen_line_height
+        self._draw_readable_text_block(
+            draw,
+            description,
+            (ix + (width - target_width) // 2, top + 4, ix + (width + target_width) // 2, bottom - 4),
+            maximum_size=25,
+            minimum_size=15,
+            max_lines=5,
+            bold=False,
+            role="description",
+            fill=self.theme.description_text,
+            line_spacing=1.13,
+        )
 
     def _draw_card_body_uncached(
         self,
@@ -201,13 +316,13 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
                 title_box,
                 self.theme.title_text,
             ):
-                self._draw_fitted_text_block(
+                self._draw_readable_text_block(
                     draw,
                     " ".join(raw_title.split()),
-                    (ix + 12, title_top - 10, ix + width - 12, title_bottom - 10),
+                    (ix + 12, title_top + 2, ix + width - 12, title_bottom - 2),
                     maximum_size=54,
-                    minimum_size=30,
-                    max_lines=2,
+                    minimum_size=22,
+                    max_lines=3,
                     bold=True,
                     role="title",
                     fill=self.theme.title_text,
