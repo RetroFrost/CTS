@@ -1,0 +1,63 @@
+name: Report PR Build Artifacts
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+jobs:
+  report:
+    if: github.event.issue.pull_request && github.event.comment.body == '/report-builds'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report latest Windows and Android runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName --jq .headRefName)
+          BODY="## Build artifacts for \`$REF\`"
+
+          report_one() {
+            local label="$1"
+            local workflow="$2"
+            local run_json run_id status conclusion run_url artifacts
+            run_json=$(gh run list --repo "$REPO" --workflow "$workflow" --branch "$REF" --limit 1 --json databaseId,status,conclusion,url --jq '.[0] // {}')
+            run_id=$(jq -r '.databaseId // empty' <<<"$run_json")
+            if [ -z "$run_id" ]; then
+              BODY+=$'\n\n### '"$label"$'\nNo matching run found.'
+              return
+            fi
+            status=$(jq -r '.status // "unknown"' <<<"$run_json")
+            conclusion=$(jq -r '.conclusion // ""' <<<"$run_json")
+            run_url=$(jq -r '.url' <<<"$run_json")
+            BODY+=$'\n\n### '"$label"$'\nRun: '"$run_url"$'\nStatus: `'
+            if [ -n "$conclusion" ] && [ "$conclusion" != "null" ]; then
+              BODY+="$status / $conclusion"
+            else
+              BODY+="$status"
+            fi
+            BODY+='`'
+
+            artifacts=$(gh api "repos/$REPO/actions/runs/$run_id/artifacts" --jq '.artifacts[]? | [.id,.name,.expired] | @tsv' || true)
+            if [ -z "$artifacts" ]; then
+              BODY+=$'\nArtifacts: none uploaded yet.'
+            else
+              BODY+=$'\nArtifacts:'
+              while IFS=$'\t' read -r artifact_id artifact_name expired; do
+                BODY+=$'\n- ['"$artifact_name"'](https://github.com/'"$REPO"'/actions/runs/'"$run_id"'/artifacts/'"$artifact_id"')'
+                if [ "$expired" = "true" ]; then BODY+=' (expired)'; fi
+              done <<< "$artifacts"
+            fi
+          }
+
+          report_one "Windows" "build-windows.yml"
+          report_one "Android" "build-android.yml"
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$BODY"
