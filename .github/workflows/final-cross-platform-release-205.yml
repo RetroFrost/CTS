@@ -26,7 +26,7 @@ concurrency:
 
 env:
   VERSION: 2.0.5
-  RENDERER_BASE: 3919d11f21b7332fd236b8dbb2881d9921085a9e
+  RENDERER_BASE: 1be8d95772921a55c7d673667ed75fddaa77190e
 
 jobs:
   windows:
