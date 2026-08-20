@@ -1,4 +1,4 @@
-# Cubical Compare 2.0.5 — Thumbnail & MegaPack Release
+# Cubical Compare 2.0.6 — Thumbnail & MegaPack Release
 
 Release channel: `release/cubical-compare-final`.
 
@@ -34,20 +34,20 @@ The companion pack is `CTS_MegaPack_Most_Improper_Liquids_Felix_UK.zip`.
 
 ## Bug fixes
 
-- Fixed the 2.0.5 badge shine so the streak now physically sweeps through and exits the lower-right edge of the hexagon before disappearing, instead of fading away while part of the highlight is still on the badge.
+- Fixed the badge shine so the streak physically sweeps through and exits the lower-right edge of the hexagon before disappearing, instead of fading away while part of the highlight is still on the badge.
 - Fixed long card titles and descriptions so text wraps across additional readable lines instead of becoming unreadably small or overflowing the card.
 - Kept the Android embedded renderer byte-for-byte synchronised with the desktop renderer so cross-platform release validation passes.
-- Corrected the 2.0.5 renderer checkpoint used by the release workflow so the reviewed renderer fixes can pass the frozen-renderer contract.
-- Added workflow diagnostics that expose the successful push run and make Actions/artifact verification reliable.
+- Corrected the renderer checkpoint used by the release workflow so the reviewed renderer fixes pass the frozen-renderer contract.
+- Added workflow diagnostics that expose successful push runs and make Actions/artifact verification reliable.
 - Retained Play and Stop preview controls, real-time preview playback, full-frame final export, background exporting, progress reporting, cancellation, screen-off support and service recreation support.
 
 ## Renderer contract
 
-The 2.0.5 release keeps the reviewed WatchData-style renderer as the release checkpoint. CI rejects a build if Android and desktop renderer trees diverge or if the shared renderer changes outside the reviewed checkpoint.
+The 2.0.6 release keeps the reviewed WatchData-style renderer as the release checkpoint. CI rejects a build if Android and desktop renderer trees diverge or if the shared renderer changes outside the reviewed checkpoint.
 
 ## Release gates
 
-CI rejects 2.0.5 if:
+CI rejects 2.0.6 if:
 
 - Android and desktop renderer source trees diverge;
 - renderer regression tests fail;
