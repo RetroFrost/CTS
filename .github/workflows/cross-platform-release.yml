@@ -1,0 +1,105 @@
+name: Cross-Platform Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pillow pyinstaller
+
+      - name: Set up FFmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          ffmpeg-version: release
+
+      - name: Build Executable
+        run: |
+          pyinstaller cubical_compare_windows.spec
+
+      - name: Package Bundle
+        shell: pwsh
+        run: |
+          $ffmpegPath = (Get-Command ffmpeg).Source
+          Copy-Item $ffmpegPath -Destination dist\ComparisonTimelineStudio\ffmpeg.exe
+          Compress-Archive -Path dist\ComparisonTimelineStudio\* -DestinationPath ComparisonTimelineStudio-Windows-x64.zip
+
+      - name: Upload Windows Asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: ComparisonTimelineStudio-Windows-x64
+          path: ComparisonTimelineStudio-Windows-x64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pillow pyinstaller
+
+      - name: Build Linux Binary
+        run: |
+          pyinstaller --onedir --name ComparisonTimelineStudio comparison_engine/cli.py
+          tar -czf ComparisonTimelineStudio-Linux-x86_64.tar.gz -C dist ComparisonTimelineStudio
+
+      - name: Upload Linux Asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: ComparisonTimelineStudio-Linux-x86_64
+          path: ComparisonTimelineStudio-Linux-x86_64.tar.gz
+
+  create-github-release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ComparisonTimelineStudio-Windows-x64
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ComparisonTimelineStudio-Linux-x86_64
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ComparisonTimelineStudio-Windows-x64.zip
+            ComparisonTimelineStudio-Linux-x86_64.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
