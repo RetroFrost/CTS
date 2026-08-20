@@ -15,6 +15,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Python 3.13 for Chaquopy
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify Python 3.13
+        run: python3.13 --version
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
