@@ -25,6 +25,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install pillow openpyxl pyinstaller
 
+      - name: Fetch verified reference fonts
+        shell: pwsh
+        run: |
+          $fontDir = "android/app/src/main/python/ccengine/fonts"
+          New-Item -ItemType Directory -Force -Path $fontDir | Out-Null
+          $fonts = @(
+            @{ Name = "Poppins-ExtraBold.ttf"; Url = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-ExtraBold.ttf"; Blob = "167667d203d98f5b27c3ff58d486eea9c5287fe4" },
+            @{ Name = "Poppins-Bold.ttf"; Url = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf"; Blob = "1982f38ab21303459aa1155265052ca599fa58d1" },
+            @{ Name = "Poppins-SemiBold.ttf"; Url = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-SemiBold.ttf"; Blob = "c30ad104723a0e6e00e54768626cb02c5fdf6aee" },
+            @{ Name = "Poppins-Medium.ttf"; Url = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Medium.ttf"; Blob = "a590f5c3e4902a7cb10f4bbc5da0e65e667f7950" }
+          )
+          foreach ($font in $fonts) {
+            $dest = Join-Path $fontDir $font.Name
+            Invoke-WebRequest -Uri $font.Url -OutFile $dest
+            $actual = (git hash-object $dest).Trim()
+            if ($actual -ne $font.Blob) {
+              throw "Reference font verification failed for $($font.Name): $actual"
+            }
+          }
+
       - name: Set up FFmpeg
         uses: FedericoCarboni/setup-ffmpeg@v3
         with:
@@ -33,6 +53,17 @@ jobs:
       - name: Build Standalone Windows Executable
         run: |
           pyinstaller cubical_compare_windows.spec
+
+      - name: Verify reference fonts were bundled
+        shell: pwsh
+        run: |
+          $fontDir = "dist/ComparisonTimelineStudio/_internal/ccengine/fonts"
+          $required = @("Poppins-ExtraBold.ttf", "Poppins-Bold.ttf", "Poppins-SemiBold.ttf", "Poppins-Medium.ttf")
+          foreach ($name in $required) {
+            if (-not (Test-Path (Join-Path $fontDir $name))) {
+              throw "Missing bundled reference font: $name"
+            }
+          }
 
       - name: Bundle FFmpeg with Executable
         shell: pwsh
