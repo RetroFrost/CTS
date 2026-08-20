@@ -1,4 +1,4 @@
-name: Cubical Compare 2.0.5 Final
+name: Cubical Compare 2.0.6 Final
 
 on:
   workflow_dispatch:
@@ -25,12 +25,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION: 2.0.5
+  VERSION: 2.0.6
   RENDERER_BASE: 1be8d95772921a55c7d673667ed75fddaa77190e
 
 jobs:
   windows:
-    name: Windows x64 2.0.5
+    name: Windows x64 2.0.6
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v6
@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           git diff --exit-code $env:RENDERER_BASE -- engine/ccengine
-          if ($LASTEXITCODE -ne 0) { throw '2.0.5 must not alter the checkpointed WatchData video renderer.' }
+          if ($LASTEXITCODE -ne 0) { throw '2.0.6 must not alter the checkpointed WatchData video renderer.' }
 
       - uses: actions/setup-python@v6
         with:
@@ -69,7 +69,7 @@ jobs:
           if (-not $ffmpeg) { throw 'Could not locate FFmpeg.' }
           "CUBICAL_COMPARE_FFMPEG=$($ffmpeg.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Test shared renderer and 2.0.5 contracts
+      - name: Test shared renderer and 2.0.6 contracts
         shell: pwsh
         run: |
           $env:PYTHONPATH = "$PWD\engine"
@@ -113,7 +113,7 @@ jobs:
           & .\build-windows\Release\CubicalCompare.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Package Windows 2.0.5
+      - name: Package Windows 2.0.6
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -135,7 +135,7 @@ jobs:
           if-no-files-found: error
 
   android:
-    name: Android 2.0.5
+    name: Android 2.0.6
     runs-on: ubuntu-24.04
     env:
       CTS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.CTS_ANDROID_KEYSTORE_PASSWORD }}
@@ -188,7 +188,7 @@ jobs:
             echo "CTS_HAS_STABLE_SIGNING=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Build Android 2.0.5
+      - name: Build Android 2.0.6
         run: |
           chmod +x android/gradlew
           android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
@@ -234,7 +234,7 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/cts-signing"
 
   report:
-    name: Record 2.0.5 CI diagnostics
+    name: Record 2.0.6 CI diagnostics
     if: always()
     needs: [windows, android]
     runs-on: ubuntu-24.04
@@ -261,12 +261,12 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .ci/cubical-compare-205-summary.json .ci/cubical-compare-205-run.json .ci/cubical-compare-205-jobs.json
-          git commit -m 'Record Cubical Compare 2.0.5 CI diagnostics [skip ci]' || exit 0
+          git commit -m 'Record Cubical Compare 2.0.6 CI diagnostics [skip ci]' || exit 0
           git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin "HEAD:$GITHUB_REF_NAME"
 
   publish:
-    name: Publish v2.0.5
+    name: Publish v2.0.6
     if: github.ref == 'refs/heads/release/cubical-compare-final'
     needs: [windows, android]
     runs-on: ubuntu-24.04
@@ -277,7 +277,7 @@ jobs:
           pattern: Cubical-Compare-${{ env.VERSION }}-*
           path: release-assets
           merge-multiple: true
-      - name: Publish v2.0.5 assets and notes
+      - name: Publish v2.0.6 assets and notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
