@@ -172,26 +172,23 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
             y += chosen_line_height
 
     def _add_badge_shine(self, layer: Image.Image, age: float) -> None:
-        """Finish the diagonal sweep cleanly instead of leaving a bright strip."""
+        """Let the diagonal sweep physically leave the badge before it disappears."""
         shine_start = _base.SHINE_START
         shine_end = shine_start + _base.SHINE_SECONDS
         progress = (float(age) - shine_start) / _base.SHINE_SECONDS
         if progress <= 0.0 or float(age) >= shine_end - 1e-6:
             return
 
-        # Draw the measured sweep to a temporary layer, then fade its final
-        # fifth. The old implementation kept full opacity while the streak was
-        # still crossing the lower half of the hexagon, which looked frozen on
-        # the last visible shine frames.
+        # The base sweep ends with its lower half still inside the hexagon.
+        # Preserve the measured first half, then smoothly translate the whole
+        # streak far enough right that its broad blur and core both cross the
+        # lower-right edge before the shine clock ends. This makes the motion
+        # actually finish instead of fading out while it is still on the badge.
         overlay = Image.new("RGBA", layer.size, (0, 0, 0, 0))
         super()._add_badge_shine(overlay, age)
-        if progress > 0.78:
-            fade = 1.0 - _base.smoothstep((progress - 0.78) / 0.22)
-            alpha = overlay.getchannel("A").point(
-                lambda value: int(round(value * max(0.0, min(1.0, fade))))
-            )
-            overlay.putalpha(alpha)
-        layer.alpha_composite(overlay)
+        exit_progress = _base.smoothstep((progress - 0.55) / 0.45)
+        exit_shift = int(round(260.0 * exit_progress))
+        layer.alpha_composite(overlay, dest=(exit_shift, 0))
 
     def _draw_explicit_title(
         self,
