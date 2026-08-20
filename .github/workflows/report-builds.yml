@@ -22,6 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Artifact reporter started."
           REF=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName --jq .headRefName)
           BODY="## Build artifacts for \`$REF\`"
 
