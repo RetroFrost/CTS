@@ -82,8 +82,8 @@ android {
         applicationId = "io.github.retrofrost.cts.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20005
-        versionName = "2.0.5"
+        versionCode = 20006
+        versionName = "2.0.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
