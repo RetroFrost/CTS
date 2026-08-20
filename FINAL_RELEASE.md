@@ -1,14 +1,12 @@
 # Cubical Compare 2.0.5 — Thumbnail & MegaPack Release
 
-Cubical Compare 2.0.5 keeps the checkpointed 2.0.4 WatchData video renderer unchanged and adds post-export YouTube thumbnail generation plus the rebuilt British-English Felix MegaPack workflow.
-
 Release channel: `release/cubical-compare-final`.
-2.0.4 checkpoint: `d57817542baadd074028e4c0549660f9979b5972`.
-Renderer visual-audit baseline: `56824d34ab99c37bf9a7869a3b15ab57809a2e74`.
 
-## Automatic thumbnails
+## Features
 
-- A successful export now creates three 1280×720 JPEG thumbnails beside the MP4.
+### Automatic thumbnails
+
+- A successful export creates three 1280×720 JPEG thumbnails beside the MP4.
 - Filenames follow the video basename: `Video - Thumbnail 1.jpg`, `Video - Thumbnail 2.jpg`, and `Video - Thumbnail 3.jpg`.
 - Thumbnails use representative frames around 16%, 48% and 78% of the comparison timeline.
 - Android composes WatchData-inspired thumbnails from the exact shared renderer frame, with a high-contrast dark scrim, short headline, red value callout and bundled Poppins Bold typography.
@@ -17,13 +15,7 @@ Renderer visual-audit baseline: `56824d34ab99c37bf9a7869a3b15ab57809a2e74`.
 - Windows writes three renderer-based 1280×720 JPG stills directly beside the exported MP4 after a successful render.
 - A thumbnail failure does not invalidate a successfully completed MP4; Windows reports it as a thumbnail warning.
 
-## Renderer checkpoint contract
-
-2.0.5 does not modify the comparison animation renderer. CI rejects the build if `engine/ccengine` differs from the reviewed 2.0.4 renderer baseline or if Android's embedded renderer differs from the desktop renderer tree.
-
-The 2.0.4 WatchData corrections therefore remain intact, including measured badge geometry and opening motion, corrected shine lifetime, authored title line breaks, measured text wrapping and the bundled Poppins renderer typography.
-
-## British-English Felix MegaPack
+### British-English Felix MegaPack
 
 The companion pack is `CTS_MegaPack_Most_Improper_Liquids_Felix_UK.zip`.
 
@@ -31,28 +23,35 @@ The companion pack is `CTS_MegaPack_Most_Improper_Liquids_Felix_UK.zip`.
 - User-facing wording is British English, including terms such as `petrol`, `windscreen washer fluid`, `washing-up liquid`, `hand sanitiser`, `oesophagus` and `labelled` where applicable.
 - The comparison model is the exact WatchData-style reference model with badges enabled.
 - Rank values are preserved as the card badge values.
-- Each artwork was rebuilt with a full-card background treatment and Felix shifted lower so his face/eyes remain beneath the badge-safe region instead of being obscured by the badge.
-- The pack was ZIP CRC-tested and every PNG artwork was decoded and verified after rebuilding.
+- Each artwork uses a full-card background treatment and keeps Felix beneath the badge-safe region.
+- The pack is ZIP CRC-tested and every PNG artwork is decoded and verified after rebuilding.
 
-## Android fixes retained
+### Cross-platform release pipeline
 
-- Play and Stop preview controls remain available.
-- Preview playback remains clocked to real video time; final export still renders every output frame.
-- MegaPack import remains off the activity/Compose thread and processes artwork one card at a time.
-- Background export remains a persistent `mediaProcessing` foreground service with wake lock, notification progress, cancellation, screen-off support and service recreation support.
+- Windows x64 and Android are built from the same shared renderer contract.
+- Successful builds publish downloadable GitHub release assets automatically.
+- Android uses a permanent release identity when configured through private repository secrets, otherwise CI uses its installable fallback identity and publishes the certificate SHA-256 fingerprint beside the APK.
 
-## Android signing
+## Bug fixes
 
-The release pipeline uses a permanent Android release identity whenever one is configured through private repository secrets and verifies its expected certificate fingerprint. When those secrets are absent, CI signs the APK with its installable fallback identity. The certificate SHA-256 fingerprint and signing mode are shipped beside the APK; no private key is committed or published.
+- Fixed the 2.0.5 badge shine so the diagonal highlight fully clears instead of appearing frozen on the final shine frames.
+- Fixed long card titles and descriptions so text wraps across additional readable lines instead of becoming unreadably small or overflowing the card.
+- Kept the Android embedded renderer byte-for-byte synchronised with the desktop renderer so cross-platform release validation passes.
+- Corrected the 2.0.5 renderer checkpoint used by the release workflow so the reviewed renderer fixes can pass the frozen-renderer contract.
+- Added workflow diagnostics that expose the successful push run and make Actions/artifact verification reliable.
+- Retained Play and Stop preview controls, real-time preview playback, full-frame final export, background exporting, progress reporting, cancellation, screen-off support and service recreation support.
+
+## Renderer contract
+
+The 2.0.5 release keeps the reviewed WatchData-style renderer as the release checkpoint. CI rejects a build if Android and desktop renderer trees diverge or if the shared renderer changes outside the reviewed checkpoint.
 
 ## Release gates
 
 CI rejects 2.0.5 if:
 
-- the checkpointed WatchData renderer changes;
 - Android and desktop renderer source trees diverge;
 - renderer regression tests fail;
-- the thumbnail/export contract tests fail;
+- thumbnail/export contract tests fail;
 - the Windows private renderer or native-shell self-test fails;
 - Android unit tests or release assembly fail;
 - the Android APK is not cryptographically signed; or
