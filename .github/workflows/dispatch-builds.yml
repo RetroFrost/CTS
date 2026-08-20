@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   dispatch:
-    if: github.event.issue.pull_request && github.event.comment.body == '/run-builds'
+    if: github.event.issue.pull_request && (github.event.comment.body == '/run-builds' || github.event.comment.body == '/run-android')
     runs-on: ubuntu-latest
     steps:
       - name: Confirm dispatcher started
@@ -19,17 +19,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          COMMAND: ${{ github.event.comment.body }}
         run: |
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Dispatcher started."
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Dispatcher started for \`$COMMAND\`."
 
-      - name: Dispatch Windows and Android builds for PR head
+      - name: Dispatch requested builds for PR head
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          COMMAND: ${{ github.event.comment.body }}
         run: |
+          set -euo pipefail
           REF=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName --jq .headRefName)
-          gh workflow run build-windows.yml --repo "$REPO" --ref "$REF"
-          gh workflow run build-android.yml --repo "$REPO" --ref "$REF"
-          echo "Dispatched builds for $REF"
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Build dispatch requested for \`$REF\`: Windows + Android workflows."
+          if [ "$COMMAND" = "/run-android" ]; then
+            gh workflow run build-android.yml --repo "$REPO" --ref "$REF"
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Android build dispatch requested for \`$REF\`."
+          else
+            gh workflow run build-windows.yml --repo "$REPO" --ref "$REF"
+            gh workflow run build-android.yml --repo "$REPO" --ref "$REF"
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Build dispatch requested for \`$REF\`: Windows + Android workflows."
+          fi
