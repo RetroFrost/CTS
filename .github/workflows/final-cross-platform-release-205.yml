@@ -277,7 +277,7 @@ jobs:
           pattern: Cubical-Compare-${{ env.VERSION }}-*
           path: release-assets
           merge-multiple: true
-      - name: Publish v2.0.5 assets
+      - name: Publish v2.0.5 assets and notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -286,6 +286,9 @@ jobs:
           mapfile -t FILES < <(find release-assets -maxdepth 1 -type f -print | sort)
           test "${#FILES[@]}" -ge 5
           if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "Cubical Compare $VERSION — Final" \
+              --notes-file FINAL_RELEASE.md
             gh release upload "$TAG" "${FILES[@]}" --clobber
           else
             gh release create "$TAG" "${FILES[@]}" \
