@@ -1,0 +1,43 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "release/*" ]
+  pull_request:
+    branches: [ "main", "release/*" ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Verify Android Gradle Wrapper
+        run: |
+          if [ -d "android" ]; then
+            cd android
+            chmod +x gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            echo "No android/ subdirectory detected yet. Skipping gradle run."
+          fi
+
+      - name: Upload Android APK Artifact (if present)
+        uses: actions/upload-artifact@v4
+        if: hashFiles('android/app/build/outputs/apk/debug/*.apk') != ''
+        with:
+          name: ComparisonTimelineStudio-Android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
