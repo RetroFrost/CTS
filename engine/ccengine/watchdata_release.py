@@ -182,12 +182,12 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
         # The base sweep ends with its lower half still inside the hexagon.
         # Preserve the measured first half, then smoothly translate the whole
         # streak far enough right that its broad blur and core both cross the
-        # lower-right edge before the shine clock ends. This makes the motion
-        # actually finish instead of fading out while it is still on the badge.
+        # lower-right edge before the shine clock ends. 320 px is deliberate:
+        # 260 px still left a 24 px lower-right tail at 97% progress in CI.
         overlay = Image.new("RGBA", layer.size, (0, 0, 0, 0))
         super()._add_badge_shine(overlay, age)
         exit_progress = _base.smoothstep((progress - 0.55) / 0.45)
-        exit_shift = int(round(260.0 * exit_progress))
+        exit_shift = int(round(320.0 * exit_progress))
         layer.alpha_composite(overlay, dest=(exit_shift, 0))
 
     def _draw_explicit_title(
