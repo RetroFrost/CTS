@@ -1,0 +1,27 @@
+name: Dispatch PR Builds
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  dispatch:
+    if: github.event.issue.pull_request && github.event.comment.body == '/run-builds'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Windows and Android builds for PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          REF=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName --jq .headRefName)
+          gh workflow run build-windows.yml --repo "$REPO" --ref "$REF"
+          gh workflow run build-android.yml --repo "$REPO" --ref "$REF"
+          echo "Dispatched builds for $REF"
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Build dispatch requested for \`$REF\`: Windows + Android workflows."
