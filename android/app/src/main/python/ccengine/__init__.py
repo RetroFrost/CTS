@@ -6,12 +6,13 @@ from .watchdata_measured import MeasuredWatchDataFrameRenderer
 from .watchdata_final import FinalWatchDataFrameRenderer
 from .watchdata_release import ReleaseWatchDataFrameRenderer
 from .watchdata_strict import StrictReferenceFrameRenderer
+from .watchdata_badge_exact import BadgeExactReferenceFrameRenderer
 
-# The public renderer is the strict reference implementation. Measured frame
-# and pixel paths are a hard contract: callers must never silently fall back
-# to generic easing when exact source samples exist.
-_renderer.FrameRenderer = StrictReferenceFrameRenderer
-FrameRenderer = StrictReferenceFrameRenderer
+# The public renderer is the badge-locked strict reference implementation.
+# Measured frame and pixel paths are a hard contract: callers must never
+# silently fall back to generic easing or the older badge polygon.
+_renderer.FrameRenderer = BadgeExactReferenceFrameRenderer
+FrameRenderer = BadgeExactReferenceFrameRenderer
 
 __all__ = [
     "FrameRenderer",
@@ -20,4 +21,5 @@ __all__ = [
     "FinalWatchDataFrameRenderer",
     "ReleaseWatchDataFrameRenderer",
     "StrictReferenceFrameRenderer",
+    "BadgeExactReferenceFrameRenderer",
 ]
