@@ -89,6 +89,8 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
                 current = word
                 continue
 
+            # A single very long token should wrap rather than force the whole
+            # block to become microscopic or disappear past the card edge.
             chunk = ""
             for char in word:
                 candidate = chunk + char
@@ -177,6 +179,10 @@ class ReleaseWatchDataFrameRenderer(FinalWatchDataFrameRenderer):
         if progress <= 0.0 or float(age) >= shine_end - 1e-6:
             return
 
+        # Draw the measured sweep to a temporary layer, then fade its final
+        # fifth. The old implementation kept full opacity while the streak was
+        # still crossing the lower half of the hexagon, which looked frozen on
+        # the last visible shine frames.
         overlay = Image.new("RGBA", layer.size, (0, 0, 0, 0))
         super()._add_badge_shine(overlay, age)
         if progress > 0.78:
