@@ -1,32 +1,37 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import sys
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
 block_cipher = None
+
+engine_path = os.path.abspath(os.path.join('android', 'app', 'src', 'main', 'python'))
+if engine_path not in sys.path:
+    sys.path.insert(0, engine_path)
+
+# Windows and Android must ship the same measured renderer implementation.
+ccengine_hiddenimports = collect_submodules('ccengine')
+ccengine_datas = collect_data_files('ccengine')
 
 a = Analysis(
     ['comparison_engine/cli.py'],
-    pathex=['.'],
+    pathex=['.', engine_path],
     binaries=[],
     datas=[
         ('sample_timeline.json', '.'),
-    ],
+    ] + ccengine_datas,
     hiddenimports=[
         'PIL',
         'PIL._imaging',
         'PIL.ImageDraw',
         'PIL.ImageFilter',
         'PIL.ImageFont',
+        'openpyxl',
         'comparison_engine',
         'comparison_engine.models',
-        'comparison_engine.typography',
-        'comparison_engine.badge_renderer',
-        'comparison_engine.card_renderer',
-        'comparison_engine.column_renderer',
-        'comparison_engine.animation_curves',
-        'comparison_engine.overlay_animations',
-        'comparison_engine.timeline_renderer',
-        'comparison_engine.video_exporter',
         'comparison_engine.sample_data',
-    ],
+    ] + ccengine_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
