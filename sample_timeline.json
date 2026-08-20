@@ -1,0 +1,71 @@
+{
+  "title": "Comparison: Evolution Of Language",
+  "credits": {
+    "intro_explanation": "The values presented are the years in which various developmental milestones in languages occurred.",
+    "lead_research": "Ahmed",
+    "fact_check": "Alex Lambert",
+    "lead_designer": "Jack H",
+    "edit_post": "Alex Pacheco",
+    "thumbnail_designer": "Diego Garcia",
+    "video_idea": "Ideaguys.ca"
+  },
+  "config": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "scroll_speed_px_per_sec": 160.0,
+    "intro_duration_sec": 3.0,
+    "outro_duration_sec": 3.5,
+    "output_path": "output/evolution_of_language.mp4"
+  },
+  "items": [
+    {
+      "badge_value": "7M",
+      "badge_unit": "YEARS AGO",
+      "title": "Ape Noises And Gestures",
+      "description": "Our chimp ancestors spoke with hoots and gestures"
+    },
+    {
+      "badge_value": "400K",
+      "badge_unit": "YEARS AGO",
+      "title": "Language Section Of Brain Develops",
+      "description": "The FOXP2 gene gave us the language part of our brain"
+    },
+    {
+      "badge_value": "300K",
+      "badge_unit": "YEARS AGO",
+      "title": "Voice Box Evolves Fully",
+      "description": "A lower larynx unlocked many more distinct sounds"
+    },
+    {
+      "badge_value": "70K",
+      "badge_unit": "YEARS AGO",
+      "title": "Clicking Languages",
+      "description": "Some languages like Khoisan still use clicking sounds"
+    },
+    {
+      "badge_value": "8000",
+      "badge_unit": "BC",
+      "title": "Trade Language",
+      "description": "Clay tokens counted goods: writing grew from accounting"
+    },
+    {
+      "badge_value": "6600",
+      "badge_unit": "BC",
+      "title": "First Written Symbols",
+      "description": "Chinese Jiahu might be a primitive form of writing"
+    },
+    {
+      "badge_value": "2022",
+      "badge_unit": "AD",
+      "title": "AI Masters Language",
+      "description": "ChatGPT writes fluently: a huge shift like printing"
+    },
+    {
+      "badge_value": "2200",
+      "badge_unit": "AD",
+      "title": "One Global Language",
+      "description": "Humanity may converge on a single shared tongue"
+    }
+  ]
+}
