@@ -1,0 +1,50 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ "main", "release/*" ]
+  pull_request:
+    branches: [ "main", "release/*" ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pillow pyinstaller
+
+      - name: Set up FFmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          ffmpeg-version: release
+
+      - name: Build Standalone Windows Executable
+        run: |
+          pyinstaller cubical_compare_windows.spec
+
+      - name: Bundle FFmpeg with Executable
+        shell: pwsh
+        run: |
+          $ffmpegPath = (Get-Command ffmpeg).Source
+          Copy-Item $ffmpegPath -Destination dist\ComparisonTimelineStudio\ffmpeg.exe
+          Compress-Archive -Path dist\ComparisonTimelineStudio\* -DestinationPath dist\ComparisonTimelineStudio-Windows-x64.zip
+
+      - name: Upload Windows Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ComparisonTimelineStudio-Windows-x64
+          path: dist/ComparisonTimelineStudio-Windows-x64.zip
+          retention-days: 14
