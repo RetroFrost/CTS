@@ -2,6 +2,7 @@
 
 from .models import ComparisonItem, TimelineProject, CreditsInfo, VideoConfig
 
+
 def get_evolution_of_language_project() -> TimelineProject:
     """Returns the full 'Evolution of Language' comparison timeline."""
     raw_data = [
@@ -61,25 +62,17 @@ def get_evolution_of_language_project() -> TimelineProject:
         ("2030", "AD", "Live AR Translation", "Smart glasses will subtitle any conversation in real time"),
         ("2075", "AD", "Brain-To-Brain Messaging", "Implants may send thoughts directly, skipping words"),
         ("2100", "AD", "90% Of Languages Die", "Linguists predict half of 7,000 languages vanish"),
-        ("2200", "AD", "One Global Language", "Humanity may converge on a single shared tongue")
+        ("2200", "AD", "One Global Language", "Humanity may converge on a single shared tongue"),
     ]
-    
+
     items = [
-        ComparisonItem(badge_value=v, badge_unit=u, title=t, description=d)
-        for v, u, t, d in raw_data
+        ComparisonItem(badge_value=value, badge_unit=unit, title=title, description=description)
+        for value, unit, title, description in raw_data
     ]
-    
+
     return TimelineProject(
         title="Comparison: Evolution Of Language",
         items=items,
         credits=CreditsInfo(),
-        config=VideoConfig(
-            width=1920,
-            height=1080,
-            fps=60,
-            scroll_speed_px_per_sec=160.0,
-            intro_duration_sec=3.0,
-            outro_duration_sec=3.5,
-            output_path="output/evolution_of_language.mp4"
-        )
+        config=VideoConfig(output_path="output/evolution_of_language.mp4"),
     )
