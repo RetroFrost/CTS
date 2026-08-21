@@ -11,6 +11,7 @@ import java.io.File
 object SharedRenderer {
     private val lock = Any()
     private val module by lazy { Python.getInstance().getModule("cts_android_bridge") }
+    private val exportModule by lazy { Python.getInstance().getModule("cts_fast_export") }
 
     fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
         val json = JSONObject(module.callAttr("metadata", project.toJson()).toString())
@@ -26,13 +27,13 @@ object SharedRenderer {
      * [endVideoExport] is called.
      */
     fun beginVideoExport(project: StudioProject): RenderMetadata = synchronized(lock) {
-        val json = JSONObject(module.callAttr("begin_export", project.toJson()).toString())
+        val json = JSONObject(exportModule.callAttr("begin_export", project.toJson()).toString())
         RenderMetadata(json.getInt("frame_count"), json.getDouble("duration"), json.getInt("fps"))
     }
 
     /** Returns encoder-ready YUV420 bytes directly from the Python renderer. */
     fun renderYuv420(frame: Int, width: Int, height: Int, semiPlanar: Boolean): ByteArray = synchronized(lock) {
-        val raw = module.callAttr("render_yuv420", frame, width, height, semiPlanar).toJava(ByteArray::class.java)
+        val raw = exportModule.callAttr("render_yuv420", frame, width, height, semiPlanar).toJava(ByteArray::class.java)
         val expected = width * height * 3 / 2
         require(raw.size == expected) {
             "Shared renderer returned an invalid YUV frame buffer: ${raw.size}, expected $expected."
@@ -43,7 +44,7 @@ object SharedRenderer {
     fun endVideoExport() {
         synchronized(lock) {
             // Cleanup must never hide the original encoder/rendering exception.
-            runCatching { module.callAttr("end_export") }
+            runCatching { exportModule.callAttr("end_export") }
         }
     }
 
