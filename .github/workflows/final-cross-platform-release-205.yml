@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   actions: read
+  issues: write
 
 concurrency:
   group: cubical-compare-205-${{ github.ref }}
@@ -29,6 +30,18 @@ env:
   RENDERER_BASE: c1c73d1f99c0b72c4138d4319cb5ad7211412e66
 
 jobs:
+  announce:
+    name: Announce 2.0.6 CI run
+    if: github.ref == 'refs/heads/release/cubical-compare-final'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish run identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/36/comments" \
+            -f body="Cubical Compare 2.0.6 Final CI started: run \`$GITHUB_RUN_ID\` on \`$GITHUB_SHA\`."
+
   windows:
     name: Windows x64 2.0.6
     runs-on: windows-2025
