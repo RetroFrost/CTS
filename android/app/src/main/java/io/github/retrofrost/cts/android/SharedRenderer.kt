@@ -17,6 +17,36 @@ object SharedRenderer {
         RenderMetadata(json.getInt("frame_count"), json.getDouble("duration"), json.getInt("fps"))
     }
 
+    /**
+     * Starts a long-lived export render session in Python.
+     *
+     * The old exporter serialized and reparsed the entire StudioProject for every
+     * single frame. A 9,500-frame export therefore rebuilt the same Python model
+     * 9,500 times. The export session parses it once and reuses that object until
+     * [endVideoExport] is called.
+     */
+    fun beginVideoExport(project: StudioProject): RenderMetadata = synchronized(lock) {
+        val json = JSONObject(module.callAttr("begin_export", project.toJson()).toString())
+        RenderMetadata(json.getInt("frame_count"), json.getDouble("duration"), json.getInt("fps"))
+    }
+
+    /** Returns encoder-ready YUV420 bytes directly from the Python renderer. */
+    fun renderYuv420(frame: Int, width: Int, height: Int, semiPlanar: Boolean): ByteArray = synchronized(lock) {
+        val raw = module.callAttr("render_yuv420", frame, width, height, semiPlanar).toJava(ByteArray::class.java)
+        val expected = width * height * 3 / 2
+        require(raw.size == expected) {
+            "Shared renderer returned an invalid YUV frame buffer: ${raw.size}, expected $expected."
+        }
+        raw
+    }
+
+    fun endVideoExport() {
+        synchronized(lock) {
+            // Cleanup must never hide the original encoder/rendering exception.
+            runCatching { module.callAttr("end_export") }
+        }
+    }
+
     fun render(project: StudioProject, frame: Int, width: Int, height: Int): Bitmap = synchronized(lock) {
         val raw = module.callAttr("render_rgba", project.toJson(), frame, width, height).toJava(ByteArray::class.java)
         require(raw.size == width * height * 4) { "Shared renderer returned an invalid frame buffer." }
