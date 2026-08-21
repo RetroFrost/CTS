@@ -70,7 +70,6 @@ class FinalExportEngine(
         val width = project.width.coerceAtLeast(2).let { if (it % 2 == 0) it else it - 1 }
         val height = project.height.coerceAtLeast(2).let { if (it % 2 == 0) it else it - 1 }
         val fps = project.fps.coerceIn(1, 120)
-        val totalFrames = SharedRenderer.metadata(project).frameCount.coerceAtLeast(1)
         val selected = chooseVideoEncoder(width, height, fps)
         val codec = selected.codec
         val capabilities = codec.codecInfo.getCapabilitiesForType(selected.mime)
@@ -83,28 +82,53 @@ class FinalExportEngine(
             if (capabilities.encoderCapabilities.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR))
                 setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
         }
-        onProgress(0, "Preparing encoder", "${codec.name} · H.264 · exact shared renderer")
+        onProgress(0, "Preparing encoder", "${codec.name} · H.264 · fast exact-render bridge")
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE); codec.start()
         val muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        val info = MediaCodec.BufferInfo(); val pixels = IntArray(width * height); val yuv = ByteArray(width * height * 3 / 2)
-        var frame = 0; var inputDone = false; var outputDone = false; var started = false; var track = -1
+        val info = MediaCodec.BufferInfo()
+        val expectedYuvSize = width * height * 3 / 2
+        val semiPlanar = selected.color == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
+        var frame = 0
+        var inputDone = false
+        var outputDone = false
+        var started = false
+        var track = -1
+        var lastProgressNanos = 0L
+        val renderStartedNanos = System.nanoTime()
         try {
+            val metadata = SharedRenderer.beginVideoExport(project)
+            val totalFrames = metadata.frameCount.coerceAtLeast(1)
             while (!outputDone) {
                 checkStop()
                 if (!inputDone) {
                     val inputIndex = codec.dequeueInputBuffer(10_000)
                     if (inputIndex >= 0) {
                         val input = codec.getInputBuffer(inputIndex) ?: error("Encoder returned no input buffer.")
-                        input.clear(); val pts = frame.toLong() * 1_000_000L / fps
+                        input.clear()
+                        val pts = frame.toLong() * 1_000_000L / fps
                         if (frame < totalFrames) {
-                            val bitmap = SharedRenderer.render(project, frame, width, height)
-                            try { bitmap.getPixels(pixels, 0, width, 0, 0, width, height) } finally { bitmap.recycle() }
-                            argbToYuv(pixels, yuv, width, height, selected.color)
+                            val yuv = SharedRenderer.renderYuv420(frame, width, height, semiPlanar)
+                            require(yuv.size == expectedYuvSize) { "Renderer returned an invalid YUV420 frame." }
                             require(input.capacity() >= yuv.size) { "Encoder input buffer is too small." }
-                            input.put(yuv); codec.queueInputBuffer(inputIndex, 0, yuv.size, pts, 0); frame++
-                            onProgress((frame * 82 / totalFrames).coerceIn(0, 82), "Rendering + encoding", "Frame $frame / $totalFrames · $width×$height @ $fps")
+                            input.put(yuv)
+                            codec.queueInputBuffer(inputIndex, 0, yuv.size, pts, 0)
+                            frame++
+
+                            val now = System.nanoTime()
+                            if (
+                                frame == 1 || frame == totalFrames ||
+                                now - lastProgressNanos >= 750_000_000L
+                            ) {
+                                onProgress(
+                                    (frame * 82 / totalFrames).coerceIn(0, 82),
+                                    "Rendering + encoding",
+                                    videoProgressDetail(frame, totalFrames, width, height, fps, renderStartedNanos, now),
+                                )
+                                lastProgressNanos = now
+                            }
                         } else {
-                            codec.queueInputBuffer(inputIndex, 0, 0, pts, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inputDone = true
+                            codec.queueInputBuffer(inputIndex, 0, 0, pts, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            inputDone = true
                         }
                     }
                 }
@@ -112,19 +136,34 @@ class FinalExportEngine(
                     val outputIndex = codec.dequeueOutputBuffer(info, if (inputDone) 10_000 else 0)
                     when {
                         outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> break
-                        outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { check(!started); track = muxer.addTrack(codec.outputFormat); muxer.start(); started = true }
+                        outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            check(!started)
+                            track = muxer.addTrack(codec.outputFormat)
+                            muxer.start()
+                            started = true
+                        }
                         outputIndex >= 0 -> {
                             val data = codec.getOutputBuffer(outputIndex) ?: error("Encoder returned no output buffer.")
                             if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
-                            if (info.size > 0) { check(started); data.position(info.offset); data.limit(info.offset + info.size); muxer.writeSampleData(track, data, info) }
+                            if (info.size > 0) {
+                                check(started)
+                                data.position(info.offset)
+                                data.limit(info.offset + info.size)
+                                muxer.writeSampleData(track, data, info)
+                            }
                             outputDone = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-                            codec.releaseOutputBuffer(outputIndex, false); if (outputDone) break
+                            codec.releaseOutputBuffer(outputIndex, false)
+                            if (outputDone) break
                         }
                     }
                 }
             }
         } finally {
-            runCatching { codec.stop() }; codec.release(); if (started) runCatching { muxer.stop() }; muxer.release()
+            SharedRenderer.endVideoExport()
+            runCatching { codec.stop() }
+            codec.release()
+            if (started) runCatching { muxer.stop() }
+            muxer.release()
         }
     }
 
@@ -224,14 +263,25 @@ class FinalExportEngine(
         while (true) { checkStop(); buffer.clear(); val size = extractor.readSampleData(buffer, 0); if (size < 0) break; info.set(0, size, extractor.sampleTime.coerceAtLeast(0), extractor.sampleFlags); muxer.writeSampleData(output, buffer, info); extractor.advance() }
     }
 
-    private fun argbToYuv(pixels: IntArray, output: ByteArray, width: Int, height: Int, colorFormat: Int) {
-        val frameSize = width * height
-        for (i in pixels.indices) { val c = pixels[i]; val r = c shr 16 and 255; val g = c shr 8 and 255; val b = c and 255; output[i] = (((66*r + 129*g + 25*b + 128) shr 8) + 16).coerceIn(0,255).toByte() }
-        val semi = colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
-        var uPos = frameSize; var vPos = frameSize + frameSize / 4; var uvPos = frameSize; var y = 0
-        while (y < height) { var x = 0; while (x < width) { var u=0; var v=0; var n=0
-            for (dy in 0..1) for (dx in 0..1) { val c=pixels[min(height-1,y+dy)*width+min(width-1,x+dx)]; val r=c shr 16 and 255; val g=c shr 8 and 255; val b=c and 255; u+=(((-38*r-74*g+112*b+128) shr 8)+128); v+=(((112*r-94*g-18*b+128) shr 8)+128); n++ }
-            val ub=(u/n).coerceIn(0,255).toByte(); val vb=(v/n).coerceIn(0,255).toByte(); if(semi){output[uvPos++]=ub;output[uvPos++]=vb}else{output[uPos++]=ub;output[vPos++]=vb}; x+=2 }; y+=2 }
+    private fun videoProgressDetail(
+        frame: Int,
+        totalFrames: Int,
+        width: Int,
+        height: Int,
+        outputFps: Int,
+        startedNanos: Long,
+        nowNanos: Long,
+    ): String {
+        val elapsedMillis = max(1L, (nowNanos - startedNanos) / 1_000_000L)
+        val fpsTenths = frame.toLong() * 10_000L / elapsedMillis
+        val remainingFrames = (totalFrames - frame).coerceAtLeast(0).toLong()
+        val etaSeconds = if (frame > 0) remainingFrames * elapsedMillis / frame / 1_000L else 0L
+        val eta = when {
+            etaSeconds >= 3_600L -> "${etaSeconds / 3_600L}h ${(etaSeconds % 3_600L) / 60L}m"
+            etaSeconds >= 60L -> "${etaSeconds / 60L}m ${etaSeconds % 60L}s"
+            else -> "${etaSeconds}s"
+        }
+        return "Frame $frame / $totalFrames · $width×$height @ $outputFps output · render ${fpsTenths / 10}.${fpsTenths % 10} fps · ETA $eta"
     }
 
     private fun applyVolume(bytes: ByteArray, volume: Float) {
