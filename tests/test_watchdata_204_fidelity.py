@@ -4,31 +4,33 @@ from pathlib import Path
 
 from ccengine.models import Card, ProjectSettings
 from ccengine.renderer import FrameRenderer
+from ccengine.watchdata_badge_exact import BadgeExactReferenceFrameRenderer
 from ccengine.watchdata_final import POPPINS_BOLD
-from ccengine.watchdata_release import ReleaseWatchDataFrameRenderer
 from ccengine.watchdata_renderer import (
     POPPINS_EXTRA_BOLD,
     POPPINS_MEDIUM,
     POPPINS_SEMI_BOLD,
-    WATCHDATA_BADGE_FILL,
-    WATCHDATA_BADGE_POLYGON,
+)
+from ccengine.watchdata_strict import (
+    _REFERENCE_BADGE_FILL,
+    _REFERENCE_BADGE_POLYGON,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_package_routes_every_renderer_call_through_watchdata_204() -> None:
-    assert FrameRenderer is ReleaseWatchDataFrameRenderer
+def test_package_routes_every_renderer_call_through_badge_exact_reference() -> None:
+    assert FrameRenderer is BadgeExactReferenceFrameRenderer
 
 
-def test_settled_badge_polygon_matches_reference_frame_528() -> None:
-    xs = [point[0] for point in WATCHDATA_BADGE_POLYGON]
-    ys = [point[1] for point in WATCHDATA_BADGE_POLYGON]
-    assert (min(xs), max(xs)) == (88.0, 385.0)
-    assert (min(ys), max(ys)) == (32.0, 375.0)
-    assert max(xs) - min(xs) + 1 == 298.0
-    assert max(ys) - min(ys) + 1 == 344.0
+def test_settled_badge_polygon_matches_measured_reference() -> None:
+    xs = [point[0] for point in _REFERENCE_BADGE_POLYGON]
+    ys = [point[1] for point in _REFERENCE_BADGE_POLYGON]
+    assert (min(xs), max(xs)) == (96.0, 391.0)
+    assert (min(ys), max(ys)) == (33.0, 374.0)
+    assert max(xs) - min(xs) + 1 == 296.0
+    assert max(ys) - min(ys) + 1 == 342.0
 
 
 def test_settled_badge_face_is_flat_after_shine() -> None:
@@ -36,7 +38,7 @@ def test_settled_badge_face_is_flat_after_shine() -> None:
     renderer._active_settings = ProjectSettings()
     card = Card(title="Reference", value="70K YEARS AGO")
     badge = renderer._badge_source(card, 5.0, sticker_entry=False)
-    assert badge.getpixel((300, 90)) == (*WATCHDATA_BADGE_FILL, 255)
+    assert badge.getpixel((300, 90)) == (*_REFERENCE_BADGE_FILL, 255)
 
 
 def test_measured_opening_stage_uses_reference_widths() -> None:
@@ -76,6 +78,8 @@ def test_android_and_desktop_watchdata_renderer_sources_are_identical() -> None:
         "watchdata_measured.py",
         "watchdata_final.py",
         "watchdata_release.py",
+        "watchdata_strict.py",
+        "watchdata_badge_exact.py",
     ):
         desktop = ROOT / "engine" / "ccengine" / name
         android = ROOT / "android" / "app" / "src" / "main" / "python" / "ccengine" / name
