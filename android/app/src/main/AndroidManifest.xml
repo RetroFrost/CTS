@@ -4,22 +4,24 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:name="com.chaquo.python.android.PyApplication"
         android:allowBackup="true"
-        android:icon="@drawable/ic_cts_final"
-        android:roundIcon="@drawable/ic_cts_final"
-        android:label="Cubical Compare"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Cubical Compare 2.0.7"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-        <activity android:name=".MainActivity" android:exported="true">
+        android:theme="@style/Theme.CubicalCompare">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
         <service
-            android:name=".FinalExportService"
+            android:name=".ExportService"
             android:exported="false"
             android:stopWithTask="false"
             android:foregroundServiceType="mediaProcessing" />

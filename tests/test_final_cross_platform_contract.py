@@ -40,10 +40,12 @@ def test_old_android_renderer_is_completely_removed() -> None:
 
 
 def test_android_preview_and_export_call_shared_renderer() -> None:
-    bridge = (ROOT / "android" / "app" / "src" / "main" / "java" / "io" / "github" / "retrofrost" / "cts" / "android" / "SharedRenderer.kt").read_text(encoding="utf-8")
-    exporter = (ROOT / "android" / "app" / "src" / "main" / "java" / "io" / "github" / "retrofrost" / "cts" / "android" / "FinalExportEngine.kt").read_text(encoding="utf-8")
+    kotlin = ROOT / "android" / "app" / "src" / "main" / "java" / "io" / "github" / "retrofrost" / "cts" / "android"
+    bridge = (kotlin / "RendererBridge.kt").read_text(encoding="utf-8")
+    exporter = (kotlin / "HardwareVideoExporter.kt").read_text(encoding="utf-8")
     python_bridge = (ROOT / "android" / "app" / "src" / "main" / "python" / "cts_android_bridge.py").read_text(encoding="utf-8")
     assert 'getModule("cts_android_bridge")' in bridge
-    assert "SharedRenderer.render(project, frame" in exporter
+    assert "RendererBridge.renderRgba(project, frame" in exporter
+    assert "MediaCodec.createByCodecName" in exporter
     assert "FrameRenderer" in python_bridge
     assert "_renderer.render(" in python_bridge

@@ -1,12 +1,16 @@
-# CTS Android
+# Cubical Compare 2.0.7 for Android
 
-Native Android port of **Comparison Timeline Studio**, built with Kotlin and Jetpack Compose.
+Native Android editor and GPU video renderer, built with Kotlin and Jetpack Compose.
 
-## Current alpha scope
+## Current scope
 
 Implemented now:
 
-- Premiere-inspired dark mobile editor shell
+- Redesigned dark mobile editor with Cards, Timeline, and Settings tabs
+- always-visible preview with playback and scrubbing
+- custom video length which retimes only the continuous card conveyor
+- stationary opening badges with no bounce or motion streak
+- measured vertical fall retained for later badges
 - flagship **Click to Insert Data** workflow
 - One canonical **Males** reference model, measured from the complete Evolution of Language source
 - **Exact Reference** mode locks each source-derived motion profile and plays it at 0.5× speed; **Custom** unlocks timing
@@ -27,8 +31,9 @@ Implemented now:
 - migration support for CTS transform metadata
 - on-device XLSX import
 - soundtrack selection, looping, volume, AAC bitrate, and encoder selection
-- native H.264/HEVC MP4 export
-- foreground WorkManager export with persistent progress, cancellation, and cleanup of incomplete output
+- GPU OpenGL ES rendering with Android MediaCodec H.264/HEVC export
+- automatic or user-selected H.264/H.265 encoder choice
+- foreground-service export with persistent progress, cancellation, and cleanup of incomplete output
 - regression tests for measured Males timing, conveyor motion, attached title bands, badge geometry, and outro
 - GitHub Actions debug APK build
 
@@ -114,6 +119,5 @@ CTS Android writes the desktop `spreadsheet`, `settings`, `transform_overrides`,
 ## Package
 
 - Application ID: `io.github.retrofrost.cts.android`
-- Visible name: `CTS Android`
-- Developer branding: `StarterFreaks`
-- Version: `0.3.0-alpha4`
+- Visible name: `Cubical Compare 2.0.7`
+- Version: `2.0.7`

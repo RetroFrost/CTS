@@ -49,7 +49,7 @@ def test_validation_restores_model_owned_output_values() -> None:
     assert project.settings.model_id == MODEL_WHAT_MALES_LEARN
     assert project.settings.model_revision == 1
     assert (project.settings.width, project.settings.height, project.settings.fps) == (1920, 1080, 60)
-    assert project.settings.auto_length is True
+    assert project.settings.auto_length is False
 
 
 def test_integer_frame_timeline_uses_contact_sheet_contract() -> None:

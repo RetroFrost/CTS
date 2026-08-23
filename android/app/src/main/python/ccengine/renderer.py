@@ -209,9 +209,14 @@ def _sample_source_offset(keys: tuple[tuple[int, float], ...], source_frame: flo
 
 
 def badge_entry_affine(age: float) -> tuple[float, float, float, float, float, float]:
-    # Opening animation age 0..2.9 maps exactly to source frames 35..120.
-    source_frame = 35.0 + clamp(age / BADGE_ENTRY_END) * 85.0
-    return _sample_affine_source_frame(OPENING_BADGE_FRAME_KEYFRAMES, source_frame)
+    """Return the disabled opening-badge transform.
+
+    The old affine made the first four badges scale, skew and overshoot.  The
+    shell is now stationary from the card's first frame.  ``age`` remains in
+    the signature because the independent text and shine clocks still use it.
+    """
+    del age
+    return 1.0, 0.0, 0.0, 1.0, 0.0, 0.0
 
 
 def post_badge_fall_affine(age: float) -> tuple[float, float, float, float, float, float]:
@@ -1087,11 +1092,11 @@ class FrameRenderer:
         local_frame = int(global_frame) - starts[index]
 
         if index < 4:
-            if local_frame < 35:
-                return
             age = age_opening_badge_age(local_frame)
-            source = self._badge_source(card, age, sticker_entry=True)
-            affine = badge_entry_affine(age)
+            # The shell is present and fixed from the first card frame.  Text
+            # and shine still use the original age clock inside _badge_source.
+            source = self._badge_source(card, age, sticker_entry=False)
+            affine = self._opening_entry_affine(local_frame, age)
         else:
             age = age_later_badge_age(local_frame)
             if age < 0.0:
@@ -1100,6 +1105,14 @@ class FrameRenderer:
             affine = post_badge_fall_affine(age)
         affine = self._compose_source_scale(affine, self._age_deemphasis_scale(index, int(global_frame), starts))
         self._warp_badge(canvas, source, card_x, affine)
+
+    @staticmethod
+    def _opening_entry_affine(
+        local_frame: int,
+        age: float,
+    ) -> tuple[float, float, float, float, float, float]:
+        del local_frame
+        return badge_entry_affine(age)
 
     def _draw_credits_panel(self, canvas: Image.Image, left: float, project: Project) -> None:
         if not project.settings.credits_enabled:
@@ -1354,12 +1367,24 @@ class FrameRenderer:
 
         if frame >= timeline.continuous_start_frame and len(project.cards) > 4:
             positions: dict[int, float] = {}
-            shift = continuous_shift(self._active_profile.model_id, frame)
+            if project.settings.auto_length:
+                shift = continuous_shift(self._active_profile.model_id, frame)
+            else:
+                continuous_starts = starts[4:]
+                if len(continuous_starts) >= 2:
+                    step_frames = max(1.0, continuous_starts[1] - continuous_starts[0])
+                else:
+                    step_frames = max(1.0, content_frame_count(project) - timeline.continuous_start_frame)
+                shift = max(0.0, (frame - timeline.continuous_start_frame) / step_frames)
             # Use the decoded per-frame source coordinates directly. The
             # arithmetic clock remains only as a fallback outside measured
             # source ranges and for non-reference models.
             for card_index in range(len(project.cards)):
-                x = continuous_card_x(self._active_profile.model_id, frame, card_index)
+                x = (
+                    continuous_card_x(self._active_profile.model_id, frame, card_index)
+                    if project.settings.auto_length
+                    else None
+                )
                 if x is None:
                     x = (card_index - shift) * pitch
                 if -pitch < x < REFERENCE_WIDTH + pitch:

@@ -50,11 +50,38 @@ def _reference_cycle_frame_counts(project: Project) -> list[int]:
     ]
 
 
+def _custom_content_end_frame(project: Project) -> int:
+    """Return the requested content boundary without retiming fixed animations.
+
+    The outro keeps its measured frame count. The opening four-card sequence also
+    keeps its original addresses. Only the later continuous conveyor is allowed
+    to occupy more or fewer frames.
+    """
+    profile = get_reference_profile(project.settings.model_id).timeline
+    fps = max(1, project.settings.fps)
+    requested_total = max(1, round(float(project.settings.custom_length_seconds) * fps))
+    requested_content = requested_total - profile.outro_frames
+    if len(project.cards) <= 4:
+        fixed_opening = profile.opening_card_ends[max(0, len(project.cards) - 1)]
+        return max(fixed_opening, requested_content)
+    # One frame per conveyor interval is the hard mathematical minimum. Badge
+    # fall/shine clocks are not scaled and may overlap at extremely short user
+    # lengths, which is preferable to inventing faster badge animation.
+    intervals = len(project.cards) - 4 + profile.continuous_tail_steps
+    return max(profile.continuous_start_frame + intervals, requested_content)
+
+
 def cycle_frame_counts(project: Project) -> list[int]:
-    # Locked models never stretch or truncate animation to meet a requested
-    # duration. The card count changes how many canonical cycles are emitted;
-    # every cycle itself remains byte-for-byte deterministic in timing.
-    return _reference_cycle_frame_counts(project)
+    if project.settings.auto_length:
+        return _reference_cycle_frame_counts(project)
+    starts = card_start_frames(project)
+    if not starts:
+        return []
+    end = _custom_content_end_frame(project)
+    return [
+        (starts[index + 1] if index + 1 < len(starts) else end) - start
+        for index, start in enumerate(starts)
+    ]
 
 
 def cycle_durations(project: Project) -> list[float]:
@@ -79,12 +106,27 @@ def reference_duration(project: Project) -> float:
 
 
 def minimum_duration(project: Project) -> float:
-    return reference_duration(project)
+    profile = get_reference_profile(project.settings.model_id).timeline
+    if len(project.cards) <= 4:
+        content = profile.opening_card_ends[max(0, len(project.cards) - 1)]
+    else:
+        content = profile.continuous_start_frame + len(project.cards) - 4
+    return _seconds(content + profile.outro_frames, project.settings.fps)
 
 
 def card_start_frames(project: Project) -> list[int]:
     timeline = get_reference_profile(project.settings.model_id).timeline
-    return [timeline.card_start_frame(index) for index in range(len(project.cards))]
+    count = len(project.cards)
+    if project.settings.auto_length or count <= 4:
+        return [timeline.card_start_frame(index) for index in range(count)]
+
+    starts = list(timeline.opening_card_starts)
+    intervals = count - 4 + timeline.continuous_tail_steps
+    span = _custom_content_end_frame(project) - timeline.continuous_start_frame
+    for index in range(4, count):
+        offset = index - 4
+        starts.append(timeline.continuous_start_frame + round(span * offset / intervals))
+    return starts[:count]
 
 
 def card_start_times(project: Project) -> list[float]:

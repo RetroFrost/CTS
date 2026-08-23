@@ -65,7 +65,7 @@ def normalize_project(project: Project, *, reject_excess_cards: bool = True) -> 
     settings.width = model.width
     settings.height = model.height
     settings.fps = model.fps
-    settings.auto_length = True
+    settings.auto_length = bool(settings.auto_length)
 
     settings.encoder_crf = _bounded_int(settings.encoder_crf, 18, 0, 51)
     settings.encoder_preset = validate_encoder_preset(settings.encoder_preset)

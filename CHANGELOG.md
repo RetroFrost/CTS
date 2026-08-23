@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.0.7 — 2026-08-23
+
+### Features
+
+- Implemented a completely redesigned Android interface with dedicated Cards, Timeline, and Settings tabs.
+- Added an always-visible video preview with playback and scrubbing.
+- Added custom video length; only the continuous card-scroll speed changes to fit, while fixed animations keep their original timing.
+- Added on-device GPU rendering through OpenGL ES and Android MediaCodec.
+- Added Auto, H.264, and H.265 encoder selection so the app or user can choose the hardware codec.
+- Added background export progress and cancellation.
+- Added a new launcher icon (again).
+
+### Fixes
+
+- Removed the invented opening badge bounce and motion streak completely.
+- Kept the measured vertical fall for later badges, badge shine, card animation, and outro unchanged.
+- Corrected APK native-library packaging so Android can parse and install the generated APK.
+
 ## 0.4.5 — 2026-07-14
 
 - Promoted the redesigned editing workspace to the CTS 0.4.5 release line.

@@ -49,16 +49,16 @@ def test_image_sheet_preserves_transform_and_creates_extra(tmp_path: Path) -> No
     assert cards[0].image_layer == "front"
 
 
-def test_custom_length_cannot_stretch_or_truncate_locked_model() -> None:
+def test_custom_length_retimes_only_the_continuous_scroll() -> None:
     project = Project(cards=[Card("One", "1")])
     project.settings.auto_length = False
     project.settings.custom_length_seconds = 1
     normalize_project(project)
 
-    assert project.settings.auto_length is True
+    assert project.settings.auto_length is False
     assert total_duration(project) == pytest.approx(minimum_duration(project))
-    # The legacy value may survive as unused project data, but it cannot alter
-    # a locked model's integer-frame timeline.
+    # A single opening card cannot be shortened below the fixed opening and
+    # outro clocks, even when the requested custom length is smaller.
     assert project.settings.custom_length_seconds == pytest.approx(1.0)
 
 

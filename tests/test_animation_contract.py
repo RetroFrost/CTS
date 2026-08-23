@@ -35,19 +35,13 @@ def test_body_motion_samples_are_unchanged() -> None:
         assert body_progress(timestamp) == pytest.approx(value, abs=1e-12)
 
 
-def test_opening_badge_transform_matches_contact_sheet_frames() -> None:
+def test_opening_badge_motion_is_disabled() -> None:
     def age(frame: int) -> float:
         return (frame - 35) * 2.9 / 85.0
 
-    expected = {
-        40: (0.592169, -0.078765, -0.283855, 1.188568, -125.999331, -19.155194),
-        60: (0.774691, -0.031915, -0.189815, 1.114362, -38.958629, -14.476950),
-        80: (0.945988, -0.029255, -0.067901, 1.058511, -23.818558, -15.196217),
-        100: (1.010802, -0.013298, -0.006173, 1.005319, -14.144799, -6.608747),
-        120: (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
-    }
-    for frame, values in expected.items():
-        assert badge_entry_affine(age(frame)) == pytest.approx(values, abs=1e-6)
+    stationary = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    for frame in range(0, 201):
+        assert badge_entry_affine(age(frame)) == stationary
 
 def test_continuous_badge_fall_matches_contact_sheet_frames() -> None:
     def age(frame: int) -> float:
