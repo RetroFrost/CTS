@@ -27,7 +27,7 @@ internal class NativeGpuRenderer(
         .order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val textures = object : LinkedHashMap<String, Texture>(24, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Texture>?): Boolean {
-            if (size <= 20 || eldest == null) return false
+            if (size <= 32 || eldest == null) return false
             GLES20.glDeleteTextures(1, intArrayOf(eldest.value.id), 0)
             return true
         }
@@ -66,11 +66,32 @@ internal class NativeGpuRenderer(
         for (index in positions.keys.sorted()) {
             val card = project.cards[index]
             if (!project.showBadges || card.value.isBlank()) continue
-            val offset = NativeTimeline.badgeOffset(index, sceneFrame - starts[index]) ?: continue
-            val texture = texture("badge:${card.id}:${card.badgeHeader}:${card.value}") { NativeArtwork.badge(context, card) }
+            val localFrame = sceneFrame - starts[index]
+            val offset = NativeTimeline.badgeOffset(index, localFrame) ?: continue
+            val texture = texture("badge-shell") { NativeArtwork.badgeShell() }
             val left = positions.getValue(index) + (NativeTimeline.slotPitch - NativeArtwork.badgeWidth) / 2f
-            val shine = NativeTimeline.badgeShineProgress(index, sceneFrame - starts[index]) ?: -1f
+            val shine = NativeTimeline.badgeShineProgress(index, localFrame) ?: -1f
             drawTexture(texture, left, NativeArtwork.badgeTop + offset, alpha, shine)
+            NativeArtwork.badgeLines(card).forEachIndexed { lineIndex, line ->
+                val progress = NativeTimeline.badgeTextProgress(index, lineIndex, localFrame)
+                if (progress <= 0f) return@forEachIndexed
+                val eased = NativeTimeline.easeOutCubic(progress)
+                val yOffset = -(1f - eased) * 88f
+                val text = texture("badge-text:${card.id}:${card.badgeHeader}:${card.value}:$lineIndex") {
+                    NativeArtwork.badgeText(context, line)
+                }
+                val textAlpha = alpha * (progress * 1.75f).coerceAtMost(1f)
+                val trailLength = (1f - progress) * 58f
+                if (trailLength > 1f) {
+                    for (trail in 4 downTo 1) {
+                        drawTexture(
+                            text, left, NativeArtwork.badgeTop + offset + yOffset - trailLength * trail / 4f,
+                            textAlpha * (5 - trail) / 5f * 0.16f,
+                        )
+                    }
+                }
+                drawTexture(text, left, NativeArtwork.badgeTop + offset + yOffset, textAlpha)
+            }
         }
         for (index in positions.keys.sorted()) {
             val card = project.cards[index]
@@ -81,6 +102,7 @@ internal class NativeGpuRenderer(
             }
             drawTexture(texture, positions.getValue(index) + NativeTimeline.bodyInset, 0f, alpha)
         }
+        drawOutro(frame, alpha)
     }
 
     fun release() {
@@ -104,9 +126,17 @@ internal class NativeGpuRenderer(
         result
     }
 
-    private fun drawTexture(texture: Texture, left: Float, top: Float, alpha: Float, shine: Float = -1f) {
-        val right = left + texture.width
-        val bottom = top + texture.height
+    private fun drawTexture(
+        texture: Texture,
+        left: Float,
+        top: Float,
+        alpha: Float,
+        shine: Float = -1f,
+        drawWidth: Float = texture.width.toFloat(),
+        drawHeight: Float = texture.height.toFloat(),
+    ) {
+        val right = left + drawWidth
+        val bottom = top + drawHeight
         if (right <= 0f || left >= NativeTimeline.referenceWidth || bottom <= 0f || top >= NativeTimeline.referenceHeight) return
         val x0 = left / NativeTimeline.referenceWidth * 2f - 1f
         val x1 = right / NativeTimeline.referenceWidth * 2f - 1f
@@ -133,6 +163,31 @@ internal class NativeGpuRenderer(
         GLES20.glUniform1f(alphaLocation, alpha)
         GLES20.glUniform1f(shineLocation, shine)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+    }
+
+    private fun drawOutro(frame: Int, alpha: Float) {
+        val local = NativeTimeline.outroLocal(project, frame)
+        if (local < 0) return
+        val black = texture("solid:black") {
+            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply { setPixel(0, 0, android.graphics.Color.BLACK) }
+        }
+        if (local < 43) {
+            drawTexture(black, 0f, 0f, 1f, drawWidth = 1440f, drawHeight = NativeTimeline.outroCoverY(local))
+            return
+        }
+        drawTexture(black, 0f, 0f, 1f, drawWidth = 1440f, drawHeight = NativeTimeline.referenceHeight)
+        NativeTimeline.outroGroupTop(local)?.let { top ->
+            val group = texture("outro-group:${project.name}") { NativeArtwork.outroGroup(context, project) }
+            drawTexture(group, 0f, top, alpha)
+        }
+        NativeTimeline.outroActionBar(local)?.let { bounds ->
+            val action = texture("outro-action") { NativeArtwork.outroActionBar() }
+            drawTexture(action, bounds.left, bounds.top, alpha, drawWidth = bounds.width, drawHeight = bounds.height)
+        }
+        NativeTimeline.outroSubscribe(local)?.let { bounds ->
+            val subscribe = texture("outro-subscribe") { NativeArtwork.outroSubscribe(context) }
+            drawTexture(subscribe, bounds.left, bounds.top, alpha, drawWidth = bounds.width, drawHeight = bounds.height)
+        }
     }
 
     private fun createProgram(vertex: String, fragment: String): Int {

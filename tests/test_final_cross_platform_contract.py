@@ -59,3 +59,17 @@ def test_android_uses_new_package_and_fixed_badge_geometry() -> None:
     assert "const val badgeHeight = 375" in artwork
     timeline = (KOTLIN / "NativeTimeline.kt").read_text(encoding="utf-8")
     assert "fun badgeShineProgress" in timeline
+    assert "fun badgeTextProgress" in timeline
+    assert "fun outroCoverY" in timeline
+    assert "fun outroGroupTop" in timeline
+
+
+def test_native_preview_and_gpu_export_share_badge_and_outro_layers() -> None:
+    canvas = (KOTLIN / "NativeSceneRenderer.kt").read_text(encoding="utf-8")
+    gpu = (KOTLIN / "NativeGpuRenderer.kt").read_text(encoding="utf-8")
+    for source in (canvas, gpu):
+        assert "NativeArtwork.badgeShell" in source
+        assert "NativeArtwork.badgeText" in source
+        assert "NativeTimeline.badgeTextProgress" in source
+        assert "NativeTimeline.outroActionBar" in source
+        assert "NativeTimeline.outroSubscribe" in source

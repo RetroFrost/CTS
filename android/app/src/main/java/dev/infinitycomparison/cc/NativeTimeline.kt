@@ -3,6 +3,7 @@ package dev.infinitycomparison.cc
 import kotlin.math.max
 
 object NativeTimeline {
+    data class Bounds(val left: Float, val top: Float, val width: Float, val height: Float)
     const val referenceWidth = 1920f
     const val referenceHeight = 1080f
     const val slotPitch = 476f
@@ -34,6 +35,13 @@ object NativeTimeline {
         172 to -187f, 176 to -156f, 180 to -121f, 184 to -94f,
         188 to -66f, 192 to -41f, 196 to -25f, 200 to -10f,
         204 to -2f, 206 to 0f,
+    )
+    private val outroCover = intArrayOf(
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        28, 72, 128, 196, 273, 357, 445, 535, 626, 714, 798, 874,
+        942, 999, 1042, 1070, 1080, 1080, 1080, 1080, 1080, 1080,
+        1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080,
+        1080, 1080,
     )
 
     fun metadata(project: StudioProject): RenderMetadata {
@@ -148,6 +156,49 @@ object NativeTimeline {
         val end = if (index < 4) 133 else 241
         if (localFrame !in start until end) return null
         return (localFrame - start).toFloat() / (end - start)
+    }
+
+    fun badgeTextProgress(index: Int, line: Int, localFrame: Int): Float {
+        val age = if (index < 4) {
+            ((localFrame - 35) / 85f).coerceIn(0f, 1f) * 2.9f
+        } else {
+            ((localFrame - 122) / 103f) * 2.25f
+        }
+        val start = 0.9f + line * 0.1f
+        return ((age - start) / 0.42f).coerceIn(0f, 1f)
+    }
+
+    fun easeOutCubic(value: Float): Float {
+        val p = value.coerceIn(0f, 1f)
+        return 1f - (1f - p) * (1f - p) * (1f - p)
+    }
+
+    fun outroLocal(project: StudioProject, frame: Int): Int = frame - contentEnd(project)
+
+    fun outroCoverY(localFrame: Int): Float =
+        outroCover[localFrame.coerceIn(0, outroCover.lastIndex)].toFloat()
+
+    fun outroGroupTop(localFrame: Int): Float? {
+        if (localFrame < 43) return null
+        if (localFrame >= 53) return 0f
+        val positions = floatArrayOf(-210f, -210f, -183f, -144f, -108f, -78f, -51f, -30f, -14f, -4f, 0f)
+        return positions[localFrame - 43]
+    }
+
+    fun outroActionBar(localFrame: Int): Bounds? {
+        if (localFrame < 54) return null
+        val progress = easeOutCubic(((localFrame - 54) / 48f).coerceIn(0f, 1f))
+        val width = 42f + (540f - 42f) * progress
+        val height = 8f + (130f - 8f) * progress
+        return Bounds(738f - width / 2f, 98f - 61f * progress, width, height)
+    }
+
+    fun outroSubscribe(localFrame: Int): Bounds? {
+        if (localFrame < 74) return null
+        val progress = easeOutCubic(((localFrame - 74) / 28f).coerceIn(0f, 1f))
+        val width = 22f + (185f - 22f) * progress
+        val height = 7f + (53f - 7f) * progress
+        return Bounds(810.5f - width / 2f, 103f - 26f * progress, width, height)
     }
 
     private fun sampleFrames(points: Array<Pair<Int, Float>>, value: Int): Float {

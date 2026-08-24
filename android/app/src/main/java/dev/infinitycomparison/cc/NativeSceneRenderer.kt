@@ -17,6 +17,8 @@ import kotlin.math.max
 import kotlin.math.min
 
 internal object NativeArtwork {
+    data class BadgeLine(val text: String, val centreY: Float, val size: Float, val maxWidth: Float, val bold: Boolean)
+
     private const val titleHeight = 93
     private const val descriptionTop = 965
     const val badgeWidth = 325
@@ -76,7 +78,7 @@ internal object NativeArtwork {
         }
     }
 
-    fun badge(context: Context, card: StudioCard): Bitmap {
+    fun badgeShell(): Bitmap {
         val bitmap = Bitmap.createBitmap(badgeWidth, badgeHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val face = Path().apply {
@@ -96,26 +98,34 @@ internal object NativeArtwork {
         canvas.drawPath(face, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.rgb(158, 0, 8)
         })
+        return bitmap
+    }
 
+    fun badgeLines(card: StudioCard): List<BadgeLine> {
         val words = card.value.trim().uppercase().split(Regex("\\s+")).filter(String::isNotBlank)
         val header = card.badgeHeader.trim().uppercase().replace(Regex("\\s+"), " ")
         val lines = if (words.size <= 1) words else listOf(words.first(), words.drop(1).joinToString(" "))
-        when {
-            header.isNotBlank() && lines.size == 1 -> {
-                drawBadgeLine(canvas, context, header, 72f, 31f, 262f, false)
-                drawBadgeLine(canvas, context, lines.firstOrNull().orEmpty(), 218f, 78f, 278f, true)
-            }
-            header.isNotBlank() -> {
-                drawBadgeLine(canvas, context, header, 70f, 31f, 262f, false)
-                drawBadgeLine(canvas, context, lines.firstOrNull().orEmpty(), 181f, 88f, 278f, true)
-                drawBadgeLine(canvas, context, lines.drop(1).joinToString(" "), 285f, 35f, 280f, false)
-            }
-            lines.size == 1 -> drawBadgeLine(canvas, context, lines[0], 181f, 91f, 280f, true)
-            else -> {
-                drawBadgeLine(canvas, context, lines[0], 143f, 91f, 280f, true)
-                drawBadgeLine(canvas, context, lines[1], 238f, 42f, 285f, false)
-            }
+        return when {
+            header.isNotBlank() && lines.size == 1 -> listOf(
+                BadgeLine(header, 72f, 31f, 262f, false),
+                BadgeLine(lines.firstOrNull().orEmpty(), 218f, 78f, 278f, true),
+            )
+            header.isNotBlank() -> listOf(
+                BadgeLine(header, 70f, 31f, 262f, false),
+                BadgeLine(lines.firstOrNull().orEmpty(), 181f, 88f, 278f, true),
+                BadgeLine(lines.drop(1).joinToString(" "), 285f, 35f, 280f, false),
+            )
+            lines.size == 1 -> listOf(BadgeLine(lines[0], 181f, 91f, 280f, true))
+            else -> listOf(
+                BadgeLine(lines.firstOrNull().orEmpty(), 143f, 91f, 280f, true),
+                BadgeLine(lines.getOrElse(1) { "" }, 238f, 42f, 285f, false),
+            )
         }
+    }
+
+    fun badgeText(context: Context, line: BadgeLine): Bitmap {
+        val bitmap = Bitmap.createBitmap(badgeWidth, badgeHeight, Bitmap.Config.ARGB_8888)
+        drawBadgeLine(Canvas(bitmap), context, line.text, line.centreY, line.size, line.maxWidth, line.bold)
         return bitmap
     }
 
@@ -162,6 +172,64 @@ internal object NativeArtwork {
         drawCentred(canvas, "Design & Rendering", 690f, 22f, font(context, "Poppins-Bold.ttf", true), Color.WHITE)
         drawCentred(canvas, "Cubical", 730f, 24f, font(context, "Poppins-Medium.ttf", false), Color.WHITE)
         drawCentred(canvas, "CREDITS ARE OPTIONAL", 1035f, 13f, font(context, "Poppins-Medium.ttf", false), Color.LTGRAY)
+        return bitmap
+    }
+
+    fun outroGroup(context: Context, project: StudioProject): Bitmap {
+        val bitmap = Bitmap.createBitmap(1440, 1080, Bitmap.Config.RGB_565)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.BLACK)
+        val red = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(197, 0, 13) }
+        canvas.drawRoundRect(RectF(40f, 210f, 689f, 669f), 10f, 10f, red)
+        canvas.drawRoundRect(RectF(750f, 210f, 1400f, 669f), 10f, 10f, red)
+        drawFittedCentredText(
+            canvas, "BEST VIDEO FOR YOU", RectF(80f, 373f, 649f, 506f), 42f, 26f, 2,
+            font(context, "Poppins-Bold.ttf", true), Color.WHITE,
+        )
+        drawFittedCentredText(
+            canvas, "NEWEST VIDEO", RectF(790f, 373f, 1360f, 506f), 42f, 26f, 2,
+            font(context, "Poppins-Bold.ttf", true), Color.WHITE,
+        )
+        canvas.drawRoundRect(RectF(468f, 741f, 970f, 1010f), 12f, 12f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(31, 31, 33)
+        })
+        drawFittedCentredText(
+            canvas, project.name.ifBlank { "Cubical Compare" }, RectF(500f, 773f, 938f, 853f), 34f, 22f, 2,
+            font(context, "Poppins-SemiBold.ttf", true), Color.WHITE,
+        )
+        drawFittedCentredText(
+            canvas, "Thanks for watching", RectF(500f, 873f, 938f, 938f), 27f, 19f, 1,
+            font(context, "Poppins-Medium.ttf", false), Color.LTGRAY,
+        )
+        return bitmap
+    }
+
+    fun outroActionBar(): Bitmap {
+        val bitmap = Bitmap.createBitmap(540, 130, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawRoundRect(RectF(0f, 0f, 540f, 130f), 65f, 65f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE })
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(48, 48, 50); strokeWidth = 7f; style = Paint.Style.STROKE
+        }
+        canvas.drawCircle(66f, 65f, 22f, iconPaint)
+        canvas.drawLine(52f, 65f, 63f, 76f, iconPaint)
+        canvas.drawLine(63f, 76f, 82f, 51f, iconPaint)
+        canvas.drawCircle(474f, 65f, 22f, iconPaint)
+        canvas.drawLine(462f, 65f, 470f, 73f, iconPaint)
+        canvas.drawLine(470f, 73f, 486f, 55f, iconPaint)
+        return bitmap
+    }
+
+    fun outroSubscribe(context: Context): Bitmap {
+        val bitmap = Bitmap.createBitmap(185, 53, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawRoundRect(RectF(0f, 0f, 185f, 53f), 26.5f, 26.5f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(202, 0, 14)
+        })
+        drawFittedCentredText(
+            canvas, "SUBSCRIBE", RectF(14f, 4f, 171f, 49f), 22f, 16f, 1,
+            font(context, "Poppins-Bold.ttf", true), Color.WHITE,
+        )
         return bitmap
     }
 
@@ -285,7 +353,7 @@ internal object NativeArtwork {
 }
 
 object NativeFrameRenderer {
-    private const val maxCachedCards = 12
+    private const val maxCachedCards = 32
     private val bodies = object : LinkedHashMap<String, Bitmap>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
             val remove = size > maxCachedCards
@@ -293,7 +361,7 @@ object NativeFrameRenderer {
             return remove
         }
     }
-    private val badges = object : LinkedHashMap<String, Bitmap>(16, 0.75f, true) {
+    private val badges = object : LinkedHashMap<String, Bitmap>(36, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
             val remove = size > maxCachedCards
             if (remove) eldest?.value?.recycle()
@@ -331,14 +399,34 @@ object NativeFrameRenderer {
             for (index in positions.keys.sorted()) {
                 val card = project.cards[index]
                 if (!project.showBadges || card.value.isBlank()) continue
-                val offset = NativeTimeline.badgeOffset(index, NativeTimeline.sceneFrame(project, frame) - starts[index]) ?: continue
-                val key = badgeKey(card)
-                val badge = badges.getOrPut(key) { NativeArtwork.badge(context, card) }
+                val localFrame = NativeTimeline.sceneFrame(project, frame) - starts[index]
+                val offset = NativeTimeline.badgeOffset(index, localFrame) ?: continue
+                val badge = badges.getOrPut("badge-shell") { NativeArtwork.badgeShell() }
                 val left = positions.getValue(index) + (NativeTimeline.slotPitch - NativeArtwork.badgeWidth) / 2f
                 val top = NativeArtwork.badgeTop + offset
                 canvas.drawBitmap(badge, left, top, layerPaint)
-                NativeTimeline.badgeShineProgress(index, NativeTimeline.sceneFrame(project, frame) - starts[index])?.let {
+                NativeTimeline.badgeShineProgress(index, localFrame)?.let {
                     NativeArtwork.drawBadgeShine(canvas, left, top, it, layerPaint.alpha)
+                }
+                NativeArtwork.badgeLines(card).forEachIndexed { lineIndex, line ->
+                    val progress = NativeTimeline.badgeTextProgress(index, lineIndex, localFrame)
+                    if (progress <= 0f) return@forEachIndexed
+                    val eased = NativeTimeline.easeOutCubic(progress)
+                    val yOffset = -(1f - eased) * 88f
+                    val lineBitmap = badges.getOrPut("badge-text:${badgeKey(card)}:$lineIndex") {
+                        NativeArtwork.badgeText(context, line)
+                    }
+                    val finalAlpha = (layerPaint.alpha * min(1f, progress * 1.75f)).toInt()
+                    val trailLength = (1f - progress) * 58f
+                    if (trailLength > 1f) {
+                        for (trail in 4 downTo 1) {
+                            val trailPaint = Paint(layerPaint).apply {
+                                alpha = (finalAlpha * (5 - trail) / 5f * 0.16f).toInt()
+                            }
+                            canvas.drawBitmap(lineBitmap, left, top + yOffset - trailLength * trail / 4f, trailPaint)
+                        }
+                    }
+                    canvas.drawBitmap(lineBitmap, left, top + yOffset, Paint(layerPaint).apply { alpha = finalAlpha })
                 }
             }
             for (index in positions.keys.sorted()) {
@@ -346,6 +434,7 @@ object NativeFrameRenderer {
                 canvas.drawBitmap(front, positions.getValue(index) + NativeTimeline.bodyInset, 0f, layerPaint)
                 front.recycle()
             }
+            drawOutro(context, canvas, project, frame, layerPaint)
         }
         canvas.restore()
         return output
@@ -353,4 +442,30 @@ object NativeFrameRenderer {
 
     private fun bodyKey(card: StudioCard): String = "${card.id}:${card.hashCode()}"
     private fun badgeKey(card: StudioCard): String = "${card.id}:${card.badgeHeader}:${card.value}"
+
+    private fun drawOutro(context: Context, canvas: Canvas, project: StudioProject, frame: Int, layerPaint: Paint) {
+        val local = NativeTimeline.outroLocal(project, frame)
+        if (local < 0) return
+        if (local < 43) {
+            canvas.drawRect(0f, 0f, 1440f, NativeTimeline.outroCoverY(local), Paint().apply { color = Color.BLACK })
+            return
+        }
+        canvas.drawRect(0f, 0f, 1440f, NativeTimeline.referenceHeight, Paint().apply { color = Color.BLACK })
+        NativeTimeline.outroGroupTop(local)?.let { top ->
+            val group = badges.getOrPut("outro-group:${project.name}") { NativeArtwork.outroGroup(context, project) }
+            canvas.drawBitmap(group, 0f, top, layerPaint)
+        }
+        NativeTimeline.outroActionBar(local)?.let { bounds ->
+            val action = badges.getOrPut("outro-action") { NativeArtwork.outroActionBar() }
+            canvas.drawBitmap(
+                action, null, RectF(bounds.left, bounds.top, bounds.left + bounds.width, bounds.top + bounds.height), layerPaint,
+            )
+        }
+        NativeTimeline.outroSubscribe(local)?.let { bounds ->
+            val subscribe = badges.getOrPut("outro-subscribe") { NativeArtwork.outroSubscribe(context) }
+            canvas.drawBitmap(
+                subscribe, null, RectF(bounds.left, bounds.top, bounds.left + bounds.width, bounds.top + bounds.height), layerPaint,
+            )
+        }
+    }
 }
