@@ -97,36 +97,8 @@ class MeasuredWatchDataFrameRenderer(WatchDataFrameRenderer):
         )
 
     def _opening_stage_scale(self, local_frame: int) -> float:
-        # Width ratios measured every five frames from the first settled badge.
-        # Applying the same local clock to opening cards reproduces the source
-        # active -> medium -> small hierarchy instead of a generic easing.
-        keys = (
-            (160.0, 1.000000),
-            (250.0, 1.000000),
-            (255.0, 1.000000),
-            (260.0, 296.0 / 298.0),
-            (265.0, 288.0 / 298.0),
-            (270.0, 282.0 / 298.0),
-            (275.0, 278.0 / 298.0),
-            (280.0, 276.0 / 298.0),
-            (285.0, 276.0 / 298.0),
-            (290.0, 275.0 / 298.0),
-            (295.0, 274.0 / 298.0),
-            (300.0, 273.0 / 298.0),
-            (330.0, 272.0 / 298.0),
-            (370.0, 272.0 / 298.0),
-            (375.0, 272.0 / 298.0),
-            (380.0, 268.0 / 298.0),
-            (385.0, 260.0 / 298.0),
-            (390.0, 256.0 / 298.0),
-            (395.0, 252.0 / 298.0),
-            (400.0, 252.0 / 298.0),
-            (405.0, 251.0 / 298.0),
-            (410.0, 249.0 / 298.0),
-            (415.0, 248.0 / 298.0),
-            (420.0, 248.0 / 298.0),
-        )
-        return self._wd_sample(keys, float(local_frame))[0]
+        del local_frame
+        return _base.BADGE_ACTIVE_SCALE
 
     @staticmethod
     def _opening_source_age(local_frame: int) -> float:

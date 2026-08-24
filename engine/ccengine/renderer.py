@@ -53,11 +53,12 @@ SHINE_START = 2.18
 SHINE_SECONDS = 0.72
 DEEMPHASIS_SECONDS = 1.00
 
-# The active source badge is about 298 x 344 px. Older badges step down twice,
-# exactly as they do when later badges become the focus in the reference.
-BADGE_ACTIVE_SCALE = 1.0
-BADGE_MEDIUM_SCALE = 272.0 / 298.0
-BADGE_SMALL_SCALE = 248.0 / 298.0
+# 2.0.7 badge contract: every badge stays at the same large size for its
+# complete lifetime.  Keep the legacy stage constants equal as a safety net
+# for callers which retain an older renderer class during module start-up.
+BADGE_ACTIVE_SCALE = 325.0 / 298.0
+BADGE_MEDIUM_SCALE = BADGE_ACTIVE_SCALE
+BADGE_SMALL_SCALE = BADGE_ACTIVE_SCALE
 BADGE_CENTER = (240.0, 198.0)
 BADGE_SOURCE_SIZE = (480, 430)
 BADGE_POLYGON = (
@@ -1065,27 +1066,8 @@ class FrameRenderer:
         )
 
     def _age_deemphasis_scale(self, index: int, global_frame: int, starts: list[int]) -> float:
-        # The reference visibly shrinks older settled hexagons as newer cards
-        # enter.  The original 1.0.1 code had the measured scale constants but
-        # never applied them, so old badges stayed full size.
-        def trigger_for(next_index: int) -> float:
-            if next_index < 4:
-                return starts[next_index] + 35.0 + (SHINE_START / BADGE_ENTRY_END) * 85.0
-            # Later conveyor cards make the previous badge step down as soon
-            # as their card begins sliding in; waiting for the late badge drop
-            # leaves the visible opening badges too large for hundreds of
-            # frames.
-            return float(starts[next_index])
-
-        scale = BADGE_ACTIVE_SCALE
-        if index + 1 < len(starts):
-            p = ease_in_out_cubic((global_frame - trigger_for(index + 1)) / (DEEMPHASIS_SECONDS * 60.0))
-            scale = lerp(BADGE_ACTIVE_SCALE, BADGE_MEDIUM_SCALE, p)
-        if index + 2 < len(starts):
-            p = ease_in_out_cubic((global_frame - trigger_for(index + 2)) / (DEEMPHASIS_SECONDS * 60.0))
-            if p > 0.0:
-                scale = lerp(BADGE_MEDIUM_SCALE, BADGE_SMALL_SCALE, p)
-        return scale
+        del index, global_frame, starts
+        return BADGE_ACTIVE_SCALE
 
     def _draw_badge(
         self,

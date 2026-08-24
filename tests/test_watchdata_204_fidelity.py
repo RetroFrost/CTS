@@ -41,11 +41,12 @@ def test_settled_badge_face_is_flat_after_shine() -> None:
     assert badge.getpixel((300, 90)) == (*_REFERENCE_BADGE_FILL, 255)
 
 
-def test_measured_opening_stage_uses_reference_widths() -> None:
+def test_measured_opening_stage_stays_uniformly_large() -> None:
     renderer = FrameRenderer()
-    assert renderer._opening_stage_scale(250) == 1.0
-    assert abs(renderer._opening_stage_scale(300) - 273.0 / 298.0) < 1e-9
-    assert abs(renderer._opening_stage_scale(420) - 248.0 / 298.0) < 1e-9
+    expected = 325.0 / 298.0
+    assert renderer._opening_stage_scale(250) == expected
+    assert renderer._opening_stage_scale(300) == expected
+    assert renderer._opening_stage_scale(420) == expected
 
 
 def test_measured_shine_clocks_finish_flat() -> None:

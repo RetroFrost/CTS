@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import math
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 from ccengine import FrameRenderer
 from ccengine import renderer as base
 from ccengine.models import Card, Project
+from ccengine.timing import card_start_frames
 
 
 def area_scale(affine: tuple[float, float, float, float, float, float]) -> float:
@@ -104,3 +105,52 @@ def test_badge_header_value_and_unit_use_three_fixed_lines() -> None:
         ("15", 215.0, 94),
         ("YEARS", 310.0, 38),
     ]
+
+
+def test_legacy_scale_paths_cannot_shrink_badges_over_time() -> None:
+    renderer = FrameRenderer()
+    expected = 325.0 / 298.0
+    starts = [0, 120, 240, 360, 480, 600]
+
+    assert base.BADGE_ACTIVE_SCALE == expected
+    assert base.BADGE_MEDIUM_SCALE == expected
+    assert base.BADGE_SMALL_SCALE == expected
+    assert {
+        renderer._stage_scale(0, frame / 60.0, [value / 60.0 for value in starts])
+        for frame in (0, 240, 480, 720, 1200)
+    } == {expected}
+    assert {
+        renderer._age_deemphasis_scale(0, frame, starts)
+        for frame in (0, 240, 480, 720, 1200)
+    } == {expected}
+
+
+def test_rendered_badge_pixel_bounds_stay_constant_across_timeline() -> None:
+    project = Project(
+        cards=[
+            Card(title=f"Card {index}", value=f"{20 - index} YEARS", badge_header="SURVIVE")
+            for index in range(8)
+        ]
+    )
+    renderer = FrameRenderer()
+    renderer.render(project, 0.0)
+    starts = card_start_frames(project)
+    bounds: set[tuple[int, int]] = set()
+
+    for index, local_frame in ((0, 200), (0, 800), (4, 230), (4, 800), (7, 230), (7, 800)):
+        canvas = Image.new("RGB", (1920, 1080), (0, 0, 0))
+        renderer._draw_badge(
+            canvas,
+            project,
+            index,
+            500.0,
+            starts[index] + local_frame,
+            starts,
+        )
+        red, green, _blue = canvas.split()
+        red_dominance = ImageChops.subtract(red, green.point(lambda value: min(255, value * 2)))
+        bbox = red_dominance.getbbox()
+        assert bbox is not None
+        bounds.add((bbox[2] - bbox[0], bbox[3] - bbox[1]))
+
+    assert bounds == {(325, 375)}
