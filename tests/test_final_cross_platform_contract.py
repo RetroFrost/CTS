@@ -57,3 +57,5 @@ def test_android_uses_new_package_and_fixed_badge_geometry() -> None:
     assert 'applicationId = "dev.infinitycomparison.cc"' in gradle
     assert "const val badgeWidth = 325" in artwork
     assert "const val badgeHeight = 375" in artwork
+    timeline = (KOTLIN / "NativeTimeline.kt").read_text(encoding="utf-8")
+    assert "fun badgeShineProgress" in timeline

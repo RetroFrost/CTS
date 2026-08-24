@@ -119,6 +119,36 @@ internal object NativeArtwork {
         return bitmap
     }
 
+    fun drawBadgeShine(canvas: Canvas, left: Float, top: Float, progress: Float, alpha: Int) {
+        val topX = -30f + progress.coerceIn(0f, 1f) * (badgeWidth + 150f)
+        val bottomX = topX - 126f
+        val face = Path().apply {
+            moveTo(left + 162.5f, top)
+            lineTo(left + 318f, top + 89f)
+            lineTo(left + 318f, top + 286f)
+            lineTo(left + 162.5f, top + 375f)
+            lineTo(left + 7f, top + 286f)
+            lineTo(left + 7f, top + 89f)
+            close()
+        }
+        canvas.save()
+        canvas.clipPath(face)
+        fun band(halfWidth: Float): Path = Path().apply {
+            moveTo(left + topX - halfWidth, top - 60f)
+            lineTo(left + topX + halfWidth, top - 60f)
+            lineTo(left + bottomX + halfWidth, top + badgeHeight + 60f)
+            lineTo(left + bottomX - halfWidth, top + badgeHeight + 60f)
+            close()
+        }
+        canvas.drawPath(band(34f), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb((alpha * 0.18f).toInt(), 255, 255, 255)
+        })
+        canvas.drawPath(band(5f), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb((alpha * 0.62f).toInt(), 255, 255, 255)
+        })
+        canvas.restore()
+    }
+
     fun credits(context: Context, project: StudioProject): Bitmap {
         val bitmap = Bitmap.createBitmap(NativeTimeline.bodyWidth, NativeTimeline.bodyHeight, Bitmap.Config.RGB_565)
         val canvas = Canvas(bitmap)
@@ -305,7 +335,11 @@ object NativeFrameRenderer {
                 val key = badgeKey(card)
                 val badge = badges.getOrPut(key) { NativeArtwork.badge(context, card) }
                 val left = positions.getValue(index) + (NativeTimeline.slotPitch - NativeArtwork.badgeWidth) / 2f
-                canvas.drawBitmap(badge, left, NativeArtwork.badgeTop + offset, layerPaint)
+                val top = NativeArtwork.badgeTop + offset
+                canvas.drawBitmap(badge, left, top, layerPaint)
+                NativeTimeline.badgeShineProgress(index, NativeTimeline.sceneFrame(project, frame) - starts[index])?.let {
+                    NativeArtwork.drawBadgeShine(canvas, left, top, it, layerPaint.alpha)
+                }
             }
             for (index in positions.keys.sorted()) {
                 val front = NativeArtwork.frontArtwork(context, project.cards[index]) ?: continue

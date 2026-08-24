@@ -16,4 +16,11 @@ class DurationFormatTest {
     @Test fun formatsDuration() {
         assertEquals("02:05", DurationFormat.format(125.8))
     }
+
+    @Test fun badgeShineKeepsMeasuredIndependentClocks() {
+        assertEquals(0.0f, NativeTimeline.badgeShineProgress(0, 108) ?: -1f, 0.0001f)
+        assertNull(NativeTimeline.badgeShineProgress(0, 133))
+        assertEquals(0.0f, NativeTimeline.badgeShineProgress(4, 208) ?: -1f, 0.0001f)
+        assertNull(NativeTimeline.badgeShineProgress(4, 241))
+    }
 }

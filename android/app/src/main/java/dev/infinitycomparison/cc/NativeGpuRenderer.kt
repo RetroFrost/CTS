@@ -22,6 +22,7 @@ internal class NativeGpuRenderer(
     private val textureLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
     private val samplerLocation = GLES20.glGetUniformLocation(program, "uTexture")
     private val alphaLocation = GLES20.glGetUniformLocation(program, "uAlpha")
+    private val shineLocation = GLES20.glGetUniformLocation(program, "uShineProgress")
     private val vertices: FloatBuffer = ByteBuffer.allocateDirect(16 * 4)
         .order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val textures = object : LinkedHashMap<String, Texture>(24, 0.75f, true) {
@@ -68,7 +69,8 @@ internal class NativeGpuRenderer(
             val offset = NativeTimeline.badgeOffset(index, sceneFrame - starts[index]) ?: continue
             val texture = texture("badge:${card.id}:${card.badgeHeader}:${card.value}") { NativeArtwork.badge(context, card) }
             val left = positions.getValue(index) + (NativeTimeline.slotPitch - NativeArtwork.badgeWidth) / 2f
-            drawTexture(texture, left, NativeArtwork.badgeTop + offset, alpha)
+            val shine = NativeTimeline.badgeShineProgress(index, sceneFrame - starts[index]) ?: -1f
+            drawTexture(texture, left, NativeArtwork.badgeTop + offset, alpha, shine)
         }
         for (index in positions.keys.sorted()) {
             val card = project.cards[index]
@@ -102,7 +104,7 @@ internal class NativeGpuRenderer(
         result
     }
 
-    private fun drawTexture(texture: Texture, left: Float, top: Float, alpha: Float) {
+    private fun drawTexture(texture: Texture, left: Float, top: Float, alpha: Float, shine: Float = -1f) {
         val right = left + texture.width
         val bottom = top + texture.height
         if (right <= 0f || left >= NativeTimeline.referenceWidth || bottom <= 0f || top >= NativeTimeline.referenceHeight) return
@@ -129,6 +131,7 @@ internal class NativeGpuRenderer(
         GLES20.glVertexAttribPointer(textureLocation, 2, GLES20.GL_FLOAT, false, 16, vertices)
         GLES20.glEnableVertexAttribArray(textureLocation)
         GLES20.glUniform1f(alphaLocation, alpha)
+        GLES20.glUniform1f(shineLocation, shine)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
     }
 
@@ -167,9 +170,18 @@ internal class NativeGpuRenderer(
             precision mediump float;
             uniform sampler2D uTexture;
             uniform float uAlpha;
+            uniform float uShineProgress;
             varying vec2 vTexCoord;
             void main() {
                 vec4 colour = texture2D(uTexture, vTexCoord);
+                if (uShineProgress >= 0.0) {
+                    float diagonal = vTexCoord.x - (1.0 - vTexCoord.y) * 0.40;
+                    float centre = mix(-0.50, 0.98, uShineProgress);
+                    float distanceFromBand = abs(diagonal - centre);
+                    float broad = (1.0 - smoothstep(0.04, 0.15, distanceFromBand)) * 0.19;
+                    float core = (1.0 - smoothstep(0.00, 0.025, distanceFromBand)) * 0.48;
+                    colour.rgb = mix(colour.rgb, vec3(1.0), min(0.72, broad + core) * colour.a);
+                }
                 gl_FragColor = vec4(colour.rgb, colour.a * uAlpha);
             }
         """

@@ -143,6 +143,13 @@ object NativeTimeline {
         return sampleFrames(badgeFall, localFrame)
     }
 
+    fun badgeShineProgress(index: Int, localFrame: Int): Float? {
+        val start = if (index < 4) 108 else 208
+        val end = if (index < 4) 133 else 241
+        if (localFrame !in start until end) return null
+        return (localFrame - start).toFloat() / (end - start)
+    }
+
     private fun sampleFrames(points: Array<Pair<Int, Float>>, value: Int): Float {
         if (value <= points.first().first) return points.first().second
         if (value >= points.last().first) return points.last().second
