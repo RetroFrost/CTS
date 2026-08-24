@@ -47,5 +47,17 @@ def test_android_preview_and_export_call_shared_renderer() -> None:
     assert 'getModule("cts_android_bridge")' in bridge
     assert "RendererBridge.renderRgba(project, frame" in exporter
     assert "MediaCodec.createByCodecName" in exporter
-    assert "FrameRenderer" in python_bridge
+    assert "BadgeExactReferenceFrameRenderer" in python_bridge
+    assert "_renderer = BadgeExactReferenceFrameRenderer()" in python_bridge
     assert "_renderer.render(" in python_bridge
+
+
+def test_android_preview_and_export_bind_the_uniform_badge_renderer_directly() -> None:
+    python_root = ROOT / "android" / "app" / "src" / "main" / "python"
+    preview = (python_root / "cts_android_bridge.py").read_text(encoding="utf-8")
+    export = (python_root / "cts_fast_export.py").read_text(encoding="utf-8")
+
+    for source in (preview, export):
+        assert "from ccengine.watchdata_badge_exact import BadgeExactReferenceFrameRenderer" in source
+        assert "_renderer = BadgeExactReferenceFrameRenderer()" in source
+        assert "from ccengine.renderer import FrameRenderer" not in source

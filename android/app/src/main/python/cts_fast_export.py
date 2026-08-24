@@ -6,12 +6,12 @@ import json
 from PIL import Image
 
 from ccengine.models import Project
-from ccengine.renderer import FrameRenderer
 from ccengine.timing import total_duration, total_frame_count
+from ccengine.watchdata_badge_exact import BadgeExactReferenceFrameRenderer
 
 # Keep export-only state outside cts_android_bridge so previews/imports can keep
 # using the established bridge unchanged while a foreground export is running.
-_renderer = FrameRenderer()
+_renderer = BadgeExactReferenceFrameRenderer()
 _export_project: Project | None = None
 
 # These are the same limited-range BT.601 coefficients used by the old Kotlin

@@ -25,13 +25,11 @@ _REFERENCE_BADGE_OUTLINE = (158, 0, 8, 118)
 
 # Every badge keeps the original large emphasis size. Their measured vertical
 # fall stays intact, but they never grow or shrink to highlight themselves.
-_FIXED_BADGE_SCALE = 325.0 / 298.0
+_FIXED_BADGE_SCALE = _base.BADGE_ACTIVE_SCALE
 
 # A later badge is not visibly on-screen at its nominal animation start.  The
 # source polygon remains entirely above the frame until roughly local f156.
-# The preceding badge begins its measured shrink only once that incoming shell
-# is actually visible.  It reaches the next emphasis stage about 28 frames
-# later (e.g. source f904..f932 for 8000 BC -> 6600 BC).
+# Its shell then falls vertically without entering another size stage.
 
 # The old renderer stretched the gloss over ~56-60 frames.  Dense source-frame
 # inspection shows a much quicker pass: opening f108..f132 and later badges

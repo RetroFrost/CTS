@@ -26,10 +26,13 @@ from ccengine.megapack import (
 from ccengine.model_registry import get_model, normalize_model_id
 from ccengine.models import Project
 from ccengine.reference_profiles import get_reference_profile
-from ccengine.renderer import FrameRenderer
 from ccengine.timing import total_duration, total_frame_count
+from ccengine.watchdata_badge_exact import BadgeExactReferenceFrameRenderer
 
-_renderer = FrameRenderer()
+# Bind Android preview directly to the final badge renderer.  Do not depend on
+# the package-level FrameRenderer alias: an already-loaded legacy module can
+# otherwise retain the old active/medium/small badge stages for this process.
+_renderer = BadgeExactReferenceFrameRenderer()
 
 
 def _project(text: str) -> Project:
