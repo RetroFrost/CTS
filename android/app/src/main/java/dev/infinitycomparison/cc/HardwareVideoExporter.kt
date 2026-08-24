@@ -430,13 +430,17 @@ private class CodecInputSurface(
     }
 
     fun draw(frame: Int, presentationNanos: Long) {
+        if (frame == 0) CrashJournal.updateExportStage("GPU first frame • compositor entered", addEvent = false)
         renderer.draw(frame)
+        if (frame == 0) CrashJournal.updateExportStage("GPU first frame • compositor finished", addEvent = false)
         val glError = GLES20.glGetError()
         check(glError == GLES20.GL_NO_ERROR) { "OpenGL export failed with error 0x${glError.toString(16)}." }
         check(EGLExt.eglPresentationTimeANDROID(display, eglSurface, presentationNanos)) {
             "Could not set the encoder frame timestamp."
         }
+        if (frame == 0) CrashJournal.updateExportStage("GPU first frame • swapping encoder surface", addEvent = false)
         check(EGL14.eglSwapBuffers(display, eglSurface)) { "The GPU encoder surface stopped responding." }
+        if (frame == 0) CrashJournal.updateExportStage("GPU first frame • submitted to encoder", addEvent = false)
     }
 
     fun release() {

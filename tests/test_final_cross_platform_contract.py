@@ -110,3 +110,14 @@ def test_android_recovers_crash_diagnostics_to_clipboard() -> None:
     assert "KEY_EXPORT_ACTIVE" in journal
     assert "copyPendingReportToClipboard(this)" in activity
     assert "CrashJournal.updateExportStage" in service
+    assert '.putBoolean(KEY_EXPORT_ACTIVE, false)' in journal
+
+
+def test_android_gpu_normalises_recordable_textures_for_mali() -> None:
+    gpu = (KOTLIN / "NativeGpuRenderer.kt").read_text(encoding="utf-8")
+    exporter = (KOTLIN / "HardwareVideoExporter.kt").read_text(encoding="utf-8")
+
+    assert "source.copy(Bitmap.Config.ARGB_8888, false)" in gpu
+    assert "uploading RGBA texture" in gpu
+    assert "swapping encoder surface" in exporter
+    assert "submitted to encoder" in exporter

@@ -18,6 +18,7 @@ Release channel: `release/cubical-compare-final`.
 - Auto also retries with H.264 if the selected H.265 encoder fails while initialising or rendering.
 - Export continues through a foreground service with progress, cancellation and screen-off support.
 - If the Android process crashes or disappears during foreground work/export, the next launch copies a concise diagnostic report to the clipboard automatically.
+- Recordable GPU textures use an RGBA upload path compatible with Samsung's Android 12 Mali-G76 driver.
 - Thumbnail generation has been removed: export now creates only the requested MP4.
 
 ### Badge and MegaPack fidelity

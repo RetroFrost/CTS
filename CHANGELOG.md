@@ -21,6 +21,8 @@
 - Corrected APK native-library packaging so Android can parse and install the generated APK.
 - Prevented export-start crashes by releasing preview caches before encoding, bounding GPU texture memory, accepting more recordable EGL configurations, and retrying H.264 when Auto-selected H.265 fails.
 - Recorded the last export stage and frame checkpoint so GPU/encoder process deaths can be diagnosed after relaunch.
+- Normalised recordable GPU textures to RGBA before upload to avoid the Samsung Android 12 Mali-G76 RGB565 export failure.
+- Cleared recovered foreground/export markers after relaunch so one interruption produces only one clipboard report.
 
 ## 0.4.5 — 2026-07-14
 

@@ -92,7 +92,7 @@ object CrashJournal {
             writeReport(
                 reason = "The previous process ended unexpectedly",
                 threadName = "Unavailable (the process ended before a managed stack trace was captured)",
-                exception = "No managed exception was captured. The process may have been terminated by native code, the GPU driver, the encoder, or Android.",
+                exception = "No managed exception was captured. The process may have been terminated by native code, the GPU driver, the encoder, Android, or a force-close. Process and memory values are measured during this recovery launch.",
                 stateOverride = state,
             )
         }
@@ -103,7 +103,11 @@ object CrashJournal {
                 writeText("")
             }
         }
-        preferences.edit().putBoolean(KEY_FOREGROUND, false).commit()
+        preferences.edit()
+            .putBoolean(KEY_FOREGROUND, false)
+            .putBoolean(KEY_EXPORT_ACTIVE, false)
+            .putString(KEY_EXPORT_STAGE, "")
+            .commit()
         application.registerActivityLifecycleCallbacks(ForegroundTracker(context))
         record("Application process started")
     }

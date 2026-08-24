@@ -32,6 +32,7 @@ internal class NativeGpuRenderer(
             return true
         }
     }
+    private var drawingFrame = -1
 
     init {
         GLES20.glUseProgram(program)
@@ -41,6 +42,7 @@ internal class NativeGpuRenderer(
     }
 
     fun draw(frame: Int) {
+        drawingFrame = frame
         GLES20.glViewport(0, 0, outputWidth, outputHeight)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
@@ -55,7 +57,9 @@ internal class NativeGpuRenderer(
 
         for (index in bodyOrder) {
             val card = project.cards[index]
+            if (frame == 0) CrashJournal.updateExportStage("GPU first frame • preparing card texture", addEvent = false)
             val texture = texture("body:${card.id}:${card.hashCode()}") { NativeArtwork.body(context, card) }
+            if (frame == 0) CrashJournal.updateExportStage("GPU first frame • drawing card texture", addEvent = false)
             drawTexture(texture, positions.getValue(index) + NativeTimeline.bodyInset, 0f, alpha)
         }
         NativeTimeline.creditsX(project, frame)?.let { left ->
@@ -115,8 +119,20 @@ internal class NativeGpuRenderer(
     }
 
     private fun texture(key: String, factory: () -> Bitmap): Texture = textures.getOrPut(key) {
-        val bitmap = factory()
+        val source = factory()
+        // Samsung's Android 12 Mali-G76 stack can hang or terminate the process when an RGB_565
+        // bitmap is uploaded directly to a recordable MediaCodec EGL surface. Normalising the
+        // upload to RGBA_8888 keeps the Canvas artwork unchanged and avoids that vendor path.
+        val bitmap = try {
+            if (source.config == Bitmap.Config.ARGB_8888) source
+            else source.copy(Bitmap.Config.ARGB_8888, false)
+                ?: error("The renderer could not prepare an RGBA video texture.")
+        } catch (error: Throwable) {
+            source.recycle()
+            throw error
+        }
         try {
+            if (drawingFrame == 0) CrashJournal.updateExportStage("GPU first frame • uploading RGBA texture", addEvent = false)
             val id = IntArray(1).also { GLES20.glGenTextures(1, it, 0) }[0]
             check(id != 0) { "The phone GPU could not allocate a video texture." }
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, id)
@@ -133,6 +149,7 @@ internal class NativeGpuRenderer(
             Texture(id, bitmap.width, bitmap.height)
         } finally {
             bitmap.recycle()
+            if (bitmap !== source) source.recycle()
         }
     }
 
