@@ -17,6 +17,7 @@ Release channel: `release/cubical-compare-final`.
 - Auto mode prefers hardware H.265 and falls back to hardware H.264; either codec can be selected directly.
 - Auto also retries with H.264 if the selected H.265 encoder fails while initialising or rendering.
 - Export continues through a foreground service with progress, cancellation and screen-off support.
+- If the Android process crashes or disappears during foreground work/export, the next launch copies a concise diagnostic report to the clipboard automatically.
 - Thumbnail generation has been removed: export now creates only the requested MP4.
 
 ### Badge and MegaPack fidelity

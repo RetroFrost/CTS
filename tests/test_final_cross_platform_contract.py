@@ -95,3 +95,18 @@ def test_scrolling_badges_can_be_settled_by_project_option() -> None:
     assert '"settled_scrolling_badges"' in project
     assert "if (settledScrollingBadges) return 0f" in timeline
     assert "Badges already placed while scrolling" in ui
+
+
+def test_android_recovers_crash_diagnostics_to_clipboard() -> None:
+    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+    journal = (KOTLIN / "CrashJournal.kt").read_text(encoding="utf-8")
+    activity = (KOTLIN / "MainActivity.kt").read_text(encoding="utf-8")
+    service = (KOTLIN / "ExportService.kt").read_text(encoding="utf-8")
+
+    assert 'android:name=".CubicalCompareApplication"' in manifest
+    assert "Thread.setDefaultUncaughtExceptionHandler" in journal
+    assert "copyPendingReportToClipboard" in journal
+    assert "ClipboardManager" in journal
+    assert "KEY_EXPORT_ACTIVE" in journal
+    assert "copyPendingReportToClipboard(this)" in activity
+    assert "CrashJournal.updateExportStage" in service

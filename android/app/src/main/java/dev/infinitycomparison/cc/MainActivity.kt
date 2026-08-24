@@ -109,8 +109,10 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashJournal.record("Main activity created")
+        val crashLogCopied = CrashJournal.copyPendingReportToClipboard(this)
         enableEdgeToEdge()
-        setContent { CubicalCompareApp() }
+        setContent { CubicalCompareApp(crashLogCopied) }
     }
 }
 
@@ -152,7 +154,7 @@ private enum class StudioTab(val title: String, val icon: ImageVector) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CubicalCompareApp() {
+private fun CubicalCompareApp(crashLogCopied: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -164,7 +166,14 @@ private fun CubicalCompareApp() {
     val exportProgress by ExportState.state.collectAsState()
 
     fun report(error: Throwable) {
+        CrashJournal.record("Handled error: ${error.javaClass.simpleName}: ${error.message.orEmpty()}")
         scope.launch { snackbar.showSnackbar(error.message ?: "Something went wrong.") }
+    }
+
+    LaunchedEffect(crashLogCopied) {
+        if (crashLogCopied) {
+            snackbar.showSnackbar("The previous run ended unexpectedly. Its diagnostic log was copied to the clipboard.")
+        }
     }
 
     LaunchedEffect(project) {
@@ -516,6 +525,7 @@ private fun FaqTab(modifier: Modifier = Modifier) {
         "Which encoder should I choose?" to "Auto prefers hardware H.265 and falls back to hardware H.264. You can force either encoder in Settings.",
         "Why do the colours match my wallpaper?" to "On Android 12 and newer, Cubical Compare uses Material You dynamic colours. Older versions use the built-in light or dark palette.",
         "How do badge lines work?" to "Badge header is the small top line. Badge value contains the main number and its optional unit.",
+        "What happens if the app crashes?" to "On the next launch, Cubical Compare automatically copies a private diagnostic report to the clipboard and tells you. The report contains the crash, device, memory and recent renderer stages—not your project data.",
     )
     LazyColumn(
         modifier = modifier.fillMaxSize(),

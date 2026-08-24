@@ -42,6 +42,7 @@ class ExportService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashJournal.record("Export service created")
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "Video exports", NotificationManager.IMPORTANCE_LOW),
@@ -51,6 +52,7 @@ class ExportService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_CANCEL) {
             cancelled = true
+            CrashJournal.record("Export cancellation requested")
             ExportState.update(ExportState.state.value.copy(stage = "Cancelling", detail = "Stopping safely"))
             updateNotification(ExportState.state.value)
             return START_NOT_STICKY
@@ -58,15 +60,23 @@ class ExportService : Service() {
         val projectJson = intent?.getStringExtra(EXTRA_PROJECT)
         val destinationText = intent?.getStringExtra(EXTRA_URI)
         if (projectJson.isNullOrBlank() || destinationText.isNullOrBlank()) {
+            CrashJournal.record("Export rejected: start data was missing")
             stopSelf(startId)
             return START_NOT_STICKY
         }
         cancelled = false
+        val projectSummary = runCatching {
+            val value = StudioProject.fromJson(projectJson)
+            "${value.width}x${value.height}@${value.fps}, ${value.cards.size} cards, ${value.encoderPreference.displayName}"
+        }.getOrDefault("Project details unavailable")
+        CrashJournal.setExportActive(true, "Preparing • $projectSummary")
         val initial = ExportProgress(true, 0, "Preparing", "Starting the GPU renderer")
         ExportState.update(initial)
         try {
             startForeground(NOTIFICATION_ID, notification(initial))
         } catch (error: Throwable) {
+            CrashJournal.record("Foreground export start failed: ${error.javaClass.simpleName}: ${error.message.orEmpty()}")
+            CrashJournal.setExportActive(false, "Foreground service start failed")
             ExportState.update(
                 ExportProgress(false, 0, "Export failed", error.message ?: "Could not start background export"),
             )
@@ -79,6 +89,8 @@ class ExportService : Service() {
 
         job?.cancel()
         job = scope.launch {
+            var terminalState = false
+            var lastJournalStage = ""
             try {
                 val project = StudioProject.fromJson(projectJson)
                 NativeFrameRenderer.trimCaches()
@@ -90,16 +102,24 @@ class ExportService : Service() {
                         val value = ExportProgress(true, percent.coerceIn(0, 100), stage, detail)
                         ExportState.update(value)
                         updateNotification(value)
+                        val stageChanged = stage != lastJournalStage
+                        lastJournalStage = stage
+                        CrashJournal.updateExportStage("$stage • $detail", addEvent = stageChanged)
                     },
                 ).export(Uri.parse(destinationText))
+                terminalState = true
                 val done = ExportProgress(false, 100, "Finished", "The MP4 is ready")
                 ExportState.update(done)
                 updateNotification(done)
             } catch (_: CancellationException) {
+                terminalState = cancelled
+                CrashJournal.record(if (cancelled) "Export cancelled by user" else "Export interrupted while service was stopping")
                 val stopped = ExportProgress(false, 0, "Cancelled", "Export cancelled")
                 ExportState.update(stopped)
                 updateNotification(stopped)
             } catch (error: Throwable) {
+                terminalState = true
+                CrashJournal.record("Export failed: ${error.javaClass.simpleName}: ${error.message.orEmpty()}")
                 val failed = ExportProgress(
                     false,
                     0,
@@ -109,6 +129,7 @@ class ExportService : Service() {
                 ExportState.update(failed)
                 updateNotification(failed)
             } finally {
+                if (terminalState) CrashJournal.setExportActive(false, ExportState.state.value.stage)
                 if (wakeLock?.isHeld == true) wakeLock?.release()
                 wakeLock = null
                 stopForeground(false)
@@ -151,6 +172,7 @@ class ExportService : Service() {
     }
 
     override fun onDestroy() {
+        if (job?.isActive == true && !cancelled) CrashJournal.record("Export service destroyed while work was active")
         job?.cancel()
         if (wakeLock?.isHeld == true) wakeLock?.release()
         scope.cancel()
@@ -174,6 +196,7 @@ class ExportService : Service() {
                 .putExtra(EXTRA_URI, destination.toString())
             runCatching { context.startForegroundService(intent) }
                 .onFailure { error ->
+                    CrashJournal.record("Export launch blocked: ${error.javaClass.simpleName}: ${error.message.orEmpty()}")
                     ExportState.update(
                         ExportProgress(false, 0, "Export failed", error.message ?: "Background export was blocked"),
                     )
