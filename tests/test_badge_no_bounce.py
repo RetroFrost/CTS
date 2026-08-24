@@ -79,7 +79,8 @@ def test_later_badges_never_grow_to_highlight_themselves() -> None:
         renderer._reference_later_scale(4, frame, starts)
         for frame in (480, 522, 550, 625, 720, 900)
     }
-    assert scales == {1.0}
+    assert len(scales) == 1
+    assert math.isclose(scales.pop(), 325.0 / 298.0)
 
 
 def test_opening_badges_also_keep_one_size() -> None:
@@ -91,7 +92,8 @@ def test_opening_badges_also_keep_one_size() -> None:
         for index in range(4)
         if frame >= starts[index]
     }
-    assert scales == {1.0}
+    assert len(scales) == 1
+    assert math.isclose(scales.pop(), 325.0 / 298.0)
 
 
 def test_badge_header_value_and_unit_use_three_fixed_lines() -> None:

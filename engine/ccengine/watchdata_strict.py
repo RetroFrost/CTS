@@ -23,9 +23,9 @@ _REFERENCE_BADGE_CENTER = (243.5, 203.5)
 _REFERENCE_BADGE_FILL = (194, 0, 12)
 _REFERENCE_BADGE_OUTLINE = (158, 0, 8, 118)
 
-# Continuous badges keep one settled size. Their measured vertical fall stays
-# intact, but they no longer grow or shrink to highlight themselves.
-_LATER_FIXED_SCALE = 1.0
+# Every badge keeps the original large emphasis size. Their measured vertical
+# fall stays intact, but they never grow or shrink to highlight themselves.
+_FIXED_BADGE_SCALE = 325.0 / 298.0
 
 # A later badge is not visibly on-screen at its nominal animation start.  The
 # source polygon remains entirely above the frame until roughly local f156.
@@ -297,7 +297,7 @@ class StrictReferenceFrameRenderer(ReleaseWatchDataFrameRenderer):
         starts: list[int],
     ) -> float:
         del index, global_frame, local_frame, starts
-        return _LATER_FIXED_SCALE
+        return _FIXED_BADGE_SCALE
 
     @staticmethod
     def _reference_later_scale(
@@ -306,7 +306,7 @@ class StrictReferenceFrameRenderer(ReleaseWatchDataFrameRenderer):
         starts: list[int],
     ) -> float:
         del index, global_frame, starts
-        return _LATER_FIXED_SCALE
+        return _FIXED_BADGE_SCALE
 
     def _draw_badge(
         self,
