@@ -769,12 +769,12 @@ class FrameRenderer:
         lines = self._value_lines(card.value)
         header = " ".join(card.badge_header.upper().split())
         if header and len(lines) == 1:
-            return [(header, 118.0, 34), (lines[0], 225.0, 78)]
+            return [(header, 118.0, 30), (lines[0], 225.0, 70)]
         if header and len(lines) >= 2:
             return [
-                (header, 94.0, 32),
-                (lines[0], 195.0, 84),
-                (" ".join(lines[1:]), 292.0, 40),
+                (header, 94.0, 28),
+                (lines[0], 195.0, 72),
+                (" ".join(lines[1:]), 292.0, 34),
             ]
         if len(lines) == 1:
             return [(lines[0], 219.0, 72)]

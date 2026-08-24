@@ -82,11 +82,23 @@ def test_later_badges_never_grow_to_highlight_themselves() -> None:
     assert scales == {1.0}
 
 
+def test_opening_badges_also_keep_one_size() -> None:
+    renderer = FrameRenderer()
+    starts = [0, 120, 240, 360]
+    scales = {
+        renderer._reference_opening_scale(index, frame, frame - starts[index], starts)
+        for frame in (360, 480, 589, 650, 720)
+        for index in range(4)
+        if frame >= starts[index]
+    }
+    assert scales == {1.0}
+
+
 def test_badge_header_value_and_unit_use_three_fixed_lines() -> None:
     renderer = FrameRenderer()
     layout = renderer._text_layout(Card(value="15 YEARS", badge_header="SURVIVE"))
     assert layout == [
-        ("SURVIVE", 110.0, 44),
-        ("15", 215.0, 112),
-        ("YEARS", 310.0, 44),
+        ("SURVIVE", 110.0, 36),
+        ("15", 215.0, 94),
+        ("YEARS", 310.0, 38),
     ]

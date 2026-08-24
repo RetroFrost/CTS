@@ -26,15 +26,12 @@ _REFERENCE_BADGE_OUTLINE = (158, 0, 8, 118)
 # Continuous badges keep one settled size. Their measured vertical fall stays
 # intact, but they no longer grow or shrink to highlight themselves.
 _LATER_FIXED_SCALE = 1.0
-_LATER_SMALL_SCALE = 248.0 / 298.0
 
 # A later badge is not visibly on-screen at its nominal animation start.  The
 # source polygon remains entirely above the frame until roughly local f156.
 # The preceding badge begins its measured shrink only once that incoming shell
 # is actually visible.  It reaches the next emphasis stage about 28 frames
 # later (e.g. source f904..f932 for 8000 BC -> 6600 BC).
-_LATER_VISIBLE_OFFSET = 162
-_LATER_SCALE_TRANSITION = 28
 
 # The old renderer stretched the gloss over ~56-60 frames.  Dense source-frame
 # inspection shows a much quicker pass: opening f108..f132 and later badges
@@ -143,12 +140,12 @@ class StrictReferenceFrameRenderer(ReleaseWatchDataFrameRenderer):
         lines = self._value_lines(card.value)
         header = " ".join(card.badge_header.upper().split())
         if header and len(lines) == 1:
-            return [(header, 110.0, 44), (lines[0], 238.0, 90)]
+            return [(header, 110.0, 36), (lines[0], 238.0, 82)]
         if header and len(lines) >= 2:
             return [
-                (header, 110.0, 44),
-                (lines[0], 215.0, 112),
-                (" ".join(lines[1:]), 310.0, 44),
+                (header, 110.0, 36),
+                (lines[0], 215.0, 94),
+                (" ".join(lines[1:]), 310.0, 38),
             ]
         if len(lines) == 1:
             return [(lines[0], 199.0, 98)]
@@ -299,19 +296,8 @@ class StrictReferenceFrameRenderer(ReleaseWatchDataFrameRenderer):
         local_frame: int,
         starts: list[int],
     ) -> float:
-        timeline = self._active_profile.timeline
-        if global_frame < timeline.continuous_start_frame:
-            return self._opening_stage_scale(local_frame)
-
-        # At the opening -> conveyor hand-off all four legacy badges converge
-        # to the reference's 248 px background size.  The source transition is
-        # complete by about f650.
-        source_local = max(0, timeline.continuous_start_frame - starts[index])
-        initial = self._opening_stage_scale(source_local)
-        progress = _base.smoothstep(
-            (global_frame - timeline.continuous_start_frame) / 122.0
-        )
-        return _base.lerp(initial, _LATER_SMALL_SCALE, progress)
+        del index, global_frame, local_frame, starts
+        return _LATER_FIXED_SCALE
 
     @staticmethod
     def _reference_later_scale(

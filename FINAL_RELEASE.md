@@ -34,7 +34,8 @@ Release channel: `release/cubical-compare-final`.
 ## Bug fixes
 
 - Corrected three-line badge positioning so the header no longer drifts away from the value and unit.
-- Removed the later-badge scale increase that made badges appear to pop or grow.
+- Restored the original visual size of three-line badge text.
+- Removed badge-size emphasis from both the opening sequence and later conveyor so badges no longer appear randomly small or grow to highlight themselves.
 - Kept the Android embedded renderer byte-for-byte synchronised with the desktop renderer.
 - Retained the vertical badge fall, preview playback and full-frame final export.
 
