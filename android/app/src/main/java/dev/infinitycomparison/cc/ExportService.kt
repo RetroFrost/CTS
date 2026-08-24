@@ -64,7 +64,15 @@ class ExportService : Service() {
         cancelled = false
         val initial = ExportProgress(true, 0, "Preparing", "Starting the GPU renderer")
         ExportState.update(initial)
-        startForeground(NOTIFICATION_ID, notification(initial))
+        try {
+            startForeground(NOTIFICATION_ID, notification(initial))
+        } catch (error: Throwable) {
+            ExportState.update(
+                ExportProgress(false, 0, "Export failed", error.message ?: "Could not start background export"),
+            )
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CubicalCompare:GpuExport")
             .apply { acquire(6 * 60 * 60 * 1000L) }
@@ -73,6 +81,7 @@ class ExportService : Service() {
         job = scope.launch {
             try {
                 val project = StudioProject.fromJson(projectJson)
+                NativeFrameRenderer.trimCaches()
                 HardwareVideoExporter(
                     context = applicationContext,
                     project = project,
@@ -106,7 +115,7 @@ class ExportService : Service() {
                 stopSelf(startId)
             }
         }
-        return START_REDELIVER_INTENT
+        return START_NOT_STICKY
     }
 
     private fun updateNotification(progress: ExportProgress) {
@@ -163,11 +172,18 @@ class ExportService : Service() {
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_PROJECT, project.toJson())
                 .putExtra(EXTRA_URI, destination.toString())
-            context.startForegroundService(intent)
+            runCatching { context.startForegroundService(intent) }
+                .onFailure { error ->
+                    ExportState.update(
+                        ExportProgress(false, 0, "Export failed", error.message ?: "Background export was blocked"),
+                    )
+                }
         }
 
         fun cancel(context: Context) {
-            context.startService(Intent(context, ExportService::class.java).setAction(ACTION_CANCEL))
+            runCatching {
+                context.startService(Intent(context, ExportService::class.java).setAction(ACTION_CANCEL))
+            }
         }
     }
 }

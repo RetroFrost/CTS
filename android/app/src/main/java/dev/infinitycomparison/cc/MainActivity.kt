@@ -742,6 +742,16 @@ private fun SettingsTab(
                 ToggleRow(Icons.Rounded.Badge, "Show badges", project.showBadges) {
                     onProjectChange(project.copy(showBadges = it))
                 }
+                if (project.showBadges) {
+                    HorizontalDivider()
+                    ToggleRow(
+                        Icons.Rounded.Timeline,
+                        "Badges already placed while scrolling",
+                        project.settledScrollingBadges,
+                    ) {
+                        onProjectChange(project.copy(settledScrollingBadges = it))
+                    }
+                }
                 HorizontalDivider()
                 ToggleRow(Icons.Rounded.CreditScore, "Credits", project.creditsEnabled) {
                     onProjectChange(project.copy(creditsEnabled = it))

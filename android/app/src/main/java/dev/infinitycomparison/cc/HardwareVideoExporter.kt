@@ -34,7 +34,14 @@ object HardwareCodecSelector {
         width: Int,
         height: Int,
         fps: Int,
-    ): SelectedVideoCodec {
+    ): SelectedVideoCodec = candidates(preference, width, height, fps).first()
+
+    fun candidates(
+        preference: EncoderPreference,
+        width: Int,
+        height: Int,
+        fps: Int,
+    ): List<SelectedVideoCodec> {
         val mimeOrder = when (preference) {
             EncoderPreference.AUTO -> listOf(HEVC, AVC)
             EncoderPreference.H264 -> listOf(AVC)
@@ -45,22 +52,28 @@ object HardwareCodecSelector {
             .filter { it.isEncoder && isHardware(it) }
             .toList()
 
-        for (mime in mimeOrder) {
-            for (info in codecs) {
-                if (info.supportedTypes.none { it.equals(mime, ignoreCase = true) }) continue
-                val capabilities = runCatching { info.getCapabilitiesForType(mime) }.getOrNull() ?: continue
-                if (!capabilities.colorFormats.contains(MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)) continue
-                val supported = runCatching {
-                    capabilities.videoCapabilities.areSizeAndRateSupported(width, height, fps.toDouble())
-                }.getOrDefault(false)
-                if (!supported) continue
-                return SelectedVideoCodec(
-                    name = info.name,
-                    mime = mime,
-                    label = if (mime == HEVC) "H.265 (HEVC)" else "H.264 (AVC)",
-                )
+        val selected = buildList {
+            for (mime in mimeOrder) {
+                for (info in codecs) {
+                    if (info.supportedTypes.none { it.equals(mime, ignoreCase = true) }) continue
+                    val capabilities = runCatching { info.getCapabilitiesForType(mime) }.getOrNull() ?: continue
+                    if (!capabilities.colorFormats.contains(MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)) continue
+                    val supported = runCatching {
+                        capabilities.videoCapabilities.areSizeAndRateSupported(width, height, fps.toDouble())
+                    }.getOrDefault(false)
+                    if (!supported) continue
+                    add(
+                        SelectedVideoCodec(
+                            name = info.name,
+                            mime = mime,
+                            label = if (mime == HEVC) "H.265 (HEVC)" else "H.264 (AVC)",
+                        ),
+                    )
+                    break
+                }
             }
         }
+        if (selected.isNotEmpty()) return selected
         val requested = when (preference) {
             EncoderPreference.AUTO -> "H.265 or H.264"
             EncoderPreference.H264 -> "H.264"
@@ -142,18 +155,70 @@ class HardwareVideoExporter(
         val width = project.width.coerceAtLeast(2).let { it - it % 2 }
         val height = project.height.coerceAtLeast(2).let { it - it % 2 }
         val fps = project.fps.coerceIn(1, 120)
-        val selected = HardwareCodecSelector.select(project.encoderPreference, width, height, fps)
-        val bitrate = if (selected.mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
+        val candidates = HardwareCodecSelector.candidates(project.encoderPreference, width, height, fps)
+        var lastFailure: Throwable? = null
+        candidates.forEachIndexed { index, selected ->
+            try {
+                encodeVideoWithCodec(output, metadata, width, height, fps, selected)
+                return selected
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (memory: OutOfMemoryError) {
+                throw memory
+            } catch (error: Throwable) {
+                lastFailure = error
+                output.delete()
+                val fallback = candidates.getOrNull(index + 1)
+                if (fallback != null) {
+                    onProgress(
+                        0,
+                        "Encoder fallback",
+                        "${selected.label} failed • trying ${fallback.label}",
+                    )
+                }
+            }
+        }
+        val reason = lastFailure?.message?.takeIf(String::isNotBlank) ?: lastFailure?.javaClass?.simpleName
+        throw IllegalStateException(
+            listOfNotNull(
+                "Every compatible hardware encoder failed. Try selecting H.264 in Settings.",
+                reason,
+            ).joinToString(" "),
+            lastFailure,
+        )
+    }
+
+    private fun encodeVideoWithCodec(
+        output: File,
+        metadata: RenderMetadata,
+        width: Int,
+        height: Int,
+        fps: Int,
+        selected: SelectedVideoCodec,
+    ) {
+        val requestedBitrate = if (selected.mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
             (width * height * fps * 0.075).roundToInt().coerceIn(3_000_000, 32_000_000)
         } else {
             (width * height * fps * 0.11).roundToInt().coerceIn(4_000_000, 45_000_000)
         }
+        val capabilities = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+            .firstOrNull { it.name == selected.name }
+            ?.let { runCatching { it.getCapabilitiesForType(selected.mime) }.getOrNull() }
+        val bitrate = capabilities?.videoCapabilities?.bitrateRange?.let { range ->
+            requestedBitrate.coerceIn(range.lower, range.upper)
+        } ?: requestedBitrate
         val format = MediaFormat.createVideoFormat(selected.mime, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
-            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            val encoder = capabilities?.encoderCapabilities
+            when {
+                encoder?.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) == true ->
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+                encoder?.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) == true ->
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+            }
         }
         val codec = MediaCodec.createByCodecName(selected.name)
         var inputSurface: Surface? = null
@@ -198,14 +263,13 @@ class HardwareVideoExporter(
                 muxerStarted = drain.started
                 ended = drain.ended
             }
-            return selected
         } finally {
             runCatching { egl?.release() }
             runCatching { codec.stop() }
-            codec.release()
+            runCatching { codec.release() }
             if (muxerStarted) runCatching { muxer?.stop() }
-            muxer?.release()
-            inputSurface?.release()
+            runCatching { muxer?.release() }
+            runCatching { inputSurface?.release() }
         }
     }
 
@@ -312,23 +376,36 @@ private class CodecInputSurface(
     val glRenderer: String
 
     init {
+        check(display != EGL14.EGL_NO_DISPLAY) { "The phone did not provide an EGL display." }
         val versions = IntArray(2)
         check(EGL14.eglInitialize(display, versions, 0, versions, 1)) { "Could not initialise EGL." }
-        val attributes = intArrayOf(
-            EGL14.EGL_RED_SIZE, 8,
-            EGL14.EGL_GREEN_SIZE, 8,
-            EGL14.EGL_BLUE_SIZE, 8,
-            EGL14.EGL_ALPHA_SIZE, 8,
-            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-            0x3142, 1,
-            EGL14.EGL_NONE,
+        val attributeChoices = listOf(
+            intArrayOf(
+                EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8,
+                EGL14.EGL_ALPHA_SIZE, 8, EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                EGL_RECORDABLE_ANDROID, 1, EGL14.EGL_NONE,
+            ),
+            intArrayOf(
+                EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8,
+                EGL14.EGL_ALPHA_SIZE, 0, EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                EGL_RECORDABLE_ANDROID, 1, EGL14.EGL_NONE,
+            ),
+            intArrayOf(
+                EGL14.EGL_RED_SIZE, 5, EGL14.EGL_GREEN_SIZE, 6, EGL14.EGL_BLUE_SIZE, 5,
+                EGL14.EGL_ALPHA_SIZE, 0, EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                EGL_RECORDABLE_ANDROID, 1, EGL14.EGL_NONE,
+            ),
         )
-        val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
-        val count = IntArray(1)
-        check(EGL14.eglChooseConfig(display, attributes, 0, configs, 0, 1, count, 0)) {
-            "Could not choose an encoder EGL configuration."
+        var chosenConfig: android.opengl.EGLConfig? = null
+        for (attributes in attributeChoices) {
+            val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
+            val count = IntArray(1)
+            if (EGL14.eglChooseConfig(display, attributes, 0, configs, 0, 1, count, 0) && count[0] > 0) {
+                chosenConfig = configs[0]
+                if (chosenConfig != null) break
+            }
         }
-        val config = requireNotNull(configs[0])
+        val config = requireNotNull(chosenConfig) { "Could not choose a recordable encoder EGL configuration." }
         context = EGL14.eglCreateContext(
             display,
             config,
@@ -336,6 +413,7 @@ private class CodecInputSurface(
             intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE),
             0,
         )
+        check(context != EGL14.EGL_NO_CONTEXT) { "Could not create the encoder OpenGL context." }
         eglSurface = EGL14.eglCreateWindowSurface(
             display,
             config,
@@ -343,6 +421,7 @@ private class CodecInputSurface(
             intArrayOf(EGL14.EGL_NONE),
             0,
         )
+        check(eglSurface != EGL14.EGL_NO_SURFACE) { "Could not create the encoder EGL surface." }
         check(EGL14.eglMakeCurrent(display, eglSurface, eglSurface, context)) {
             "Could not activate the encoder EGL surface."
         }
@@ -352,7 +431,11 @@ private class CodecInputSurface(
 
     fun draw(frame: Int, presentationNanos: Long) {
         renderer.draw(frame)
-        EGLExt.eglPresentationTimeANDROID(display, eglSurface, presentationNanos)
+        val glError = GLES20.glGetError()
+        check(glError == GLES20.GL_NO_ERROR) { "OpenGL export failed with error 0x${glError.toString(16)}." }
+        check(EGLExt.eglPresentationTimeANDROID(display, eglSurface, presentationNanos)) {
+            "Could not set the encoder frame timestamp."
+        }
         check(EGL14.eglSwapBuffers(display, eglSurface)) { "The GPU encoder surface stopped responding." }
     }
 
@@ -363,6 +446,10 @@ private class CodecInputSurface(
         EGL14.eglDestroyContext(display, context)
         EGL14.eglReleaseThread()
         EGL14.eglTerminate(display)
+    }
+
+    private companion object {
+        const val EGL_RECORDABLE_ANDROID = 0x3142
     }
 
 }

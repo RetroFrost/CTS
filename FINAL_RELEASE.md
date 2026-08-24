@@ -15,6 +15,7 @@ Release channel: `release/cubical-compare-final`.
 
 - Android exports the finished MP4 with a hardware GPU/MediaCodec pipeline.
 - Auto mode prefers hardware H.265 and falls back to hardware H.264; either codec can be selected directly.
+- Auto also retries with H.264 if the selected H.265 encoder fails while initialising or rendering.
 - Export continues through a foreground service with progress, cancellation and screen-off support.
 - Thumbnail generation has been removed: export now creates only the requested MP4.
 
@@ -22,6 +23,7 @@ Release channel: `release/cubical-compare-final`.
 
 - Badge text supports a dedicated header, main value and unit layout.
 - Later badges keep a fixed size instead of growing to highlight themselves; their vertical fall animation remains intact.
+- An optional toggle places post-opening badges directly at their final position throughout continuous scrolling.
 - MegaPack cards import badge headers and the manifest video duration.
 - Custom video length changes continuous-scroll speed without changing the comparison content.
 
@@ -38,6 +40,7 @@ Release channel: `release/cubical-compare-final`.
 - Locked both the opening sequence and later conveyor to one consistently large badge size, so badges no longer appear randomly small or grow to highlight themselves.
 - Kept the Android embedded renderer byte-for-byte synchronised with the desktop renderer.
 - Retained the vertical badge fall, preview playback and full-frame final export.
+- Hardened Android export against preview-memory pressure, encoder-specific bitrate modes and EGL configuration differences.
 
 ## Renderer contract
 

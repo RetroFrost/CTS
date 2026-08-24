@@ -130,6 +130,7 @@ object RendererBridge {
                     name = first(manifest, "name", "title").ifBlank { source.nameWithoutExtension },
                     cards = cards,
                     showBadges = manifest.optBoolean("show_badges", true) || cards.any { it.value.isNotBlank() },
+                    settledScrollingBadges = manifest.optBoolean("settled_scrolling_badges", false),
                     creditsEnabled = manifest.optBoolean("credits_enabled", true),
                     soundtrack = soundtrackPath,
                     soundtrackVolume = soundtrackVolume,

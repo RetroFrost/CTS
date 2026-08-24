@@ -27,7 +27,7 @@ internal class NativeGpuRenderer(
         .order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val textures = object : LinkedHashMap<String, Texture>(24, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Texture>?): Boolean {
-            if (size <= 32 || eldest == null) return false
+            if (size <= 24 || eldest == null) return false
             GLES20.glDeleteTextures(1, intArrayOf(eldest.value.id), 0)
             return true
         }
@@ -67,13 +67,15 @@ internal class NativeGpuRenderer(
             val card = project.cards[index]
             if (!project.showBadges || card.value.isBlank()) continue
             val localFrame = sceneFrame - starts[index]
-            val offset = NativeTimeline.badgeOffset(index, localFrame) ?: continue
+            val offset = NativeTimeline.badgeOffset(index, localFrame, project.settledScrollingBadges) ?: continue
             val texture = texture("badge-shell") { NativeArtwork.badgeShell() }
             val left = positions.getValue(index) + (NativeTimeline.slotPitch - NativeArtwork.badgeWidth) / 2f
             val shine = NativeTimeline.badgeShineProgress(index, localFrame) ?: -1f
             drawTexture(texture, left, NativeArtwork.badgeTop + offset, alpha, shine)
             NativeArtwork.badgeLines(card).forEachIndexed { lineIndex, line ->
-                val progress = NativeTimeline.badgeTextProgress(index, lineIndex, localFrame)
+                val progress = NativeTimeline.badgeTextProgress(
+                    index, lineIndex, localFrame, project.settledScrollingBadges,
+                )
                 if (progress <= 0f) return@forEachIndexed
                 val eased = NativeTimeline.easeOutCubic(progress)
                 val yOffset = -(1f - eased) * 88f
@@ -114,16 +116,24 @@ internal class NativeGpuRenderer(
 
     private fun texture(key: String, factory: () -> Bitmap): Texture = textures.getOrPut(key) {
         val bitmap = factory()
-        val id = IntArray(1).also { GLES20.glGenTextures(1, it, 0) }[0]
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, id)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
-        val result = Texture(id, bitmap.width, bitmap.height)
-        bitmap.recycle()
-        result
+        try {
+            val id = IntArray(1).also { GLES20.glGenTextures(1, it, 0) }[0]
+            check(id != 0) { "The phone GPU could not allocate a video texture." }
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, id)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+            val glError = GLES20.glGetError()
+            if (glError != GLES20.GL_NO_ERROR) {
+                GLES20.glDeleteTextures(1, intArrayOf(id), 0)
+                error("The phone GPU rejected a video texture (0x${glError.toString(16)}).")
+            }
+            Texture(id, bitmap.width, bitmap.height)
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     private fun drawTexture(

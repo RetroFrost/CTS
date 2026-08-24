@@ -73,3 +73,25 @@ def test_native_preview_and_gpu_export_share_badge_and_outro_layers() -> None:
         assert "NativeTimeline.badgeTextProgress" in source
         assert "NativeTimeline.outroActionBar" in source
         assert "NativeTimeline.outroSubscribe" in source
+
+
+def test_android_export_has_runtime_fallback_and_memory_guard() -> None:
+    exporter = (KOTLIN / "HardwareVideoExporter.kt").read_text(encoding="utf-8")
+    service = (KOTLIN / "ExportService.kt").read_text(encoding="utf-8")
+    scene = (KOTLIN / "NativeSceneRenderer.kt").read_text(encoding="utf-8")
+    assert "HardwareCodecSelector.candidates" in exporter
+    assert '"Encoder fallback"' in exporter
+    assert "BITRATE_MODE_CBR" in exporter
+    assert "EGL_RECORDABLE_ANDROID" in exporter
+    assert "NativeFrameRenderer.trimCaches()" in service
+    assert "fun trimCaches()" in scene
+
+
+def test_scrolling_badges_can_be_settled_by_project_option() -> None:
+    project = (KOTLIN / "StudioProject.kt").read_text(encoding="utf-8")
+    timeline = (KOTLIN / "NativeTimeline.kt").read_text(encoding="utf-8")
+    ui = (KOTLIN / "MainActivity.kt").read_text(encoding="utf-8")
+    assert "settledScrollingBadges" in project
+    assert '"settled_scrolling_badges"' in project
+    assert "if (settledScrollingBadges) return 0f" in timeline
+    assert "Badges already placed while scrolling" in ui

@@ -33,6 +33,13 @@ class DurationFormatTest {
         assertEquals(375, NativeArtwork.badgeHeight)
     }
 
+    @Test fun scrollingBadgesCanStartFullySettledWithoutChangingOpeningCards() {
+        assertNull(NativeTimeline.badgeOffset(4, 0))
+        assertEquals(0.0f, NativeTimeline.badgeOffset(4, 0, true) ?: -1f, 0.0001f)
+        assertEquals(1.0f, NativeTimeline.badgeTextProgress(4, 0, 0, true), 0.0001f)
+        assertEquals(0.0f, NativeTimeline.badgeTextProgress(0, 0, 35, true), 0.0001f)
+    }
+
     @Test fun outroKeepsMeasuredWipeAndRiseClocks() {
         assertEquals(0.0f, NativeTimeline.outroCoverY(9), 0.0001f)
         assertEquals(28.0f, NativeTimeline.outroCoverY(10), 0.0001f)

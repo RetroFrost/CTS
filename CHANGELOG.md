@@ -10,6 +10,7 @@
 - Added on-device GPU rendering through OpenGL ES and Android MediaCodec.
 - Added Auto, H.264, and H.265 encoder selection so the app or user can choose the hardware codec.
 - Added background export progress and cancellation.
+- Added an optional setting that makes badges enter the scrolling section already settled in place.
 - Added a new launcher icon (again).
 
 ### Fixes
@@ -17,6 +18,7 @@
 - Removed the invented opening badge bounce and motion streak completely.
 - Kept the measured vertical fall for later badges, badge shine, card animation, and outro unchanged.
 - Corrected APK native-library packaging so Android can parse and install the generated APK.
+- Prevented export-start crashes by releasing preview caches before encoding, bounding GPU texture memory, accepting more recordable EGL configurations, and retrying H.264 when Auto-selected H.265 fails.
 
 ## 0.4.5 — 2026-07-14
 

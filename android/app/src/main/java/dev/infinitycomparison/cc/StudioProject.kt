@@ -40,6 +40,7 @@ data class StudioProject(
     val height: Int = 1080,
     val fps: Int = 60,
     val showBadges: Boolean = true,
+    val settledScrollingBadges: Boolean = false,
     val creditsEnabled: Boolean = true,
     val soundtrack: String = "",
     val soundtrackVolume: Float = 0.75f,
@@ -58,6 +59,7 @@ data class StudioProject(
             .put("auto_length", autoLength)
             .put("custom_length_seconds", customLengthSeconds)
             .put("show_badges", showBadges)
+            .put("settled_scrolling_badges", settledScrollingBadges)
             .put("credits_enabled", creditsEnabled)
             .put("soundtrack", soundtrack)
             .put("soundtrack_volume", soundtrackVolume)
@@ -105,6 +107,7 @@ data class StudioProject(
 
     fun copyUiSettingsFrom(previous: StudioProject): StudioProject = copy(
         encoderPreference = previous.encoderPreference,
+        settledScrollingBadges = previous.settledScrollingBadges,
     )
 
     companion object {
@@ -146,6 +149,7 @@ data class StudioProject(
                 height = settings.optInt("height", 1080),
                 fps = settings.optInt("fps", 60),
                 showBadges = settings.optBoolean("show_badges", true),
+                settledScrollingBadges = settings.optBoolean("settled_scrolling_badges", false),
                 creditsEnabled = settings.optBoolean("credits_enabled", true),
                 soundtrack = settings.optString("soundtrack", ""),
                 soundtrackVolume = settings.optDouble("soundtrack_volume", 0.75).toFloat(),

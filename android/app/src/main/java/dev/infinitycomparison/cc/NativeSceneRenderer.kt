@@ -353,20 +353,29 @@ internal object NativeArtwork {
 }
 
 object NativeFrameRenderer {
-    private const val maxCachedCards = 32
+    private const val maxCachedBodies = 12
+    private const val maxCachedBadgeLayers = 24
     private val bodies = object : LinkedHashMap<String, Bitmap>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
-            val remove = size > maxCachedCards
+            val remove = size > maxCachedBodies
             if (remove) eldest?.value?.recycle()
             return remove
         }
     }
     private val badges = object : LinkedHashMap<String, Bitmap>(36, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
-            val remove = size > maxCachedCards
+            val remove = size > maxCachedBadgeLayers
             if (remove) eldest?.value?.recycle()
             return remove
         }
+    }
+
+    @Synchronized
+    fun trimCaches() {
+        bodies.values.forEach { it.recycle() }
+        badges.values.forEach { it.recycle() }
+        bodies.clear()
+        badges.clear()
     }
 
     @Synchronized
@@ -400,7 +409,7 @@ object NativeFrameRenderer {
                 val card = project.cards[index]
                 if (!project.showBadges || card.value.isBlank()) continue
                 val localFrame = NativeTimeline.sceneFrame(project, frame) - starts[index]
-                val offset = NativeTimeline.badgeOffset(index, localFrame) ?: continue
+                val offset = NativeTimeline.badgeOffset(index, localFrame, project.settledScrollingBadges) ?: continue
                 val badge = badges.getOrPut("badge-shell") { NativeArtwork.badgeShell() }
                 val left = positions.getValue(index) + (NativeTimeline.slotPitch - NativeArtwork.badgeWidth) / 2f
                 val top = NativeArtwork.badgeTop + offset
@@ -409,7 +418,9 @@ object NativeFrameRenderer {
                     NativeArtwork.drawBadgeShine(canvas, left, top, it, layerPaint.alpha)
                 }
                 NativeArtwork.badgeLines(card).forEachIndexed { lineIndex, line ->
-                    val progress = NativeTimeline.badgeTextProgress(index, lineIndex, localFrame)
+                    val progress = NativeTimeline.badgeTextProgress(
+                        index, lineIndex, localFrame, project.settledScrollingBadges,
+                    )
                     if (progress <= 0f) return@forEachIndexed
                     val eased = NativeTimeline.easeOutCubic(progress)
                     val yOffset = -(1f - eased) * 88f

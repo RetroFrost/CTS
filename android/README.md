@@ -11,6 +11,7 @@ Implemented now:
 - custom video length which retimes only the continuous card conveyor
 - stationary opening badges with no bounce or motion streak
 - measured vertical fall retained for later badges
+- optional settled-scrolling mode that places every post-opening badge immediately at its final position
 - flagship **Click to Insert Data** workflow
 - One canonical **Males** reference model, measured from the complete Evolution of Language source
 - **Exact Reference** mode locks each source-derived motion profile and plays it at 0.5× speed; **Custom** unlocks timing
@@ -32,8 +33,9 @@ Implemented now:
 - on-device XLSX import
 - soundtrack selection, looping, volume, AAC bitrate, and encoder selection
 - GPU OpenGL ES rendering with Android MediaCodec H.264/HEVC export
-- automatic or user-selected H.264/H.265 encoder choice
+- automatic H.265-to-H.264 runtime fallback or user-selected H.264/H.265 encoder choice
 - foreground-service export with persistent progress, cancellation, and cleanup of incomplete output
+- export-time preview-cache release, bounded GPU textures, and recordable EGL configuration fallbacks
 - regression tests for measured Males timing, conveyor motion, attached title bands, badge geometry, and outro
 - GitHub Actions debug APK build
 
