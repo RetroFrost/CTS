@@ -73,15 +73,7 @@ def test_release_layer_preserves_authored_watchdata_title_breaks() -> None:
     assert "\n" in card.title
 
 
-def test_android_and_desktop_watchdata_renderer_sources_are_identical() -> None:
-    for name in (
-        "watchdata_renderer.py",
-        "watchdata_measured.py",
-        "watchdata_final.py",
-        "watchdata_release.py",
-        "watchdata_strict.py",
-        "watchdata_badge_exact.py",
-    ):
-        desktop = ROOT / "engine" / "ccengine" / name
-        android = ROOT / "android" / "app" / "src" / "main" / "python" / "ccengine" / name
-        assert desktop.read_bytes() == android.read_bytes()
+def test_android_native_timeline_retains_measured_contracts() -> None:
+    source = (ROOT / "android" / "app" / "src" / "main" / "java" / "dev" / "infinitycomparison" / "cc" / "NativeTimeline.kt").read_text(encoding="utf-8")
+    for contract in ("slotPitch = 476f", "continuousStart = 528", "continuousStep = 214", "outroFrames = 409"):
+        assert contract in source

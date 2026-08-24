@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DESKTOP = ROOT / "engine" / "ccengine"
-ANDROID = ROOT / "android" / "app" / "src" / "main" / "python" / "ccengine"
+KOTLIN = ROOT / "android" / "app" / "src" / "main" / "java" / "dev" / "infinitycomparison" / "cc"
 
 
 def _files(root: Path) -> dict[str, bytes]:
@@ -15,13 +14,16 @@ def _files(root: Path) -> dict[str, bytes]:
     }
 
 
-def test_android_embeds_the_desktop_renderer_byte_for_byte() -> None:
-    desktop = _files(DESKTOP)
-    android = _files(ANDROID)
-    assert desktop
-    assert desktop.keys() == android.keys()
-    for name, content in desktop.items():
-        assert android[name] == content, f"Android renderer drifted from desktop: {name}"
+def test_android_contains_no_python_runtime_or_sources() -> None:
+    android = ROOT / "android"
+    assert not (android / "app" / "src" / "main" / "python").exists()
+    sources = "\n".join(
+        path.read_text(encoding="utf-8", errors="ignore")
+        for path in android.rglob("*")
+        if path.is_file() and "build" not in path.parts
+    ).lower()
+    assert "chaquopy" not in sources
+    assert "com.chaquo" not in sources
 
 
 def test_old_android_renderer_is_completely_removed() -> None:
@@ -40,24 +42,18 @@ def test_old_android_renderer_is_completely_removed() -> None:
 
 
 def test_android_preview_and_export_call_shared_renderer() -> None:
-    kotlin = ROOT / "android" / "app" / "src" / "main" / "java" / "io" / "github" / "retrofrost" / "cts" / "android"
-    bridge = (kotlin / "RendererBridge.kt").read_text(encoding="utf-8")
-    exporter = (kotlin / "HardwareVideoExporter.kt").read_text(encoding="utf-8")
-    python_bridge = (ROOT / "android" / "app" / "src" / "main" / "python" / "cts_android_bridge.py").read_text(encoding="utf-8")
-    assert 'getModule("cts_android_bridge")' in bridge
-    assert "RendererBridge.renderRgba(project, frame" in exporter
+    bridge = (KOTLIN / "RendererBridge.kt").read_text(encoding="utf-8")
+    exporter = (KOTLIN / "HardwareVideoExporter.kt").read_text(encoding="utf-8")
+    assert "NativeFrameRenderer.render" in bridge
+    assert "NativeGpuRenderer" in exporter
     assert "MediaCodec.createByCodecName" in exporter
-    assert "BadgeExactReferenceFrameRenderer" in python_bridge
-    assert "_renderer = BadgeExactReferenceFrameRenderer()" in python_bridge
-    assert "_renderer.render(" in python_bridge
+    assert "renderRgba" not in exporter
 
 
-def test_android_preview_and_export_bind_the_uniform_badge_renderer_directly() -> None:
-    python_root = ROOT / "android" / "app" / "src" / "main" / "python"
-    preview = (python_root / "cts_android_bridge.py").read_text(encoding="utf-8")
-    export = (python_root / "cts_fast_export.py").read_text(encoding="utf-8")
-
-    for source in (preview, export):
-        assert "from ccengine.watchdata_badge_exact import BadgeExactReferenceFrameRenderer" in source
-        assert "_renderer = BadgeExactReferenceFrameRenderer()" in source
-        assert "from ccengine.renderer import FrameRenderer" not in source
+def test_android_uses_new_package_and_fixed_badge_geometry() -> None:
+    gradle = (ROOT / "android" / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+    artwork = (KOTLIN / "NativeSceneRenderer.kt").read_text(encoding="utf-8")
+    assert 'namespace = "dev.infinitycomparison.cc"' in gradle
+    assert 'applicationId = "dev.infinitycomparison.cc"' in gradle
+    assert "const val badgeWidth = 325" in artwork
+    assert "const val badgeHeight = 375" in artwork

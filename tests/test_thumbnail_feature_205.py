@@ -9,14 +9,15 @@ def read(path: str) -> str:
 
 
 def test_android_exports_with_the_gpu_service() -> None:
-    studio = read("android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt")
-    service = read("android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt")
-    exporter = read("android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt")
+    studio = read("android/app/src/main/java/dev/infinitycomparison/cc/MainActivity.kt")
+    service = read("android/app/src/main/java/dev/infinitycomparison/cc/ExportService.kt")
+    exporter = read("android/app/src/main/java/dev/infinitycomparison/cc/HardwareVideoExporter.kt")
     assert 'ActivityResultContracts.CreateDocument("video/mp4")' in studio
     assert "HardwareVideoExporter(" in service
     assert "MediaCodec.createByCodecName" in exporter
     assert "EGL14.eglCreateContext" in exporter
-    assert "RendererBridge.renderRgba(project, frame" in exporter
+    assert "NativeGpuRenderer" in exporter
+    assert "renderRgba" not in exporter
 
 
 def test_windows_creates_three_jpgs_beside_the_mp4() -> None:
@@ -27,11 +28,7 @@ def test_windows_creates_three_jpgs_beside_the_mp4() -> None:
     assert 'thumbnails saved beside' in source
 
 
-def test_207_keeps_android_and_desktop_renderers_in_sync() -> None:
-    desktop = ROOT / "engine" / "ccengine"
-    android = ROOT / "android" / "app" / "src" / "main" / "python" / "ccengine"
-    desktop_files = sorted(p.relative_to(desktop) for p in desktop.rglob("*.py") if p.is_file())
-    android_files = sorted(p.relative_to(android) for p in android.rglob("*.py") if p.is_file())
-    assert desktop_files == android_files
-    for relative in desktop_files:
-        assert (desktop / relative).read_bytes() == (android / relative).read_bytes(), relative
+def test_207_android_renderer_is_native_and_python_free() -> None:
+    android = ROOT / "android" / "app" / "src" / "main"
+    assert not (android / "python").exists()
+    assert (android / "java" / "dev" / "infinitycomparison" / "cc" / "NativeGpuRenderer.kt").is_file()

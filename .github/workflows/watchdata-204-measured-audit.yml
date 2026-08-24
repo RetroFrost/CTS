@@ -6,7 +6,6 @@ on:
       - hotfix/reference-fidelity-watchdata-font-2.0.4
     paths:
       - engine/ccengine/**
-      - android/app/src/main/python/ccengine/**
       - tests/**
       - tools/fetch_watchdata_fonts.py
       - .github/workflows/watchdata-204-measured-audit.yml
@@ -29,12 +28,9 @@ jobs:
           python -m pip install Pillow==11.0.0 openpyxl==3.1.5 pytest
       - name: Fetch exact Poppins build inputs
         run: |
-          python tools/fetch_watchdata_fonts.py \
-            --dest engine/ccengine/fonts \
-            --dest android/app/src/main/python/ccengine/fonts
+          python tools/fetch_watchdata_fonts.py --dest engine/ccengine/fonts
       - name: Verify shared renderer parity and tests
         run: |
-          diff -qr engine/ccengine android/app/src/main/python/ccengine
           PYTHONPATH=engine pytest -q tests/test_watchdata_204_fidelity.py tests/test_final_cross_platform_contract.py tests/test_animation_contract.py tests/test_males_middle_outro_regression.py
           python -m py_compile \
             engine/ccengine/watchdata_renderer.py \

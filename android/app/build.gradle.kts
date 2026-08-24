@@ -6,7 +6,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.chaquo.python")
 }
 
 val ctsKeystorePath = providers.environmentVariable("CTS_ANDROID_KEYSTORE_PATH").orNull
@@ -45,7 +44,7 @@ val downloadWatchDataFonts = tasks.register("downloadWatchDataFonts") {
     group = "build setup"
     description = "Fetch and verify the official Poppins files used by the WatchData reference renderer"
     doLast {
-        val fontDir = layout.projectDirectory.dir("src/main/python/ccengine/fonts").asFile
+        val fontDir = layout.projectDirectory.dir("src/main/assets/fonts").asFile
         fontDir.mkdirs()
         val license = fontDir.resolve("OFL.txt")
         check(license.isFile) { "Poppins OFL license notice is missing." }
@@ -70,16 +69,15 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 }
 
 android {
-    namespace = "io.github.retrofrost.cts.android"
+    namespace = "dev.infinitycomparison.cc"
     compileSdk = 36
     defaultConfig {
-        applicationId = "io.github.retrofrost.cts.android"
+        applicationId = "dev.infinitycomparison.cc"
         minSdk = 26
         targetSdk = 36
         versionCode = 20007
         versionName = "2.0.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     signingConfigs {
         if (stableSigningReady) {
@@ -111,17 +109,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true; buildConfig = true }
-}
-
-chaquopy {
-    defaultConfig {
-        version = "3.13"
-        pip {
-            install("Pillow==11.0.0")
-            install("openpyxl==3.1.5")
-        }
-        pyc { src = false }
-    }
 }
 
 kotlin {

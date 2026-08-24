@@ -1,4 +1,4 @@
-package io.github.retrofrost.cts.android
+package dev.infinitycomparison.cc
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

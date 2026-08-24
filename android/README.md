@@ -118,6 +118,6 @@ CTS Android writes the desktop `spreadsheet`, `settings`, `transform_overrides`,
 
 ## Package
 
-- Application ID: `io.github.retrofrost.cts.android`
+- Application ID: `dev.infinitycomparison.cc`
 - Visible name: `Cubical Compare 2.0.7`
 - Version: `2.0.7`

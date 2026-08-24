@@ -1,4 +1,4 @@
-package io.github.retrofrost.cts.android
+package dev.infinitycomparison.cc
 
 import android.content.Context
 import android.media.MediaCodec
@@ -16,8 +16,6 @@ import android.view.Surface
 import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
 import java.util.concurrent.CancellationException
 import kotlin.math.roundToInt
 
@@ -166,7 +164,7 @@ class HardwareVideoExporter(
             codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             inputSurface = codec.createInputSurface()
             codec.start()
-            egl = CodecInputSurface(inputSurface, width, height)
+            egl = CodecInputSurface(inputSurface, width, height, context, project)
             muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val info = MediaCodec.BufferInfo()
             var track = -1
@@ -176,9 +174,7 @@ class HardwareVideoExporter(
 
             repeat(totalFrames) { frame ->
                 checkCancelled()
-                val rgba = RendererBridge.renderRgba(project, frame, width, height)
-                require(rgba.size == width * height * 4) { "Renderer returned an invalid RGBA frame." }
-                egl.draw(rgba, frame * 1_000_000_000L / fps)
+                egl.draw(frame, frame * 1_000_000_000L / fps)
                 val drain = drainCodec(codec, muxer, info, false, track, muxerStarted)
                 track = drain.track
                 muxerStarted = drain.started
@@ -306,24 +302,13 @@ private class CodecInputSurface(
     surface: Surface,
     private val width: Int,
     private val height: Int,
+    context: Context,
+    project: StudioProject,
 ) {
     private val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
     private val context: android.opengl.EGLContext
     private val eglSurface: android.opengl.EGLSurface
-    private val program: Int
-    private val texture: Int
-    private val vertices: FloatBuffer = ByteBuffer.allocateDirect(16 * 4)
-        .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
-            put(
-                floatArrayOf(
-                    -1f, -1f, 0f, 1f,
-                    1f, -1f, 1f, 1f,
-                    -1f, 1f, 0f, 0f,
-                    1f, 1f, 1f, 0f,
-                ),
-            )
-            position(0)
-        }
+    private val renderer: NativeGpuRenderer
     val glRenderer: String
 
     init {
@@ -361,49 +346,18 @@ private class CodecInputSurface(
         check(EGL14.eglMakeCurrent(display, eglSurface, eglSurface, context)) {
             "Could not activate the encoder EGL surface."
         }
-        program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
-        texture = IntArray(1).also { GLES20.glGenTextures(1, it, 0) }[0]
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
         glRenderer = GLES20.glGetString(GLES20.GL_RENDERER) ?: "Phone GPU"
+        renderer = NativeGpuRenderer(context.applicationContext, project, width, height)
     }
 
-    fun draw(rgba: ByteArray, presentationNanos: Long) {
-        GLES20.glViewport(0, 0, width, height)
-        GLES20.glUseProgram(program)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
-        GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)
-        GLES20.glTexImage2D(
-            GLES20.GL_TEXTURE_2D,
-            0,
-            GLES20.GL_RGBA,
-            width,
-            height,
-            0,
-            GLES20.GL_RGBA,
-            GLES20.GL_UNSIGNED_BYTE,
-            ByteBuffer.wrap(rgba),
-        )
-        val position = GLES20.glGetAttribLocation(program, "aPosition")
-        val texCoord = GLES20.glGetAttribLocation(program, "aTexCoord")
-        vertices.position(0)
-        GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 16, vertices)
-        GLES20.glEnableVertexAttribArray(position)
-        vertices.position(2)
-        GLES20.glVertexAttribPointer(texCoord, 2, GLES20.GL_FLOAT, false, 16, vertices)
-        GLES20.glEnableVertexAttribArray(texCoord)
-        GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uTexture"), 0)
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+    fun draw(frame: Int, presentationNanos: Long) {
+        renderer.draw(frame)
         EGLExt.eglPresentationTimeANDROID(display, eglSurface, presentationNanos)
         check(EGL14.eglSwapBuffers(display, eglSurface)) { "The GPU encoder surface stopped responding." }
     }
 
     fun release() {
-        GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
-        GLES20.glDeleteProgram(program)
+        renderer.release()
         EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
         EGL14.eglDestroySurface(display, eglSurface)
         EGL14.eglDestroyContext(display, context)
@@ -411,42 +365,4 @@ private class CodecInputSurface(
         EGL14.eglTerminate(display)
     }
 
-    private fun createProgram(vertex: String, fragment: String): Int {
-        fun compile(type: Int, source: String): Int {
-            val shader = GLES20.glCreateShader(type)
-            GLES20.glShaderSource(shader, source)
-            GLES20.glCompileShader(shader)
-            val status = IntArray(1)
-            GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, status, 0)
-            check(status[0] != 0) { GLES20.glGetShaderInfoLog(shader) }
-            return shader
-        }
-        val vertexShader = compile(GLES20.GL_VERTEX_SHADER, vertex)
-        val fragmentShader = compile(GLES20.GL_FRAGMENT_SHADER, fragment)
-        val result = GLES20.glCreateProgram()
-        GLES20.glAttachShader(result, vertexShader)
-        GLES20.glAttachShader(result, fragmentShader)
-        GLES20.glLinkProgram(result)
-        GLES20.glDeleteShader(vertexShader)
-        GLES20.glDeleteShader(fragmentShader)
-        val status = IntArray(1)
-        GLES20.glGetProgramiv(result, GLES20.GL_LINK_STATUS, status, 0)
-        check(status[0] != 0) { GLES20.glGetProgramInfoLog(result) }
-        return result
-    }
-
-    companion object {
-        private const val VERTEX_SHADER = """
-            attribute vec4 aPosition;
-            attribute vec2 aTexCoord;
-            varying vec2 vTexCoord;
-            void main() { gl_Position = aPosition; vTexCoord = aTexCoord; }
-        """
-        private const val FRAGMENT_SHADER = """
-            precision mediump float;
-            uniform sampler2D uTexture;
-            varying vec2 vTexCoord;
-            void main() { gl_FragColor = texture2D(uTexture, vTexCoord); }
-        """
-    }
 }

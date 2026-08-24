@@ -35,12 +35,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify shared renderer source
-        shell: pwsh
-        run: |
-          git diff --no-index --exit-code engine/ccengine android/app/src/main/python/ccengine
-          if ($LASTEXITCODE -ne 0) { throw 'Android and desktop renderer sources must match.' }
-
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -50,7 +44,7 @@ jobs:
       - name: Fetch verified WatchData-matched Poppins fonts
         shell: pwsh
         run: |
-          python tools/fetch_watchdata_fonts.py --dest engine/ccengine/fonts --dest android/app/src/main/python/ccengine/fonts
+          python tools/fetch_watchdata_fonts.py --dest engine/ccengine/fonts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Set up FFmpeg
@@ -147,26 +141,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify Android embeds the shared renderer
+      - name: Verify Android is fully native
         run: |
           set -euo pipefail
-          diff -qr engine/ccengine android/app/src/main/python/ccengine
+          test ! -d android/app/src/main/python
+          ! grep -RniE 'chaquopy|com\.chaquo|RendererBridge\.renderRgba' android --exclude-dir=build
+          grep -q 'applicationId = "dev.infinitycomparison.cc"' android/app/build.gradle.kts
+          grep -q 'NativeGpuRenderer' android/app/src/main/java/dev/infinitycomparison/cc/HardwareVideoExporter.kt
 
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-
-      - name: Validate Android Python bridge syntax
-        run: python -m py_compile android/app/src/main/python/cts_android_bridge.py
 
       - name: Prepare permanent signing when available
         shell: bash

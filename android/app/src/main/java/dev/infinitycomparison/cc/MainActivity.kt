@@ -1,4 +1,4 @@
-package io.github.retrofrost.cts.android
+package dev.infinitycomparison.cc
 
 import android.Manifest
 import android.os.Build
@@ -553,6 +553,7 @@ private fun TimelineTab(
     onProjectChange: (StudioProject) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var frame by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf(false) }
     var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -562,7 +563,7 @@ private fun TimelineTab(
 
     LaunchedEffect(project, frame) {
         runCatching {
-            withContext(Dispatchers.Default) { RendererBridge.render(project, frame, 640, 360) }
+            withContext(Dispatchers.Default) { RendererBridge.render(context, project, frame, 640, 360) }
         }.onSuccess { bitmap = it }
     }
     LaunchedEffect(playing, metadata.frameCount) {

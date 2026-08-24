@@ -1,4 +1,4 @@
-package io.github.retrofrost.cts.android
+package dev.infinitycomparison.cc
 
 import android.content.Context
 import android.media.MediaCodec

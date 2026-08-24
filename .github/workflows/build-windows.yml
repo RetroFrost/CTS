@@ -28,7 +28,7 @@ jobs:
       - name: Fetch verified reference fonts
         shell: pwsh
         run: |
-          $fontDir = "android/app/src/main/python/ccengine/fonts"
+          $fontDir = "engine/ccengine/fonts"
           New-Item -ItemType Directory -Force -Path $fontDir | Out-Null
           $fonts = @(
             @{ Name = "Poppins-ExtraBold.ttf"; Url = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-ExtraBold.ttf"; Blob = "167667d203d98f5b27c3ff58d486eea9c5287fe4" },

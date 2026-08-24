@@ -1,4 +1,4 @@
-package io.github.retrofrost.cts.android
+package dev.infinitycomparison.cc
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -153,8 +153,8 @@ class ExportService : Service() {
     companion object {
         private const val CHANNEL = "cubical_compare_export"
         private const val NOTIFICATION_ID = 207
-        private const val ACTION_START = "io.github.retrofrost.cts.android.EXPORT"
-        private const val ACTION_CANCEL = "io.github.retrofrost.cts.android.CANCEL_EXPORT"
+        private const val ACTION_START = "dev.infinitycomparison.cc.EXPORT"
+        private const val ACTION_CANCEL = "dev.infinitycomparison.cc.CANCEL_EXPORT"
         private const val EXTRA_PROJECT = "project"
         private const val EXTRA_URI = "uri"
 

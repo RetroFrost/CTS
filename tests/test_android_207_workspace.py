@@ -9,7 +9,7 @@ def read(path: str) -> str:
 
 
 def test_android_207_has_tools_faq_and_material_you() -> None:
-    source = read("android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt")
+    source = read("android/app/src/main/java/dev/infinitycomparison/cc/MainActivity.kt")
     assert 'TOOLS("Tools"' in source
     assert 'FAQ("FAQ"' in source
     assert "dynamicDarkColorScheme(context)" in source
@@ -21,7 +21,7 @@ def test_android_207_has_tools_faq_and_material_you() -> None:
 
 
 def test_android_207_exports_only_mp4_and_uses_new_icon() -> None:
-    source = read("android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt")
+    source = read("android/app/src/main/java/dev/infinitycomparison/cc/MainActivity.kt")
     manifest = read("android/app/src/main/AndroidManifest.xml")
     assert 'ActivityResultContracts.CreateDocument("video/mp4")' in source
     assert "Thumbnail" not in source
