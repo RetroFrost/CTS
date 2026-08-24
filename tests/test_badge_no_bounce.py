@@ -70,3 +70,23 @@ def test_later_badge_vertical_fall_is_preserved() -> None:
         renderer._draw_badge(canvas, project, 4, 0.0, frame, starts)
     assert len(renderer.affines) == 3
     assert renderer.affines[0][5] < renderer.affines[1][5] < renderer.affines[2][5]
+
+
+def test_later_badges_never_grow_to_highlight_themselves() -> None:
+    renderer = FrameRenderer()
+    starts = [0, 120, 240, 360, 480]
+    scales = {
+        renderer._reference_later_scale(4, frame, starts)
+        for frame in (480, 522, 550, 625, 720, 900)
+    }
+    assert scales == {1.0}
+
+
+def test_badge_header_value_and_unit_use_three_fixed_lines() -> None:
+    renderer = FrameRenderer()
+    layout = renderer._text_layout(Card(value="15 YEARS", badge_header="SURVIVE"))
+    assert layout == [
+        ("SURVIVE", 110.0, 44),
+        ("15", 215.0, 112),
+        ("YEARS", 310.0, 44),
+    ]

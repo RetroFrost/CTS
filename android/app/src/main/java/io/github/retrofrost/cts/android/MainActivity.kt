@@ -10,7 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,15 +28,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.CreditScore
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.FileOpen
+import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.List
@@ -66,15 +67,18 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -110,7 +114,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val CubicalColours = darkColorScheme(
+private val CubicalDarkColours = darkColorScheme(
     primary = Color(0xFFFF5964),
     onPrimary = Color(0xFF330408),
     primaryContainer = Color(0xFF5A1720),
@@ -124,10 +128,26 @@ private val CubicalColours = darkColorScheme(
     outline = Color(0xFF514D54),
 )
 
+private val CubicalLightColours = lightColorScheme(
+    primary = Color(0xFF8F1D2C),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFDADB),
+    onPrimaryContainer = Color(0xFF3B0710),
+    secondary = Color(0xFF765657),
+    background = Color(0xFFFFF8F7),
+    surface = Color(0xFFFFF8F7),
+    surfaceVariant = Color(0xFFF4DDDE),
+    onBackground = Color(0xFF251819),
+    onSurface = Color(0xFF251819),
+    outline = Color(0xFF857374),
+)
+
 private enum class StudioTab(val title: String, val icon: ImageVector) {
     CARDS("Cards", Icons.Rounded.List),
     TIMELINE("Timeline", Icons.Rounded.Timeline),
     SETTINGS("Settings", Icons.Rounded.Settings),
+    TOOLS("Tools", Icons.Rounded.Build),
+    FAQ("FAQ", Icons.Rounded.HelpOutline),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -241,7 +261,15 @@ private fun CubicalCompareApp() {
         if (uri != null && value != null) ExportService.start(context, value, uri)
     }
 
-    MaterialTheme(colorScheme = CubicalColours) {
+    val darkTheme = isSystemInDarkTheme()
+    val colourScheme = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme -> dynamicDarkColorScheme(context)
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> dynamicLightColorScheme(context)
+        darkTheme -> CubicalDarkColours
+        else -> CubicalLightColours
+    }
+
+    MaterialTheme(colorScheme = colourScheme) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
@@ -255,7 +283,7 @@ private fun CubicalCompareApp() {
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                     )
-                    TabRow(selectedTabIndex = selectedTab.ordinal) {
+                    ScrollableTabRow(selectedTabIndex = selectedTab.ordinal, edgePadding = 8.dp) {
                         StudioTab.entries.forEach { tab ->
                             Tab(
                                 selected = selectedTab == tab,
@@ -274,21 +302,6 @@ private fun CubicalCompareApp() {
                     selectedCard = selectedCard,
                     onProjectChange = { project = it },
                     onSelectedCardChange = { selectedCard = it },
-                    onOpen = { openProject.launch(arrayOf("application/json", "text/json", "*/*")) },
-                    onSave = {
-                        pendingProjectSave = project
-                        saveProject.launch("${safeName(project.name)}.ccproject.json")
-                    },
-                    onImportData = {
-                        importData.launch(
-                            arrayOf(
-                                "text/csv",
-                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                "application/vnd.ms-excel",
-                            ),
-                        )
-                    },
-                    onImportMegaPack = { importMegaPack.launch(arrayOf("application/zip", "*/*")) },
                     onChooseImage = { chooseImage.launch(arrayOf("image/*")) },
                     modifier = Modifier.padding(padding),
                 )
@@ -311,6 +324,27 @@ private fun CubicalCompareApp() {
                     onCancelExport = { ExportService.cancel(context) },
                     modifier = Modifier.padding(padding),
                 )
+                StudioTab.TOOLS -> ToolsTab(
+                    project = project,
+                    onNew = { project = StudioProject(); selectedCard = 0; selectedTab = StudioTab.CARDS },
+                    onOpen = { openProject.launch(arrayOf("application/json", "text/json", "*/*")) },
+                    onSave = {
+                        pendingProjectSave = project
+                        saveProject.launch("${safeName(project.name)}.ccproject.json")
+                    },
+                    onImportData = {
+                        importData.launch(
+                            arrayOf(
+                                "text/csv",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "application/vnd.ms-excel",
+                            ),
+                        )
+                    },
+                    onImportMegaPack = { importMegaPack.launch(arrayOf("application/zip", "*/*")) },
+                    modifier = Modifier.padding(padding),
+                )
+                StudioTab.FAQ -> FaqTab(modifier = Modifier.padding(padding))
             }
         }
     }
@@ -322,10 +356,6 @@ private fun CardsTab(
     selectedCard: Int,
     onProjectChange: (StudioProject) -> Unit,
     onSelectedCardChange: (Int) -> Unit,
-    onOpen: () -> Unit,
-    onSave: () -> Unit,
-    onImportData: () -> Unit,
-    onImportMegaPack: () -> Unit,
     onChooseImage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -343,17 +373,6 @@ private fun CardsTab(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-        }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SmallAction("Open", Icons.Rounded.FileOpen, onOpen)
-                SmallAction("Save", Icons.Rounded.Save, onSave)
-                SmallAction("Import data", Icons.Rounded.TableChart, onImportData)
-                SmallAction("MegaPack", Icons.Rounded.Inventory2, onImportMegaPack)
-            }
         }
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -398,6 +417,9 @@ private fun CardsTab(
                         CardTextField("Title", card.title) { value ->
                             updateCard(project, selectedCard, card.copy(title = value), onProjectChange)
                         }
+                        CardTextField("Badge header", card.badgeHeader) { value ->
+                            updateCard(project, selectedCard, card.copy(badgeHeader = value), onProjectChange)
+                        }
                         CardTextField("Badge value", card.value) { value ->
                             updateCard(project, selectedCard, card.copy(value = value), onProjectChange)
                         }
@@ -441,6 +463,85 @@ private fun CardsTab(
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun ToolsTab(
+    project: StudioProject,
+    onNew: () -> Unit,
+    onOpen: () -> Unit,
+    onSave: () -> Unit,
+    onImportData: () -> Unit,
+    onImportMegaPack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item { Text("Tools", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
+        item {
+            SettingsCard("Project") {
+                Text(project.name.ifBlank { "Untitled" }, style = MaterialTheme.typography.bodyMedium)
+                ToolButton("New project", Icons.Rounded.Add, onNew)
+                ToolButton("Open project", Icons.Rounded.FileOpen, onOpen)
+                ToolButton("Save project", Icons.Rounded.Save, onSave)
+            }
+        }
+        item {
+            SettingsCard("Import") {
+                Text(
+                    "Bring in a spreadsheet or a complete MegaPack without crowding the editor.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ToolButton("Import spreadsheet", Icons.Rounded.TableChart, onImportData)
+                ToolButton("Import MegaPack", Icons.Rounded.Inventory2, onImportMegaPack)
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun FaqTab(modifier: Modifier = Modifier) {
+    val questions = listOf(
+        "Where did Open, Save and Import go?" to "They are grouped in the Tools tab so the Cards editor and preview stay uncluttered.",
+        "How do I import a MegaPack?" to "Open Tools, choose Import MegaPack, then select the .megapack.zip file.",
+        "Does export create thumbnails?" to "No. Cubical Compare 2.0.7 saves only the finished MP4.",
+        "How do I change the video length?" to "Open Timeline, choose Custom under Video length, then enter MM:SS. Only continuous scrolling speed changes.",
+        "Can export continue with the screen off?" to "Yes. GPU export runs in a foreground service and reports progress through a notification.",
+        "Which encoder should I choose?" to "Auto prefers hardware H.265 and falls back to hardware H.264. You can force either encoder in Settings.",
+        "Why do the colours match my wallpaper?" to "On Android 12 and newer, Cubical Compare uses Material You dynamic colours. Older versions use the built-in light or dark palette.",
+        "How do badge lines work?" to "Badge header is the small top line. Badge value contains the main number and its optional unit.",
+    )
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { Text("Frequently asked questions", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
+        itemsIndexed(questions) { _, entry ->
+            val (question, answer) = entry
+            OutlinedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(question, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(answer, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun ToolButton(label: String, icon: ImageVector, onClick: () -> Unit) {
+    FilledTonalButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Icon(icon, null, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label)
     }
 }
 
@@ -746,15 +847,6 @@ private fun ToggleRow(icon: ImageVector, label: String, checked: Boolean, onChec
         Spacer(Modifier.width(12.dp))
         Text(label, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChecked)
-    }
-}
-
-@Composable
-private fun SmallAction(label: String, icon: ImageVector, onClick: () -> Unit) {
-    FilledTonalButton(onClick = onClick) {
-        Icon(icon, null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label)
     }
 }
 

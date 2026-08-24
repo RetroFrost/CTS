@@ -19,6 +19,7 @@ data class StudioCard(
     val id: String = UUID.randomUUID().toString().replace("-", ""),
     val title: String = "Card 1",
     val value: String = "1",
+    val badgeHeader: String = "",
     val description: String = "",
     val image: String = "",
     val imageX: Double = 0.0,
@@ -72,6 +73,7 @@ data class StudioProject(
                     .put("id", card.id)
                     .put("title", card.title)
                     .put("value", card.value)
+                    .put("badge_header", card.badgeHeader)
                     .put("description", card.description)
                     .put("image", card.image)
                     .put("image_x", card.imageX)
@@ -102,8 +104,6 @@ data class StudioProject(
     }
 
     fun copyUiSettingsFrom(previous: StudioProject): StudioProject = copy(
-        autoLength = previous.autoLength,
-        customLengthSeconds = previous.customLengthSeconds,
         encoderPreference = previous.encoderPreference,
     )
 
@@ -122,6 +122,7 @@ data class StudioProject(
                             },
                             title = card.optString("title"),
                             value = card.optString("value"),
+                            badgeHeader = card.optString("badge_header", card.optString("badgeHeader")),
                             description = card.optString("description"),
                             image = card.optString("image"),
                             imageX = card.optDouble("image_x", 0.0),

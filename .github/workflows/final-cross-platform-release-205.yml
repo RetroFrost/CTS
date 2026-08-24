@@ -1,10 +1,9 @@
-name: Cubical Compare 2.0.6 Final
+name: Cubical Compare 2.0.7 Final
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - feature/thumbnails-megapack-2.0.5
       - release/cubical-compare-final
     paths:
       - android/**
@@ -21,27 +20,26 @@ permissions:
   actions: read
 
 concurrency:
-  group: cubical-compare-205-${{ github.ref }}
+  group: cubical-compare-207-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  VERSION: 2.0.6
-  RENDERER_BASE: c1c73d1f99c0b72c4138d4319cb5ad7211412e66
+  VERSION: 2.0.7
 
 jobs:
   windows:
-    name: Windows x64 2.0.6
+    name: Windows x64 2.0.7
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Prove checkpointed renderer remains frozen
+      - name: Verify shared renderer source
         shell: pwsh
         run: |
-          git diff --exit-code $env:RENDERER_BASE -- engine/ccengine
-          if ($LASTEXITCODE -ne 0) { throw '2.0.6 must not alter the checkpointed WatchData video renderer.' }
+          git diff --no-index --exit-code engine/ccengine android/app/src/main/python/ccengine
+          if ($LASTEXITCODE -ne 0) { throw 'Android and desktop renderer sources must match.' }
 
       - uses: actions/setup-python@v6
         with:
@@ -70,11 +68,11 @@ jobs:
           if (-not (Test-Path $ffmpeg)) { throw 'Could not locate FFmpeg.' }
           "CUBICAL_COMPARE_FFMPEG=$ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Test shared renderer and 2.0.6 contracts
+      - name: Test shared renderer and 2.0.7 contracts
         shell: pwsh
         run: |
           $env:PYTHONPATH = "$PWD\engine"
-          pytest -q
+          pytest -q tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m compileall -q engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -114,7 +112,7 @@ jobs:
           & .\build-windows\Release\CubicalCompare.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Package Windows 2.0.6
+      - name: Package Windows 2.0.7
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -136,7 +134,7 @@ jobs:
           if-no-files-found: error
 
   android:
-    name: Android 2.0.6
+    name: Android 2.0.7
     runs-on: ubuntu-24.04
     env:
       CTS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.CTS_ANDROID_KEYSTORE_PASSWORD }}
@@ -149,10 +147,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove Android still embeds the checkpointed renderer
+      - name: Verify Android embeds the shared renderer
         run: |
           set -euo pipefail
-          git diff --exit-code "$RENDERER_BASE" -- engine/ccengine
           diff -qr engine/ccengine android/app/src/main/python/ccengine
 
       - uses: actions/setup-java@v5
@@ -189,7 +186,7 @@ jobs:
             echo "CTS_HAS_STABLE_SIGNING=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Build Android 2.0.6
+      - name: Build Android 2.0.7
         run: |
           chmod +x android/gradlew
           android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
@@ -235,7 +232,7 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/cts-signing"
 
   report:
-    name: Record 2.0.6 CI diagnostics
+    name: Record 2.0.7 CI diagnostics
     if: always()
     needs: [windows, android]
     runs-on: ubuntu-24.04
@@ -254,20 +251,20 @@ jobs:
           mkdir -p .ci
           printf '{"run_id":%s,"run_number":%s,"head_sha":"%s","windows":"%s","android":"%s"}\n' \
             "$GITHUB_RUN_ID" "$GITHUB_RUN_NUMBER" "$GITHUB_SHA" "$WINDOWS_RESULT" "$ANDROID_RESULT" \
-            > .ci/cubical-compare-205-summary.json
+            > .ci/cubical-compare-207-summary.json
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            > .ci/cubical-compare-205-run.json || true
+            > .ci/cubical-compare-207-run.json || true
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
-            > .ci/cubical-compare-205-jobs.json || true
+            > .ci/cubical-compare-207-jobs.json || true
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .ci/cubical-compare-205-summary.json .ci/cubical-compare-205-run.json .ci/cubical-compare-205-jobs.json
-          git commit -m 'Record Cubical Compare 2.0.6 CI diagnostics [skip ci]' || exit 0
+          git add .ci/cubical-compare-207-summary.json .ci/cubical-compare-207-run.json .ci/cubical-compare-207-jobs.json
+          git commit -m 'Record Cubical Compare 2.0.7 CI diagnostics [skip ci]' || exit 0
           git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin "HEAD:$GITHUB_REF_NAME"
 
   publish:
-    name: Publish v2.0.6
+    name: Publish v2.0.7
     if: github.ref == 'refs/heads/release/cubical-compare-final'
     needs: [windows, android]
     runs-on: ubuntu-24.04
@@ -278,7 +275,7 @@ jobs:
           pattern: Cubical-Compare-${{ env.VERSION }}-*
           path: release-assets
           merge-multiple: true
-      - name: Publish v2.0.6 assets and notes
+      - name: Publish v2.0.7 assets and notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

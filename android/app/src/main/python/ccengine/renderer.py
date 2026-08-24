@@ -767,6 +767,15 @@ class FrameRenderer:
 
     def _text_layout(self, card: Card) -> list[tuple[str, float, int]]:
         lines = self._value_lines(card.value)
+        header = " ".join(card.badge_header.upper().split())
+        if header and len(lines) == 1:
+            return [(header, 118.0, 34), (lines[0], 225.0, 78)]
+        if header and len(lines) >= 2:
+            return [
+                (header, 94.0, 32),
+                (lines[0], 195.0, 84),
+                (" ".join(lines[1:]), 292.0, 40),
+            ]
         if len(lines) == 1:
             return [(lines[0], 219.0, 72)]
         if len(lines) == 2:
@@ -921,7 +930,10 @@ class FrameRenderer:
 
     def _badge_source(self, card: Card, age: float, *, sticker_entry: bool) -> Image.Image:
         dynamic = age < 2.30 or (SHINE_START < age < SHINE_START + SHINE_SECONDS)
-        cache_key = (self._active_profile.model_id + "|" + card.value.upper().strip(), getattr(self._active_settings, "font_badge", "") if self._active_settings else "")
+        cache_key = (
+            self._active_profile.model_id + "|" + card.badge_header.upper().strip() + "|" + card.value.upper().strip(),
+            getattr(self._active_settings, "font_badge", "") if self._active_settings else "",
+        )
         if not dynamic and cache_key in self._badge_final_cache:
             cached = self._badge_final_cache.pop(cache_key)
             self._badge_final_cache[cache_key] = cached

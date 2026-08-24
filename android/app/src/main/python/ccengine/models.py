@@ -37,12 +37,14 @@ class Card:
     image_crop_right: float = 0.0
     image_crop_bottom: float = 0.0
     image_layer: str = "behind"
+    badge_header: str = ""
 
     @classmethod
     def from_mapping(cls, row: dict[str, Any]) -> "Card":
         return cls(
             title=str(row.get("title", "") or "").strip(),
             value=str(row.get("value", "") or "").strip(),
+            badge_header=str(row.get("badge_header", row.get("badgeHeader", "")) or "").strip(),
             description=str(row.get("description", "") or "").strip(),
             image=str(row.get("image", "") or "").strip(),
             id=str(row.get("id", "") or "").strip() or uuid.uuid4().hex,

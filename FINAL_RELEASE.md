@@ -1,30 +1,29 @@
-# Cubical Compare 2.0.6 — Thumbnail & MegaPack Release
+# Cubical Compare 2.0.7 — GPU, MegaPack & Material You Release
 
 Release channel: `release/cubical-compare-final`.
 
 ## Features
 
-### Automatic thumbnails
+### Focused Android workspace
 
-- A successful export creates three 1280×720 JPEG thumbnails beside the MP4.
-- Filenames follow the video basename: `Video - Thumbnail 1.jpg`, `Video - Thumbnail 2.jpg`, and `Video - Thumbnail 3.jpg`.
-- Thumbnails use representative frames around 16%, 48% and 78% of the comparison timeline.
-- Android composes WatchData-inspired thumbnails from the exact shared renderer frame, with a high-contrast dark scrim, short headline, red value callout and bundled Poppins Bold typography.
-- Android exports to a selected folder so the MP4 and JPG files can reliably be written as siblings through the Storage Access Framework.
-- Android thumbnail creation remains part of the foreground background-export service, including progress, screen-off support and cancellation.
-- Windows writes three renderer-based 1280×720 JPG stills directly beside the exported MP4 after a successful render.
-- A thumbnail failure does not invalidate a successfully completed MP4; Windows reports it as a thumbnail warning.
+- Project and import actions now live in a dedicated Tools tab.
+- A new FAQ tab explains projects, MegaPacks, video length, background export, encoders, dynamic colours and badge fields.
+- Material You dynamic colours follow the device wallpaper on Android 12 and newer, with polished light and dark fallback schemes.
+- A new Cubical Compare launcher icon is included.
 
-### British-English Felix MegaPack
+### GPU video export
 
-The companion pack is `CTS_MegaPack_Most_Improper_Liquids_Felix_UK.zip`.
+- Android exports the finished MP4 with a hardware GPU/MediaCodec pipeline.
+- Auto mode prefers hardware H.265 and falls back to hardware H.264; either codec can be selected directly.
+- Export continues through a foreground service with progress, cancellation and screen-off support.
+- Thumbnail generation has been removed: export now creates only the requested MP4.
 
-- 44 cards.
-- User-facing wording is British English, including terms such as `petrol`, `windscreen washer fluid`, `washing-up liquid`, `hand sanitiser`, `oesophagus` and `labelled` where applicable.
-- The comparison model is the exact WatchData-style reference model with badges enabled.
-- Rank values are preserved as the card badge values.
-- Each artwork uses a full-card background treatment and keeps Felix beneath the badge-safe region.
-- The pack is ZIP CRC-tested and every PNG artwork is decoded and verified after rebuilding.
+### Badge and MegaPack fidelity
+
+- Badge text supports a dedicated header, main value and unit layout.
+- Later badges keep a fixed size instead of growing to highlight themselves; their vertical fall animation remains intact.
+- MegaPack cards import badge headers and the manifest video duration.
+- Custom video length changes continuous-scroll speed without changing the comparison content.
 
 ### Cross-platform release pipeline
 
@@ -34,24 +33,22 @@ The companion pack is `CTS_MegaPack_Most_Improper_Liquids_Felix_UK.zip`.
 
 ## Bug fixes
 
-- Fixed the badge shine so the streak physically sweeps through and exits the lower-right edge of the hexagon before disappearing, instead of fading away while part of the highlight is still on the badge.
-- Fixed long card titles and descriptions so text wraps across additional readable lines instead of becoming unreadably small or overflowing the card.
-- Kept the Android embedded renderer byte-for-byte synchronised with the desktop renderer so cross-platform release validation passes.
-- Corrected the renderer checkpoint used by the release workflow so the reviewed renderer fixes pass the frozen-renderer contract.
-- Added workflow diagnostics that expose successful push runs and make Actions/artifact verification reliable.
-- Retained Play and Stop preview controls, real-time preview playback, full-frame final export, background exporting, progress reporting, cancellation, screen-off support and service recreation support.
+- Corrected three-line badge positioning so the header no longer drifts away from the value and unit.
+- Removed the later-badge scale increase that made badges appear to pop or grow.
+- Kept the Android embedded renderer byte-for-byte synchronised with the desktop renderer.
+- Retained the vertical badge fall, preview playback and full-frame final export.
 
 ## Renderer contract
 
-The 2.0.6 release keeps the reviewed WatchData-style renderer as the release checkpoint. CI rejects a build if Android and desktop renderer trees diverge or if the shared renderer changes outside the reviewed checkpoint.
+The 2.0.7 release updates the reviewed WatchData-style renderer for the corrected badge text and fixed badge scale. CI rejects a build if Android and desktop renderer trees diverge.
 
 ## Release gates
 
-CI rejects 2.0.6 if:
+CI rejects 2.0.7 if:
 
 - Android and desktop renderer source trees diverge;
 - renderer regression tests fail;
-- thumbnail/export contract tests fail;
+- renderer or export contract tests fail;
 - the Windows private renderer or native-shell self-test fails;
 - Android unit tests or release assembly fail;
 - the Android APK is not cryptographically signed; or

@@ -20,6 +20,7 @@ from ccengine.megapack import (
     _compose_card_artwork,
     _finite_float,
     _first_string,
+    _manifest_duration_seconds,
     safe_entry_reference,
 )
 from ccengine.model_registry import get_model, normalize_model_id
@@ -141,6 +142,7 @@ def import_pack(pack_path: str, asset_dir: str) -> str:
                     raise ValueError(f"MegaPack card {index + 1} is not an object.")
                 title = _first_string(item, "title", "name")
                 description = _first_string(item, "description", "details")
+                badge_header = _first_string(item, "badge_header", "badgeHeader", "header")
                 primary = _first_string(item, "badge_primary", "badgePrimary", "value")
                 secondary = _first_string(item, "badge_secondary", "badgeSecondary", "label", "unit")
                 value = " ".join(part for part in (primary, secondary) if part).strip()
@@ -196,6 +198,7 @@ def import_pack(pack_path: str, asset_dir: str) -> str:
                 output_cards.append({
                     "id": uuid.uuid4().hex,
                     "title": title,
+                    "badge_header": badge_header,
                     "value": value,
                     "description": description,
                     "image": image_path,
@@ -233,13 +236,15 @@ def import_pack(pack_path: str, asset_dir: str) -> str:
                 soundtrack_path = str(destination.resolve())
 
             has_badge_data = any(str(card["value"]).strip() for card in output_cards)
+            requested_duration = _manifest_duration_seconds(manifest)
             settings = {
                 "model_id": model.id,
                 "model_revision": model.revision,
                 "width": model.width,
                 "height": model.height,
                 "fps": model.fps,
-                "auto_length": True,
+                "auto_length": requested_duration <= 0.0,
+                "custom_length_seconds": requested_duration if requested_duration > 0.0 else 60.0,
                 "show_badges": bool(manifest.get("show_badges", True)) or has_badge_data,
                 "credits_enabled": bool(manifest.get("credits_enabled", True)),
                 "soundtrack": soundtrack_path,

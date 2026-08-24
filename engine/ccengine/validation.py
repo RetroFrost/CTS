@@ -78,6 +78,7 @@ def normalize_project(project: Project, *, reject_excess_cards: bool = True) -> 
     for card in project.cards:
         card.title = str(card.title or "")
         card.value = str(card.value or "")
+        card.badge_header = str(card.badge_header or "")
         card.description = str(card.description or "")
         card.image = str(card.image or "")
         card.image_x = max(-MAX_TRANSFORM_OFFSET, min(MAX_TRANSFORM_OFFSET, _finite(card.image_x, 0.0)))

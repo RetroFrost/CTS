@@ -77,6 +77,21 @@ def _finite_float(value: object, fallback: float) -> float:
     return result if math.isfinite(result) else fallback
 
 
+def _manifest_duration_seconds(manifest: dict[str, Any]) -> float:
+    """Read an optional requested total duration without trusting its shape."""
+    for key in ("duration_seconds", "video_duration_seconds", "duration"):
+        if key in manifest:
+            value = _finite_float(manifest.get(key), 0.0)
+            if value > 0.0:
+                return value
+    source = manifest.get("source")
+    if isinstance(source, dict):
+        value = _finite_float(source.get("duration_seconds"), 0.0)
+        if value > 0.0:
+            return value
+    return 0.0
+
+
 def _centre_crop(
     source: Image.Image,
     size: tuple[int, int],
@@ -264,6 +279,7 @@ def import_megapack(
                 description = _first_string(item, "description", "details")
                 primary = _first_string(item, "badge_primary", "badgePrimary", "value")
                 secondary = _first_string(item, "badge_secondary", "badgeSecondary", "label", "unit")
+                badge_header = _first_string(item, "badge_header", "badgeHeader")
                 value = " ".join(part for part in (primary, secondary) if part).strip()
                 legacy_reference = _first_string(item, "image", "artwork")
                 background_reference = _first_string(item, "background", "background_image", "backdrop")
@@ -312,6 +328,7 @@ def import_megapack(
                 cards.append(Card(
                     title=title,
                     value=value,
+                    badge_header=badge_header,
                     description=description,
                     image=image_path,
                     id=uuid.uuid4().hex,
@@ -332,6 +349,10 @@ def import_megapack(
                 height=model.height,
                 fps=model.fps,
             )
+            requested_duration = _manifest_duration_seconds(manifest)
+            if requested_duration > 0.0:
+                settings.auto_length = False
+                settings.custom_length_seconds = requested_duration
             # The remaining locked Males model owns a visible badge animation.
             # Older Relationships packs can incorrectly request hidden badges
             # while still supplying rank/value text.  Preserve that data and

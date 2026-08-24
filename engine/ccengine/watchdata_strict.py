@@ -23,11 +23,9 @@ _REFERENCE_BADGE_CENTER = (243.5, 203.5)
 _REFERENCE_BADGE_FILL = (194, 0, 12)
 _REFERENCE_BADGE_OUTLINE = (158, 0, 8, 118)
 
-# Continuous badges deliberately use a different emphasis ladder from the
-# first four opening badges.  Reference contour measurements are ~325 px,
-# ~300 px and ~248 px wide respectively on the 298 px settled source shell.
-_LATER_ACTIVE_SCALE = 325.0 / 298.0
-_LATER_MEDIUM_SCALE = 300.0 / 298.0
+# Continuous badges keep one settled size. Their measured vertical fall stays
+# intact, but they no longer grow or shrink to highlight themselves.
+_LATER_FIXED_SCALE = 1.0
 _LATER_SMALL_SCALE = 248.0 / 298.0
 
 # A later badge is not visibly on-screen at its nominal animation start.  The
@@ -143,6 +141,15 @@ class StrictReferenceFrameRenderer(ReleaseWatchDataFrameRenderer):
 
     def _text_layout(self, card: Card) -> list[tuple[str, float, int]]:
         lines = self._value_lines(card.value)
+        header = " ".join(card.badge_header.upper().split())
+        if header and len(lines) == 1:
+            return [(header, 110.0, 44), (lines[0], 238.0, 90)]
+        if header and len(lines) >= 2:
+            return [
+                (header, 110.0, 44),
+                (lines[0], 215.0, 112),
+                (" ".join(lines[1:]), 310.0, 44),
+            ]
         if len(lines) == 1:
             return [(lines[0], 199.0, 98)]
         # Settled reference bounds: primary ~71-73 px tall; qualifier ~32-33
@@ -174,7 +181,8 @@ class StrictReferenceFrameRenderer(ReleaseWatchDataFrameRenderer):
                 - (1.0 - eased) * 112.0
             )
             alpha = int(255 * _base.clamp(progress * 1.75))
-            filename = POPPINS_EXTRA_BOLD if index == 0 else POPPINS_SEMI_BOLD
+            has_header = bool(card.badge_header.strip())
+            filename = POPPINS_EXTRA_BOLD if index == (1 if has_header else 0) else POPPINS_SEMI_BOLD
             font = self._font_named_fitted(filename, text, size, 286)
 
             text_layer = Image.new("RGBA", _base.BADGE_SOURCE_SIZE, (0, 0, 0, 0))
@@ -311,24 +319,8 @@ class StrictReferenceFrameRenderer(ReleaseWatchDataFrameRenderer):
         global_frame: int,
         starts: list[int],
     ) -> float:
-        scale = _LATER_ACTIVE_SCALE
-
-        if index + 1 < len(starts):
-            trigger = starts[index + 1] + _LATER_VISIBLE_OFFSET
-            progress = _base.smoothstep(
-                (global_frame - trigger) / _LATER_SCALE_TRANSITION
-            )
-            scale = _base.lerp(_LATER_ACTIVE_SCALE, _LATER_MEDIUM_SCALE, progress)
-
-        if index + 2 < len(starts):
-            trigger = starts[index + 2] + _LATER_VISIBLE_OFFSET
-            progress = _base.smoothstep(
-                (global_frame - trigger) / _LATER_SCALE_TRANSITION
-            )
-            if progress > 0.0:
-                scale = _base.lerp(_LATER_MEDIUM_SCALE, _LATER_SMALL_SCALE, progress)
-
-        return scale
+        del index, global_frame, starts
+        return _LATER_FIXED_SCALE
 
     def _draw_badge(
         self,
