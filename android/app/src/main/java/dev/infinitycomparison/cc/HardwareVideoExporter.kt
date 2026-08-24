@@ -302,7 +302,7 @@ private class CodecInputSurface(
     surface: Surface,
     private val width: Int,
     private val height: Int,
-    context: Context,
+    appContext: Context,
     project: StudioProject,
 ) {
     private val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
@@ -347,7 +347,7 @@ private class CodecInputSurface(
             "Could not activate the encoder EGL surface."
         }
         glRenderer = GLES20.glGetString(GLES20.GL_RENDERER) ?: "Phone GPU"
-        renderer = NativeGpuRenderer(context.applicationContext, project, width, height)
+        renderer = NativeGpuRenderer(appContext.applicationContext, project, width, height)
     }
 
     fun draw(frame: Int, presentationNanos: Long) {
