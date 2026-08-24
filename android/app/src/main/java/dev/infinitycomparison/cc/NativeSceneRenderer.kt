@@ -421,12 +421,12 @@ object NativeFrameRenderer {
                     if (trailLength > 1f) {
                         for (trail in 4 downTo 1) {
                             val trailPaint = Paint(layerPaint).apply {
-                                alpha = (finalAlpha * (5 - trail) / 5f * 0.16f).toInt()
+                                this.alpha = (finalAlpha * (5 - trail) / 5f * 0.16f).toInt()
                             }
                             canvas.drawBitmap(lineBitmap, left, top + yOffset - trailLength * trail / 4f, trailPaint)
                         }
                     }
-                    canvas.drawBitmap(lineBitmap, left, top + yOffset, Paint(layerPaint).apply { alpha = finalAlpha })
+                    canvas.drawBitmap(lineBitmap, left, top + yOffset, Paint(layerPaint).apply { this.alpha = finalAlpha })
                 }
             }
             for (index in positions.keys.sorted()) {
