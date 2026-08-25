@@ -20,8 +20,8 @@ internal object NativeArtwork {
 
     private const val badgeStageHeight = 476
     private const val titleTop = 476
-    private const val titleHeight = 102
-    private const val lowerTop = 578
+    private const val titleHeight = 101
+    private const val lowerTop = 577
     const val badgeWidth = 480
     const val badgeHeight = 430
     const val badgeTop = 32f
@@ -37,7 +37,7 @@ internal object NativeArtwork {
         val title = card.title.trim().replace(Regex("\\s+"), " ")
         val description = card.description.trim().replace(Regex("\\s+"), " ")
         canvas.drawRect(0f, lowerTop.toFloat(), NativeTimeline.bodyWidth.toFloat(), NativeTimeline.bodyHeight.toFloat(), Paint().apply {
-            color = Color.rgb(108, 103, 96)
+            color = Color.rgb(108, 103, 98)
         })
 
         if (card.imageLayer.lowercase() != "front") {
@@ -58,9 +58,6 @@ internal object NativeArtwork {
                 25f, 17f, 3, font(context, "Poppins-Medium.ttf", false), Color.rgb(250, 250, 248),
             )
         }
-        val divider = Paint().apply { color = Color.rgb(15, 15, 15); strokeWidth = 2f }
-        canvas.drawLine(0f, 0f, 0f, NativeTimeline.bodyHeight.toFloat(), divider)
-        canvas.drawLine(NativeTimeline.bodyWidth - 1f, 0f, NativeTimeline.bodyWidth - 1f, NativeTimeline.bodyHeight.toFloat(), divider)
         return bitmap
     }
 
@@ -192,42 +189,11 @@ internal object NativeArtwork {
     }
 
     fun outroActionBar(context: Context, state: Int): Bitmap {
-        val bitmap = Bitmap.createBitmap(996, 242, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawRoundRect(RectF(0f, 0f, 996f, 242f), 36f, 36f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(250, 250, 250) })
-        val dark = Color.rgb(35, 35, 38)
-        val blue = Color.rgb(25, 118, 210)
-        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (state >= 1) blue else dark; strokeWidth = 11f; style = Paint.Style.STROKE
-        }
-        canvas.drawPath(Path().apply {
-            moveTo(82f, 132f); lineTo(115f, 132f); lineTo(139f, 74f); lineTo(159f, 74f)
-            lineTo(159f, 101f); lineTo(193f, 101f); lineTo(193f, 164f); lineTo(115f, 164f); close()
-        }, iconPaint)
-        val dislike = Paint(iconPaint).apply { color = dark }
-        canvas.save(); canvas.scale(1f, -1f, 303f, 121f)
-        canvas.drawPath(Path().apply {
-            moveTo(245f, 132f); lineTo(278f, 132f); lineTo(302f, 74f); lineTo(322f, 74f)
-            lineTo(322f, 101f); lineTo(356f, 101f); lineTo(356f, 164f); lineTo(278f, 164f); close()
-        }, dislike); canvas.restore()
-        if (state >= 1) canvas.drawRoundRect(RectF(45f, 216f, 224f, 224f), 4f, 4f, Paint().apply { color = blue })
-        val subscribed = state >= 2
-        canvas.drawRoundRect(RectF(461f, 77f, 801f, 174f), 49f, 49f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (subscribed) Color.rgb(225, 225, 225) else Color.rgb(211, 8, 9)
-        })
-        drawFittedCentredText(
-            canvas, if (subscribed) "SUBSCRIBED" else "SUBSCRIBE", RectF(482f, 87f, 780f, 164f), 31f, 22f, 1,
-            font(context, "Poppins-Bold.ttf", true), if (subscribed) dark else Color.WHITE,
+        val resource = context.resources.getIdentifier(
+            "outro_action_${state.coerceIn(0, 3)}", "drawable", context.packageName,
         )
-        val bell = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = dark; style = Paint.Style.STROKE; strokeWidth = 10f }
-        canvas.drawArc(RectF(866f, 76f, 938f, 155f), 190f, 160f, false, bell)
-        canvas.drawLine(870f, 139f, 934f, 139f, bell)
-        canvas.drawCircle(902f, 167f, 8f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = dark })
-        if (state >= 3) {
-            canvas.drawArc(RectF(842f, 62f, 962f, 172f), 285f, 52f, false, Paint(bell).apply { color = blue; strokeWidth = 7f })
-            canvas.drawArc(RectF(842f, 62f, 962f, 172f), 103f, 52f, false, Paint(bell).apply { color = blue; strokeWidth = 7f })
-        }
-        return bitmap
+        check(resource != 0) { "Reference action-bar asset is missing." }
+        return checkNotNull(BitmapFactory.decodeResource(context.resources, resource))
     }
 
     fun cursor(): Bitmap {

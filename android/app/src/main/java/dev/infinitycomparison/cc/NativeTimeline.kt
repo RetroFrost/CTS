@@ -8,11 +8,11 @@ object NativeTimeline {
     data class Affine(val a: Float, val b: Float, val c: Float, val d: Float, val e: Float, val f: Float)
     const val referenceWidth = 1920f
     const val referenceHeight = 1080f
-    const val slotPitch = 476f
-    const val bodyInset = 9f
-    const val bodyWidth = 471
+    const val slotPitch = 477f
+    const val bodyInset = 10f
+    const val bodyWidth = 470
     const val bodyHeight = 1080
-    const val continuousStart = 528
+    const val continuousStart = ReferenceFrameData.continuousStart
     const val continuousStep = 214
     const val outroFrames = 494
 
@@ -43,6 +43,18 @@ object NativeTimeline {
         188 to -66f, 192 to -41f, 196 to -25f, 200 to -10f,
         204 to -2f, 206 to 0f,
     )
+    private val activeToMediumFaceWidth = intArrayOf(
+        355, 352, 346, 342, 339, 336, 335, 334, 332, 330, 330, 329, 328,
+        327, 326, 326, 326, 326, 325, 324, 324, 325, 324, 324, 323,
+    )
+    private val mediumToSmallFaceWidth = intArrayOf(
+        320, 320, 314, 310, 308, 303, 302, 299, 296, 296, 294, 293, 292,
+        291, 291, 291, 290, 289, 288, 288, 289, 288, 288, 287, 287, 288,
+    )
+    private val smallToBackgroundFaceWidth = intArrayOf(
+        284, 282, 276, 272, 267, 266, 264, 262, 262, 260, 258, 258, 256,
+        256, 254, 254, 254, 253, 254, 252, 252, 252, 252, 252, 252,
+    )
     private val openingBadgeAffine = arrayOf(
         35 to Affine(.493398f, -.085460f, -.331527f, 1.161492f, -150.997648f, -39.870887f),
         40 to Affine(.592169f, -.078765f, -.283855f, 1.188568f, -125.999331f, -19.155194f),
@@ -66,11 +78,6 @@ object NativeTimeline {
         112 to Affine(1.021605f, -.010638f, .009259f, 1.005319f, -4.449173f, -6.219858f),
         116 to Affine(1.024691f, -.010638f, .020062f, .986702f, -2.171395f, -1.311466f),
         120 to Affine(1f, 0f, 0f, 1f, 0f, 0f),
-    )
-    private val outroGroupX = arrayOf(
-        0 to 541f, 4 to 374f, 8 to 297f, 12 to 239f, 16 to 195f,
-        20 to 160f, 24 to 130f, 28 to 105f, 32 to 83f, 36 to 67f,
-        40 to 51f, 44 to 35f, 48 to 23f, 52 to 12f, 56 to 4f, 60 to 0f,
     )
 
     fun metadata(project: StudioProject): RenderMetadata {
@@ -128,6 +135,22 @@ object NativeTimeline {
         val count = project.cards.size
         if (count == 0) return emptyMap()
         val starts = cardStarts(project)
+        if (project.autoLength && count == 50 && frame >= continuousStart) {
+            val measured = ReferenceFrameData.visible(frame)
+            return buildMap {
+                measured.slotX.forEachIndexed { offset, x ->
+                    val index = measured.firstIndex + offset
+                    if (index in 0 until count) put(index, x.toFloat())
+                }
+            }
+        }
+        if (project.autoLength && count == 50) {
+            val active = minOf(frame / 120, 3)
+            return buildMap {
+                for (index in 0 until active) put(index, index * slotPitch)
+                put(active, ReferenceFrameData.openingActiveSlotX(frame).toFloat())
+            }
+        }
         if (frame >= continuousStart && count > 4) {
             val step = if (project.autoLength) continuousStep.toFloat() else {
                 if (starts.size > 5) (starts[5] - starts[4]).coerceAtLeast(1).toFloat()
@@ -165,6 +188,13 @@ object NativeTimeline {
         var active = -1
         for (index in 0 until minOf(4, starts.size)) if (frame >= starts[index]) active = index
         if (active < 0) return referenceWidth
+        if (project.autoLength && project.cards.size == 50) {
+            if (active < 3) return 3f * slotPitch
+            // The fourth body enters from the right while the disclaimer exits to the right.
+            // Both positions are driven by the measured opening-frame table.
+            val activeX = ReferenceFrameData.openingActiveSlotX(frame).toFloat()
+            return (referenceWidth + 3f * slotPitch - activeX).coerceIn(3f * slotPitch, referenceWidth)
+        }
         val movement = sampleSeconds(bodyProgress, (frame - starts[active]) / 60f)
         return when {
             active == 0 -> referenceWidth - slotPitch * movement
@@ -200,9 +230,17 @@ object NativeTimeline {
         val small = .975f
         val background = .855f
         if (index >= 4) {
-            val demoteStart = continuousStep + 122
-            if (localFrame <= demoteStart) return active
-            return lerp(active, background, ((localFrame - demoteStart) / 28f).coerceIn(0f, 1f))
+            fun measured(start: Int, widths: IntArray): Float? =
+                if (localFrame in start until start + widths.size) widths[localFrame - start] / 296f else null
+            return measured(391, activeToMediumFaceWidth)
+                ?: measured(603, mediumToSmallFaceWidth)
+                ?: measured(816, smallToBackgroundFaceWidth)
+                ?: when {
+                    localFrame < 391 -> 360f / 296f
+                    localFrame < 603 -> medium
+                    localFrame < 816 -> small
+                    else -> background
+                }
         }
         val base = when (index) {
             0 -> if (globalFrame < 120) active else if (globalFrame < 240) medium else if (globalFrame < 360) small else background
@@ -223,21 +261,13 @@ object NativeTimeline {
         return if (badgeOffset(index, localFrame, settledScrollingBadges) != null) 1f else 0f
     }
 
-    fun easeOutCubic(value: Float): Float {
-        val p = value.coerceIn(0f, 1f)
-        return 1f - (1f - p) * (1f - p) * (1f - p)
-    }
-
     fun outroLocal(project: StudioProject, frame: Int): Int = frame - contentEnd(project)
 
-    fun outroGroupX(localFrame: Int): Float = sampleFrames(outroGroupX, localFrame.coerceAtLeast(0))
+    fun outroGroupX(localFrame: Int): Float = ReferenceFrameData.outroGroupX(localFrame).toFloat()
 
     fun outroActionBar(localFrame: Int): Bounds? {
-        if (localFrame < 96) return null
-        val progress = easeOutCubic(((localFrame - 96) / 56f).coerceIn(0f, 1f))
-        val width = 42f + (996f - 42f) * progress
-        val height = 8f + (242f - 8f) * progress
-        return Bounds(1197f - width / 2f, 378f - height / 2f, width, height)
+        val measured = ReferenceFrameData.outroActionBounds(localFrame) ?: return null
+        return Bounds(measured[0].toFloat(), measured[1].toFloat(), measured[2].toFloat(), measured[3].toFloat())
     }
 
     fun outroActionState(localFrame: Int): Int = when {

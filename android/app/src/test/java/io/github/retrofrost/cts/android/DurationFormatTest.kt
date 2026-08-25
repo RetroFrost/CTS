@@ -46,8 +46,8 @@ class DurationFormatTest {
     }
 
     @Test fun outroMatchesWorstThingsReferenceClocks() {
-        assertEquals(541.0f, NativeTimeline.outroGroupX(0), 0.0001f)
-        assertEquals(160.0f, NativeTimeline.outroGroupX(20), 0.0001f)
+        assertEquals(540.0f, NativeTimeline.outroGroupX(0), 0.0001f)
+        assertEquals(162.0f, NativeTimeline.outroGroupX(20), 0.0001f)
         assertEquals(0.0f, NativeTimeline.outroGroupX(60), 0.0001f)
         assertNull(NativeTimeline.outroActionBar(95))
         assertEquals(996.0f, NativeTimeline.outroActionBar(152)?.width ?: 0f, 0.0001f)
@@ -61,5 +61,10 @@ class DurationFormatTest {
         val project = StudioProject(cards = List(50) { StudioCard(title = "Card $it") })
         assertEquals(10_428, NativeTimeline.contentEnd(project))
         assertEquals(10_922, NativeTimeline.totalFrames(project))
+        assertEquals(mapOf(0 to 0.0f, 1 to 477.0f, 2 to 954.0f, 3 to 1431.0f), NativeTimeline.positions(project, 528))
+        assertEquals(-417.0f, NativeTimeline.positions(project, 900).getValue(1), 0.0001f)
+        assertEquals(60.0f, NativeTimeline.positions(project, 900).getValue(2), 0.0001f)
+        assertEquals(-2.0f, NativeTimeline.positions(project, 5000).getValue(21), 0.0001f)
+        assertEquals(-168.0f, NativeTimeline.positions(project, 10_427).getValue(47), 0.0001f)
     }
 }
