@@ -23,7 +23,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .ci/precision208-overlay.b64 > /tmp/precision208-overlay.zip
+          cat .ci/precision208-overlay.b64 .ci/precision208-overlay.part{01..08} | base64 -d > /tmp/precision208-overlay.zip
+          echo 'd9425210a37b69d8140f1d5b226f586388ce481acef35e98a6c26c45697db7ec  /tmp/precision208-overlay.zip' | sha256sum -c -
           unzip -t /tmp/precision208-overlay.zip
           unzip -o /tmp/precision208-overlay.zip -d android
           grep -q 'versionCode = 20008' android/app/build.gradle.kts
