@@ -384,6 +384,17 @@ private fun CardsTab(
             )
         }
         item {
+            OutlinedTextField(
+                value = project.outroPrompt,
+                onValueChange = { onProjectChange(project.copy(outroPrompt = it)) },
+                label = { Text("Outro question") },
+                placeholder = { Text("What do you think? Comment below!") },
+                minLines = 2,
+                maxLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Cards", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 IconButton(onClick = {

@@ -75,28 +75,18 @@ internal class NativeGpuRenderer(
             val texture = texture("badge-shell") { NativeArtwork.badgeShell() }
             val left = positions.getValue(index) + (NativeTimeline.slotPitch - NativeArtwork.badgeWidth) / 2f
             val shine = NativeTimeline.badgeShineProgress(index, localFrame) ?: -1f
-            drawTexture(texture, left, NativeArtwork.badgeTop + offset, alpha, shine)
+            val affine = NativeTimeline.badgeAffine(index, localFrame)
+            val scale = NativeTimeline.badgeScale(index, localFrame, frame)
+            drawTexture(texture, left, NativeArtwork.badgeTop + offset, alpha, shine, affine = affine, scale = scale)
             NativeArtwork.badgeLines(card).forEachIndexed { lineIndex, line ->
                 val progress = NativeTimeline.badgeTextProgress(
                     index, lineIndex, localFrame, project.settledScrollingBadges,
                 )
                 if (progress <= 0f) return@forEachIndexed
-                val eased = NativeTimeline.easeOutCubic(progress)
-                val yOffset = -(1f - eased) * 88f
                 val text = texture("badge-text:${card.id}:${card.badgeHeader}:${card.value}:$lineIndex") {
                     NativeArtwork.badgeText(context, line)
                 }
-                val textAlpha = alpha * (progress * 1.75f).coerceAtMost(1f)
-                val trailLength = (1f - progress) * 58f
-                if (trailLength > 1f) {
-                    for (trail in 4 downTo 1) {
-                        drawTexture(
-                            text, left, NativeArtwork.badgeTop + offset + yOffset - trailLength * trail / 4f,
-                            textAlpha * (5 - trail) / 5f * 0.16f,
-                        )
-                    }
-                }
-                drawTexture(text, left, NativeArtwork.badgeTop + offset + yOffset, textAlpha)
+                drawTexture(text, left, NativeArtwork.badgeTop + offset, alpha, affine = affine, scale = scale)
             }
         }
         for (index in positions.keys.sorted()) {
@@ -161,21 +151,36 @@ internal class NativeGpuRenderer(
         shine: Float = -1f,
         drawWidth: Float = texture.width.toFloat(),
         drawHeight: Float = texture.height.toFloat(),
+        affine: NativeTimeline.Affine? = null,
+        scale: Float = 1f,
     ) {
-        val right = left + drawWidth
-        val bottom = top + drawHeight
-        if (right <= 0f || left >= NativeTimeline.referenceWidth || bottom <= 0f || top >= NativeTimeline.referenceHeight) return
-        val x0 = left / NativeTimeline.referenceWidth * 2f - 1f
-        val x1 = right / NativeTimeline.referenceWidth * 2f - 1f
-        val y0 = 1f - top / NativeTimeline.referenceHeight * 2f
-        val y1 = 1f - bottom / NativeTimeline.referenceHeight * 2f
+        val transform = affine ?: NativeTimeline.Affine(1f, 0f, 0f, 1f, 0f, 0f)
+        val centreX = if (affine == null) 0f else 243.5f
+        val centreY = if (affine == null) 0f else 203.5f
+        fun point(x: Float, y: Float): NativeTimeline.Point {
+            val transformedX = transform.a * x + transform.b * y + transform.e
+            val transformedY = transform.c * x + transform.d * y + transform.f
+            return NativeTimeline.Point(
+                left + centreX + scale * (transformedX - centreX),
+                top + centreY + scale * (transformedY - centreY),
+            )
+        }
+        val bottomLeft = point(0f, drawHeight)
+        val bottomRight = point(drawWidth, drawHeight)
+        val topLeft = point(0f, 0f)
+        val topRight = point(drawWidth, 0f)
+        val points = listOf(bottomLeft, bottomRight, topLeft, topRight)
+        if (points.maxOf { it.x } <= 0f || points.minOf { it.x } >= NativeTimeline.referenceWidth ||
+            points.maxOf { it.y } <= 0f || points.minOf { it.y } >= NativeTimeline.referenceHeight) return
+        fun clipX(value: Float) = value / NativeTimeline.referenceWidth * 2f - 1f
+        fun clipY(value: Float) = 1f - value / NativeTimeline.referenceHeight * 2f
         vertices.clear()
         vertices.put(
             floatArrayOf(
-                x0, y1, 0f, 1f,
-                x1, y1, 1f, 1f,
-                x0, y0, 0f, 0f,
-                x1, y0, 1f, 0f,
+                clipX(bottomLeft.x), clipY(bottomLeft.y), 0f, 1f,
+                clipX(bottomRight.x), clipY(bottomRight.y), 1f, 1f,
+                clipX(topLeft.x), clipY(topLeft.y), 0f, 0f,
+                clipX(topRight.x), clipY(topRight.y), 1f, 0f,
             ),
         ).position(0)
         GLES20.glUseProgram(program)
@@ -198,22 +203,35 @@ internal class NativeGpuRenderer(
         val black = texture("solid:black") {
             Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply { setPixel(0, 0, android.graphics.Color.BLACK) }
         }
-        if (local < 43) {
-            drawTexture(black, 0f, 0f, 1f, drawWidth = 1440f, drawHeight = NativeTimeline.outroCoverY(local))
-            return
-        }
-        drawTexture(black, 0f, 0f, 1f, drawWidth = 1440f, drawHeight = NativeTimeline.referenceHeight)
-        NativeTimeline.outroGroupTop(local)?.let { top ->
-            val group = texture("outro-group:${project.name}") { NativeArtwork.outroGroup(context, project) }
-            drawTexture(group, 0f, top, alpha)
+        drawTexture(black, 0f, 0f, 1f, drawWidth = NativeTimeline.referenceWidth, drawHeight = NativeTimeline.referenceHeight)
+        if (project.cards.isNotEmpty()) {
+            val groupX = NativeTimeline.outroGroupX(local)
+            val card = project.cards.last()
+            val body = texture("body:${card.id}:${card.hashCode()}") { NativeArtwork.body(context, card) }
+            drawTexture(body, groupX + NativeTimeline.bodyInset, 0f, alpha)
+            if (project.showBadges && card.value.isNotBlank()) {
+                val badge = texture("badge-shell") { NativeArtwork.badgeShell() }
+                val left = groupX + (NativeTimeline.slotPitch - NativeArtwork.badgeWidth) / 2f
+                val identity = NativeTimeline.Affine(1f, 0f, 0f, 1f, 0f, 0f)
+                drawTexture(badge, left, NativeArtwork.badgeTop, alpha, affine = identity, scale = 1.25f)
+                NativeArtwork.badgeLines(card).forEachIndexed { lineIndex, line ->
+                    val text = texture("badge-text:${card.id}:${card.badgeHeader}:${card.value}:$lineIndex") {
+                        NativeArtwork.badgeText(context, line)
+                    }
+                    drawTexture(text, left, NativeArtwork.badgeTop, alpha, affine = identity, scale = 1.25f)
+                }
+            }
+            val prompt = texture("outro-prompt:${project.name}:${project.outroPrompt}") { NativeArtwork.outroPrompt(context, project) }
+            drawTexture(prompt, groupX + 523f, 0f, alpha)
         }
         NativeTimeline.outroActionBar(local)?.let { bounds ->
-            val action = texture("outro-action") { NativeArtwork.outroActionBar() }
+            val state = NativeTimeline.outroActionState(local)
+            val action = texture("outro-action:$state") { NativeArtwork.outroActionBar(context, state) }
             drawTexture(action, bounds.left, bounds.top, alpha, drawWidth = bounds.width, drawHeight = bounds.height)
         }
-        NativeTimeline.outroSubscribe(local)?.let { bounds ->
-            val subscribe = texture("outro-subscribe") { NativeArtwork.outroSubscribe(context) }
-            drawTexture(subscribe, bounds.left, bounds.top, alpha, drawWidth = bounds.width, drawHeight = bounds.height)
+        NativeTimeline.outroCursor(local)?.let { point ->
+            val cursor = texture("outro-cursor") { NativeArtwork.cursor() }
+            drawTexture(cursor, point.x, point.y, alpha)
         }
     }
 

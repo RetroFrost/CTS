@@ -35,6 +35,7 @@ data class StudioCard(
 
 data class StudioProject(
     val name: String = "Untitled",
+    val outroPrompt: String = "",
     val cards: List<StudioCard> = listOf(StudioCard()),
     val width: Int = 1920,
     val height: Int = 1080,
@@ -61,6 +62,7 @@ data class StudioProject(
             .put("show_badges", showBadges)
             .put("settled_scrolling_badges", settledScrollingBadges)
             .put("credits_enabled", creditsEnabled)
+            .put("outro_prompt", outroPrompt)
             .put("soundtrack", soundtrack)
             .put("soundtrack_volume", soundtrackVolume)
             .put("soundtrack_loop", soundtrackLoop)
@@ -144,6 +146,7 @@ data class StudioProject(
 
             return StudioProject(
                 name = root.optString("name", "Untitled"),
+                outroPrompt = settings.optString("outro_prompt", ""),
                 cards = cards,
                 width = settings.optInt("width", 1920),
                 height = settings.optInt("height", 1080),

@@ -4,6 +4,8 @@ import kotlin.math.max
 
 object NativeTimeline {
     data class Bounds(val left: Float, val top: Float, val width: Float, val height: Float)
+    data class Point(val x: Float, val y: Float)
+    data class Affine(val a: Float, val b: Float, val c: Float, val d: Float, val e: Float, val f: Float)
     const val referenceWidth = 1920f
     const val referenceHeight = 1080f
     const val slotPitch = 476f
@@ -12,7 +14,7 @@ object NativeTimeline {
     const val bodyHeight = 1080
     const val continuousStart = 528
     const val continuousStep = 214
-    const val outroFrames = 409
+    const val outroFrames = 494
 
     private const val openingShineStart = 95
     private const val openingShineEndExclusive = 120
@@ -41,12 +43,34 @@ object NativeTimeline {
         188 to -66f, 192 to -41f, 196 to -25f, 200 to -10f,
         204 to -2f, 206 to 0f,
     )
-    private val outroCover = intArrayOf(
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        28, 72, 128, 196, 273, 357, 445, 535, 626, 714, 798, 874,
-        942, 999, 1042, 1070, 1080, 1080, 1080, 1080, 1080, 1080,
-        1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080,
-        1080, 1080,
+    private val openingBadgeAffine = arrayOf(
+        35 to Affine(.493398f, -.085460f, -.331527f, 1.161492f, -150.997648f, -39.870887f),
+        40 to Affine(.592169f, -.078765f, -.283855f, 1.188568f, -125.999331f, -19.155194f),
+        44 to Affine(.653847f, -.078786f, -.293365f, 1.172057f, -105.417801f, -5.568381f),
+        48 to Affine(.696013f, -.090493f, -.273790f, 1.202435f, -82.436779f, -19.898183f),
+        52 to Affine(.721844f, -.076480f, -.273350f, 1.200237f, -60.473294f, -18.705733f),
+        56 to Affine(.729938f, -.029255f, -.225309f, 1.111702f, -45.263002f, -10.894799f),
+        60 to Affine(.774691f, -.031915f, -.189815f, 1.114362f, -38.958629f, -14.476950f),
+        64 to Affine(.817901f, -.031915f, -.168210f, 1.114362f, -34.569740f, -17.032506f),
+        68 to Affine(.859568f, -.039894f, -.121914f, 1.087766f, -30.989953f, -17.599882f),
+        72 to Affine(.898148f, -.037234f, -.114198f, 1.069149f, -29.794326f, -14.969267f),
+        76 to Affine(.922840f, -.026596f, -.101852f, 1.053191f, -28.178487f, -11.698582f),
+        80 to Affine(.945988f, -.029255f, -.067901f, 1.058511f, -23.818558f, -15.196217f),
+        84 to Affine(.964506f, -.018617f, -.064815f, 1.042553f, -23.258274f, -10.258865f),
+        88 to Affine(.979938f, -.023936f, -.038580f, 1.039894f, -19.316194f, -13.121158f),
+        92 to Affine(.987654f, -.021277f, -.023148f, 1.029255f, -16.898345f, -10.625887f),
+        96 to Affine(1.001543f, -.013298f, -.021605f, 1.021277f, -15.978132f, -8.657210f),
+        100 to Affine(1.010802f, -.013298f, -.006173f, 1.005319f, -14.144799f, -6.608747f),
+        104 to Affine(1.013889f, -.007979f, -.006173f, 1.010638f, -11.420213f, -6.661939f),
+        108 to Affine(1.010802f, .002660f, -.015432f, 1.015957f, -8.304374f, -3.548463f),
+        112 to Affine(1.021605f, -.010638f, .009259f, 1.005319f, -4.449173f, -6.219858f),
+        116 to Affine(1.024691f, -.010638f, .020062f, .986702f, -2.171395f, -1.311466f),
+        120 to Affine(1f, 0f, 0f, 1f, 0f, 0f),
+    )
+    private val outroGroupX = arrayOf(
+        0 to 541f, 4 to 374f, 8 to 297f, 12 to 239f, 16 to 195f,
+        20 to 160f, 24 to 130f, 28 to 105f, 32 to 83f, 36 to 67f,
+        40 to 51f, 44 to 35f, 48 to 23f, 52 to 12f, 56 to 4f, 60 to 0f,
     )
 
     fun metadata(project: StudioProject): RenderMetadata {
@@ -61,6 +85,7 @@ object NativeTimeline {
         val count = project.cards.size.coerceAtLeast(1)
         val automatic = when {
             count <= 4 -> openingEnds[count - 1]
+            count == 50 -> 10_428
             count == 57 -> 11_858
             else -> continuousStart + (count - 4) * continuousStep
         }
@@ -93,8 +118,8 @@ object NativeTimeline {
 
     fun sceneAlpha(project: StudioProject, frame: Int): Float {
         val local = frame - contentEnd(project)
-        if (local < 322) return 1f
-        if (local < 401) return 1f - (local - 322) / 79f
+        if (local < 355) return 1f
+        if (local < 457) return 1f - (local - 355) / 102f
         return 0f
     }
 
@@ -151,7 +176,7 @@ object NativeTimeline {
 
     fun badgeOffset(index: Int, localFrame: Int, settledScrollingBadges: Boolean = false): Float? {
         if (localFrame < 0) return null
-        if (index < 4) return 0f
+        if (index < 4) return if (localFrame >= 35) 0f else null
         if (settledScrollingBadges) return 0f
         if (localFrame < 122) return null
         return sampleFrames(badgeFall, localFrame)
@@ -162,6 +187,30 @@ object NativeTimeline {
         val end = if (index < 4) openingShineEndExclusive else scrollingShineEndExclusive
         if (localFrame !in start until end) return null
         return (localFrame - start).toFloat() / (end - start)
+    }
+
+    fun badgeAffine(index: Int, localFrame: Int): Affine {
+        if (index >= 4 || localFrame >= 120) return Affine(1f, 0f, 0f, 1f, 0f, 0f)
+        return sampleAffine(openingBadgeAffine, localFrame)
+    }
+
+    fun badgeScale(index: Int, localFrame: Int, globalFrame: Int): Float {
+        val active = 1.25f
+        val medium = 1.095f
+        val small = .975f
+        val background = .855f
+        if (index >= 4) {
+            val demoteStart = continuousStep + 122
+            if (localFrame <= demoteStart) return active
+            return lerp(active, background, ((localFrame - demoteStart) / 28f).coerceIn(0f, 1f))
+        }
+        val base = when (index) {
+            0 -> if (globalFrame < 120) active else if (globalFrame < 240) medium else if (globalFrame < 360) small else background
+            1 -> if (globalFrame < 240) active else if (globalFrame < 360) medium else if (globalFrame < 480) small else background
+            2 -> if (globalFrame < 360) active else if (globalFrame < 480) medium else background
+            else -> if (globalFrame < 480) active else if (globalFrame < 650) medium else background
+        }
+        return base
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -181,30 +230,58 @@ object NativeTimeline {
 
     fun outroLocal(project: StudioProject, frame: Int): Int = frame - contentEnd(project)
 
-    fun outroCoverY(localFrame: Int): Float =
-        outroCover[localFrame.coerceIn(0, outroCover.lastIndex)].toFloat()
-
-    fun outroGroupTop(localFrame: Int): Float? {
-        if (localFrame < 43) return null
-        if (localFrame >= 53) return 0f
-        val positions = floatArrayOf(-210f, -210f, -183f, -144f, -108f, -78f, -51f, -30f, -14f, -4f, 0f)
-        return positions[localFrame - 43]
-    }
+    fun outroGroupX(localFrame: Int): Float = sampleFrames(outroGroupX, localFrame.coerceAtLeast(0))
 
     fun outroActionBar(localFrame: Int): Bounds? {
-        if (localFrame < 54) return null
-        val progress = easeOutCubic(((localFrame - 54) / 48f).coerceIn(0f, 1f))
-        val width = 42f + (540f - 42f) * progress
-        val height = 8f + (130f - 8f) * progress
-        return Bounds(738f - width / 2f, 98f - 61f * progress, width, height)
+        if (localFrame < 96) return null
+        val progress = easeOutCubic(((localFrame - 96) / 56f).coerceIn(0f, 1f))
+        val width = 42f + (996f - 42f) * progress
+        val height = 8f + (242f - 8f) * progress
+        return Bounds(1197f - width / 2f, 378f - height / 2f, width, height)
     }
 
-    fun outroSubscribe(localFrame: Int): Bounds? {
-        if (localFrame < 74) return null
-        val progress = easeOutCubic(((localFrame - 74) / 28f).coerceIn(0f, 1f))
-        val width = 22f + (185f - 22f) * progress
-        val height = 7f + (53f - 7f) * progress
-        return Bounds(810.5f - width / 2f, 103f - 26f * progress, width, height)
+    fun outroActionState(localFrame: Int): Int = when {
+        localFrame >= 372 -> 3
+        localFrame >= 312 -> 2
+        localFrame >= 252 -> 1
+        else -> 0
+    }
+
+    fun outroCursor(localFrame: Int): Point? {
+        val keys = arrayOf(
+            180 to Point(1100f, 650f), 245 to Point(820f, 390f),
+            260 to Point(820f, 390f), 300 to Point(1320f, 390f),
+            320 to Point(1320f, 390f), 350 to Point(1600f, 390f),
+            372 to Point(1600f, 390f),
+        )
+        if (localFrame !in keys.first().first..keys.last().first) return null
+        for (i in 1 until keys.size) {
+            if (localFrame <= keys[i].first) {
+                val left = keys[i - 1]
+                val right = keys[i]
+                val t = (localFrame - left.first).toFloat() / (right.first - left.first)
+                return Point(lerp(left.second.x, right.second.x, t), lerp(left.second.y, right.second.y, t))
+            }
+        }
+        return keys.last().second
+    }
+
+    private fun lerp(left: Float, right: Float, amount: Float): Float = left + (right - left) * amount
+
+    private fun sampleAffine(points: Array<Pair<Int, Affine>>, value: Int): Affine {
+        if (value <= points.first().first) return points.first().second
+        if (value >= points.last().first) return points.last().second
+        for (i in 1 until points.size) if (value <= points[i].first) {
+            val left = points[i - 1]
+            val right = points[i]
+            val t = (value - left.first).toFloat() / (right.first - left.first)
+            return Affine(
+                lerp(left.second.a, right.second.a, t), lerp(left.second.b, right.second.b, t),
+                lerp(left.second.c, right.second.c, t), lerp(left.second.d, right.second.d, t),
+                lerp(left.second.e, right.second.e, t), lerp(left.second.f, right.second.f, t),
+            )
+        }
+        return points.last().second
     }
 
     private fun sampleFrames(points: Array<Pair<Int, Float>>, value: Int): Float {

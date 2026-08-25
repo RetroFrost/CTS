@@ -29,29 +29,37 @@ class DurationFormatTest {
 
     @Test fun badgeTextIsPresentFromTheBadgesFirstVisibleFrame() {
         assertEquals(0.0f, NativeTimeline.badgeTextProgress(0, 0, -1), 0.0001f)
-        assertEquals(1.0f, NativeTimeline.badgeTextProgress(0, 0, 0), 0.0001f)
+        assertEquals(0.0f, NativeTimeline.badgeTextProgress(0, 0, 34), 0.0001f)
+        assertEquals(1.0f, NativeTimeline.badgeTextProgress(0, 0, 35), 0.0001f)
         assertEquals(0.0f, NativeTimeline.badgeTextProgress(4, 0, 121), 0.0001f)
         assertEquals(1.0f, NativeTimeline.badgeTextProgress(4, 0, 122), 0.0001f)
         assertEquals(1.0f, NativeTimeline.badgeTextProgress(4, 1, 122), 0.0001f)
-        assertEquals(325, NativeArtwork.badgeWidth)
-        assertEquals(375, NativeArtwork.badgeHeight)
+        assertEquals(480, NativeArtwork.badgeWidth)
+        assertEquals(430, NativeArtwork.badgeHeight)
     }
 
     @Test fun scrollingBadgesCanStartFullySettledWithoutChangingOpeningCards() {
         assertNull(NativeTimeline.badgeOffset(4, 0))
         assertEquals(0.0f, NativeTimeline.badgeOffset(4, 0, true) ?: -1f, 0.0001f)
         assertEquals(1.0f, NativeTimeline.badgeTextProgress(4, 0, 0, true), 0.0001f)
-        assertEquals(1.0f, NativeTimeline.badgeTextProgress(0, 0, 0, true), 0.0001f)
+        assertEquals(0.0f, NativeTimeline.badgeTextProgress(0, 0, 0, true), 0.0001f)
     }
 
-    @Test fun outroKeepsMeasuredWipeAndRiseClocks() {
-        assertEquals(0.0f, NativeTimeline.outroCoverY(9), 0.0001f)
-        assertEquals(28.0f, NativeTimeline.outroCoverY(10), 0.0001f)
-        assertEquals(1080.0f, NativeTimeline.outroCoverY(26), 0.0001f)
-        assertEquals(-210.0f, NativeTimeline.outroGroupTop(43) ?: 0f, 0.0001f)
-        assertEquals(0.0f, NativeTimeline.outroGroupTop(53) ?: -1f, 0.0001f)
-        assertNull(NativeTimeline.outroActionBar(53))
-        assertEquals(540.0f, NativeTimeline.outroActionBar(102)?.width ?: 0f, 0.0001f)
-        assertEquals(185.0f, NativeTimeline.outroSubscribe(102)?.width ?: 0f, 0.0001f)
+    @Test fun outroMatchesWorstThingsReferenceClocks() {
+        assertEquals(541.0f, NativeTimeline.outroGroupX(0), 0.0001f)
+        assertEquals(160.0f, NativeTimeline.outroGroupX(20), 0.0001f)
+        assertEquals(0.0f, NativeTimeline.outroGroupX(60), 0.0001f)
+        assertNull(NativeTimeline.outroActionBar(95))
+        assertEquals(996.0f, NativeTimeline.outroActionBar(152)?.width ?: 0f, 0.0001f)
+        assertEquals(1, NativeTimeline.outroActionState(252))
+        assertEquals(2, NativeTimeline.outroActionState(312))
+        assertEquals(3, NativeTimeline.outroActionState(372))
+        assertEquals(494, NativeTimeline.outroFrames)
+    }
+
+    @Test fun fiftyCardReferenceEndsAtMeasuredFrame() {
+        val project = StudioProject(cards = List(50) { StudioCard(title = "Card $it") })
+        assertEquals(10_428, NativeTimeline.contentEnd(project))
+        assertEquals(10_922, NativeTimeline.totalFrames(project))
     }
 }
