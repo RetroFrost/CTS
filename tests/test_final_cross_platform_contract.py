@@ -121,3 +121,9 @@ def test_android_gpu_normalises_recordable_textures_for_mali() -> None:
     assert "uploading RGBA texture" in gpu
     assert "swapping encoder surface" in exporter
     assert "submitted to encoder" in exporter
+
+
+def test_badge_text_is_visible_with_the_badge_instead_of_animating_later() -> None:
+    timeline = (KOTLIN / "NativeTimeline.kt").read_text(encoding="utf-8")
+
+    assert "if (badgeOffset(index, localFrame, settledScrollingBadges) != null) 1f else 0f" in timeline

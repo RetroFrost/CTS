@@ -24,11 +24,12 @@ class DurationFormatTest {
         assertNull(NativeTimeline.badgeShineProgress(4, 241))
     }
 
-    @Test fun badgeTextSettlesWithoutChangingBadgeGeometry() {
-        assertEquals(0.0f, NativeTimeline.badgeTextProgress(0, 0, 35), 0.0001f)
-        assertEquals(1.0f, NativeTimeline.badgeTextProgress(0, 0, 108), 0.0001f)
-        assertEquals(0.0f, NativeTimeline.badgeTextProgress(4, 0, 122), 0.0001f)
-        assertEquals(1.0f, NativeTimeline.badgeTextProgress(4, 0, 208), 0.0001f)
+    @Test fun badgeTextIsPresentFromTheBadgesFirstVisibleFrame() {
+        assertEquals(0.0f, NativeTimeline.badgeTextProgress(0, 0, -1), 0.0001f)
+        assertEquals(1.0f, NativeTimeline.badgeTextProgress(0, 0, 0), 0.0001f)
+        assertEquals(0.0f, NativeTimeline.badgeTextProgress(4, 0, 121), 0.0001f)
+        assertEquals(1.0f, NativeTimeline.badgeTextProgress(4, 0, 122), 0.0001f)
+        assertEquals(1.0f, NativeTimeline.badgeTextProgress(4, 1, 122), 0.0001f)
         assertEquals(325, NativeArtwork.badgeWidth)
         assertEquals(375, NativeArtwork.badgeHeight)
     }
@@ -37,7 +38,7 @@ class DurationFormatTest {
         assertNull(NativeTimeline.badgeOffset(4, 0))
         assertEquals(0.0f, NativeTimeline.badgeOffset(4, 0, true) ?: -1f, 0.0001f)
         assertEquals(1.0f, NativeTimeline.badgeTextProgress(4, 0, 0, true), 0.0001f)
-        assertEquals(0.0f, NativeTimeline.badgeTextProgress(0, 0, 35, true), 0.0001f)
+        assertEquals(1.0f, NativeTimeline.badgeTextProgress(0, 0, 0, true), 0.0001f)
     }
 
     @Test fun outroKeepsMeasuredWipeAndRiseClocks() {

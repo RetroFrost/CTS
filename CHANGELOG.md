@@ -23,6 +23,7 @@
 - Recorded the last export stage and frame checkpoint so GPU/encoder process deaths can be diagnosed after relaunch.
 - Normalised recordable GPU textures to RGBA before upload to avoid the Samsung Android 12 Mali-G76 RGB565 export failure.
 - Cleared recovered foreground/export markers after relaunch so one interruption produces only one clipboard report.
+- Made every badge's header, value and unit visible from the badge's first frame instead of animating the text later.
 
 ## 0.4.5 — 2026-07-14
 

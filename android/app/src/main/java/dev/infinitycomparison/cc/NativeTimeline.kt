@@ -159,20 +159,14 @@ object NativeTimeline {
         return (localFrame - start).toFloat() / (end - start)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun badgeTextProgress(
         index: Int,
         line: Int,
         localFrame: Int,
         settledScrollingBadges: Boolean = false,
     ): Float {
-        if (index >= 4 && settledScrollingBadges && localFrame >= 0) return 1f
-        val age = if (index < 4) {
-            ((localFrame - 35) / 85f).coerceIn(0f, 1f) * 2.9f
-        } else {
-            ((localFrame - 122) / 103f) * 2.25f
-        }
-        val start = 0.9f + line * 0.1f
-        return ((age - start) / 0.42f).coerceIn(0f, 1f)
+        return if (badgeOffset(index, localFrame, settledScrollingBadges) != null) 1f else 0f
     }
 
     fun easeOutCubic(value: Float): Float {
