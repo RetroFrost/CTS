@@ -50,18 +50,19 @@ def test_android_preview_and_export_call_shared_renderer() -> None:
     assert "renderRgba" not in exporter
 
 
-def test_android_uses_new_package_and_fixed_badge_geometry() -> None:
+def test_android_uses_new_package_and_reference_badge_source_plane() -> None:
     gradle = (ROOT / "android" / "app" / "build.gradle.kts").read_text(encoding="utf-8")
     artwork = (KOTLIN / "NativeSceneRenderer.kt").read_text(encoding="utf-8")
     assert 'namespace = "dev.infinitycomparison.cc"' in gradle
     assert 'applicationId = "dev.infinitycomparison.cc"' in gradle
-    assert "const val badgeWidth = 325" in artwork
-    assert "const val badgeHeight = 375" in artwork
+    assert "const val badgeWidth = 480" in artwork
+    assert "const val badgeHeight = 430" in artwork
     timeline = (KOTLIN / "NativeTimeline.kt").read_text(encoding="utf-8")
     assert "fun badgeShineProgress" in timeline
     assert "fun badgeTextProgress" in timeline
-    assert "fun outroCoverY" in timeline
-    assert "fun outroGroupTop" in timeline
+    assert "fun badgeAffine" in timeline
+    assert "fun badgeScale" in timeline
+    assert "fun outroGroupX" in timeline
 
 
 def test_native_preview_and_gpu_export_share_badge_and_outro_layers() -> None:
@@ -72,7 +73,9 @@ def test_native_preview_and_gpu_export_share_badge_and_outro_layers() -> None:
         assert "NativeArtwork.badgeText" in source
         assert "NativeTimeline.badgeTextProgress" in source
         assert "NativeTimeline.outroActionBar" in source
-        assert "NativeTimeline.outroSubscribe" in source
+        assert "NativeTimeline.outroActionState" in source
+        assert "NativeTimeline.outroCursor" in source
+        assert "NativeArtwork.outroPrompt" in source
 
 
 def test_android_export_has_runtime_fallback_and_memory_guard() -> None:

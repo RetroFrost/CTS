@@ -75,5 +75,5 @@ def test_release_layer_preserves_authored_watchdata_title_breaks() -> None:
 
 def test_android_native_timeline_retains_measured_contracts() -> None:
     source = (ROOT / "android" / "app" / "src" / "main" / "java" / "dev" / "infinitycomparison" / "cc" / "NativeTimeline.kt").read_text(encoding="utf-8")
-    for contract in ("slotPitch = 476f", "continuousStart = 528", "continuousStep = 214", "outroFrames = 409"):
+    for contract in ("slotPitch = 476f", "continuousStart = 528", "continuousStep = 214", "outroFrames = 494"):
         assert contract in source
