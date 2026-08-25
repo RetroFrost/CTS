@@ -26,6 +26,7 @@ Release channel: `release/cubical-compare-final`.
 - Badge text supports a dedicated header, main value and unit layout.
 - Later badges keep a fixed size instead of growing to highlight themselves; their vertical fall animation remains intact.
 - Badge text is attached to the badge from its first visible frame; it no longer arrives after the badge.
+- Each opening badge completes its shine before the next card starts entering.
 - An optional toggle places post-opening badges directly at their final position throughout continuous scrolling.
 - MegaPack cards import badge headers and the manifest video duration.
 - Custom video length changes continuous-scroll speed without changing the comparison content.

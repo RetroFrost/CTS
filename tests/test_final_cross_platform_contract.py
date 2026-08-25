@@ -127,3 +127,12 @@ def test_badge_text_is_visible_with_the_badge_instead_of_animating_later() -> No
     timeline = (KOTLIN / "NativeTimeline.kt").read_text(encoding="utf-8")
 
     assert "if (badgeOffset(index, localFrame, settledScrollingBadges) != null) 1f else 0f" in timeline
+
+
+def test_opening_badge_shine_finishes_before_the_next_card_enters() -> None:
+    timeline = (KOTLIN / "NativeTimeline.kt").read_text(encoding="utf-8")
+
+    assert "openingShineStart = 95" in timeline
+    assert "openingShineEndExclusive = 120" in timeline
+    assert "scrollingShineStart = 208" in timeline
+    assert "scrollingShineEndExclusive = 241" in timeline

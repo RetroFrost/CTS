@@ -14,6 +14,11 @@ object NativeTimeline {
     const val continuousStep = 214
     const val outroFrames = 409
 
+    private const val openingShineStart = 95
+    private const val openingShineEndExclusive = 120
+    private const val scrollingShineStart = 208
+    private const val scrollingShineEndExclusive = 241
+
     private val openingStarts = intArrayOf(0, 120, 240, 360)
     private val openingEnds = intArrayOf(120, 240, 360, 528)
     private val bodyProgress = arrayOf(
@@ -153,8 +158,8 @@ object NativeTimeline {
     }
 
     fun badgeShineProgress(index: Int, localFrame: Int): Float? {
-        val start = if (index < 4) 108 else 208
-        val end = if (index < 4) 133 else 241
+        val start = if (index < 4) openingShineStart else scrollingShineStart
+        val end = if (index < 4) openingShineEndExclusive else scrollingShineEndExclusive
         if (localFrame !in start until end) return null
         return (localFrame - start).toFloat() / (end - start)
     }

@@ -17,9 +17,12 @@ class DurationFormatTest {
         assertEquals("02:05", DurationFormat.format(125.8))
     }
 
-    @Test fun badgeShineKeepsMeasuredIndependentClocks() {
-        assertEquals(0.0f, NativeTimeline.badgeShineProgress(0, 108) ?: -1f, 0.0001f)
-        assertNull(NativeTimeline.badgeShineProgress(0, 133))
+    @Test fun openingBadgeShineFinishesBeforeTheNextCardEntrance() {
+        assertEquals(0.0f, NativeTimeline.badgeShineProgress(0, 95) ?: -1f, 0.0001f)
+        assertEquals(24.0f / 25.0f, NativeTimeline.badgeShineProgress(0, 119) ?: -1f, 0.0001f)
+        assertNull(NativeTimeline.badgeShineProgress(0, 120))
+
+        // Scrolling cards retain their independently measured shine clock.
         assertEquals(0.0f, NativeTimeline.badgeShineProgress(4, 208) ?: -1f, 0.0001f)
         assertNull(NativeTimeline.badgeShineProgress(4, 241))
     }
