@@ -52,6 +52,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Python 3.13 for Chaquopy
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Verify Chaquopy build Python
+        shell: bash
+        run: |
+          python3.13 --version
+          command -v python3.13
+
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -59,7 +70,7 @@ jobs:
 
       - name: Compile Python renderer sources
         shell: bash
-        run: python3 -m compileall -q android/app/src/main/python
+        run: python3.13 -m compileall -q android/app/src/main/python
 
       - name: Run Android unit tests
         shell: bash
