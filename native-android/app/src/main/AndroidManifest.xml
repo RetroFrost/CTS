@@ -5,7 +5,7 @@
         android:label="Cubical Compare Native"
         android:resizeableActivity="true">
         <activity
-            android:name=".MainActivity"
+            android:name="dev.thedataguys.cc.MainActivity"
             android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
