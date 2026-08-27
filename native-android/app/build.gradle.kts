@@ -11,8 +11,8 @@ android {
         applicationId = "dev.thedataguys.cc"
         minSdk = 23
         targetSdk = 35
-        versionCode = 300002
-        versionName = "3.0.0-native-alpha.2"
+        versionCode = 300003
+        versionName = "3.0.0-native-alpha.3"
     }
 
     compileOptions {
