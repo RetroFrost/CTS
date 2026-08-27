@@ -11,7 +11,16 @@ android {
         applicationId = "dev.thedataguys.cc"
         minSdk = 23
         targetSdk = 35
-        versionCode = 300001
-        versionName = "3.0.0-native-alpha.1"
+        versionCode = 300002
+        versionName = "3.0.0-native-alpha.2"
     }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
