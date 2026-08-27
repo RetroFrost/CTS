@@ -50,9 +50,16 @@ class MainActivity : Activity() {
             addView(thumbPng, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
+        val previewParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0
+        ).apply {
+            weight = 1f
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(preview, LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            addView(preview, previewParams)
             addView(status, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             addView(buttons, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
