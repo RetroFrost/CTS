@@ -41,38 +41,23 @@ jobs:
           unzip -t /tmp/precision208-overlay.zip
           unzip -o /tmp/precision208-overlay.zip -d android
 
-          # 2.0.8 was restored from a recovered overlay, and the Android bridge
-          # imports a legacy helper which the restored MegaPack module no longer
-          # exports.  When that import fails, Chaquopy cannot import the bridge at
-          # all, so preview/import/export all collapse before any renderer code
-          # runs.  Keep this as a build-time hotfix until 2.0.8 is rebuilt from
-          # the real Kotlin rewrite source instead of the recovered overlay.
-          python3.13 - <<'PY'
+          # Hotfix the recovered 2.0.8 overlay before Gradle/Chaquopy sees it.
+          # Use the runner Python here because Python 3.13 is installed later.
+          python3 - <<'PY'
           from pathlib import Path
 
           helper = r'''
 
           def _manifest_duration_seconds(manifest: object, *args: object, **kwargs: object) -> float:
-              """2.0.8 Android bridge compatibility shim.
-
-              Some recovered 2.0.8 bridge builds import this private helper from
-              ccengine.megapack before any feature can run.  Newer MegaPack code
-              removed it, so the whole Chaquopy bridge fails at import time.  The
-              helper is deliberately permissive: it accepts old and new manifest
-              keys, checks nested settings, and falls back to a safe card-count
-              estimate instead of returning a broken zero-duration preview.
-              """
+              """2.0.8 Android bridge compatibility shim."""
               fallback = kwargs.get("fallback", None)
               if fallback is None and args:
                   fallback = args[0]
 
               def finite(value: object, default: float = 0.0) -> float:
                   try:
-                      result = float(value)
-                  except (TypeError, ValueError, OverflowError):
-                      return default
-                  try:
                       import math as _math
+                      result = float(value)
                       return result if _math.isfinite(result) else default
                   except Exception:
                       return default
@@ -80,29 +65,21 @@ jobs:
               manifest_map = manifest if isinstance(manifest, dict) else {}
               settings = manifest_map.get("settings")
               settings_map = settings if isinstance(settings, dict) else {}
-              duration_keys = (
-                  "duration_seconds",
-                  "durationSeconds",
-                  "duration",
-                  "length_seconds",
-                  "lengthSeconds",
-                  "video_duration_seconds",
-                  "videoDurationSeconds",
-                  "custom_duration_seconds",
-                  "customDurationSeconds",
-                  "manifest_duration_seconds",
-                  "manifestDurationSeconds",
-              )
-              for key in duration_keys:
+              for key in (
+                  "duration_seconds", "durationSeconds", "duration",
+                  "length_seconds", "lengthSeconds",
+                  "video_duration_seconds", "videoDurationSeconds",
+                  "custom_duration_seconds", "customDurationSeconds",
+                  "manifest_duration_seconds", "manifestDurationSeconds",
+              ):
                   for source in (manifest_map, settings_map):
                       if key in source:
                           seconds = finite(source.get(key), -1.0)
                           if seconds > 0.0:
                               return seconds
 
-              frame_keys = ("frame_count", "frameCount", "frames", "total_frames", "totalFrames")
               fps = finite(manifest_map.get("fps", settings_map.get("fps", 30)), 30.0)
-              for key in frame_keys:
+              for key in ("frame_count", "frameCount", "frames", "total_frames", "totalFrames"):
                   for source in (manifest_map, settings_map):
                       if key in source:
                           frames = finite(source.get(key), -1.0)
@@ -120,9 +97,6 @@ jobs:
                   )
                   if per_card > 0.0:
                       return len(cards) * per_card
-                  # Last-resort nonzero estimate: enough for the Android UI to
-                  # create a preview/export timeline before the proper project
-                  # timing code takes over.
                   return max(1.0, float(len(cards)) * 3.0)
 
               return max(0.0, finite(fallback, 0.0))
