@@ -42,16 +42,19 @@ jobs:
           unzip -o /tmp/precision208-overlay.zip -d android
 
           # Rescue the recovered 2.0.8 overlay before Gradle/Chaquopy sees it.
-          # This keeps the emergency build coherent as 2.0.8.1 instead of
-          # leaving mixed 2.0.8/2.0.8.1 identity and broken Python bridge code.
+          # This keeps the emergency build coherent and patches visual regressions
+          # in the restored Python renderer before it is packaged into the APK.
           python3 - <<'PY'
           from pathlib import Path
           import re
 
+          RELEASE_NAME = "2.0.8.2"
+          RELEASE_CODE = "200082"
+
           helper = r'''
 
           def _manifest_duration_seconds(manifest: object, *args: object, **kwargs: object) -> float:
-              """Android bridge compatibility shim for recovered 2.0.8/2.0.8.1 MegaPacks."""
+              """Android bridge compatibility shim for recovered 2.0.8+ MegaPacks."""
               fallback = kwargs.get("fallback", None)
               if fallback is None and args:
                   fallback = args[0]
@@ -128,18 +131,72 @@ jobs:
               if not path.is_file():
                   continue
               text = path.read_text(encoding="utf-8")
-              text = re.sub(r"versionCode\s*=\s*20008\b", "versionCode = 200081", text)
-              text = text.replace('versionName = "2.0.8"', 'versionName = "2.0.8.1"')
-              text = text.replace('"2.0.8"', '"2.0.8.1"')
-              text = text.replace("'2.0.8'", "'2.0.8.1'")
-              text = re.sub(r"\b20008\b", "200081", text)
+              text = re.sub(r"versionCode\s*=\s*20008\b", f"versionCode = {RELEASE_CODE}", text)
+              text = re.sub(r"versionCode\s*=\s*200081\b", f"versionCode = {RELEASE_CODE}", text)
+              text = text.replace('versionName = "2.0.8"', f'versionName = "{RELEASE_NAME}"')
+              text = text.replace('versionName = "2.0.8.1"', f'versionName = "{RELEASE_NAME}"')
+              text = text.replace('"2.0.8.1"', f'"{RELEASE_NAME}"')
+              text = text.replace('"2.0.8"', f'"{RELEASE_NAME}"')
+              text = text.replace("'2.0.8.1'", f"'{RELEASE_NAME}'")
+              text = text.replace("'2.0.8'", f"'{RELEASE_NAME}'")
+              text = re.sub(r"\b200081\b", RELEASE_CODE, text)
+              text = re.sub(r"\b20008\b", RELEASE_CODE, text)
+              path.write_text(text, encoding="utf-8")
+
+          # Visual patch requested after 2.0.8.1:
+          # - the last initial badge enters from the right instead of reusing the
+          #   first-three badge ingress path
+          # - badges are less opaque, closer to the transparent reference look
+          worst = Path("android/app/src/main/python/ccengine/worst_things_reference.py")
+          if worst.is_file():
+              text = worst.read_text(encoding="utf-8")
+              text = text.replace('key = "worst-things-badge-shell-v1"', 'key = "worst-things-badge-shell-v2-translucent"')
+              text = text.replace('shadow = Image.new("RGBA", _base.BADGE_SOURCE_SIZE, (0, 0, 0, 112))', 'shadow = Image.new("RGBA", _base.BADGE_SOURCE_SIZE, (0, 0, 0, 84))')
+              text = text.replace('Image.new("L", _base.BADGE_SOURCE_SIZE, 182)', 'Image.new("L", _base.BADGE_SOURCE_SIZE, 132)')
+              text = text.replace('draw.polygon(polygon, fill=(211, 9, 9, 255))', 'draw.polygon(polygon, fill=(211, 9, 9, 218))')
+              text = text.replace('draw.line(polygon + [polygon[0]], fill=(177, 5, 7, 118), width=1, joint="curve")', 'draw.line(polygon + [polygon[0]], fill=(177, 5, 7, 82), width=1, joint="curve")')
+              old = '''            if local < 160:
+                age = _base.age_opening_badge_age(local)
+                affine = self._opening_entry_affine(local, age)
+            else:'''
+              new = '''            if local < 160:
+                age = _base.age_opening_badge_age(local)
+                affine = self._opening_entry_affine(local, age)
+                if index == 3:
+                    # The fourth/last opening badge in the target video enters
+                    # from the right edge before settling into the card face.
+                    p = max(0.0, min(1.0, (float(local) - 35.0) / 125.0))
+                    right_entry_offset = (1.0 - p) * (1.0 - p) * 430.0
+                    m00, m01, m10, m11, tx, ty = affine
+                    affine = (m00, m01, m10, m11, tx + right_entry_offset, ty)
+            else:'''
+              if old in text and 'right_entry_offset' not in text:
+                  text = text.replace(old, new)
+              worst.write_text(text, encoding="utf-8")
+
+          # Keep inherited non-Worst badge shells in the same translucent family
+          # so preview/model switching does not jump back to fully opaque badges.
+          for path in (
+              Path("android/app/src/main/python/ccengine/watchdata_strict.py"),
+              Path("android/app/src/main/python/ccengine/watchdata_renderer.py"),
+              Path("android/app/src/main/python/ccengine/renderer.py"),
+              Path("android/app/src/main/python/ccengine/lab_renderer.py"),
+          ):
+              if not path.is_file():
+                  continue
+              text = path.read_text(encoding="utf-8")
+              text = text.replace('fill=(*_REFERENCE_BADGE_FILL, 255)', 'fill=(*_REFERENCE_BADGE_FILL, 218)')
+              text = text.replace('fill=(*WATCHDATA_BADGE_FILL, 255)', 'fill=(*WATCHDATA_BADGE_FILL, 218)')
+              text = text.replace('fill=(*self.theme.badge, 255)', 'fill=(*self.theme.badge, 218)')
               path.write_text(text, encoding="utf-8")
           PY
 
-          grep -q 'versionCode = 200081' android/app/build.gradle.kts
-          grep -q 'versionName = "2.0.8.1"' android/app/build.gradle.kts
+          grep -q 'versionCode = 200082' android/app/build.gradle.kts
+          grep -q 'versionName = "2.0.8.2"' android/app/build.gradle.kts
           grep -q 'def _manifest_duration_seconds' android/app/src/main/python/ccengine/megapack.py
           grep -q 'MultiModelFrameRenderer' android/app/src/main/python/cts_android_bridge.py
+          grep -q 'right_entry_offset' android/app/src/main/python/ccengine/worst_things_reference.py
+          grep -q 'fill=(211, 9, 9, 218)' android/app/src/main/python/ccengine/worst_things_reference.py
           test -f android/app/src/main/python/ccengine/worst_things_reference.py
           test -f android/app/src/main/python/ccengine/perfect_206.py
 
@@ -179,18 +236,23 @@ jobs:
 
           megapack = Path("android/app/src/main/python/ccengine/megapack.py")
           bridge = Path("android/app/src/main/python/cts_android_bridge.py")
+          worst = Path("android/app/src/main/python/ccengine/worst_things_reference.py")
           test_file = Path("android/app/src/test/java/io/github/retrofrost/cts/android/FinalArchitectureTest.kt")
 
           megapack_text = megapack.read_text(encoding="utf-8")
           bridge_text = bridge.read_text(encoding="utf-8")
+          worst_text = worst.read_text(encoding="utf-8")
           test_text = test_file.read_text(encoding="utf-8") if test_file.is_file() else ""
 
           ast.parse(megapack_text)
           ast.parse(bridge_text)
+          ast.parse(worst_text)
           assert "def _manifest_duration_seconds" in megapack_text
           assert "MultiModelFrameRenderer" in bridge_text
-          assert "2.0.8.1" in test_text
-          assert "200081" in test_text
+          assert "right_entry_offset" in worst_text
+          assert "fill=(211, 9, 9, 218)" in worst_text
+          assert "2.0.8.2" in test_text
+          assert "200082" in test_text
           PY
 
       - name: Run Android unit tests
@@ -206,15 +268,15 @@ jobs:
         run: |
           set -euo pipefail
           test -s android/app/build/outputs/apk/debug/app-debug.apk
-          cp android/app/build/outputs/apk/debug/app-debug.apk Cubical-Compare-2.0.8.1-Precision.apk
-          sha256sum Cubical-Compare-2.0.8.1-Precision.apk | tee Cubical-Compare-2.0.8.1-Precision.apk.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk Cubical-Compare-2.0.8.2-Precision.apk
+          sha256sum Cubical-Compare-2.0.8.2-Precision.apk | tee Cubical-Compare-2.0.8.2-Precision.apk.sha256
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-2.0.8.1-Precision
+          name: Cubical-Compare-2.0.8.2-Precision
           path: |
-            Cubical-Compare-2.0.8.1-Precision.apk
-            Cubical-Compare-2.0.8.1-Precision.apk.sha256
+            Cubical-Compare-2.0.8.2-Precision.apk
+            Cubical-Compare-2.0.8.2-Precision.apk.sha256
           if-no-files-found: error
           retention-days: 14
