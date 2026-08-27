@@ -1,4 +1,4 @@
-package dev.infinitycomparison.cc
+package dev.thedataguys.cc
 
 data class CompareItem(
     val rank: Int,
