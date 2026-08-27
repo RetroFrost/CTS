@@ -1,4 +1,4 @@
-package dev.infinitycomparison.cc
+package dev.thedataguys.cc
 
 import android.app.Activity
 import android.os.Bundle
