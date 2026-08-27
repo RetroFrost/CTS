@@ -41,10 +41,14 @@ object RendererBridge {
         }
     }
 
-    fun importData(project: StudioProject, path: String): StudioProject = synchronized(lock) {
-        StudioProject.fromJson(
-            bridge.callAttr("import_data", project.toJson(), path).toString(),
-        ).copyUiSettingsFrom(project)
+    /** Native Kotlin path. Python/openpyxl is no longer involved in data import. */
+    fun importData(project: StudioProject, path: String): StudioProject {
+        val cards = NativeSpreadsheetImporter.load(path)
+        val sourceName = File(path).nameWithoutExtension.replace('_', ' ').trim()
+        return project.copy(
+            name = sourceName.ifBlank { project.name },
+            cards = cards,
+        )
     }
 
     fun importMegaPack(path: String, assets: File): StudioProject = synchronized(lock) {
