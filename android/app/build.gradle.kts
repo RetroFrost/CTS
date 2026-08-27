@@ -70,14 +70,18 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 }
 
 android {
+    // Keep the 2.0.7 Kotlin source namespace during the staged migration so
+    // the full studio remains buildable. The install package is already the
+    // final Data Guys package and the source namespace will move once the
+    // Python renderer bridge is completely gone.
     namespace = "io.github.retrofrost.cts.android"
     compileSdk = 36
     defaultConfig {
-        applicationId = "io.github.retrofrost.cts.android"
+        applicationId = "dev.thedataguys.cc"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20007
-        versionName = "2.0.7"
+        versionCode = 300001
+        versionName = "3.0.0-native-alpha.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
@@ -97,7 +101,7 @@ android {
     }
     buildTypes {
         debug {
-            applicationIdSuffix = ".v207preview"
+            applicationIdSuffix = ".preview"
             versionNameSuffix = "-preview"
         }
         release {
@@ -113,6 +117,8 @@ android {
     buildFeatures { compose = true; buildConfig = true }
 }
 
+// Temporary during the staged 2.0.7 -> native migration. The rewrite branch
+// is removing Python feature-by-feature while preserving the complete studio.
 chaquopy {
     defaultConfig {
         version = "3.13"
