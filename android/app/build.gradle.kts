@@ -6,7 +6,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.chaquo.python")
 }
 
 val ctsKeystorePath = providers.environmentVariable("CTS_ANDROID_KEYSTORE_PATH").orNull
@@ -43,23 +42,19 @@ val watchDataFonts = mapOf(
 
 val downloadWatchDataFonts = tasks.register("downloadWatchDataFonts") {
     group = "build setup"
-    description = "Fetch and verify the official Poppins files used by the WatchData reference renderer"
+    description = "Fetch and verify the Poppins files used by the native renderer"
     doLast {
-        val fontDir = layout.projectDirectory.dir("src/main/python/ccengine/fonts").asFile
+        val fontDir = layout.projectDirectory.dir("src/main/assets/fonts").asFile
         fontDir.mkdirs()
         val license = fontDir.resolve("OFL.txt")
         check(license.isFile) { "Poppins OFL license notice is missing." }
         watchDataFonts.forEach { (filename, source) ->
             val destination = fontDir.resolve(filename)
             val expected = source.second
-            if (destination.isFile && gitBlobSha1(destination.readBytes()) == expected) {
-                return@forEach
-            }
+            if (destination.isFile && gitBlobSha1(destination.readBytes()) == expected) return@forEach
             val payload = URI(source.first).toURL().openStream().use { it.readBytes() }
             val actual = gitBlobSha1(payload)
-            check(actual == expected) {
-                "Official Poppins font verification failed for $filename: $actual"
-            }
+            check(actual == expected) { "Official Poppins font verification failed for $filename: $actual" }
             destination.writeBytes(payload)
         }
     }
@@ -70,21 +65,18 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 }
 
 android {
-    // Keep the 2.0.7 Kotlin source namespace during the staged migration so
-    // the full studio remains buildable. The install package is already the
-    // final Data Guys package and the source namespace will move once the
-    // Python renderer bridge is completely gone.
     namespace = "io.github.retrofrost.cts.android"
     compileSdk = 36
+
     defaultConfig {
         applicationId = "dev.thedataguys.cc"
         minSdk = 26
         targetSdk = 36
-        versionCode = 300001
-        versionName = "3.0.0-native-alpha.1"
+        versionCode = 300002
+        versionName = "3.0.0-native-alpha.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
+
     signingConfigs {
         if (stableSigningReady) {
             create("ctsStable") {
@@ -95,10 +87,12 @@ android {
             }
         }
     }
+
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         jniLibs.useLegacyPackaging = false
     }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".preview"
@@ -110,23 +104,15 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures { compose = true; buildConfig = true }
-}
 
-// Temporary during the staged 2.0.7 -> native migration. The rewrite branch
-// is removing Python feature-by-feature while preserving the complete studio.
-chaquopy {
-    defaultConfig {
-        version = "3.13"
-        pip {
-            install("Pillow==11.0.0")
-            install("openpyxl==3.1.5")
-        }
-        pyc { src = false }
+    buildFeatures {
+        compose = true
+        buildConfig = true
     }
 }
 

@@ -42,8 +42,7 @@ class ExportService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Video exports", NotificationManager.IMPORTANCE_LOW),
         )
     }
@@ -55,18 +54,20 @@ class ExportService : Service() {
             updateNotification(ExportState.state.value)
             return START_NOT_STICKY
         }
+
         val projectJson = intent?.getStringExtra(EXTRA_PROJECT)
         val destinationText = intent?.getStringExtra(EXTRA_URI)
         if (projectJson.isNullOrBlank() || destinationText.isNullOrBlank()) {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+
         cancelled = false
-        val initial = ExportProgress(true, 0, "Preparing", "Starting the GPU renderer")
+        val initial = ExportProgress(true, 0, "Preparing", "Starting native renderer")
         ExportState.update(initial)
         startForeground(NOTIFICATION_ID, notification(initial))
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CubicalCompare:GpuExport")
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CubicalCompare:NativeExport")
             .apply { acquire(6 * 60 * 60 * 1000L) }
 
         job?.cancel()
@@ -78,12 +79,27 @@ class ExportService : Service() {
                     project = project,
                     shouldCancel = { cancelled },
                     onProgress = { percent, stage, detail ->
-                        val value = ExportProgress(true, percent.coerceIn(0, 100), stage, detail)
+                        val value = ExportProgress(true, percent.coerceIn(0, 97), stage, detail)
                         ExportState.update(value)
                         updateNotification(value)
                     },
                 ).export(Uri.parse(destinationText))
-                val done = ExportProgress(false, 100, "Finished", "The MP4 is ready")
+
+                checkCancelled()
+                val thumbnailState = ExportProgress(true, 98, "Thumbnails", "Creating three CTR thumbnail options")
+                ExportState.update(thumbnailState)
+                updateNotification(thumbnailState)
+                val baseName = safeName(project.name)
+                val thumbnails = NativeThumbnailGenerator.create(project, baseName)
+                checkCancelled()
+                val saved = NativeThumbnailGenerator.saveToGallery(applicationContext, thumbnails)
+
+                val done = ExportProgress(
+                    false,
+                    100,
+                    "Finished",
+                    "MP4 ready • ${saved.size} thumbnails saved to Pictures/Cubical Compare",
+                )
                 ExportState.update(done)
                 updateNotification(done)
             } catch (_: CancellationException) {
@@ -91,12 +107,7 @@ class ExportService : Service() {
                 ExportState.update(stopped)
                 updateNotification(stopped)
             } catch (error: Throwable) {
-                val failed = ExportProgress(
-                    false,
-                    0,
-                    "Export failed",
-                    error.message ?: error::class.java.simpleName,
-                )
+                val failed = ExportProgress(false, 0, "Export failed", error.message ?: error::class.java.simpleName)
                 ExportState.update(failed)
                 updateNotification(failed)
             } finally {
@@ -109,9 +120,12 @@ class ExportService : Service() {
         return START_REDELIVER_INTENT
     }
 
+    private fun checkCancelled() {
+        if (cancelled) throw CancellationException("Export cancelled")
+    }
+
     private fun updateNotification(progress: ExportProgress) {
-        getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, notification(progress))
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(progress))
     }
 
     private fun notification(progress: ExportProgress): Notification {
@@ -152,9 +166,9 @@ class ExportService : Service() {
 
     companion object {
         private const val CHANNEL = "cubical_compare_export"
-        private const val NOTIFICATION_ID = 207
-        private const val ACTION_START = "io.github.retrofrost.cts.android.EXPORT"
-        private const val ACTION_CANCEL = "io.github.retrofrost.cts.android.CANCEL_EXPORT"
+        private const val NOTIFICATION_ID = 300
+        private const val ACTION_START = "dev.thedataguys.cc.EXPORT"
+        private const val ACTION_CANCEL = "dev.thedataguys.cc.CANCEL_EXPORT"
         private const val EXTRA_PROJECT = "project"
         private const val EXTRA_URI = "uri"
 
@@ -171,3 +185,8 @@ class ExportService : Service() {
         }
     }
 }
+
+private fun safeName(value: String): String = value.trim()
+    .ifBlank { "Cubical-Compare" }
+    .replace(Regex("[^A-Za-z0-9._-]+"), "-")
+    .take(80)

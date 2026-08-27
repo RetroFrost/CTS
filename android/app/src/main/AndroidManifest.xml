@@ -4,12 +4,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <application
-        android:name="com.chaquo.python.android.PyApplication"
+        android:name=".CubicalCompareApplication"
         android:allowBackup="true"
         android:icon="@drawable/icon"
-        android:label="Cubical Compare Native Rewrite"
+        android:label="Cubical Compare"
         android:roundIcon="@drawable/icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.CubicalCompare">
