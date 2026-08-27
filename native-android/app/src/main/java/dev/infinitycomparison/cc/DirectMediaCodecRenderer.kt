@@ -29,6 +29,15 @@ class DirectMediaCodecRenderer(private val context: Context) {
             setInteger(MediaFormat.KEY_BIT_RATE, 12_000_000)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+
+            // Most-compatible SDR path: Android Canvas is sRGB, while MP4/H.264
+            // players expect Rec.709-style SDR metadata. Avoid HDR/P3/full-range
+            // surprises unless an advanced export mode is added later.
+            if (Build.VERSION.SDK_INT >= 24) {
+                setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+                setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+                setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+            }
             if (Build.VERSION.SDK_INT >= 23) {
                 setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
                 setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel41)
@@ -50,20 +59,23 @@ class DirectMediaCodecRenderer(private val context: Context) {
             val info = MediaCodec.BufferInfo()
             for (frame in 0 until totalFrames) {
                 drawFrame(inputSurface, project, frame)
-                drain(codec, muxer, info, false) { newFormat ->
+                val trackProvider = { videoTrack }
+                drain(codec, muxer, info, false, trackProvider) { newFormat ->
                     if (muxerStarted) return@drain
+                    applyCompatibleColourMetadata(newFormat)
                     videoTrack = muxer.addTrack(newFormat)
                     muxer.start()
                     muxerStarted = true
                 }
                 if (frame % fps == 0) {
-                    onProgress("Rendering ${frame / fps}s / ${project.seconds}s with direct MediaCodec")
+                    onProgress("Rendering ${frame / fps}s / ${project.seconds}s with direct MediaCodec SDR")
                 }
             }
 
             codec.signalEndOfInputStream()
-            drain(codec, muxer, info, true) { newFormat ->
+            drain(codec, muxer, info, true, { videoTrack }) { newFormat ->
                 if (!muxerStarted) {
+                    applyCompatibleColourMetadata(newFormat)
                     videoTrack = muxer.addTrack(newFormat)
                     muxer.start()
                     muxerStarted = true
@@ -76,8 +88,16 @@ class DirectMediaCodecRenderer(private val context: Context) {
             try { codec.stop() } catch (_: Throwable) {}
             try { codec.release() } catch (_: Throwable) {}
             try { inputSurface?.release() } catch (_: Throwable) {}
-            try { muxer?.stop() } catch (_: Throwable) {}
+            try { if (muxerStarted) muxer?.stop() } catch (_: Throwable) {}
             try { muxer?.release() } catch (_: Throwable) {}
+        }
+    }
+
+    private fun applyCompatibleColourMetadata(format: MediaFormat) {
+        if (Build.VERSION.SDK_INT >= 24) {
+            format.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+            format.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+            format.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
         }
     }
 
@@ -95,6 +115,7 @@ class DirectMediaCodecRenderer(private val context: Context) {
         muxer: MediaMuxer?,
         info: MediaCodec.BufferInfo,
         end: Boolean,
+        videoTrackProvider: () -> Int,
         onFormat: (MediaFormat) -> Unit
     ) {
         while (true) {
@@ -104,10 +125,11 @@ class DirectMediaCodecRenderer(private val context: Context) {
                 index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> onFormat(codec.outputFormat)
                 index >= 0 -> {
                     val buffer = codec.getOutputBuffer(index)
-                    if (buffer != null && info.size > 0) {
+                    val track = videoTrackProvider()
+                    if (buffer != null && info.size > 0 && track >= 0) {
                         buffer.position(info.offset)
                         buffer.limit(info.offset + info.size)
-                        muxer?.writeSampleData(0, buffer, info)
+                        muxer?.writeSampleData(track, buffer, info)
                     }
                     codec.releaseOutputBuffer(index, false)
                     if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) return
