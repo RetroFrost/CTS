@@ -46,6 +46,26 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
+
+          build = Path("android/app/build.gradle.kts")
+          text = build.read_text(encoding="utf-8")
+          if 'id("com.chaquo.python")' not in text:
+              text = text.replace(
+                  'id("org.jetbrains.kotlin.plugin.compose")',
+                  'id("org.jetbrains.kotlin.plugin.compose")\n    id("com.chaquo.python")',
+                  1,
+              )
+          if 'androidx.documentfile:documentfile' not in text:
+              text = text.replace(
+                  'dependencies {',
+                  'dependencies {\n    implementation("androidx.documentfile:documentfile:1.0.1")',
+                  1,
+              )
+          build.write_text(text, encoding="utf-8")
+          PY
+
+          python3 - <<'PY'
+          from pathlib import Path
           import re
 
           RELEASE_NAME = "2.0.8.2"
