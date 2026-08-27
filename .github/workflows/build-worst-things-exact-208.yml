@@ -40,9 +40,116 @@ jobs:
           echo 'd9425210a37b69d8140f1d5b226f586388ce481acef35e98a6c26c45697db7ec  /tmp/precision208-overlay.zip' | sha256sum -c -
           unzip -t /tmp/precision208-overlay.zip
           unzip -o /tmp/precision208-overlay.zip -d android
-          grep -q 'versionCode = 20008' android/app/build.gradle.kts
-          grep -q 'versionName = "2.0.8"' android/app/build.gradle.kts
+
+          # 2.0.8 was restored from a recovered overlay, and the Android bridge
+          # imports a legacy helper which the restored MegaPack module no longer
+          # exports.  When that import fails, Chaquopy cannot import the bridge at
+          # all, so preview/import/export all collapse before any renderer code
+          # runs.  Keep this as a build-time hotfix until 2.0.8 is rebuilt from
+          # the real Kotlin rewrite source instead of the recovered overlay.
+          python3.13 - <<'PY'
+          from pathlib import Path
+
+          helper = r'''
+
+          def _manifest_duration_seconds(manifest: object, *args: object, **kwargs: object) -> float:
+              """2.0.8 Android bridge compatibility shim.
+
+              Some recovered 2.0.8 bridge builds import this private helper from
+              ccengine.megapack before any feature can run.  Newer MegaPack code
+              removed it, so the whole Chaquopy bridge fails at import time.  The
+              helper is deliberately permissive: it accepts old and new manifest
+              keys, checks nested settings, and falls back to a safe card-count
+              estimate instead of returning a broken zero-duration preview.
+              """
+              fallback = kwargs.get("fallback", None)
+              if fallback is None and args:
+                  fallback = args[0]
+
+              def finite(value: object, default: float = 0.0) -> float:
+                  try:
+                      result = float(value)
+                  except (TypeError, ValueError, OverflowError):
+                      return default
+                  try:
+                      import math as _math
+                      return result if _math.isfinite(result) else default
+                  except Exception:
+                      return default
+
+              manifest_map = manifest if isinstance(manifest, dict) else {}
+              settings = manifest_map.get("settings")
+              settings_map = settings if isinstance(settings, dict) else {}
+              duration_keys = (
+                  "duration_seconds",
+                  "durationSeconds",
+                  "duration",
+                  "length_seconds",
+                  "lengthSeconds",
+                  "video_duration_seconds",
+                  "videoDurationSeconds",
+                  "custom_duration_seconds",
+                  "customDurationSeconds",
+                  "manifest_duration_seconds",
+                  "manifestDurationSeconds",
+              )
+              for key in duration_keys:
+                  for source in (manifest_map, settings_map):
+                      if key in source:
+                          seconds = finite(source.get(key), -1.0)
+                          if seconds > 0.0:
+                              return seconds
+
+              frame_keys = ("frame_count", "frameCount", "frames", "total_frames", "totalFrames")
+              fps = finite(manifest_map.get("fps", settings_map.get("fps", 30)), 30.0)
+              for key in frame_keys:
+                  for source in (manifest_map, settings_map):
+                      if key in source:
+                          frames = finite(source.get(key), -1.0)
+                          if frames > 0.0 and fps > 0.0:
+                              return frames / fps
+
+              cards = manifest_map.get("cards")
+              if isinstance(cards, list) and cards:
+                  per_card = finite(
+                      manifest_map.get(
+                          "seconds_per_card",
+                          settings_map.get("seconds_per_card", settings_map.get("card_duration_seconds", 0)),
+                      ),
+                      0.0,
+                  )
+                  if per_card > 0.0:
+                      return len(cards) * per_card
+                  # Last-resort nonzero estimate: enough for the Android UI to
+                  # create a preview/export timeline before the proper project
+                  # timing code takes over.
+                  return max(1.0, float(len(cards)) * 3.0)
+
+              return max(0.0, finite(fallback, 0.0))
+          '''
+
+          for path in (
+              Path("android/app/src/main/python/ccengine/megapack.py"),
+              Path("engine/ccengine/megapack.py"),
+          ):
+              if not path.is_file():
+                  continue
+              text = path.read_text(encoding="utf-8")
+              if "def _manifest_duration_seconds" not in text:
+                  path.write_text(text.rstrip() + helper + "\n", encoding="utf-8")
+
+          gradle = Path("android/app/build.gradle.kts")
+          if gradle.is_file():
+              text = gradle.read_text(encoding="utf-8")
+              text = text.replace("versionCode = 20008", "versionCode = 200081")
+              text = text.replace('versionName = "2.0.8"', 'versionName = "2.0.8.1"')
+              gradle.write_text(text, encoding="utf-8")
+          PY
+
+          grep -q 'versionCode = 200081' android/app/build.gradle.kts
+          grep -q 'versionName = "2.0.8.1"' android/app/build.gradle.kts
           grep -q 'MultiModelFrameRenderer' android/app/src/main/python/cts_android_bridge.py
+          grep -q 'def _manifest_duration_seconds' android/app/src/main/python/ccengine/megapack.py
           test -f android/app/src/main/python/ccengine/worst_things_reference.py
           test -f android/app/src/main/python/ccengine/perfect_206.py
 
@@ -85,15 +192,15 @@ jobs:
         run: |
           set -euo pipefail
           test -s android/app/build/outputs/apk/debug/app-debug.apk
-          cp android/app/build/outputs/apk/debug/app-debug.apk Cubical-Compare-2.0.8-Precision.apk
-          sha256sum Cubical-Compare-2.0.8-Precision.apk | tee Cubical-Compare-2.0.8-Precision.apk.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk Cubical-Compare-2.0.8.1-Precision.apk
+          sha256sum Cubical-Compare-2.0.8.1-Precision.apk | tee Cubical-Compare-2.0.8.1-Precision.apk.sha256
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-2.0.8-Precision
+          name: Cubical-Compare-2.0.8.1-Precision
           path: |
-            Cubical-Compare-2.0.8-Precision.apk
-            Cubical-Compare-2.0.8-Precision.apk.sha256
+            Cubical-Compare-2.0.8.1-Precision.apk
+            Cubical-Compare-2.0.8.1-Precision.apk.sha256
           if-no-files-found: error
           retention-days: 14
