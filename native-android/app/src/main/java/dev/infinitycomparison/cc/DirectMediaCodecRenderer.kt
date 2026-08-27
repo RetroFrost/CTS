@@ -59,12 +59,12 @@ class DirectMediaCodecRenderer(private val context: Context) {
             val info = MediaCodec.BufferInfo()
             for (frame in 0 until totalFrames) {
                 drawFrame(inputSurface, project, frame)
-                val trackProvider = { videoTrack }
-                drain(codec, muxer, info, false, trackProvider) { newFormat ->
+                drain(codec, muxer, info, false, { videoTrack }) { newFormat ->
                     if (muxerStarted) return@drain
+                    val muxerRef = requireNotNull(muxer) { "MediaMuxer was not created" }
                     applyCompatibleColourMetadata(newFormat)
-                    videoTrack = muxer.addTrack(newFormat)
-                    muxer.start()
+                    videoTrack = muxerRef.addTrack(newFormat)
+                    muxerRef.start()
                     muxerStarted = true
                 }
                 if (frame % fps == 0) {
@@ -75,9 +75,10 @@ class DirectMediaCodecRenderer(private val context: Context) {
             codec.signalEndOfInputStream()
             drain(codec, muxer, info, true, { videoTrack }) { newFormat ->
                 if (!muxerStarted) {
+                    val muxerRef = requireNotNull(muxer) { "MediaMuxer was not created" }
                     applyCompatibleColourMetadata(newFormat)
-                    videoTrack = muxer.addTrack(newFormat)
-                    muxer.start()
+                    videoTrack = muxerRef.addTrack(newFormat)
+                    muxerRef.start()
                     muxerStarted = true
                 }
             }
