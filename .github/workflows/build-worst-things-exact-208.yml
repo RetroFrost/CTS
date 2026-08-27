@@ -40,6 +40,9 @@ jobs:
           echo '15a39cb41d450cebcee8a061ee29dc94ee55221c0b6a9610d13bfbc1b6f2101a  /tmp/precision208-overlay.zip' | sha256sum -c -
           unzip -t /tmp/precision208-overlay.zip
           unzip -o /tmp/precision208-overlay.zip -d android
+          mkdir -p android/app/src/main/assets/fonts
+          cp android/app/src/main/python/ccengine/fonts/OFL.txt \
+            android/app/src/main/assets/fonts/OFL.txt
 
           python3 - <<'PY'
           from pathlib import Path
