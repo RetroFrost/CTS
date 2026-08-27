@@ -19,7 +19,7 @@ jobs:
       - name: Check out build skeleton
         uses: actions/checkout@v4
 
-      - name: Restore recovered 2.0.8 precision source
+      - name: Restore and rescue recovered 2.0.8 precision source
         shell: bash
         run: |
           set -euo pipefail
@@ -41,15 +41,17 @@ jobs:
           unzip -t /tmp/precision208-overlay.zip
           unzip -o /tmp/precision208-overlay.zip -d android
 
-          # Hotfix the recovered 2.0.8 overlay before Gradle/Chaquopy sees it.
-          # Use the runner Python here because Python 3.13 is installed later.
+          # Rescue the recovered 2.0.8 overlay before Gradle/Chaquopy sees it.
+          # This keeps the emergency build coherent as 2.0.8.1 instead of
+          # leaving mixed 2.0.8/2.0.8.1 identity and broken Python bridge code.
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           helper = r'''
 
           def _manifest_duration_seconds(manifest: object, *args: object, **kwargs: object) -> float:
-              """2.0.8 Android bridge compatibility shim."""
+              """Android bridge compatibility shim for recovered 2.0.8/2.0.8.1 MegaPacks."""
               fallback = kwargs.get("fallback", None)
               if fallback is None and args:
                   fallback = args[0]
@@ -65,6 +67,7 @@ jobs:
               manifest_map = manifest if isinstance(manifest, dict) else {}
               settings = manifest_map.get("settings")
               settings_map = settings if isinstance(settings, dict) else {}
+
               for key in (
                   "duration_seconds", "durationSeconds", "duration",
                   "length_seconds", "lengthSeconds",
@@ -102,6 +105,7 @@ jobs:
               return max(0.0, finite(fallback, 0.0))
           '''
 
+          # Restore the missing private helper expected by the Android bridge.
           for path in (
               Path("android/app/src/main/python/ccengine/megapack.py"),
               Path("engine/ccengine/megapack.py"),
@@ -112,18 +116,30 @@ jobs:
               if "def _manifest_duration_seconds" not in text:
                   path.write_text(text.rstrip() + helper + "\n", encoding="utf-8")
 
-          gradle = Path("android/app/build.gradle.kts")
-          if gradle.is_file():
-              text = gradle.read_text(encoding="utf-8")
-              text = text.replace("versionCode = 20008", "versionCode = 200081")
+          # Make the emergency release identity consistent across Gradle, tests,
+          # Kotlin UI strings and any recovered metadata files.
+          identity_paths = [
+              Path("android/app/build.gradle.kts"),
+              Path("android/app/src/test/java/io/github/retrofrost/cts/android/FinalArchitectureTest.kt"),
+              Path("android/app/src/main/java/io/github/retrofrost/cts/android/FinalStudioApp.kt"),
+              Path("android/app/src/main/java/io/github/retrofrost/cts/android/StudioModels.kt"),
+          ]
+          for path in identity_paths:
+              if not path.is_file():
+                  continue
+              text = path.read_text(encoding="utf-8")
+              text = re.sub(r"versionCode\s*=\s*20008\b", "versionCode = 200081", text)
               text = text.replace('versionName = "2.0.8"', 'versionName = "2.0.8.1"')
-              gradle.write_text(text, encoding="utf-8")
+              text = text.replace('"2.0.8"', '"2.0.8.1"')
+              text = text.replace("'2.0.8'", "'2.0.8.1'")
+              text = re.sub(r"\b20008\b", "200081", text)
+              path.write_text(text, encoding="utf-8")
           PY
 
           grep -q 'versionCode = 200081' android/app/build.gradle.kts
           grep -q 'versionName = "2.0.8.1"' android/app/build.gradle.kts
-          grep -q 'MultiModelFrameRenderer' android/app/src/main/python/cts_android_bridge.py
           grep -q 'def _manifest_duration_seconds' android/app/src/main/python/ccengine/megapack.py
+          grep -q 'MultiModelFrameRenderer' android/app/src/main/python/cts_android_bridge.py
           test -f android/app/src/main/python/ccengine/worst_things_reference.py
           test -f android/app/src/main/python/ccengine/perfect_206.py
 
@@ -152,6 +168,30 @@ jobs:
       - name: Compile Python renderer sources
         shell: bash
         run: python3.13 -m compileall -q android/app/src/main/python
+
+      - name: Smoke-check rescued renderer bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3.13 - <<'PY'
+          from pathlib import Path
+          import ast
+
+          megapack = Path("android/app/src/main/python/ccengine/megapack.py")
+          bridge = Path("android/app/src/main/python/cts_android_bridge.py")
+          test_file = Path("android/app/src/test/java/io/github/retrofrost/cts/android/FinalArchitectureTest.kt")
+
+          megapack_text = megapack.read_text(encoding="utf-8")
+          bridge_text = bridge.read_text(encoding="utf-8")
+          test_text = test_file.read_text(encoding="utf-8") if test_file.is_file() else ""
+
+          ast.parse(megapack_text)
+          ast.parse(bridge_text)
+          assert "def _manifest_duration_seconds" in megapack_text
+          assert "MultiModelFrameRenderer" in bridge_text
+          assert "2.0.8.1" in test_text
+          assert "200081" in test_text
+          PY
 
       - name: Run Android unit tests
         shell: bash
