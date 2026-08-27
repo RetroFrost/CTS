@@ -37,7 +37,7 @@ jobs:
             .ci/precision208-overlay.part07 \
             .ci/precision208-overlay.part08 \
             | base64 -d > /tmp/precision208-overlay.zip
-          echo 'd9425210a37b69d8140f1d5b226f586388ce481acef35e98a6c26c45697db7ec  /tmp/precision208-overlay.zip' | sha256sum -c -
+          echo '15a39cb41d450cebcee8a061ee29dc94ee55221c0b6a9610d13bfbc1b6f2101a  /tmp/precision208-overlay.zip' | sha256sum -c -
           unzip -t /tmp/precision208-overlay.zip
           unzip -o /tmp/precision208-overlay.zip -d android
 
@@ -140,32 +140,6 @@ jobs:
           worst = Path("android/app/src/main/python/ccengine/worst_things_reference.py")
           if worst.is_file():
               text = worst.read_text(encoding="utf-8")
-              text = text.replace('key = "worst-things-badge-shell-v1"', 'key = "worst-things-badge-shell-v2-translucent"')
-              text = re.sub(r'\(0,\s*0,\s*0,\s*112\)', '(0, 0, 0, 84)', text)
-              text = re.sub(r'Image\.new\("L",\s*_base\.BADGE_SOURCE_SIZE,\s*182\)', 'Image.new("L", _base.BADGE_SOURCE_SIZE, 132)', text)
-              text = re.sub(r'fill=\(211,\s*9,\s*9,\s*255\)', 'fill=(211, 9, 9, 218)', text)
-              text = re.sub(r'fill=\(177,\s*5,\s*7,\s*118\)', 'fill=(177, 5, 7, 82)', text)
-
-              marker = 'right_entry_offset'
-              pattern = re.compile(r'^(?P<indent>[ \t]*)affine = self\._opening_entry_affine\(local,\s*age\)\s*$', re.MULTILINE)
-
-              def add_right_entry(match: re.Match[str]) -> str:
-                  indent = match.group('indent')
-                  child = indent + '    '
-                  return (
-                      f"{indent}affine = self._opening_entry_affine(local, age)\n"
-                      f"{indent}if index == 3:\n"
-                      f"{child}# Last initial badge enters from the right, matching the supplied reference.\n"
-                      f"{child}p = max(0.0, min(1.0, (float(local) - 35.0) / 125.0))\n"
-                      f"{child}right_entry_offset = (1.0 - p) * (1.0 - p) * 430.0\n"
-                      f"{child}m00, m01, m10, m11, tx, ty = affine\n"
-                      f"{child}affine = (m00, m01, m10, m11, tx + right_entry_offset, ty)"
-                  )
-
-              if marker not in text:
-                  text, count = pattern.subn(add_right_entry, text, count=1)
-                  if count != 1:
-                      raise SystemExit("Could not find opening badge affine line to patch")
               worst.write_text(text, encoding="utf-8")
 
           for path in (
