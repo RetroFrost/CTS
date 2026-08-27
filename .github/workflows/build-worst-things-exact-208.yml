@@ -147,18 +147,25 @@ jobs:
               text = re.sub(r'fill=\(177,\s*5,\s*7,\s*118\)', 'fill=(177, 5, 7, 82)', text)
 
               marker = 'right_entry_offset'
-              needle = 'affine = self._opening_entry_affine(local, age)'
-              injected = '''affine = self._opening_entry_affine(local, age)
-                if index == 3:
-                    # Last initial badge enters from the right, matching the supplied reference.
-                    p = max(0.0, min(1.0, (float(local) - 35.0) / 125.0))
-                    right_entry_offset = (1.0 - p) * (1.0 - p) * 430.0
-                    m00, m01, m10, m11, tx, ty = affine
-                    affine = (m00, m01, m10, m11, tx + right_entry_offset, ty)'''
+              pattern = re.compile(r'^(?P<indent>[ \t]*)affine = self\._opening_entry_affine\(local,\s*age\)\s*$', re.MULTILINE)
+
+              def add_right_entry(match: re.Match[str]) -> str:
+                  indent = match.group('indent')
+                  child = indent + '    '
+                  return (
+                      f"{indent}affine = self._opening_entry_affine(local, age)\n"
+                      f"{indent}if index == 3:\n"
+                      f"{child}# Last initial badge enters from the right, matching the supplied reference.\n"
+                      f"{child}p = max(0.0, min(1.0, (float(local) - 35.0) / 125.0))\n"
+                      f"{child}right_entry_offset = (1.0 - p) * (1.0 - p) * 430.0\n"
+                      f"{child}m00, m01, m10, m11, tx, ty = affine\n"
+                      f"{child}affine = (m00, m01, m10, m11, tx + right_entry_offset, ty)"
+                  )
+
               if marker not in text:
-                  if needle not in text:
+                  text, count = pattern.subn(add_right_entry, text, count=1)
+                  if count != 1:
                       raise SystemExit("Could not find opening badge affine line to patch")
-                  text = text.replace(needle, injected, 1)
               worst.write_text(text, encoding="utf-8")
 
           for path in (
@@ -178,6 +185,7 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
+          import ast
           checks = {
               "versionCode = 200082": Path("android/app/build.gradle.kts"),
               'versionName = "2.0.8.2"': Path("android/app/build.gradle.kts"),
@@ -193,6 +201,7 @@ jobs:
                   missing.append(f"{needle!r} missing from {path}")
           if missing:
               raise SystemExit("\n".join(missing))
+          ast.parse(Path("android/app/src/main/python/ccengine/worst_things_reference.py").read_text(encoding="utf-8"))
           PY
 
       - name: Set up Java 17
