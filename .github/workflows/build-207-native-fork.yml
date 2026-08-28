@@ -61,3 +61,5 @@ jobs:
             Cubical-Compare-2.0.7-Native-Fork.apk.sha256
           if-no-files-found: error
           retention-days: 14
+
+# Triggered for beach fallback + artwork transform verification.
