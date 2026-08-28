@@ -1,0 +1,63 @@
+name: Build 2.0.7 Native Fork
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - android/**
+      - .github/workflows/build-207-native-fork.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android 2.0.7 native fork
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prove Android runtime is Python-free
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -d android/app/src/main/python
+          ! grep -R "chaquo\|PyApplication\|com\.chaquo" android --exclude-dir=build --exclude='*.lock'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Test and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          cp "$APK" Cubical-Compare-2.0.7-Native-Fork.apk
+          sha256sum Cubical-Compare-2.0.7-Native-Fork.apk > Cubical-Compare-2.0.7-Native-Fork.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Compare-2.0.7-Native-Fork
+          path: |
+            Cubical-Compare-2.0.7-Native-Fork.apk
+            Cubical-Compare-2.0.7-Native-Fork.apk.sha256
+          if-no-files-found: error
+          retention-days: 14

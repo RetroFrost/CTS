@@ -6,13 +6,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
-        android:name="com.chaquo.python.android.PyApplication"
+        android:name=".CubicalCompareApplication"
         android:allowBackup="true"
         android:icon="@drawable/icon"
-        android:label="Cubical Compare 2.0.7"
+        android:label="Cubical Compare 2.0.7 Native"
         android:roundIcon="@drawable/icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.CubicalCompare">
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -21,6 +22,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".RendererManagerActivity"
+            android:exported="true"
+            android:label="Import Cubical Compare renderer">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" />
+                <data android:scheme="file" android:pathPattern=".*\\.renderer" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".ExportService"
             android:exported="false"

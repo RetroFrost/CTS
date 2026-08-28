@@ -3,12 +3,10 @@ package io.github.retrofrost.cts.android
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import androidx.core.graphics.createBitmap
-import com.chaquo.python.Python
-import org.json.JSONObject
+import android.provider.OpenableColumns
 import java.io.File
-import java.nio.ByteBuffer
 
+/** Native 2.0.7 renderer bridge. No Python, Chaquopy, Pillow or openpyxl. */
 data class RenderMetadata(
     val frameCount: Int,
     val duration: Double,
@@ -17,47 +15,49 @@ data class RenderMetadata(
 
 object RendererBridge {
     private val lock = Any()
-    private val bridge by lazy { Python.getInstance().getModule("cts_android_bridge") }
+    private val renderer = NativeFrameRenderer()
 
     fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
-        val json = JSONObject(bridge.callAttr("metadata", project.toJson()).toString())
-        RenderMetadata(
-            frameCount = json.getInt("frame_count"),
-            duration = json.getDouble("duration"),
-            fps = json.getInt("fps"),
-        )
+        val fps = project.fps.coerceIn(1, 120)
+        val frameCount = NativeTimeline.totalFrameCount(project, RendererRuntime.active).coerceAtLeast(1)
+        RenderMetadata(frameCount, frameCount.toDouble() / fps, fps)
     }
 
-    fun renderRgba(project: StudioProject, frame: Int, width: Int, height: Int): ByteArray =
-        synchronized(lock) {
-            bridge.callAttr("render_rgba", project.toJson(), frame, width, height)
-                .toJava(ByteArray::class.java)
-        }
+    fun renderRgba(project: StudioProject, frame: Int, width: Int, height: Int): ByteArray = synchronized(lock) {
+        renderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+    }
 
-    fun render(project: StudioProject, frame: Int, width: Int, height: Int): Bitmap {
-        val bytes = renderRgba(project, frame, width, height)
-        return createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
-            it.copyPixelsFromBuffer(ByteBuffer.wrap(bytes))
-        }
+    fun render(project: StudioProject, frame: Int, width: Int, height: Int): Bitmap = synchronized(lock) {
+        renderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
     }
 
     fun importData(project: StudioProject, path: String): StudioProject = synchronized(lock) {
-        StudioProject.fromJson(
-            bridge.callAttr("import_data", project.toJson(), path).toString(),
-        ).copyUiSettingsFrom(project)
+        NativeImporters.importData(project, File(path))
     }
 
     fun importMegaPack(path: String, assets: File): StudioProject = synchronized(lock) {
-        StudioProject.fromJson(
-            bridge.callAttr("import_pack", path, assets.absolutePath).toString(),
-        )
+        NativeImporters.importMegaPack(File(path), assets)
     }
 
     fun materialize(context: Context, uri: Uri, prefix: String): File {
         val imports = File(context.filesDir, "imports").apply { mkdirs() }
-        val suffix = context.contentResolver.getType(uri)?.substringAfterLast('/')?.let { ".$it" }
-            ?: ".bin"
-        val destination = File(imports, "$prefix-${System.nanoTime()}$suffix")
+        val displayName = runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull().orEmpty()
+        val extension = displayName.substringAfterLast('.', "")
+            .takeIf { it.length in 1..12 && it.all { char -> char.isLetterOrDigit() } }
+            ?.let { ".$it" }
+            ?: when (context.contentResolver.getType(uri)) {
+                "text/csv" -> ".csv"
+                "text/tab-separated-values" -> ".tsv"
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> ".xlsx"
+                "application/vnd.ms-excel.sheet.macroEnabled.12" -> ".xlsm"
+                "application/zip" -> ".zip"
+                else -> ".bin"
+            }
+        val destination = File(imports, "$prefix-${System.nanoTime()}$extension")
         context.contentResolver.openInputStream(uri).use { input ->
             requireNotNull(input) { "The selected file could not be opened." }
             destination.outputStream().use(input::copyTo)
