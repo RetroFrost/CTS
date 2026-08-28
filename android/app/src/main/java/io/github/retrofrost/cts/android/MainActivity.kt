@@ -440,7 +440,7 @@ private fun CardsTab(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text("Scale \${"%.2f".format(card.imageScale)}×")
+                        Text("Scale ${"%.2f".format(card.imageScale)}×")
                         androidx.compose.material3.Slider(
                             value = card.imageScale.toFloat().coerceIn(0.10f, 6f),
                             onValueChange = {
@@ -448,7 +448,7 @@ private fun CardsTab(
                             },
                             valueRange = 0.10f..6f,
                         )
-                        Text("Horizontal \${card.imageX.roundToInt()} px")
+                        Text("Horizontal ${card.imageX.roundToInt()} px")
                         androidx.compose.material3.Slider(
                             value = card.imageX.toFloat().coerceIn(-600f, 600f),
                             onValueChange = {
@@ -456,7 +456,7 @@ private fun CardsTab(
                             },
                             valueRange = -600f..600f,
                         )
-                        Text("Vertical \${card.imageY.roundToInt()} px")
+                        Text("Vertical ${card.imageY.roundToInt()} px")
                         androidx.compose.material3.Slider(
                             value = card.imageY.toFloat().coerceIn(-800f, 800f),
                             onValueChange = {
@@ -464,7 +464,7 @@ private fun CardsTab(
                             },
                             valueRange = -800f..800f,
                         )
-                        Text("Rotation \${card.imageRotation.roundToInt()}°")
+                        Text("Rotation ${card.imageRotation.roundToInt()}°")
                         androidx.compose.material3.Slider(
                             value = card.imageRotation.toFloat().coerceIn(-180f, 180f),
                             onValueChange = {
@@ -472,7 +472,7 @@ private fun CardsTab(
                             },
                             valueRange = -180f..180f,
                         )
-                        Text("Crop left \${(card.imageCropLeft * 100).roundToInt()}%")
+                        Text("Crop left ${(card.imageCropLeft * 100).roundToInt()}%")
                         androidx.compose.material3.Slider(
                             value = card.imageCropLeft.toFloat().coerceIn(0f, 0.45f),
                             onValueChange = {
@@ -480,7 +480,7 @@ private fun CardsTab(
                             },
                             valueRange = 0f..0.45f,
                         )
-                        Text("Crop right \${(card.imageCropRight * 100).roundToInt()}%")
+                        Text("Crop right ${(card.imageCropRight * 100).roundToInt()}%")
                         androidx.compose.material3.Slider(
                             value = card.imageCropRight.toFloat().coerceIn(0f, 0.45f),
                             onValueChange = {
@@ -488,7 +488,7 @@ private fun CardsTab(
                             },
                             valueRange = 0f..0.45f,
                         )
-                        Text("Crop top \${(card.imageCropTop * 100).roundToInt()}%")
+                        Text("Crop top ${(card.imageCropTop * 100).roundToInt()}%")
                         androidx.compose.material3.Slider(
                             value = card.imageCropTop.toFloat().coerceIn(0f, 0.45f),
                             onValueChange = {
@@ -496,7 +496,7 @@ private fun CardsTab(
                             },
                             valueRange = 0f..0.45f,
                         )
-                        Text("Crop bottom \${(card.imageCropBottom * 100).roundToInt()}%")
+                        Text("Crop bottom ${(card.imageCropBottom * 100).roundToInt()}%")
                         androidx.compose.material3.Slider(
                             value = card.imageCropBottom.toFloat().coerceIn(0f, 0.45f),
                             onValueChange = {
