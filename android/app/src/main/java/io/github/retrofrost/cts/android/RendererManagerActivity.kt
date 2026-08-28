@@ -1,16 +1,23 @@
 package io.github.retrofrost.cts.android
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,15 +33,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlin.math.max
+import kotlin.math.min
 
 class RendererManagerActivity : ComponentActivity() {
     private val store by lazy { RendererStore(this) }
     private var active by mutableStateOf(RendererRuntime.active)
     private var candidate by mutableStateOf<RendererCandidate?>(null)
     private var installed by mutableStateOf<List<InstalledRenderer>>(emptyList())
+    private var previewBitmap by mutableStateOf<Bitmap?>(null)
+    private var previewIndex by mutableStateOf(0)
     private var message by mutableStateOf("Renderer files are declarative and sandboxed. No executable code is loaded.")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,8 +65,7 @@ class RendererManagerActivity : ComponentActivity() {
                             store.inspect(input)
                         }
                     }.onSuccess {
-                        candidate = it
-                        message = "Preflight finished. Nothing has been activated yet."
+                        showCandidate(it, "Preflight finished. Nothing has been activated yet.")
                     }.onFailure { message = it.message ?: "Renderer preflight failed." }
                 }
             }
@@ -98,7 +112,7 @@ class RendererManagerActivity : ComponentActivity() {
                     candidate?.let { pending ->
                         item {
                             OutlinedCard(Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text("Import preflight", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Text(pending.spec.name, style = MaterialTheme.typography.titleLarge)
                                     Text("${pending.spec.id} • ${pending.spec.engine}")
@@ -115,15 +129,66 @@ class RendererManagerActivity : ComponentActivity() {
                                     )
                                     pending.report.errors.forEach { Text("Error: $it", color = MaterialTheme.colorScheme.error) }
                                     pending.report.warnings.forEach { Text("Warning: $it", color = MaterialTheme.colorScheme.tertiary) }
+
+                                    if (pending.report.compatible) {
+                                        val frames = previewFrames(pending.spec)
+                                        Text("Pre-activation preview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            previewBitmap?.let { bitmap ->
+                                                Image(
+                                                    bitmap = bitmap.asImageBitmap(),
+                                                    contentDescription = "Renderer pre-activation preview",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Fit,
+                                                )
+                                            } ?: Text("Preview unavailable", color = Color.White)
+                                        }
+                                        if (frames.isNotEmpty()) {
+                                            val frame = frames[previewIndex.coerceIn(0, frames.lastIndex)]
+                                            Text("Checkpoint ${previewIndex + 1}/${frames.size} • frame $frame", style = MaterialTheme.typography.bodySmall)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                                OutlinedButton(
+                                                    enabled = previewIndex > 0,
+                                                    onClick = {
+                                                        previewIndex = (previewIndex - 1).coerceAtLeast(0)
+                                                        renderCandidatePreview()
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                ) { Text("Previous") }
+                                                OutlinedButton(
+                                                    enabled = previewIndex < frames.lastIndex,
+                                                    onClick = {
+                                                        previewIndex = (previewIndex + 1).coerceAtMost(frames.lastIndex)
+                                                        renderCandidatePreview()
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                ) { Text("Next") }
+                                            }
+                                        }
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Renderer diagnostics", diagnostics(pending)))
+                                            message = "Renderer diagnostics copied."
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) { Text("Copy diagnostics") }
+
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                         Button(
-                                            enabled = pending.report.compatible,
+                                            enabled = pending.report.compatible && previewBitmap != null,
                                             onClick = {
                                                 runCatching {
                                                     store.install(pending)
                                                     store.activate(pending.spec.id)
                                                 }.onSuccess {
                                                     candidate = null
+                                                    previewBitmap = null
                                                     message = "Installed and activated ${it.name}."
                                                     refresh()
                                                 }.onFailure { message = it.message ?: "Renderer activation failed." }
@@ -131,7 +196,11 @@ class RendererManagerActivity : ComponentActivity() {
                                             modifier = Modifier.weight(1f),
                                         ) { Text("Install & use") }
                                         OutlinedButton(
-                                            onClick = { candidate = null; message = "Import cancelled. Active renderer was not changed." },
+                                            onClick = {
+                                                candidate = null
+                                                previewBitmap = null
+                                                message = "Import cancelled. Active renderer was not changed."
+                                            },
                                             modifier = Modifier.weight(1f),
                                         ) { Text("Cancel") }
                                     }
@@ -231,6 +300,90 @@ class RendererManagerActivity : ComponentActivity() {
         installed = store.listInstalled()
     }
 
+    private fun showCandidate(value: RendererCandidate, status: String) {
+        candidate = value
+        previewIndex = 0
+        message = status
+        renderCandidatePreview()
+    }
+
+    private fun renderCandidatePreview() {
+        val pending = candidate ?: run { previewBitmap = null; return }
+        if (!pending.report.compatible) {
+            previewBitmap = null
+            return
+        }
+        val frames = previewFrames(pending.spec)
+        if (frames.isEmpty()) {
+            previewBitmap = null
+            return
+        }
+        previewIndex = previewIndex.coerceIn(0, frames.lastIndex)
+        val project = previewProject(pending.spec)
+        runCatching {
+            RendererBridge.renderWithSpec(project, pending.spec, frames[previewIndex], 640, 360)
+        }.onSuccess {
+            previewBitmap = it
+        }.onFailure {
+            previewBitmap = null
+            message = "Renderer preview failed: ${it.message ?: "unknown renderer error"}"
+        }
+    }
+
+    private fun previewFrames(spec: RendererSpec): List<Int> {
+        val maximum = if (spec.canonicalFrameCount > 0) spec.canonicalFrameCount - 1 else Int.MAX_VALUE
+        val explicit = spec.previewFrames.filter { it in 0..maximum }.distinct().sorted()
+        if (explicit.isNotEmpty()) return explicit
+        return listOf(
+            0,
+            spec.openingStarts.firstOrNull() ?: 0,
+            spec.continuousStartFrame,
+            max(spec.continuousStartFrame, (spec.canonicalFrameCount - 1).coerceAtLeast(0)),
+        ).filter { it in 0..maximum }.distinct()
+    }
+
+    private fun previewProject(spec: RendererSpec): StudioProject {
+        val count = min(60, max(4, spec.canonicalCardCount.takeIf { it > 0 } ?: 8))
+        val cards = List(count) { index ->
+            StudioCard(
+                title = "Preview ${index + 1}",
+                value = "${max(1, (index + 1) * 10)} People",
+                badgeHeader = "1 in",
+                description = if (index % 3 == 0) "Renderer layout and animation preview" else "",
+            )
+        }
+        return StudioProject(
+            name = "Renderer preflight",
+            cards = cards,
+            width = spec.referenceWidth,
+            height = spec.referenceHeight,
+            fps = spec.referenceFps,
+            creditsEnabled = true,
+            showBadges = true,
+        )
+    }
+
+    private fun diagnostics(value: RendererCandidate): String = buildString {
+        appendLine("Cubical Compare renderer preflight")
+        appendLine("Name: ${value.spec.name}")
+        appendLine("ID: ${value.spec.id}")
+        appendLine("Author: ${value.spec.author}")
+        appendLine("SHA-256: ${value.sha256}")
+        appendLine("Format: ${value.spec.formatVersion}")
+        appendLine("Renderer API: ${value.spec.rendererApi}")
+        appendLine("Engine: ${value.spec.engine}")
+        appendLine("Precision: ${value.spec.precisionMode}")
+        appendLine("Timeline unit: ${value.spec.timelineUnit}")
+        appendLine("Reference: ${value.spec.referenceWidth}x${value.spec.referenceHeight} @ ${value.spec.referenceFps} fps")
+        appendLine("Canonical cards: ${value.spec.canonicalCardCount}")
+        appendLine("Canonical frames: ${value.spec.canonicalFrameCount}")
+        appendLine("Tracks: ${value.spec.tracks.size}")
+        appendLine("Required features: ${value.spec.requiredFeatures.joinToString()}")
+        appendLine("Compatibility: ${value.report.summary()}")
+        value.report.errors.forEach { appendLine("ERROR: $it") }
+        value.report.warnings.forEach { appendLine("WARNING: $it") }
+    }
+
     private fun importFromIntent(value: Intent?) {
         if (value?.action != Intent.ACTION_VIEW) return
         val uri = value.data ?: return
@@ -240,8 +393,7 @@ class RendererManagerActivity : ComponentActivity() {
                 store.inspect(input)
             }
         }.onSuccess {
-            candidate = it
-            message = "Renderer opened for preflight. Review it before activation."
+            showCandidate(it, "Renderer opened for preflight. Review it before activation.")
         }.onFailure { message = it.message ?: "Renderer preflight failed." }
     }
 }
