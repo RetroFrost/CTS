@@ -32,22 +32,23 @@ jobs:
 
       - name: Build native APK
         shell: bash
-        run: gradle --project-dir native-android :app:assembleDebug --stacktrace --console=plain
+        run: gradle --project-dir native-android :app:assembleRelease --stacktrace --console=plain
 
       - name: Verify native APK
         shell: bash
         run: |
           set -euo pipefail
-          test -s native-android/app/build/outputs/apk/debug/app-debug.apk
-          cp native-android/app/build/outputs/apk/debug/app-debug.apk Cubical-Compare-3.0.0-Native-Alpha.apk
-          sha256sum Cubical-Compare-3.0.0-Native-Alpha.apk | tee Cubical-Compare-3.0.0-Native-Alpha.apk.sha256
+          APK=native-android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          cp "$APK" Cubical-Compare-3.0.0-Renderer-RC1.apk
+          sha256sum Cubical-Compare-3.0.0-Renderer-RC1.apk | tee Cubical-Compare-3.0.0-Renderer-RC1.apk.sha256
 
       - name: Upload native APK
         uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-3.0.0-Native-Alpha
+          name: Cubical-Compare-3.0.0-Renderer-RC1
           path: |
-            Cubical-Compare-3.0.0-Native-Alpha.apk
-            Cubical-Compare-3.0.0-Native-Alpha.apk.sha256
+            Cubical-Compare-3.0.0-Renderer-RC1.apk
+            Cubical-Compare-3.0.0-Renderer-RC1.apk.sha256
           if-no-files-found: error
           retention-days: 14

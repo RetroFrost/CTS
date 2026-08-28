@@ -20,13 +20,15 @@ data class CompareProject(
     companion object {
         fun demo(): CompareProject = CompareProject(
             title = "Worst Things To Hear",
-            subtitle = "A curiosity-first comparison render",
+            subtitle = "Renderer test project",
             items = listOf(
-                CompareItem(1, "Your storage is full", "Right before exporting", "96% panic"),
+                CompareItem(1, "Your storage is full", "Right before exporting", "96%"),
                 CompareItem(2, "Preview failed", "When the app looked finished", "ouch"),
                 CompareItem(3, "One more tiny fix", "Usually means five more bugs", "danger"),
                 CompareItem(4, "The last badge moved", "Now it enters from the right", "fixed"),
-                CompareItem(5, "CTR thumbnail ready", "Curiosity gap generated natively", "new")
+                CompareItem(5, "Renderer imported", "No APK rebuild required", "new"),
+                CompareItem(6, "Timing verified", "Millisecond keyframes active", "1:1"),
+                CompareItem(7, "GPU export ready", "MediaCodec + EGL", "fast")
             )
         )
     }

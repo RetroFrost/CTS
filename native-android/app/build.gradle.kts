@@ -11,13 +11,20 @@ android {
         applicationId = "dev.thedataguys.cc"
         minSdk = 23
         targetSdk = 35
-        versionCode = 300003
-        versionName = "3.0.0-native-alpha.3"
+        versionCode = 300004
+        versionName = "3.0.0-renderer-rc1"
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 }
 

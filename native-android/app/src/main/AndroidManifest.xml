@@ -2,8 +2,9 @@
     <application
         android:allowBackup="true"
         android:theme="@style/AppTheme"
-        android:label="Cubical Compare Native"
-        android:resizeableActivity="true">
+        android:label="Cubical Compare"
+        android:resizeableActivity="true"
+        android:supportsRtl="true">
         <activity
             android:name="dev.thedataguys.cc.MainActivity"
             android:screenOrientation="portrait"
