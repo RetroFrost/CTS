@@ -47,6 +47,7 @@ android {
             versionNameSuffix = "-preview"
         }
         release {
+            applicationIdSuffix = ".nativefork"
             isMinifyEnabled = false
             signingConfig = if (stableSigningReady) signingConfigs.getByName("ctsStable") else signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
