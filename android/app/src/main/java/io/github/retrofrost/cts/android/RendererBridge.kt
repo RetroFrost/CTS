@@ -15,20 +15,36 @@ data class RenderMetadata(
 
 object RendererBridge {
     private val lock = Any()
-    private val renderer = NativeFrameRenderer()
+    private val nativeRenderer = NativeFrameRenderer()
+    private val ribbonRenderer = RibbonFrameRenderer()
+
+    private fun ribbonActive(): Boolean = RibbonTimeline.isRibbon(RendererRuntime.active)
 
     fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
         val fps = project.fps.coerceIn(1, 120)
-        val frameCount = NativeTimeline.totalFrameCount(project, RendererRuntime.active).coerceAtLeast(1)
+        val spec = RendererRuntime.active
+        val frameCount = if (ribbonActive()) {
+            RibbonTimeline.totalFrameCount(project, spec)
+        } else {
+            NativeTimeline.totalFrameCount(project, spec)
+        }.coerceAtLeast(1)
         RenderMetadata(frameCount, frameCount.toDouble() / fps, fps)
     }
 
     fun renderRgba(project: StudioProject, frame: Int, width: Int, height: Int): ByteArray = synchronized(lock) {
-        renderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        if (ribbonActive()) {
+            ribbonRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        } else {
+            nativeRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        }
     }
 
     fun render(project: StudioProject, frame: Int, width: Int, height: Int): Bitmap = synchronized(lock) {
-        renderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        if (ribbonActive()) {
+            ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        } else {
+            nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        }
     }
 
     fun importData(project: StudioProject, path: String): StudioProject = synchronized(lock) {
