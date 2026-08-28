@@ -17,33 +17,52 @@ object RendererBridge {
     private val lock = Any()
     private val nativeRenderer = NativeFrameRenderer()
     private val ribbonRenderer = RibbonFrameRenderer()
+    private val relationshipsRenderer = RelationshipsFrameRenderer()
 
-    private fun ribbonActive(): Boolean = RibbonTimeline.isRibbon(RendererRuntime.active)
+    private fun engine(spec: RendererSpec = RendererRuntime.active): String = when {
+        RelationshipsTimeline.isRelationships(spec) -> "relationships-exact"
+        RibbonTimeline.isRibbon(spec) -> "ribbon-exact"
+        else -> "native-standard"
+    }
 
     fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
         val fps = project.fps.coerceIn(1, 120)
         val spec = RendererRuntime.active
-        val frameCount = if (ribbonActive()) {
-            RibbonTimeline.totalFrameCount(project, spec)
-        } else {
-            NativeTimeline.totalFrameCount(project, spec)
+        val frameCount = when (engine(spec)) {
+            "relationships-exact" -> RelationshipsTimeline.totalFrameCount(project, spec)
+            "ribbon-exact" -> RibbonTimeline.totalFrameCount(project, spec)
+            else -> NativeTimeline.totalFrameCount(project, spec)
         }.coerceAtLeast(1)
         RenderMetadata(frameCount, frameCount.toDouble() / fps, fps)
     }
 
     fun renderRgba(project: StudioProject, frame: Int, width: Int, height: Int): ByteArray = synchronized(lock) {
-        if (ribbonActive()) {
-            ribbonRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
-        } else {
-            nativeRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        when (engine()) {
+            "relationships-exact" -> relationshipsRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            "ribbon-exact" -> ribbonRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            else -> nativeRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         }
     }
 
     fun render(project: StudioProject, frame: Int, width: Int, height: Int): Bitmap = synchronized(lock) {
-        if (ribbonActive()) {
-            ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
-        } else {
-            nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        when (engine()) {
+            "relationships-exact" -> relationshipsRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            "ribbon-exact" -> ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            else -> nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        }
+    }
+
+    fun renderWithSpec(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap = synchronized(lock) {
+        val previous = RendererRuntime.active
+        return try {
+            RendererRuntime.active = spec
+            when (engine(spec)) {
+                "relationships-exact" -> relationshipsRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+                "ribbon-exact" -> ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+                else -> nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            }
+        } finally {
+            RendererRuntime.active = previous
         }
     }
 
