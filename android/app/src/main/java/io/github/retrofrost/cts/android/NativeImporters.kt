@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.zip.ZipFile
 import kotlin.math.max
+import kotlin.math.min
 
 object NativeImporters {
     private const val MAX_PACK_BYTES = 1_073_741_824L
@@ -132,6 +133,15 @@ object NativeImporters {
                         badgeHeader = header,
                         description = description,
                         image = imagePath,
+                        imageX = finite(item.opt("image_x"), 0.0).coerceIn(-4000.0, 4000.0),
+                        imageY = finite(item.opt("image_y"), 0.0).coerceIn(-4000.0, 4000.0),
+                        imageScale = finite(item.opt("image_scale"), 1.0).coerceIn(0.05, 12.0),
+                        imageRotation = finite(item.opt("image_rotation"), 0.0).coerceIn(-360.0, 360.0),
+                        imageCropLeft = finite(item.opt("image_crop_left"), 0.0).coerceIn(0.0, 0.95),
+                        imageCropTop = finite(item.opt("image_crop_top"), 0.0).coerceIn(0.0, 0.95),
+                        imageCropRight = finite(item.opt("image_crop_right"), 0.0).coerceIn(0.0, 0.95),
+                        imageCropBottom = finite(item.opt("image_crop_bottom"), 0.0).coerceIn(0.0, 0.95),
+                        imageLayer = firstString(item, "image_layer", "imageLayer", "layer").lowercase().let { if (it == "front") "front" else "behind" },
                     )
                 }
 
@@ -386,22 +396,113 @@ object NativeImporters {
     private fun composeArtwork(backgroundBytes: ByteArray?, subjectBytes: ByteArray?, width: Int, height: Int, focusX: Double, focusY: Double, zoom: Double): Bitmap {
         val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
-        if (backgroundBytes != null) {
-            val background = decodeImage(backgroundBytes)
-            drawCentreCrop(canvas, background, width, height, 0.5, 0.5, 1.0)
-            background.recycle()
-        } else {
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = LinearGradient(0f, 0f, 0f, height.toFloat(), Color.rgb(19, 141, 219), Color.rgb(11, 116, 190), Shader.TileMode.CLAMP)
+        val subject = subjectBytes?.let(::decodeImage)
+        try {
+            val transparentSubject = subject?.let(::hasTransparentPixels) == true
+            if (backgroundBytes != null) {
+                val background = decodeImage(backgroundBytes)
+                try {
+                    drawCentreCrop(canvas, background, width, height, 0.5, 0.5, 1.0)
+                } finally {
+                    background.recycle()
+                }
+            } else if (transparentSubject) {
+                drawBeachBackground(canvas, width, height)
+            } else {
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    shader = LinearGradient(0f, 0f, 0f, height.toFloat(), Color.rgb(19, 141, 219), Color.rgb(11, 116, 190), Shader.TileMode.CLAMP)
+                }
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
             }
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-        }
-        if (subjectBytes != null) {
-            val subject = decodeImage(subjectBytes)
-            drawCentreCrop(canvas, subject, width, height, focusX, focusY, zoom)
-            subject.recycle()
+            if (subject != null) {
+                if (transparentSubject) {
+                    drawContainedSubject(canvas, subject, width, height, focusX, focusY, zoom)
+                } else {
+                    drawCentreCrop(canvas, subject, width, height, focusX, focusY, zoom)
+                }
+            }
+        } finally {
+            subject?.recycle()
         }
         return output
+    }
+
+    private fun hasTransparentPixels(source: Bitmap): Boolean {
+        if (!source.hasAlpha()) return false
+        val stepX = max(1, source.width / 48)
+        val stepY = max(1, source.height / 48)
+        var y = 0
+        while (y < source.height) {
+            var x = 0
+            while (x < source.width) {
+                if (Color.alpha(source.getPixel(x, y)) < 245) return true
+                x += stepX
+            }
+            y += stepY
+        }
+        return Color.alpha(source.getPixel(source.width - 1, source.height - 1)) < 245
+    }
+
+    private fun drawBeachBackground(canvas: Canvas, width: Int, height: Int) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val horizon = h * 0.50f
+        val sandTop = h * 0.70f
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        paint.shader = LinearGradient(0f, 0f, 0f, horizon, Color.rgb(82, 190, 244), Color.rgb(205, 239, 252), Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, w, horizon, paint)
+
+        paint.shader = LinearGradient(0f, horizon, 0f, sandTop, Color.rgb(33, 159, 207), Color.rgb(17, 111, 163), Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, horizon, w, sandTop, paint)
+
+        paint.shader = LinearGradient(0f, sandTop, 0f, h, Color.rgb(248, 218, 159), Color.rgb(221, 183, 112), Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, sandTop, w, h, paint)
+        paint.shader = null
+
+        paint.color = Color.rgb(255, 232, 125)
+        canvas.drawCircle(w * 0.80f, h * 0.16f, min(w, h) * 0.075f, paint)
+
+        paint.color = Color.argb(208, 255, 255, 255)
+        fun cloud(cx: Float, cy: Float, scale: Float) {
+            canvas.drawCircle(cx - 28f * scale, cy + 6f * scale, 22f * scale, paint)
+            canvas.drawCircle(cx, cy, 30f * scale, paint)
+            canvas.drawCircle(cx + 31f * scale, cy + 8f * scale, 20f * scale, paint)
+            canvas.drawRoundRect(RectF(cx - 51f * scale, cy + 4f * scale, cx + 52f * scale, cy + 28f * scale), 14f * scale, 14f * scale, paint)
+        }
+        cloud(w * 0.23f, h * 0.16f, 0.72f)
+        cloud(w * 0.58f, h * 0.27f, 0.48f)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = max(2f, w * 0.008f)
+        paint.color = Color.argb(185, 235, 250, 255)
+        canvas.drawLine(0f, horizon + (sandTop - horizon) * 0.34f, w * 0.44f, horizon + (sandTop - horizon) * 0.30f, paint)
+        canvas.drawLine(w * 0.52f, horizon + (sandTop - horizon) * 0.58f, w, horizon + (sandTop - horizon) * 0.54f, paint)
+        paint.style = Paint.Style.FILL
+    }
+
+    private fun drawContainedSubject(canvas: Canvas, source: Bitmap, width: Int, height: Int, focusX: Double, focusY: Double, zoom: Double) {
+        val fit = min(
+            width * 0.80 / source.width.coerceAtLeast(1),
+            height * 0.72 / source.height.coerceAtLeast(1),
+        )
+        val scale = fit * zoom.coerceIn(0.5, 3.0)
+        val drawnWidth = source.width * scale
+        val drawnHeight = source.height * scale
+        val centerX = width * (0.35 + focusX.coerceIn(0.0, 1.0) * 0.30)
+        val centerY = height * (0.35 + focusY.coerceIn(0.0, 1.0) * 0.30)
+        val destination = RectF(
+            (centerX - drawnWidth / 2.0).toFloat(),
+            (centerY - drawnHeight / 2.0).toFloat(),
+            (centerX + drawnWidth / 2.0).toFloat(),
+            (centerY + drawnHeight / 2.0).toFloat(),
+        )
+        canvas.drawBitmap(
+            source,
+            Rect(0, 0, source.width, source.height),
+            destination,
+            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+        )
     }
 
     private fun decodeImage(bytes: ByteArray): Bitmap {
