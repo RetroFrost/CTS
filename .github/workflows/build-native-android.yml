@@ -40,15 +40,15 @@ jobs:
           set -euo pipefail
           APK=native-android/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
-          cp "$APK" Cubical-Compare-3.0.0-Renderer-RC1.apk
-          sha256sum Cubical-Compare-3.0.0-Renderer-RC1.apk | tee Cubical-Compare-3.0.0-Renderer-RC1.apk.sha256
+          cp "$APK" Cubical-Compare-3.0.0-Renderer-RC2.apk
+          sha256sum Cubical-Compare-3.0.0-Renderer-RC2.apk | tee Cubical-Compare-3.0.0-Renderer-RC2.apk.sha256
 
       - name: Upload native APK
         uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-3.0.0-Renderer-RC1
+          name: Cubical-Compare-3.0.0-Renderer-RC2
           path: |
-            Cubical-Compare-3.0.0-Renderer-RC1.apk
-            Cubical-Compare-3.0.0-Renderer-RC1.apk.sha256
+            Cubical-Compare-3.0.0-Renderer-RC2.apk
+            Cubical-Compare-3.0.0-Renderer-RC2.apk.sha256
           if-no-files-found: error
           retention-days: 14

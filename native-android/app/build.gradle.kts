@@ -11,8 +11,8 @@ android {
         applicationId = "dev.thedataguys.cc"
         minSdk = 23
         targetSdk = 35
-        versionCode = 300004
-        versionName = "3.0.0-renderer-rc1"
+        versionCode = 300005
+        versionName = "3.0.0-renderer-rc2"
     }
 
     compileOptions {
