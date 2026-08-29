@@ -12,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -94,12 +95,15 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -469,7 +473,12 @@ private fun CardsTab(
                             Icon(Icons.Rounded.Image, null); Spacer(Modifier.width(8.dp)); Text(if (card.image.isBlank()) "Choose artwork" else "Change artwork")
                         }
                         if (card.image.isNotBlank()) {
-                            ArtworkPreview(card)
+                            ArtworkPreview(
+                                card = card,
+                                onTransform = { transformed ->
+                                    updateCard(project, selectedCard, transformed, onProjectChange)
+                                },
+                            )
                             Text(card.image.substringAfterLast('/'), style = MaterialTheme.typography.labelMedium)
                         }
                         Text("Artwork transform", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -516,16 +525,100 @@ private fun CardsTab(
 }
 
 @Composable
-private fun ArtworkPreview(card: StudioCard) {
+private fun ArtworkPreview(
+    card: StudioCard,
+    onTransform: (StudioCard) -> Unit,
+) {
     val bitmap = remember(card.image) { runCatching { BitmapFactory.decodeFile(card.image) }.getOrNull() }
+    val currentCard by rememberUpdatedState(card)
+    val spec = RendererRuntime.active
+    val referenceWidth = spec.bodyWidth.coerceAtLeast(1f)
+    val referenceHeight = spec.imageHeight.coerceAtLeast(1f)
+    val previewAspect = (referenceWidth / referenceHeight).coerceIn(0.45f, 1.4f)
+    var transformMode by remember(card.id) { mutableStateOf(false) }
+
     Card(
-        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+        modifier = Modifier.fillMaxWidth().aspectRatio(previewAspect),
         colors = CardDefaults.cardColors(containerColor = Color.Black),
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(card.id, transformMode, referenceWidth, referenceHeight) {
+                    if (!transformMode) return@pointerInput
+                    detectTransformGestures { _, pan, zoom, rotation ->
+                        val latest = currentCard
+                        val boxWidth = size.width.toFloat().coerceAtLeast(1f)
+                        val boxHeight = size.height.toFloat().coerceAtLeast(1f)
+                        var nextRotation = latest.imageRotation + rotation.toDouble()
+                        nextRotation %= 360.0
+                        if (nextRotation > 180.0) nextRotation -= 360.0
+                        if (nextRotation < -180.0) nextRotation += 360.0
+                        onTransform(
+                            latest.copy(
+                                imageX = (latest.imageX + (pan.x / boxWidth * referenceWidth).toDouble()).coerceIn(-1200.0, 1200.0),
+                                imageY = (latest.imageY + (pan.y / boxHeight * referenceHeight).toDouble()).coerceIn(-1600.0, 1600.0),
+                                imageScale = (latest.imageScale * zoom.toDouble()).coerceIn(0.10, 6.0),
+                                imageRotation = nextRotation,
+                            ),
+                        )
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
             bitmap?.let {
-                Image(it.asImageBitmap(), "Artwork preview", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = "Transform artwork",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = card.imageScale.toFloat()
+                            scaleY = card.imageScale.toFloat()
+                            translationX = card.imageX.toFloat() / referenceWidth * size.width
+                            translationY = card.imageY.toFloat() / referenceHeight * size.height
+                            rotationZ = card.imageRotation.toFloat()
+                        },
+                    contentScale = ContentScale.Crop,
+                )
             } ?: Text("Artwork unavailable")
+
+            if (!transformMode) {
+                Box(
+                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    FilledTonalButton(onClick = { transformMode = true }) {
+                        Text("Tap to transform")
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilledTonalButton(onClick = { transformMode = false }) { Text("Done") }
+                    OutlinedButton(onClick = {
+                        onTransform(
+                            currentCard.copy(
+                                imageX = 0.0,
+                                imageY = 0.0,
+                                imageScale = 1.0,
+                                imageRotation = 0.0,
+                            ),
+                        )
+                    }) { Text("Reset") }
+                }
+                Text(
+                    "Drag to move • pinch to zoom • twist to rotate",
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .background(Color.Black.copy(alpha = 0.62f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
     }
 }
