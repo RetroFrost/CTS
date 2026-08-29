@@ -41,8 +41,15 @@ object RendererBridge {
     }
 
     fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
-        val fps = project.fps.coerceIn(1, 120)
         val spec = RendererRuntime.active
+        val fps = if (
+            RelationshipsPrecisionFrameRenderer.enabled(spec) &&
+            spec.precisionMode == "frame-exact"
+        ) {
+            spec.referenceFps.coerceIn(1, 240)
+        } else {
+            project.fps.coerceIn(1, 120)
+        }
         val base = baseFrameCount(project, spec)
         val rendererIntro = rendererIntroFrames(spec).coerceAtMost(base - 1)
         val frameCount = when (project.introMode) {
