@@ -153,6 +153,13 @@ class HardwareVideoExporter(
         }
         val format = MediaFormat.createVideoFormat(selected.mime, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            if (RelationshipsPrecisionFrameRenderer.enabled(RendererRuntime.active) && Build.VERSION.SDK_INT >= 24) {
+                // The measured Relationships reference is SDR BT.709 with limited/video range.
+                // Do not leave the RGB->YUV signalling device-dependent for frame-exact exports.
+                setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+                setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+                setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+            }
             setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)

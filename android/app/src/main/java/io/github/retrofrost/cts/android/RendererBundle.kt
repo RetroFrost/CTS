@@ -193,6 +193,7 @@ object RendererCapabilities {
         "per-frame-keyframes",
         "per-badge-affine-transform",
         "frame-addressed-shine",
+        "relationships-exact-v2",
         "preview-frames",
     )
 
