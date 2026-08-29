@@ -21,3 +21,5 @@
 - [Preview and Export Pipeline](Preview-and-Export-Pipeline.md)
 - [CI and Releases](CI-and-Releases.md)
 - [Contributing](Contributing.md)
+- [Developer FAQ](Developer-FAQ.md)
+- [Wiki Maintenance](Wiki-Maintenance.md)
