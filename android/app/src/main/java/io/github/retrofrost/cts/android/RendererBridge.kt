@@ -52,7 +52,6 @@ object RendererBridge {
 
     fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
         val spec = RendererRuntime.active
-        requireProjectCompatibility(project, spec)
         val fps = if (
             RelationshipsPrecisionFrameRenderer.enabled(spec) &&
             spec.precisionMode == "frame-exact"
@@ -151,7 +150,6 @@ object RendererBridge {
     }
 
     private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap {
-        requireProjectCompatibility(project, spec)
         return when (engine(spec)) {
             "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
                 relationshipsPrecisionRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
@@ -164,7 +162,6 @@ object RendererBridge {
     }
 
     private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray {
-        requireProjectCompatibility(project, spec)
         return when (engine(spec)) {
             "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
                 relationshipsPrecisionRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))

@@ -267,9 +267,10 @@ class RendererStore(private val context: Context) {
         val spec = RendererBundle.read(ByteArrayInputStream(bytes))
         val report = RendererCapabilities.report(spec)
         require(report.compatible) { report.errors.joinToString("\n") }
-        ProjectAutosave.load(context)?.let { project ->
-            RendererProjectGuard.requireCompatible(project, spec)
-        }
+        // Renderer compatibility is a project-quality diagnostic, never an import
+        // gate. A renderer is a reusable visual/timing profile and must be installable
+        // on a new, empty or differently-sized project. Exact-v2 still forces its
+        // reference output size/FPS in the render/export path.
         dir.mkdirs()
         if (activeFile.isFile) atomicWrite(previousFile, activeFile.readBytes())
         atomicWrite(activeFile, bytes)
