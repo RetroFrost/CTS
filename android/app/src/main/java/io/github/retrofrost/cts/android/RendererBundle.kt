@@ -196,6 +196,8 @@ object RendererCapabilities {
         "relationships-exact-v2",
         "relationships-footer-waveform",
         "relationships-rich-typography",
+        "relationships-shadow-mask-v1",
+        "relationships-single-owner-pass-v1",
         "preview-frames",
     )
 

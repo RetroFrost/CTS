@@ -2,6 +2,7 @@ package io.github.retrofrost.cts.android
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -59,7 +60,8 @@ class RelationshipsPrecisionFrameRenderer {
         val reference = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888)
         val spec = RendererRuntime.active
         val cfg = exactConfig(spec)
-        drawReference(Canvas(reference), project, frameIndex.coerceAtLeast(0), spec, cfg)
+        val ledger = RenderPassLedger()
+        drawReference(Canvas(reference), project, frameIndex.coerceAtLeast(0), spec, cfg, ledger)
         if (outputWidth == 1920 && outputHeight == 1080) return reference
         val output = Bitmap.createBitmap(outputWidth.coerceAtLeast(2), outputHeight.coerceAtLeast(2), Bitmap.Config.ARGB_8888)
         paint.alpha = 255
@@ -79,23 +81,32 @@ class RelationshipsPrecisionFrameRenderer {
         }
     }
 
-    private fun drawReference(canvas: Canvas, project: StudioProject, frame: Int, spec: RendererSpec, cfg: ExactConfig) {
+    private fun drawReference(
+        canvas: Canvas,
+        project: StudioProject,
+        frame: Int,
+        spec: RendererSpec,
+        cfg: ExactConfig,
+        ledger: RenderPassLedger,
+    ) {
         canvas.drawColor(spec.backgroundColor)
-        drawFooterWaveform(canvas, frame, cfg)
+        ledger.once("footer.waveform") { drawFooterWaveform(canvas, frame, cfg) }
         if (project.cards.isEmpty()) {
-            drawIntroLogo(canvas, frame, spec, cfg)
+            ledger.once("intro") { drawIntroLogo(canvas, frame, spec, cfg) }
             return
         }
         val contentEnd = RelationshipsTimeline.contentEndFrame(project, spec)
         when {
-            frame < spec.openingStarts.firstOrNull().orZero() -> drawIntroLogo(canvas, frame, spec, cfg)
+            frame < spec.openingStarts.firstOrNull().orZero() -> {
+                ledger.once("intro") { drawIntroLogo(canvas, frame, spec, cfg) }
+            }
             frame < contentEnd -> {
                 if (frame < cfg.int("intro.overlayUntilFrame", spec.openingStarts.firstOrNull().orZero())) {
-                    drawIntroLogo(canvas, frame, spec, cfg)
+                    ledger.once("intro") { drawIntroLogo(canvas, frame, spec, cfg) }
                 }
-                drawContent(canvas, project, frame, spec, cfg)
+                ledger.once("content") { drawContent(canvas, project, frame, spec, cfg, ledger) }
             }
-            else -> drawOutro(canvas, project, frame, contentEnd, spec, cfg)
+            else -> ledger.once("outro") { drawOutro(canvas, project, frame, contentEnd, spec, cfg, ledger) }
         }
     }
 
@@ -221,7 +232,14 @@ class RelationshipsPrecisionFrameRenderer {
         }
     }
 
-    private fun drawContent(canvas: Canvas, project: StudioProject, frame: Int, spec: RendererSpec, cfg: ExactConfig) {
+    private fun drawContent(
+        canvas: Canvas,
+        project: StudioProject,
+        frame: Int,
+        spec: RendererSpec,
+        cfg: ExactConfig,
+        ledger: RenderPassLedger,
+    ) {
         val positions = linkedMapOf<Int, Float>()
         if (frame < spec.continuousStartFrame) {
             val starts = spec.openingStarts
@@ -241,32 +259,7 @@ class RelationshipsPrecisionFrameRenderer {
         }
 
         positions.forEach { (index, x) ->
-            val y = spec.track("card.$index.y", frame) ?: 0f
-            val entry = RelationshipsTimeline.cardEntryFrame(project.cards.size, index, spec)
-            val local = frame - entry
-            val uniform = spec.track("card.$index.body.scale", frame)
-                ?: spec.track("relationships.card.body.scale", local)
-                ?: 1f
-            val scaleX = spec.track("card.$index.body.scaleX", frame)
-                ?: spec.track("relationships.card.body.scaleX", local)
-                ?: uniform
-            val scaleY = spec.track("card.$index.body.scaleY", frame)
-                ?: spec.track("relationships.card.body.scaleY", local)
-                ?: uniform
-            val pivotX = x + cfg.float("card.body.pivotX", spec.bodyInset + spec.bodyWidth / 2f)
-            val pivotY = cfg.float("card.body.pivotY", 540f)
-            canvas.save()
-            canvas.translate(0f, y)
-            canvas.scale(scaleX, scaleY, pivotX, pivotY)
-            drawCardBody(canvas, project.cards[index], x, spec, cfg, frame, index)
-            canvas.restore()
-        }
-        if (project.creditsEnabled && frame in spec.openingStarts.firstOrNull().orZero() until spec.continuousStartFrame) {
-            drawDisclaimer(canvas, frame, spec, cfg)
-        }
-        positions.forEach { (index, x) -> drawBadge(canvas, project, index, x, frame, spec, cfg) }
-        positions.forEach { (index, x) ->
-            if (project.cards[index].imageLayer.equals("front", true)) {
+            ledger.once("card.$index.body") {
                 val y = spec.track("card.$index.y", frame) ?: 0f
                 val entry = RelationshipsTimeline.cardEntryFrame(project.cards.size, index, spec)
                 val local = frame - entry
@@ -284,8 +277,39 @@ class RelationshipsPrecisionFrameRenderer {
                 canvas.save()
                 canvas.translate(0f, y)
                 canvas.scale(scaleX, scaleY, pivotX, pivotY)
-                drawFrontArtwork(canvas, project.cards[index], x, spec, cfg)
+                drawCardBody(canvas, project.cards[index], x, spec, cfg, frame, index)
                 canvas.restore()
+            }
+        }
+        if (project.creditsEnabled && frame in spec.openingStarts.firstOrNull().orZero() until spec.continuousStartFrame) {
+            ledger.once("disclaimer") { drawDisclaimer(canvas, frame, spec, cfg) }
+        }
+        positions.forEach { (index, x) ->
+            ledger.once("card.$index.badge") { drawBadge(canvas, project, index, x, frame, spec, cfg) }
+        }
+        positions.forEach { (index, x) ->
+            if (project.cards[index].imageLayer.equals("front", true)) {
+                ledger.once("card.$index.artwork.front") {
+                    val y = spec.track("card.$index.y", frame) ?: 0f
+                    val entry = RelationshipsTimeline.cardEntryFrame(project.cards.size, index, spec)
+                    val local = frame - entry
+                    val uniform = spec.track("card.$index.body.scale", frame)
+                        ?: spec.track("relationships.card.body.scale", local)
+                        ?: 1f
+                    val scaleX = spec.track("card.$index.body.scaleX", frame)
+                        ?: spec.track("relationships.card.body.scaleX", local)
+                        ?: uniform
+                    val scaleY = spec.track("card.$index.body.scaleY", frame)
+                        ?: spec.track("relationships.card.body.scaleY", local)
+                        ?: uniform
+                    val pivotX = x + cfg.float("card.body.pivotX", spec.bodyInset + spec.bodyWidth / 2f)
+                    val pivotY = cfg.float("card.body.pivotY", 540f)
+                    canvas.save()
+                    canvas.translate(0f, y)
+                    canvas.scale(scaleX, scaleY, pivotX, pivotY)
+                    drawFrontArtwork(canvas, project.cards[index], x, spec, cfg)
+                    canvas.restore()
+                }
             }
         }
     }
@@ -481,12 +505,17 @@ class RelationshipsPrecisionFrameRenderer {
 
         val shadowColor = cfg.color("badge.shadow.color", Color.TRANSPARENT)
         val shadowRadius = cfg.float("badge.shadow.radius", 0f)
-        paint.resetForShape()
         if (Color.alpha(shadowColor) > 0 && shadowRadius > 0f) {
-            paint.color = spec.badgeColor
-            paint.setShadowLayer(shadowRadius, cfg.float("badge.shadow.dx", 0f), cfg.float("badge.shadow.dy", 0f), shadowColor)
+            // Shadow-only pass: never repaint the badge fill as part of a shadow.
+            paint.resetForShape()
+            paint.style = Paint.Style.FILL
+            paint.color = shadowColor
+            paint.maskFilter = BlurMaskFilter(shadowRadius, BlurMaskFilter.Blur.NORMAL)
+            canvas.save()
+            canvas.translate(cfg.float("badge.shadow.dx", 0f), cfg.float("badge.shadow.dy", 0f))
             canvas.drawPath(path, paint)
-            paint.clearShadowLayer()
+            canvas.restore()
+            paint.maskFilter = null
         }
 
         val gradientTop = cfg.color("badge.gradient.top", spec.badgeColor)
@@ -703,15 +732,24 @@ class RelationshipsPrecisionFrameRenderer {
         textPaint.letterSpacing = 0f
     }
 
-    private fun drawOutro(canvas: Canvas, project: StudioProject, frame: Int, contentEnd: Int, spec: RendererSpec, cfg: ExactConfig) {
+    private fun drawOutro(
+        canvas: Canvas,
+        project: StudioProject,
+        frame: Int,
+        contentEnd: Int,
+        spec: RendererSpec,
+        cfg: ExactConfig,
+        ledger: RenderPassLedger,
+    ) {
         val local = frame - contentEnd
         val last = project.cards.last()
+        val lastIndex = project.cards.lastIndex
         val cardX = spec.track("relationships.outro.card.x", frame) ?: when {
             local < 80 -> lerp(320f, 781f, smooth(local / 80f))
             else -> 781f
         }
-        drawCardBody(canvas, last, cardX, spec, cfg, frame, project.cards.lastIndex)
-        drawBadge(canvas, project, project.cards.lastIndex, cardX, frame, spec, cfg)
+        ledger.once("card.$lastIndex.body") { drawCardBody(canvas, last, cardX, spec, cfg, frame, lastIndex) }
+        ledger.once("card.$lastIndex.badge") { drawBadge(canvas, project, lastIndex, cardX, frame, spec, cfg) }
 
         val panelAlpha = (spec.track("relationships.outro.panel.alpha", frame) ?: if (local >= cfg.int("outro.panel.start", 58)) 1f else 0f).coerceIn(0f, 1f)
         if (panelAlpha > 0f) {

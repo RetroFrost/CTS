@@ -64,4 +64,23 @@ class RelationshipsPrecisionRendererTest {
         assertTrue(RendererProjectGuard.check(project, RendererSpec.builtIn()).compatible)
     }
 
+
+
+    @Test
+    fun renderPassLedgerRejectsDuplicateLogicalElements() {
+        val ledger = RenderPassLedger()
+        assertTrue(ledger.claim("card.0.body"))
+        assertFalse(ledger.claim("card.0.body"))
+        assertTrue(ledger.claim("card.0.badge"))
+        assertFalse(ledger.claim("card.0.badge"))
+        assertTrue(ledger.claim("intro"))
+        assertFalse(ledger.claim("intro"))
+    }
+
+    @Test
+    fun rendererAdvertisesGlobalAntiDuplicationCapabilities() {
+        assertTrue(RendererCapabilities.features.contains("relationships-shadow-mask-v1"))
+        assertTrue(RendererCapabilities.features.contains("relationships-single-owner-pass-v1"))
+    }
+
 }

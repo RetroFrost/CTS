@@ -217,3 +217,7 @@ This allows a measured reference to provide exact logo geometry, colours, text p
 ## Backwards compatibility
 
 The v2 path is opt-in. A bundle without `relationships.exact.v2=true` is rendered exactly as it was before this addition.
+
+### Renderer-wide anti-duplication guarantee
+
+Exact-v2 builds advertise both `relationships-shadow-mask-v1` and `relationships-single-owner-pass-v1`. Every logical frame element has one owning paint pass: intro, footer, content, each card body, each badge, front artwork, disclaimer, and outro. Intentional layers inside a single element (for example a gradient plus stroke plus shine) remain part of that one owner. Badge shadows use a blur-mask-only pass so the source badge fill is never painted twice. Preview and export both execute the same precision renderer, so the invariant applies to both paths.
