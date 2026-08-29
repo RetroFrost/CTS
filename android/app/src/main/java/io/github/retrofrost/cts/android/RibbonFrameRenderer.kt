@@ -40,8 +40,8 @@ class RibbonFrameRenderer {
     private val regularTypeface = Typeface.create("sans-serif", Typeface.NORMAL)
     private val boldTypeface = Typeface.create("sans-serif", Typeface.BOLD)
     private val badgeShadowBlur = BlurMaskFilter(8f, BlurMaskFilter.Blur.NORMAL)
-    private val exactShineBroadBlur = BlurMaskFilter(6f, BlurMaskFilter.Blur.NORMAL)
-    private val exactShineCoreBlur = BlurMaskFilter(1.8f, BlurMaskFilter.Blur.NORMAL)
+    private val exactShineBroadBlur = BlurMaskFilter(8.5f, BlurMaskFilter.Blur.NORMAL)
+    private val exactShineCoreBlur = BlurMaskFilter(2.4f, BlurMaskFilter.Blur.NORMAL)
     private val legacyShineBroadBlur = BlurMaskFilter(12f, BlurMaskFilter.Blur.NORMAL)
     private val legacyShineCoreBlur = BlurMaskFilter(2.8f, BlurMaskFilter.Blur.NORMAL)
     private val shineBroadPath = Path()
@@ -160,15 +160,28 @@ class RibbonFrameRenderer {
         return result
     }
 
+    /**
+ * Gentle centred temporal filtering for measured Ribbon motion.
+ *
+ * The 20/60/20 kernel preserves constant velocity while removing visible
+ * single-frame quantisation without adding directional lag.
+ */
+private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? {
+    val centre = spec.track(target, frame) ?: return null
+    val previous = spec.track(target, frame - 1) ?: centre
+    val next = spec.track(target, frame + 1) ?: centre
+    return previous * 0.20f + centre * 0.60f + next * 0.20f
+}
+
     private fun exactScroll(spec: RendererSpec, frame: Int): Float? {
         if (frame < spec.continuousStartFrame) return null
         val segment = (frame - spec.continuousStartFrame) / SCROLL_TRACK_SIZE
         if (segment !in 0..2) return null
-        return spec.track("ribbon.scroll.$segment", frame)
+        return motionTrack(spec, "ribbon.scroll.$segment", frame)
     }
 
     private fun bodyProgress(spec: RendererSpec, localFrame: Int): Float {
-        spec.track("ribbon.body.progress", localFrame)?.let { return it.coerceIn(0f, 1f) }
+        motionTrack(spec, "ribbon.body.progress", localFrame)?.let { return it.coerceIn(0f, 1f) }
         val p = (localFrame.toFloat() / spec.bodySlideFrames.coerceAtLeast(1)).coerceIn(0f, 1f)
         return p * p * (3f - 2f * p)
     }
@@ -361,19 +374,19 @@ class RibbonFrameRenderer {
             val exactPrefix = "ribbon.open.$index"
             val prefix = if (spec.track("$exactPrefix.m00", local) != null) exactPrefix else "ribbon.open"
             val values = floatArrayOf(
-                spec.track("$prefix.m00", local) ?: 1f,
-                spec.track("$prefix.m01", local) ?: 0f,
-                spec.track("$prefix.tx", local) ?: 0f,
-                spec.track("$prefix.m10", local) ?: 0f,
-                spec.track("$prefix.m11", local) ?: 1f,
-                spec.track("$prefix.ty", local) ?: 0f,
+                motionTrack(spec, "$prefix.m00", local) ?: 1f,
+                motionTrack(spec, "$prefix.m01", local) ?: 0f,
+                motionTrack(spec, "$prefix.tx", local) ?: 0f,
+                motionTrack(spec, "$prefix.m10", local) ?: 0f,
+                motionTrack(spec, "$prefix.m11", local) ?: 1f,
+                motionTrack(spec, "$prefix.ty", local) ?: 0f,
                 0f, 0f, 1f,
             )
             matrix.setValues(values)
         } else {
             if (local < spec.laterBadgeFallStartFrame) return
             age = (local - spec.laterBadgeFallStartFrame).toFloat() / 103f * 2.25f
-            matrix.setTranslate(0f, spec.track("ribbon.later.badge.y", local) ?: 0f)
+            matrix.setTranslate(0f, motionTrack(spec, "ribbon.later.badge.y", local) ?: 0f)
         }
 
         val stageScale = badgeDeemphasisScale(project, index, globalFrame, spec) * spec.badgeScale
@@ -521,8 +534,8 @@ class RibbonFrameRenderer {
         index: Int,
         local: Int,
     ) {
-        val exactProgress = if (index < 4) spec.track("ribbon.open.$index.shine.progress", local) else null
-        val exactAlpha = if (index < 4) spec.track("ribbon.open.$index.shine.alpha", local) else null
+        val exactProgress = if (index < 4) motionTrack(spec, "ribbon.open.$index.shine.progress", local) else null
+        val exactAlpha = if (index < 4) motionTrack(spec, "ribbon.open.$index.shine.alpha", local) else null
         val referenceLocked = exactProgress != null && exactAlpha != null
         val correctedHandRenderer = referenceLocked || spec.tags.contains("badge-reference-lock-v2")
 
@@ -552,8 +565,9 @@ class RibbonFrameRenderer {
 
         val topX = lerp(130f, 420f, progress)
         val bottomX = topX - 205f
-        val broadHalfWidth = if (correctedHandRenderer) 28f else 40f
-        val coreHalfWidth = if (correctedHandRenderer) 4f else 5f
+        // Broad, translucent sweep: thicker than before without becoming a white streak.
+        val broadHalfWidth = 40f
+        val coreHalfWidth = if (correctedHandRenderer) 7f else 5f
 
         canvas.save()
         canvas.clipPath(badge)
@@ -563,7 +577,7 @@ class RibbonFrameRenderer {
         shineBroadPath.lineTo(bottomX + broadHalfWidth, 500f)
         shineBroadPath.lineTo(bottomX - broadHalfWidth, 500f)
         shineBroadPath.close()
-        paint.color = Color.argb((48f * alpha).roundToInt().coerceIn(0, 255), 255, 255, 255)
+        paint.color = Color.argb(((if (correctedHandRenderer) 34f else 48f) * alpha).roundToInt().coerceIn(0, 255), 255, 255, 255)
         paint.maskFilter = if (correctedHandRenderer) exactShineBroadBlur else legacyShineBroadBlur
         canvas.drawPath(shineBroadPath, paint)
 
@@ -573,7 +587,7 @@ class RibbonFrameRenderer {
         shineCorePath.lineTo(bottomX + coreHalfWidth, 500f)
         shineCorePath.lineTo(bottomX - coreHalfWidth, 500f)
         shineCorePath.close()
-        paint.color = Color.argb(((if (correctedHandRenderer) 92f else 82f) * alpha).roundToInt().coerceIn(0, 255), 255, 255, 255)
+        paint.color = Color.argb(((if (correctedHandRenderer) 60f else 82f) * alpha).roundToInt().coerceIn(0, 255), 255, 255, 255)
         paint.maskFilter = if (correctedHandRenderer) exactShineCoreBlur else legacyShineCoreBlur
         canvas.drawPath(shineCorePath, paint)
         paint.maskFilter = null
@@ -598,7 +612,7 @@ class RibbonFrameRenderer {
 
         drawContent(canvas, project, (contentEnd - 1).coerceAtLeast(0), spec)
         if (local < spec.endWipeFrames) {
-            val coverY = spec.track("ribbon.outro.cover.y", local)
+            val coverY = motionTrack(spec, "ribbon.outro.cover.y", local)
                 ?: (REFERENCE_HEIGHT * (local.toFloat() / spec.endWipeFrames.coerceAtLeast(1))).coerceIn(0f, REFERENCE_HEIGHT.toFloat())
             paint.color = spec.backgroundColor
             paint.style = Paint.Style.FILL
@@ -610,11 +624,11 @@ class RibbonFrameRenderer {
         paint.style = Paint.Style.FILL
         canvas.drawRect(0f, 0f, 1440f, REFERENCE_HEIGHT.toFloat(), paint)
 
-        spec.track("ribbon.outro.group.y", local)?.let { drawEndGroup(canvas, it) }
+        motionTrack(spec, "ribbon.outro.group.y", local)?.let { drawEndGroup(canvas, it) }
         drawActionBar(canvas, local)
 
         if (local >= fadeStart) {
-            val remaining = spec.track("ribbon.outro.fade.alpha", local)
+            val remaining = motionTrack(spec, "ribbon.outro.fade.alpha", local)
                 ?: (255f * (1f - (local - fadeStart).toFloat() / spec.fadeFrames.coerceAtLeast(1))).coerceIn(0f, 255f)
             paint.color = Color.argb((255f - remaining).roundToInt().coerceIn(0, 255), 0, 0, 0)
             canvas.drawRect(0f, 0f, REFERENCE_WIDTH.toFloat(), REFERENCE_HEIGHT.toFloat(), paint)
