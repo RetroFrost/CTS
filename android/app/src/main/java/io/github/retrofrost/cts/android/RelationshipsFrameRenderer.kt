@@ -240,10 +240,56 @@ class RelationshipsFrameRenderer {
         val parts = raw.split(Regex("\\s+"), limit = 2)
         val primary = parts.firstOrNull().orEmpty()
         val unit = parts.getOrNull(1).orEmpty().ifBlank { "People" }
-        textPaint.textAlign = Paint.Align.CENTER; textPaint.color = spec.badgeTextColor; textPaint.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-        textPaint.textSize = 31f; canvas.drawText(card.badgeHeader.ifBlank { "1 in" }, spec.badgeCenterX, spec.badgeCenterY - 75f, textPaint)
-        textPaint.textSize = 72f; textPaint.typeface = Typeface.create("sans-serif", Typeface.NORMAL); canvas.drawText(primary, spec.badgeCenterX, spec.badgeCenterY + 12f, textPaint)
-        textPaint.textSize = 29f; canvas.drawText(unit, spec.badgeCenterX, spec.badgeCenterY + 70f, textPaint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.color = spec.badgeTextColor
+        textPaint.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        drawBadgeLine(
+            canvas = canvas,
+            text = card.badgeHeader.ifBlank { "1 in" },
+            x = spec.badgeCenterX,
+            y = spec.badgeCenterY - 75f,
+            preferredSize = 31f,
+            minimumSize = 17f,
+            maxWidth = 230f,
+        )
+        drawBadgeLine(
+            canvas = canvas,
+            text = primary,
+            x = spec.badgeCenterX,
+            y = spec.badgeCenterY + 12f,
+            preferredSize = 72f,
+            minimumSize = 28f,
+            maxWidth = 300f,
+        )
+        drawBadgeLine(
+            canvas = canvas,
+            text = unit,
+            x = spec.badgeCenterX,
+            y = spec.badgeCenterY + 70f,
+            preferredSize = 29f,
+            minimumSize = 16f,
+            maxWidth = 245f,
+        )
+    }
+
+    private fun drawBadgeLine(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        y: Float,
+        preferredSize: Float,
+        minimumSize: Float,
+        maxWidth: Float,
+    ) {
+        if (text.isBlank()) return
+        textPaint.textSize = preferredSize
+        val measured = textPaint.measureText(text).coerceAtLeast(1f)
+        textPaint.textSize = if (measured <= maxWidth) {
+            preferredSize
+        } else {
+            (preferredSize * maxWidth / measured).coerceAtLeast(minimumSize)
+        }
+        canvas.drawText(text, x, y, textPaint)
     }
 
     private fun drawDisclaimer(canvas: Canvas, frame: Int, spec: RendererSpec) {
