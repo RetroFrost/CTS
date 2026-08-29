@@ -13,6 +13,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -32,11 +34,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
@@ -49,7 +51,6 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Save
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material.icons.rounded.Tune
@@ -62,7 +63,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -82,6 +82,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -504,6 +505,9 @@ private fun CardsPage(
 @Composable
 private fun TransformArtworkEditor(card: StudioCard, onCommit: (StudioCard) -> Unit) {
     val bitmap = remember(card.image) { decodePreviewBitmap(card.image) }
+    DisposableEffect(bitmap) {
+        onDispose { bitmap?.takeIf { !it.isRecycled }?.recycle() }
+    }
     var editing by remember(card.id, card.image) { mutableStateOf(false) }
     var fineTune by remember(card.id, card.image) { mutableStateOf(false) }
     var draft by remember(card.id, card.image) { mutableStateOf(card) }
@@ -564,6 +568,24 @@ private fun TransformArtworkEditor(card: StudioCard, onCommit: (StudioCard) -> U
                     Text("Transform")
                 }
             } else {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(12.dp)
+                        .border(2.dp, Color.White, RoundedCornerShape(10.dp)),
+                )
+                TransformHandle(Alignment.TopStart, -1f, -1f) { delta ->
+                    draft = draft.copy(imageScale = (draft.imageScale * (1.0 + delta)).coerceIn(0.10, 6.0))
+                }
+                TransformHandle(Alignment.TopEnd, 1f, -1f) { delta ->
+                    draft = draft.copy(imageScale = (draft.imageScale * (1.0 + delta)).coerceIn(0.10, 6.0))
+                }
+                TransformHandle(Alignment.BottomStart, -1f, 1f) { delta ->
+                    draft = draft.copy(imageScale = (draft.imageScale * (1.0 + delta)).coerceIn(0.10, 6.0))
+                }
+                TransformHandle(Alignment.BottomEnd, 1f, 1f) { delta ->
+                    draft = draft.copy(imageScale = (draft.imageScale * (1.0 + delta)).coerceIn(0.10, 6.0))
+                }
                 Row(
                     modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -572,7 +594,7 @@ private fun TransformArtworkEditor(card: StudioCard, onCommit: (StudioCard) -> U
                     OutlinedButton(onClick = { draft = card; editing = false; fineTune = false }) { Text("Cancel") }
                 }
                 Text(
-                    "Drag · pinch · rotate",
+                    "Drag · pinch · rotate · drag corners to resize",
                     modifier = Modifier.align(Alignment.BottomCenter).background(Color.Black.copy(alpha = 0.68f)).padding(horizontal = 12.dp, vertical = 7.dp),
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium,
@@ -616,6 +638,29 @@ private fun TransformArtworkEditor(card: StudioCard, onCommit: (StudioCard) -> U
 }
 
 @Composable
+private fun androidx.compose.foundation.layout.BoxScope.TransformHandle(
+    alignment: Alignment,
+    signX: Float,
+    signY: Float,
+    onScaleDelta: (Double) -> Unit,
+) {
+    Box(
+        Modifier
+            .align(alignment)
+            .padding(3.dp)
+            .size(30.dp)
+            .background(MaterialTheme.colorScheme.primary, CircleShape)
+            .border(2.dp, Color.White, CircleShape)
+            .pointerInput(signX, signY) {
+                detectDragGestures { _, dragAmount ->
+                    val signedPixels = dragAmount.x * signX + dragAmount.y * signY
+                    onScaleDelta((signedPixels / 240f).toDouble().coerceIn(-0.35, 0.35))
+                }
+            },
+    )
+}
+
+@Composable
 private fun TransformSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, display: String, onChange: (Float) -> Unit) {
     Text("$label · $display", style = MaterialTheme.typography.bodySmall)
     androidx.compose.material3.Slider(value = value.coerceIn(range.start, range.endInclusive), onValueChange = onChange, valueRange = range)
@@ -636,7 +681,10 @@ private fun PreviewPage(
 
     LaunchedEffect(project, frame) {
         runCatching { withContext(Dispatchers.Default) { RendererBridge.render(project, frame, 640, 360) } }
-            .onSuccess { next -> bitmap?.takeIf { it !== next }?.recycle(); bitmap = next }
+            .onSuccess { next -> bitmap?.takeIf { it !== next && !it.isRecycled }?.recycle(); bitmap = next }
+    }
+    DisposableEffect(Unit) {
+        onDispose { bitmap?.takeIf { !it.isRecycled }?.recycle() }
     }
     LaunchedEffect(metadata.frameCount) { frame = frame.coerceIn(0, (metadata.frameCount - 1).coerceAtLeast(0)) }
     LaunchedEffect(playing, speed, metadata.frameCount, metadata.fps) {
@@ -951,7 +999,7 @@ private fun decodePreviewBitmap(path: String): Bitmap? = runCatching {
     BitmapFactory.decodeFile(path, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
     var sample = 1
-    while (bounds.outWidth / sample > 1600 || bounds.outHeight / sample > 1600) sample *= 2
+    while (bounds.outWidth / sample > 1280 || bounds.outHeight / sample > 1280) sample *= 2
     BitmapFactory.decodeFile(path, BitmapFactory.Options().apply {
         inSampleSize = sample.coerceAtLeast(1)
         inPreferredConfig = Bitmap.Config.ARGB_8888
