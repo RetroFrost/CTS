@@ -1,0 +1,79 @@
+name: Fix renderer import overlock
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - '.github/workflows/fix-renderer-import-overlock.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Apply renderer import fix
+        run: python3 tools/fix_renderer_import_overlock.py
+
+      - name: Verify source diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ! grep -q 'RendererProjectGuard.requireCompatible(project, spec)' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
+          ! grep -q 'requireProjectCompatibility(project, spec)' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt
+
+      - name: Test and build release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/fix-renderer-import-overlock.yml
+          rm tools/fix_renderer_import_overlock.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt \
+                  android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt \
+                  android/app/src/main/java/io/github/retrofrost/cts/android/CubicalCompareApplication.kt \
+                  .github/workflows/fix-renderer-import-overlock.yml \
+                  tools/fix_renderer_import_overlock.py
+          git commit -m 'renderer: allow exact profiles on normal projects'
+          git push origin HEAD:fork/2.0.7-renderer-bundles
+
+      - name: Package APK
+        shell: bash
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk Cubical-Compare-2.0.7-Relationships-Exact-ImportFix.apk
+          sha256sum Cubical-Compare-2.0.7-Relationships-Exact-ImportFix.apk > Cubical-Compare-2.0.7-Relationships-Exact-ImportFix.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Compare-2.0.7-Relationships-Exact-ImportFix
+          path: |
+            Cubical-Compare-2.0.7-Relationships-Exact-ImportFix.apk
+            Cubical-Compare-2.0.7-Relationships-Exact-ImportFix.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
