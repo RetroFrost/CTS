@@ -5,7 +5,7 @@ on:
     branches:
       - fork/2.0.7-renderer-bundles
     paths:
-      - .github/workflows/apply-relationships-precision-support.yml
+      - '.github/workflows/apply-relationships-precision-support.yml'
   workflow_dispatch:
 
 permissions:
@@ -29,46 +29,349 @@ jobs:
         with:
           gradle-version: '8.14.3'
 
-      - name: Add capability guard and BT.709 limited-range precision export metadata
-        shell: python
+      - name: Apply exact-v2 renderer and export patches
+        shell: bash
         run: |
+          set -euo pipefail
+          python3 <<'PY'
           from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old in text:
+                  return text.replace(old, new, 1)
+              if new in text:
+                  return text
+              raise SystemExit(f'Patch point not found: {label}')
 
           bundle = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt')
           text = bundle.read_text()
-          old = '''        "frame-addressed-shine",
-        "preview-frames",'''
-          new = '''        "frame-addressed-shine",
-        "relationships-exact-v2",
-        "preview-frames",'''
-          if '"relationships-exact-v2"' not in text:
-              if old not in text:
-                  raise SystemExit('Renderer capability insertion point not found')
-              text = text.replace(old, new, 1)
-              bundle.write_text(text)
+          text = replace_once(
+              text,
+              '''        "frame-addressed-shine",
+                  "preview-frames",''',
+              '''        "frame-addressed-shine",
+                  "relationships-exact-v2",
+                  "preview-frames",''',
+              'relationships-exact-v2 capability',
+          )
+          bundle.write_text(text)
 
           exporter = Path('android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt')
           text = exporter.read_text()
-          marker = '''            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, bitrate)'''
-          replacement = '''            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            if (RelationshipsPrecisionFrameRenderer.enabled(RendererRuntime.active) && Build.VERSION.SDK_INT >= 24) {
-                // The measured Relationships reference is SDR BT.709 with limited/video range.
-                // Declare it to the hardware encoder instead of leaving the conversion metadata
-                // device-dependent; this prevents the exact bundle's decoded colours from being
-                // remapped as full-range or a different colour standard.
-                setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
-                setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
-                setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
-            }
-            setInteger(MediaFormat.KEY_BIT_RATE, bitrate)'''
-          if 'COLOR_STANDARD_BT709' not in text:
-              if marker not in text:
-                  raise SystemExit('MediaFormat insertion point not found')
-              text = text.replace(marker, replacement, 1)
-              exporter.write_text(text)
+          text = replace_once(
+              text,
+              '''            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                  setInteger(MediaFormat.KEY_BIT_RATE, bitrate)''',
+              '''            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                  if (RelationshipsPrecisionFrameRenderer.enabled(RendererRuntime.active) && Build.VERSION.SDK_INT >= 24) {
+                      // The measured reference is SDR BT.709 with limited/video range.
+                      setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+                      setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+                      setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+                  }
+                  setInteger(MediaFormat.KEY_BIT_RATE, bitrate)''',
+              'BT.709 encoder metadata',
+          )
+          exporter.write_text(text)
+
+          renderer = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RelationshipsPrecisionFrameRenderer.kt')
+          text = renderer.read_text()
+
+          text = replace_once(
+              text,
+              '''        when {
+                      frame < spec.openingStarts.firstOrNull().orZero() -> drawIntroLogo(canvas, frame, spec, cfg)
+                      frame < contentEnd -> drawContent(canvas, project, frame, spec, cfg)
+                      else -> drawOutro(canvas, project, frame, contentEnd, spec, cfg)
+                  }''',
+              '''        when {
+                      frame < spec.openingStarts.firstOrNull().orZero() -> drawIntroLogo(canvas, frame, spec, cfg)
+                      frame < contentEnd -> {
+                          // The measured source keeps its intro mark underneath the first opening cards.
+                          // A bundle can keep drawing it for exactly as many frames as the source needs.
+                          if (frame < cfg.int("intro.overlayUntilFrame", spec.openingStarts.firstOrNull().orZero())) {
+                              drawIntroLogo(canvas, frame, spec, cfg)
+                          }
+                          drawContent(canvas, project, frame, spec, cfg)
+                      }
+                      else -> drawOutro(canvas, project, frame, contentEnd, spec, cfg)
+                  }''',
+              'intro/card overlap',
+          )
+
+          text = replace_once(
+              text,
+              '''        paint.resetForShape()
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = cfg.float("intro.logo.strokeWidth", 9f)
+                  paint.strokeCap = Paint.Cap.ROUND
+                  paint.alpha = (255 * fadeIn * alpha).roundToInt().coerceIn(0, 255)
+                  paint.color = cfg.color("intro.logo.leftColor", Color.rgb(216, 235, 42))
+                  canvas.drawArc(RectF(cx - rx, cy - ry, cx - gap, cy + ry), cfg.float("intro.logo.leftStart", 42f), cfg.float("intro.logo.leftSweep", 276f), false, paint)
+                  paint.color = cfg.color("intro.logo.rightColor", Color.rgb(238, 111, 139))
+                  canvas.drawArc(RectF(cx + gap, cy - ry, cx + rx, cy + ry), cfg.float("intro.logo.rightStart", 222f), cfg.float("intro.logo.rightSweep", 276f), false, paint)
+
+                  paint.strokeWidth = cfg.float("intro.logo.crossStrokeWidth", 3f)
+                  paint.color = cfg.color("intro.logo.crossColor", Color.rgb(58, 58, 58))''',
+              '''        val logoLayerCount = cfg.int("intro.logo.layerCount", 0).coerceIn(0, 12)
+                  if (logoLayerCount > 0) {
+                      repeat(logoLayerCount) { layer ->
+                          paint.resetForShape()
+                          paint.style = Paint.Style.STROKE
+                          paint.strokeCap = Paint.Cap.ROUND
+                          paint.strokeWidth = cfg.float("intro.logo.layer.$layer.strokeWidth", cfg.float("intro.logo.strokeWidth", 9f))
+                          paint.alpha = (255 * fadeIn * alpha * cfg.float("intro.logo.layer.$layer.alpha", 1f).coerceIn(0f, 1f)).roundToInt().coerceIn(0, 255)
+                          val shadowRadius = cfg.float("intro.logo.layer.$layer.shadowRadius", 0f)
+                          val shadowColor = cfg.color("intro.logo.layer.$layer.shadowColor", Color.TRANSPARENT)
+                          if (shadowRadius > 0f && Color.alpha(shadowColor) > 0) {
+                              paint.setShadowLayer(
+                                  shadowRadius,
+                                  cfg.float("intro.logo.layer.$layer.shadowDx", 0f),
+                                  cfg.float("intro.logo.layer.$layer.shadowDy", 0f),
+                                  shadowColor,
+                              )
+                          }
+                          paint.color = cfg.color("intro.logo.layer.$layer.leftColor", cfg.color("intro.logo.leftColor", Color.rgb(216, 235, 42)))
+                          canvas.drawArc(RectF(cx - rx, cy - ry, cx - gap, cy + ry), cfg.float("intro.logo.leftStart", 42f), cfg.float("intro.logo.leftSweep", 276f), false, paint)
+                          paint.color = cfg.color("intro.logo.layer.$layer.rightColor", cfg.color("intro.logo.rightColor", Color.rgb(238, 111, 139)))
+                          canvas.drawArc(RectF(cx + gap, cy - ry, cx + rx, cy + ry), cfg.float("intro.logo.rightStart", 222f), cfg.float("intro.logo.rightSweep", 276f), false, paint)
+                          paint.clearShadowLayer()
+                      }
+                  } else {
+                      paint.resetForShape()
+                      paint.style = Paint.Style.STROKE
+                      paint.strokeWidth = cfg.float("intro.logo.strokeWidth", 9f)
+                      paint.strokeCap = Paint.Cap.ROUND
+                      paint.alpha = (255 * fadeIn * alpha).roundToInt().coerceIn(0, 255)
+                      paint.color = cfg.color("intro.logo.leftColor", Color.rgb(216, 235, 42))
+                      canvas.drawArc(RectF(cx - rx, cy - ry, cx - gap, cy + ry), cfg.float("intro.logo.leftStart", 42f), cfg.float("intro.logo.leftSweep", 276f), false, paint)
+                      paint.color = cfg.color("intro.logo.rightColor", Color.rgb(238, 111, 139))
+                      canvas.drawArc(RectF(cx + gap, cy - ry, cx + rx, cy + ry), cfg.float("intro.logo.rightStart", 222f), cfg.float("intro.logo.rightSweep", 276f), false, paint)
+                  }
+
+                  paint.resetForShape()
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = cfg.float("intro.logo.crossStrokeWidth", 3f)
+                  paint.strokeCap = Paint.Cap.ROUND
+                  paint.alpha = (255 * fadeIn * alpha).roundToInt().coerceIn(0, 255)
+                  paint.color = cfg.color("intro.logo.crossColor", Color.rgb(58, 58, 58))''',
+              'layered intro logo',
+          )
+
+          text = replace_once(
+              text,
+              '''        paint.resetForShape()
+                  paint.color = cfg.color("card.imageFallbackColor", Color.rgb(30, 30, 30))
+                  canvas.drawRect(left, 0f, right, imageBottom, paint)''',
+              '''        val imageTopRadius = cfg.float("card.image.topRadius", 0f).coerceAtLeast(0f)
+                  val imageRect = RectF(left, 0f, right, imageBottom)
+                  val imagePath = panelPath(imageRect, imageTopRadius, imageTopRadius, 0f, 0f)
+                  paint.resetForShape()
+                  paint.color = cfg.color("card.imageFallbackColor", Color.rgb(30, 30, 30))
+                  if (imageTopRadius > 0f) canvas.drawPath(imagePath, paint) else canvas.drawRect(imageRect, paint)''',
+              'rounded image placeholder',
+          )
+
+          text = replace_once(
+              text,
+              '''        if (!card.imageLayer.equals("front", true) && reveal > 0f) {
+                      val revealBottom = imageBottom * reveal
+                      canvas.save(); canvas.clipRect(left, 0f, right, revealBottom)
+                      drawArtwork(canvas, card, RectF(left, 0f, right, imageBottom)); canvas.restore()
+                  }''',
+              '''        if (!card.imageLayer.equals("front", true) && reveal > 0f) {
+                      val revealBottom = imageBottom * reveal
+                      canvas.save()
+                      if (imageTopRadius > 0f) canvas.clipPath(imagePath)
+                      canvas.clipRect(left, 0f, right, revealBottom)
+                      drawArtwork(canvas, card, imageRect)
+                      canvas.restore()
+                  }''',
+              'rounded artwork reveal',
+          )
+
+          text = replace_once(
+              text,
+              '''        if (hasTitle) {
+                      paint.resetForShape(); paint.color = spec.titleBackgroundColor
+                      canvas.drawRect(left, titleTop, right, titleBottom, paint)
+                      drawFitted(
+                          canvas, card.title,
+                          RectF(left + cfg.float("card.title.padX", 10f), titleTop + cfg.float("card.title.padTop", 1f), right - cfg.float("card.title.padX", 10f), titleBottom - cfg.float("card.title.padBottom", 1f)),
+                          spec.titleTextColor, spec.titleTextSize,
+                          typeface(spec, cfg, "title", "sans-serif", Typeface.BOLD),
+                          cfg.int("card.title.maxLines", 1), cfg.float("card.title.lineHeight", 0.92f),
+                      )
+                  }''',
+              '''        if (hasTitle) {
+                      val titleRect = RectF(left, titleTop, right, titleBottom)
+                      val titleTopRadius = cfg.float("card.title.topRadius", 0f).coerceAtLeast(0f)
+                      paint.resetForShape(); paint.color = spec.titleBackgroundColor
+                      if (titleTopRadius > 0f) {
+                          canvas.drawPath(panelPath(titleRect, titleTopRadius, titleTopRadius, 0f, 0f), paint)
+                      } else {
+                          canvas.drawRect(titleRect, paint)
+                      }
+                      val titleAlpha = (spec.track("card.$index.title.alpha", frame)
+                          ?: spec.track("relationships.card.title.alpha", local)
+                          ?: 1f).coerceIn(0f, 1f)
+                      val titleChars = spec.track("card.$index.title.chars", frame)?.roundToInt()
+                          ?: spec.track("relationships.card.title.chars", local)?.roundToInt()
+                      val titleText = if (titleChars == null) card.title else card.title.take(titleChars.coerceIn(0, card.title.length))
+                      if (titleAlpha > 0f && titleText.isNotBlank()) {
+                          textPaint.alpha = (titleAlpha * 255).roundToInt().coerceIn(0, 255)
+                          drawFitted(
+                              canvas, titleText,
+                              RectF(left + cfg.float("card.title.padX", 10f), titleTop + cfg.float("card.title.padTop", 1f), right - cfg.float("card.title.padX", 10f), titleBottom - cfg.float("card.title.padBottom", 1f)),
+                              spec.titleTextColor, spec.titleTextSize,
+                              typeface(spec, cfg, "title", "sans-serif", Typeface.BOLD),
+                              cfg.int("card.title.maxLines", 1), cfg.float("card.title.lineHeight", 0.92f),
+                          )
+                          textPaint.alpha = 255
+                      }
+                  }''',
+              'title reveal controls',
+          )
+
+          text = replace_once(
+              text,
+              '''        if (hasDescription) {
+                      paint.resetForShape(); paint.color = spec.descriptionBackgroundColor
+                      canvas.drawRect(left, descriptionTop, right, 1080f, paint)
+                      drawFitted(
+                          canvas, card.description,
+                          RectF(left + cfg.float("card.description.padX", 11f), descriptionTop + cfg.float("card.description.padTop", 4f), right - cfg.float("card.description.padX", 11f), 1080f - cfg.float("card.description.padBottom", 4f)),
+                          spec.descriptionTextColor, spec.descriptionTextSize,
+                          typeface(spec, cfg, "description", "sans-serif", Typeface.NORMAL),
+                          cfg.int("card.description.maxLines", 4), cfg.float("card.description.lineHeight", 0.92f),
+                      )
+                  }
+              }''',
+              '''        if (hasDescription) {
+                      val descriptionRect = RectF(left, descriptionTop, right, 1080f)
+                      val descriptionBottomRadius = cfg.float("card.description.bottomRadius", 0f).coerceAtLeast(0f)
+                      paint.resetForShape(); paint.color = spec.descriptionBackgroundColor
+                      if (descriptionBottomRadius > 0f) {
+                          canvas.drawPath(panelPath(descriptionRect, 0f, 0f, descriptionBottomRadius, descriptionBottomRadius), paint)
+                      } else {
+                          canvas.drawRect(descriptionRect, paint)
+                      }
+                      val descriptionAlpha = (spec.track("card.$index.description.alpha", frame)
+                          ?: spec.track("relationships.card.description.alpha", local)
+                          ?: 1f).coerceIn(0f, 1f)
+                      val descriptionChars = spec.track("card.$index.description.chars", frame)?.roundToInt()
+                          ?: spec.track("relationships.card.description.chars", local)?.roundToInt()
+                      val descriptionText = if (descriptionChars == null) card.description else card.description.take(descriptionChars.coerceIn(0, card.description.length))
+                      if (descriptionAlpha > 0f && descriptionText.isNotBlank()) {
+                          textPaint.alpha = (descriptionAlpha * 255).roundToInt().coerceIn(0, 255)
+                          drawFitted(
+                              canvas, descriptionText,
+                              RectF(left + cfg.float("card.description.padX", 11f), descriptionTop + cfg.float("card.description.padTop", 4f), right - cfg.float("card.description.padX", 11f), 1080f - cfg.float("card.description.padBottom", 4f)),
+                              spec.descriptionTextColor, spec.descriptionTextSize,
+                              typeface(spec, cfg, "description", "sans-serif", Typeface.NORMAL),
+                              cfg.int("card.description.maxLines", 4), cfg.float("card.description.lineHeight", 0.92f),
+                          )
+                          textPaint.alpha = 255
+                      }
+                  }
+              }
+
+              private fun panelPath(rect: RectF, topLeft: Float, topRight: Float, bottomRight: Float, bottomLeft: Float): Path =
+                  Path().apply {
+                      addRoundRect(
+                          rect,
+                          floatArrayOf(
+                              topLeft, topLeft,
+                              topRight, topRight,
+                              bottomRight, bottomRight,
+                              bottomLeft, bottomLeft,
+                          ),
+                          Path.Direction.CW,
+                      )
+                  }''',
+              'description reveal controls and panel path',
+          )
+
+          text = replace_once(
+              text,
+              '''        val strokeWidth = cfg.float("badge.stroke.width", 4f)
+                  if (strokeWidth > 0f) {
+                      paint.resetForShape(); paint.style = Paint.Style.STROKE; paint.strokeWidth = strokeWidth
+                      paint.color = cfg.color("badge.stroke.color", spec.badgeDarkColor)
+                      canvas.drawPath(path, paint)
+                  }
+
+                  drawBadgeShine(canvas, path, card, index, frame, local, spec, cfg)
+                  drawBadgeText(canvas, card, spec, cfg)''',
+              '''        val strokeCount = cfg.int("badge.stroke.count", 1).coerceIn(0, 8)
+                  repeat(strokeCount) { layer ->
+                      val width = if (strokeCount == 1) cfg.float("badge.stroke.width", 4f) else cfg.float("badge.stroke.$layer.width", 4f)
+                      if (width > 0f) {
+                          paint.resetForShape(); paint.style = Paint.Style.STROKE; paint.strokeWidth = width
+                          paint.color = if (strokeCount == 1) cfg.color("badge.stroke.color", spec.badgeDarkColor) else cfg.color("badge.stroke.$layer.color", spec.badgeDarkColor)
+                          canvas.drawPath(path, paint)
+                      }
+                  }
+
+                  drawBadgeShine(canvas, path, card, index, frame, local, spec, cfg)
+                  val badgeTextAlpha = (spec.track("card.$index.badge.text.alpha", frame)
+                      ?: spec.track("relationships.badge.text.alpha", local)
+                      ?: 1f).coerceIn(0f, 1f)
+                  if (badgeTextAlpha > 0f) {
+                      textPaint.alpha = (badgeTextAlpha * 255).roundToInt().coerceIn(0, 255)
+                      drawBadgeText(canvas, card, spec, cfg)
+                      textPaint.alpha = 255
+                  }''',
+              'layered badge strokes and text alpha',
+          )
+
+          text = replace_once(
+              text,
+              '''    private fun drawBadgeText(canvas: Canvas, card: StudioCard, spec: RendererSpec, cfg: ExactConfig) {
+                      val raw = card.value.trim()
+                      val parts = raw.split(Regex("\\\\s+"), limit = 2)
+                      val primary = parts.firstOrNull().orEmpty()
+                      val unit = parts.getOrNull(1).orEmpty().ifBlank { cfg.string("badge.defaultUnit", "People") }
+                      textPaint.textAlign = Paint.Align.CENTER
+                      textPaint.color = spec.badgeTextColor
+                      textPaint.typeface = typeface(spec, cfg, "badge", "sans-serif", Typeface.NORMAL)
+                      drawBadgeLine(canvas, card.badgeHeader.ifBlank { cfg.string("badge.defaultHeader", "1 in") }, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.header.y", -75f), spec.badgeHeaderSize, cfg.float("badge.header.minSize", 12f), cfg.float("badge.header.maxWidth", 230f))
+                      drawBadgeLine(canvas, primary, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.value.y", 12f), spec.badgeValueSize, cfg.float("badge.value.minSize", 18f), cfg.float("badge.value.maxWidth", 300f))
+                      drawBadgeLine(canvas, unit, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.unit.y", 70f), spec.badgeUnitSize, cfg.float("badge.unit.minSize", 12f), cfg.float("badge.unit.maxWidth", 245f))
+                  }''',
+              '''    private fun drawBadgeText(canvas: Canvas, card: StudioCard, spec: RendererSpec, cfg: ExactConfig) {
+                      val raw = card.value.trim()
+                      val parts = raw.split(Regex("\\\\s+"), limit = 2)
+                      val primary = parts.firstOrNull().orEmpty()
+                      val unit = parts.getOrNull(1).orEmpty().ifBlank { cfg.string("badge.defaultUnit", "People") }
+                      textPaint.textAlign = Paint.Align.CENTER
+                      textPaint.color = spec.badgeTextColor
+                      val shadowRadius = cfg.float("badge.text.shadow.radius", 0f)
+                      val shadowColor = cfg.color("badge.text.shadow.color", Color.TRANSPARENT)
+                      if (shadowRadius > 0f && Color.alpha(shadowColor) > 0) {
+                          textPaint.setShadowLayer(
+                              shadowRadius,
+                              cfg.float("badge.text.shadow.dx", 0f),
+                              cfg.float("badge.text.shadow.dy", 0f),
+                              shadowColor,
+                          )
+                      }
+                      textPaint.typeface = typeface(spec, cfg, "badgeHeader", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL)
+                      drawBadgeLine(canvas, card.badgeHeader.ifBlank { cfg.string("badge.defaultHeader", "1 in") }, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.header.y", -75f), spec.badgeHeaderSize, cfg.float("badge.header.minSize", 12f), cfg.float("badge.header.maxWidth", 230f))
+                      textPaint.typeface = typeface(spec, cfg, "badgeValue", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL)
+                      drawBadgeLine(canvas, primary, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.value.y", 12f), spec.badgeValueSize, cfg.float("badge.value.minSize", 18f), cfg.float("badge.value.maxWidth", 300f))
+                      textPaint.typeface = typeface(spec, cfg, "badgeUnit", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL)
+                      drawBadgeLine(canvas, unit, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.unit.y", 70f), spec.badgeUnitSize, cfg.float("badge.unit.minSize", 12f), cfg.float("badge.unit.maxWidth", 245f))
+                      textPaint.clearShadowLayer()
+                  }''',
+              'badge text shadow and role fonts',
+          )
+
+          renderer.write_text(text)
+          PY
 
       - name: Verify source diff
+        shell: bash
         run: git diff --check
 
       - name: Test and build release APK
@@ -83,17 +386,14 @@ jobs:
         run: |
           set -euo pipefail
           rm .github/workflows/apply-relationships-precision-support.yml
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt \
                   android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt \
+                  android/app/src/main/java/io/github/retrofrost/cts/android/RelationshipsPrecisionFrameRenderer.kt \
                   .github/workflows/apply-relationships-precision-support.yml
-          if git diff --cached --quiet; then
-            echo 'No source changes to commit.'
-          else
-            git commit -m 'renderer: guard exact-v2 and preserve BT.709 colour metadata'
-            git push origin HEAD:fork/2.0.7-renderer-bundles
-          fi
+          git commit -m 'renderer: complete source-exact relationships controls'
+          git push origin HEAD:fork/2.0.7-renderer-bundles
 
       - name: Package APK
         shell: bash
