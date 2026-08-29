@@ -18,6 +18,7 @@ object RendererBridge {
     private val nativeRenderer = NativeFrameRenderer()
     private val ribbonRenderer = RibbonFrameRenderer()
     private val relationshipsRenderer = RelationshipsFrameRenderer()
+    private val relationshipsPrecisionRenderer = RelationshipsPrecisionFrameRenderer()
 
     private fun engine(spec: RendererSpec = RendererRuntime.active): String = when {
         RelationshipsTimeline.isRelationships(spec) -> "relationships-exact"
@@ -132,13 +133,21 @@ object RendererBridge {
     }
 
     private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap = when (engine(spec)) {
-        "relationships-exact" -> relationshipsRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
+            relationshipsPrecisionRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        } else {
+            relationshipsRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        }
         "ribbon-exact" -> ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         else -> nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
     }
 
     private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray = when (engine(spec)) {
-        "relationships-exact" -> relationshipsRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
+            relationshipsPrecisionRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        } else {
+            relationshipsRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+        }
         "ribbon-exact" -> ribbonRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         else -> nativeRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
     }
