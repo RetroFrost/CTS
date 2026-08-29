@@ -28,19 +28,33 @@ data class RendererTrack(
 ) {
     fun valueAt(timeMs: Int): Float? {
         if (keyframes.isEmpty()) return null
-        if (timeMs <= keyframes.first().timeMs) return keyframes.first().value
-        if (timeMs >= keyframes.last().timeMs) return keyframes.last().value
-        for (index in 1 until keyframes.size) {
-            val right = keyframes[index]
-            if (timeMs <= right.timeMs) {
-                val left = keyframes[index - 1]
-                val span = (right.timeMs - left.timeMs).coerceAtLeast(1)
-                val raw = ((timeMs - left.timeMs).toFloat() / span).coerceIn(0f, 1f)
-                val p = easing(raw, right.easing)
-                return left.value + (right.value - left.value) * p
-            }
+        val first = keyframes.first()
+        val last = keyframes.last()
+        if (timeMs <= first.timeMs) return first.value
+        if (timeMs >= last.timeMs) return last.value
+
+        // Frame-exact bundles commonly contain one keyframe for every frame. In that
+        // hot path the timestamp offset is also the list index, so avoid searching.
+        val denseIndex = timeMs - first.timeMs
+        if (denseIndex in keyframes.indices) {
+            val dense = keyframes[denseIndex]
+            if (dense.timeMs == timeMs) return dense.value
         }
-        return keyframes.last().value
+
+        // Sparse tracks use lower-bound binary search instead of scanning thousands
+        // of earlier keyframes for every rendered frame.
+        var low = 1
+        var high = keyframes.lastIndex
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (keyframes[mid].timeMs < timeMs) low = mid + 1 else high = mid
+        }
+        val right = keyframes[low]
+        val left = keyframes[low - 1]
+        val span = (right.timeMs - left.timeMs).coerceAtLeast(1)
+        val raw = ((timeMs - left.timeMs).toFloat() / span).coerceIn(0f, 1f)
+        val p = easing(raw, right.easing)
+        return left.value + (right.value - left.value) * p
     }
 
     private fun easing(x: Float, name: String): Float = when (name.lowercase()) {
@@ -177,6 +191,8 @@ object RendererCapabilities {
         "custom-outro",
         "custom-intro",
         "per-frame-keyframes",
+        "per-badge-affine-transform",
+        "frame-addressed-shine",
         "preview-frames",
     )
 
