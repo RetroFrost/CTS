@@ -354,19 +354,15 @@ private fun CubicalCompareApp() {
                     onChooseImage = { chooseImage.launch(arrayOf("image/*")) },
                     modifier = Modifier.padding(padding),
                 )
-                StudioPage.PREVIEW -> PreviewPage(
+                StudioPage.PREVIEW -> DirectPreviewPage(
                     project = project,
                     metadata = metadata,
                     metadataLoading = metadataLoading,
-                    accuracy = accuracy,
-                    onEditArtwork = { index ->
-                        val target = project.cards.getOrNull(index)
-                        if (target != null) {
-                            selectedCard = index
-                            transformRequestCardId = target.id
-                            page = StudioPage.CARDS
-                        }
-                    },
+                    accuracyLabel = accuracy.label,
+                    accuracyDetail = accuracy.detail,
+                    accuracyExact = accuracy.exact,
+                    onProjectChange = ::applyProject,
+                    onSelectedCardChange = { selectedCard = it },
                     modifier = Modifier.padding(padding),
                 )
                 StudioPage.PROJECT -> ProjectPage(
