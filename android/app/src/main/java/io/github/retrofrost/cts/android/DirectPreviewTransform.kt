@@ -140,12 +140,29 @@ internal fun DirectPreviewPage(
         }
     }
 
-    fun finishEdit(commit: Boolean) {
+    fun finishEdit(commit: Boolean, applyFromHere: Boolean = false) {
         val index = editingIndex
         val value = draft
         if (commit && index != null && value != null && index in project.cards.indices) {
             val cards = project.cards.toMutableList()
-            cards[index] = value
+            if (applyFromHere) {
+                for (targetIndex in index until cards.size) {
+                    val target = cards[targetIndex]
+                    cards[targetIndex] = target.copy(
+                        imageX = value.imageX,
+                        imageY = value.imageY,
+                        imageScale = value.imageScale,
+                        imageRotation = value.imageRotation,
+                        imageCropLeft = value.imageCropLeft,
+                        imageCropTop = value.imageCropTop,
+                        imageCropRight = value.imageCropRight,
+                        imageCropBottom = value.imageCropBottom,
+                        imageLayer = value.imageLayer,
+                    )
+                }
+            } else {
+                cards[index] = value
+            }
             onProjectChange(project.copy(cards = cards))
             onSelectedCardChange(index)
         }
@@ -305,13 +322,15 @@ internal fun DirectPreviewPage(
                             }
                         }
 
-                        Row(
+                        Column(
                             modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Button(onClick = { finishEdit(true) }) { Text("Done") }
-                            OutlinedButton(onClick = { finishEdit(false) }) { Text("Cancel") }
-                            OutlinedButton(onClick = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { finishEdit(true) }) { Text("Done") }
+                                OutlinedButton(onClick = { finishEdit(false) }) { Text("Cancel") }
+                                OutlinedButton(onClick = {
                                 draft = current.copy(
                                     imageX = 0.0,
                                     imageY = 0.0,
@@ -322,13 +341,20 @@ internal fun DirectPreviewPage(
                                     imageCropRight = 0.0,
                                     imageCropBottom = 0.0,
                                 )
-                            }) { Text("Reset") }
+                                }) { Text("Reset") }
+                            }
+                            FilledTonalButton(
+                                enabled = index < project.cards.lastIndex,
+                                onClick = { finishEdit(true, applyFromHere = true) },
+                            ) {
+                                Text("Apply from card ${index + 1} onward")
+                            }
                         }
                     }
                 }
             }
             Text(
-                if (editing) "Drag to move · pinch to resize · twist to rotate · drag a corner handle to scale"
+                if (editing) "Drag to move · pinch to resize · twist to rotate · Apply from here copies this transform to every following card"
                 else "Tap artwork directly in the video to transform it",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
