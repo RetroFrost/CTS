@@ -14,6 +14,7 @@ import android.graphics.Typeface
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.LinkedHashMap
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -36,22 +37,41 @@ class RibbonFrameRenderer {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    private val regularTypeface = Typeface.create("sans-serif", Typeface.NORMAL)
+    private val boldTypeface = Typeface.create("sans-serif", Typeface.BOLD)
+    private val badgeShadowBlur = BlurMaskFilter(8f, BlurMaskFilter.Blur.NORMAL)
+    private val exactShineBroadBlur = BlurMaskFilter(6f, BlurMaskFilter.Blur.NORMAL)
+    private val exactShineCoreBlur = BlurMaskFilter(1.8f, BlurMaskFilter.Blur.NORMAL)
+    private val legacyShineBroadBlur = BlurMaskFilter(12f, BlurMaskFilter.Blur.NORMAL)
+    private val legacyShineCoreBlur = BlurMaskFilter(2.8f, BlurMaskFilter.Blur.NORMAL)
+    private val shineBroadPath = Path()
+    private val shineCorePath = Path()
+    private val badgePath = Path().apply {
+        moveTo(224f, 16f)
+        lineTo(396f, 104f)
+        lineTo(396f, 292f)
+        lineTo(252f, 380f)
+        lineTo(72f, 292f)
+        lineTo(72f, 104f)
+        close()
+    }
 
     @Synchronized
     fun render(project: StudioProject, frameIndex: Int, outputWidth: Int, outputHeight: Int): Bitmap {
-        val reference = Bitmap.createBitmap(REFERENCE_WIDTH, REFERENCE_HEIGHT, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(reference)
-        drawReference(canvas, project, frameIndex.coerceAtLeast(0), RendererRuntime.active)
-        if (outputWidth == REFERENCE_WIDTH && outputHeight == REFERENCE_HEIGHT) return reference
-
-        val output = Bitmap.createBitmap(outputWidth.coerceAtLeast(2), outputHeight.coerceAtLeast(2), Bitmap.Config.ARGB_8888)
-        Canvas(output).drawBitmap(
-            reference,
-            Rect(0, 0, reference.width, reference.height),
-            Rect(0, 0, output.width, output.height),
-            paint,
-        )
-        reference.recycle()
+        val width = outputWidth.coerceAtLeast(2)
+        val height = outputHeight.coerceAtLeast(2)
+        val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        if (width == REFERENCE_WIDTH && height == REFERENCE_HEIGHT) {
+            drawReference(canvas, project, frameIndex.coerceAtLeast(0), RendererRuntime.active)
+        } else {
+            // Render directly into the requested target instead of allocating a full
+            // 1920x1080 intermediate and a second scaled bitmap for every frame.
+            canvas.save()
+            canvas.scale(width / REFERENCE_WIDTH.toFloat(), height / REFERENCE_HEIGHT.toFloat())
+            drawReference(canvas, project, frameIndex.coerceAtLeast(0), RendererRuntime.active)
+            canvas.restore()
+        }
         return output
     }
 
@@ -82,7 +102,8 @@ class RibbonFrameRenderer {
         val positions = positionsForFrame(project, frame, spec)
         if (positions.isEmpty()) return
 
-        var bodyOrder = positions.keys.sorted()
+        val sortedIndices = positions.keys.sorted()
+        var bodyOrder = sortedIndices
         if (frame < spec.continuousStartFrame) {
             val active = bodyOrder.maxOrNull()
             if (active != null) bodyOrder = listOf(active) + bodyOrder.filter { it != active }
@@ -94,10 +115,10 @@ class RibbonFrameRenderer {
 
         drawOpeningCredits(canvas, project, frame, spec)
 
-        positions.keys.sorted().forEach { index ->
+        sortedIndices.forEach { index ->
             drawBadge(canvas, project, index, positions.getValue(index), frame, spec)
         }
-        positions.keys.sorted().forEach { index ->
+        sortedIndices.forEach { index ->
             if (project.cards[index].imageLayer.equals("front", ignoreCase = true)) {
                 drawFrontArtwork(canvas, project.cards[index], positions.getValue(index), spec)
             }
@@ -110,15 +131,20 @@ class RibbonFrameRenderer {
             val exact = exactScroll(spec, frame)
             val step = RibbonTimeline.continuousStepFrames(project, spec).coerceAtLeast(1)
             val scroll = exact ?: ((frame - spec.continuousStartFrame).toFloat() / step * spec.slotPitch)
-            project.cards.indices.forEach { index ->
-                val x = index * spec.slotPitch - scroll
-                if (x > -spec.slotPitch && x < REFERENCE_WIDTH + spec.slotPitch) result[index] = x
+            val firstVisible = ((scroll / spec.slotPitch).toInt() - 1).coerceAtLeast(0)
+            val lastVisible = (((scroll + REFERENCE_WIDTH) / spec.slotPitch).toInt() + 1)
+                .coerceAtMost(project.cards.lastIndex)
+            if (firstVisible <= lastVisible) {
+                for (index in firstVisible..lastVisible) {
+                    val x = index * spec.slotPitch - scroll
+                    if (x > -spec.slotPitch && x < REFERENCE_WIDTH + spec.slotPitch) result[index] = x
+                }
             }
             return result
         }
 
         var active = -1
-        project.cards.take(4).indices.forEach { index ->
+        for (index in 0 until min(4, project.cards.size)) {
             val start = RibbonTimeline.cardStartFrame(project, spec, index)
             if (frame >= start) active = index
         }
@@ -329,13 +355,18 @@ class RibbonFrameRenderer {
             if (local < OPENING_BADGE_FIRST_FRAME) return
             age = ((local.coerceAtMost(OPENING_BADGE_FINAL_FRAME) - OPENING_BADGE_FIRST_FRAME).toFloat() /
                 (OPENING_BADGE_FINAL_FRAME - OPENING_BADGE_FIRST_FRAME)) * BADGE_ENTRY_AGE
+
+            // Corrected hand-dissolve bundles provide a different measured affine
+            // path for each opening badge. Older Ribbon bundles keep their shared path.
+            val exactPrefix = "ribbon.open.$index"
+            val prefix = if (spec.track("$exactPrefix.m00", local) != null) exactPrefix else "ribbon.open"
             val values = floatArrayOf(
-                spec.track("ribbon.open.m00", local) ?: 1f,
-                spec.track("ribbon.open.m01", local) ?: 0f,
-                spec.track("ribbon.open.tx", local) ?: 0f,
-                spec.track("ribbon.open.m10", local) ?: 0f,
-                spec.track("ribbon.open.m11", local) ?: 1f,
-                spec.track("ribbon.open.ty", local) ?: 0f,
+                spec.track("$prefix.m00", local) ?: 1f,
+                spec.track("$prefix.m01", local) ?: 0f,
+                spec.track("$prefix.tx", local) ?: 0f,
+                spec.track("$prefix.m10", local) ?: 0f,
+                spec.track("$prefix.m11", local) ?: 1f,
+                spec.track("$prefix.ty", local) ?: 0f,
                 0f, 0f, 1f,
             )
             matrix.setValues(values)
@@ -350,33 +381,46 @@ class RibbonFrameRenderer {
         canvas.translate(cardX, 0f)
         canvas.concat(matrix)
         canvas.scale(stageScale, stageScale, spec.badgeCenterX, spec.badgeCenterY)
-        drawBadgeSource(canvas, card, age, spec)
+        drawBadgeSource(canvas, card, age, spec, index, local)
         canvas.restore()
     }
 
     private fun badgeDeemphasisScale(project: StudioProject, index: Int, globalFrame: Int, spec: RendererSpec): Float {
-        fun trigger(nextIndex: Int): Float {
+        fun legacyTrigger(nextIndex: Int): Float {
             val start = RibbonTimeline.cardStartFrame(project, spec, nextIndex)
             return if (nextIndex < 4) start + 99f else start.toFloat()
         }
+        fun measuredStart(stageIndex: Int): Float? = if (stageIndex in 0..3) {
+            spec.track("ribbon.open.$stageIndex.deemphasis.1.start", 0)
+        } else null
+
         var scale = 1f
         if (index + 1 < project.cards.size) {
-            val p = easeInOutCubic((globalFrame - trigger(index + 1)) / 60f)
+            val firstStart = measuredStart(index) ?: legacyTrigger(index + 1)
+            val p = easeInOutCubic((globalFrame - firstStart) / 60f)
             scale = lerp(1f, 272f / 298f, p)
         }
         if (index + 2 < project.cards.size) {
-            val p = easeInOutCubic((globalFrame - trigger(index + 2)) / 60f)
+            val secondStart = measuredStart(index + 1) ?: legacyTrigger(index + 2)
+            val p = easeInOutCubic((globalFrame - secondStart) / 60f)
             if (p > 0f) scale = lerp(272f / 298f, 248f / 298f, p)
         }
         return scale
     }
 
-    private fun drawBadgeSource(canvas: Canvas, card: StudioCard, age: Float, spec: RendererSpec) {
-        val path = badgePath(spec)
+    private fun drawBadgeSource(
+        canvas: Canvas,
+        card: StudioCard,
+        age: Float,
+        spec: RendererSpec,
+        index: Int,
+        local: Int,
+    ) {
+        val path = badgePath
 
         paint.style = Paint.Style.FILL
         paint.color = Color.argb(115, 0, 0, 0)
-        paint.maskFilter = BlurMaskFilter(8f, BlurMaskFilter.Blur.NORMAL)
+        paint.maskFilter = badgeShadowBlur
         canvas.save()
         canvas.translate(6f, 9f)
         canvas.drawPath(path, paint)
@@ -397,7 +441,7 @@ class RibbonFrameRenderer {
         paint.style = Paint.Style.FILL
 
         drawRibbonBadgeText(canvas, card, age, spec)
-        drawRibbonShine(canvas, age, path, spec)
+        drawRibbonShine(canvas, age, path, spec, index, local)
     }
 
     private fun drawRibbonBadgeText(canvas: Canvas, card: StudioCard, age: Float, spec: RendererSpec) {
@@ -429,7 +473,7 @@ class RibbonFrameRenderer {
             val y = item.second + textLandingOffset(age) - (1f - eased) * 112f
             val alpha = (255f * (progress * 1.75f).coerceIn(0f, 1f)).roundToInt()
             var size = item.third
-            textPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            textPaint.typeface = boldTypeface
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.textSize = size
             while (textPaint.measureText(text) > 264f && size > 18f) {
@@ -469,48 +513,71 @@ class RibbonFrameRenderer {
         else -> 0f
     }
 
-    private fun drawRibbonShine(canvas: Canvas, age: Float, badge: Path, spec: RendererSpec) {
-        val progress = (age - 2.18f) / 0.72f
-        if (progress <= 0f || progress >= 1f) return
-        val p = smoothstep(progress)
-        val topX = lerp(130f, 420f, p)
+    private fun drawRibbonShine(
+        canvas: Canvas,
+        age: Float,
+        badge: Path,
+        spec: RendererSpec,
+        index: Int,
+        local: Int,
+    ) {
+        val exactProgress = if (index < 4) spec.track("ribbon.open.$index.shine.progress", local) else null
+        val exactAlpha = if (index < 4) spec.track("ribbon.open.$index.shine.alpha", local) else null
+        val referenceLocked = exactProgress != null && exactAlpha != null
+        val correctedHandRenderer = referenceLocked || spec.tags.contains("badge-reference-lock-v2")
+
+        val progress: Float
+        val alpha: Float
+        if (referenceLocked) {
+            // These are the measured frame values from the reference. Do not pass them
+            // through smoothstep: that was the reason the old shine looked too silky.
+            progress = exactProgress!!.coerceIn(0f, 1f)
+            alpha = exactAlpha!!.coerceIn(0f, 1f)
+        } else if (correctedHandRenderer) {
+            // Later hand-dissolve badges use the corrected bundle's short shine clock.
+            // shineStartFrame is relative to the fall animation for those cards.
+            val shineClock = if (index < 4) local else local - spec.laterBadgeFallStartFrame
+            val raw = (shineClock - spec.shineStartFrame).toFloat() / spec.shineFrames.coerceAtLeast(1)
+            if (raw <= 0f || raw >= 1f) return
+            progress = raw.coerceIn(0f, 1f)
+            alpha = (1f - abs(progress * 2f - 1f)).coerceIn(0f, 1f)
+        } else {
+            // Preserve the legacy Ribbon fallback for bundles without exact shine data.
+            val raw = (age - 2.18f) / 0.72f
+            if (raw <= 0f || raw >= 1f) return
+            progress = smoothstep(raw)
+            alpha = 1f
+        }
+        if (alpha <= 0.001f) return
+
+        val topX = lerp(130f, 420f, progress)
         val bottomX = topX - 205f
+        val broadHalfWidth = if (correctedHandRenderer) 28f else 40f
+        val coreHalfWidth = if (correctedHandRenderer) 4f else 5f
 
         canvas.save()
         canvas.clipPath(badge)
-        val broad = Path().apply {
-            moveTo(topX - 40f, -80f)
-            lineTo(topX + 40f, -80f)
-            lineTo(bottomX + 40f, 500f)
-            lineTo(bottomX - 40f, 500f)
-            close()
-        }
-        paint.color = Color.argb(48, 255, 255, 255)
-        paint.maskFilter = BlurMaskFilter(12f, BlurMaskFilter.Blur.NORMAL)
-        canvas.drawPath(broad, paint)
+        shineBroadPath.reset()
+        shineBroadPath.moveTo(topX - broadHalfWidth, -80f)
+        shineBroadPath.lineTo(topX + broadHalfWidth, -80f)
+        shineBroadPath.lineTo(bottomX + broadHalfWidth, 500f)
+        shineBroadPath.lineTo(bottomX - broadHalfWidth, 500f)
+        shineBroadPath.close()
+        paint.color = Color.argb((48f * alpha).roundToInt().coerceIn(0, 255), 255, 255, 255)
+        paint.maskFilter = if (correctedHandRenderer) exactShineBroadBlur else legacyShineBroadBlur
+        canvas.drawPath(shineBroadPath, paint)
 
-        val core = Path().apply {
-            moveTo(topX - 5f, -80f)
-            lineTo(topX + 5f, -80f)
-            lineTo(bottomX + 5f, 500f)
-            lineTo(bottomX - 5f, 500f)
-            close()
-        }
-        paint.color = Color.argb(82, 255, 255, 255)
-        paint.maskFilter = BlurMaskFilter(2.8f, BlurMaskFilter.Blur.NORMAL)
-        canvas.drawPath(core, paint)
+        shineCorePath.reset()
+        shineCorePath.moveTo(topX - coreHalfWidth, -80f)
+        shineCorePath.lineTo(topX + coreHalfWidth, -80f)
+        shineCorePath.lineTo(bottomX + coreHalfWidth, 500f)
+        shineCorePath.lineTo(bottomX - coreHalfWidth, 500f)
+        shineCorePath.close()
+        paint.color = Color.argb(((if (correctedHandRenderer) 92f else 82f) * alpha).roundToInt().coerceIn(0, 255), 255, 255, 255)
+        paint.maskFilter = if (correctedHandRenderer) exactShineCoreBlur else legacyShineCoreBlur
+        canvas.drawPath(shineCorePath, paint)
         paint.maskFilter = null
         canvas.restore()
-    }
-
-    private fun badgePath(spec: RendererSpec): Path = Path().apply {
-        moveTo(224f, 16f)
-        lineTo(396f, 104f)
-        lineTo(396f, 292f)
-        lineTo(252f, 380f)
-        lineTo(72f, 292f)
-        lineTo(72f, 104f)
-        close()
     }
 
     private fun valueLines(value: String): List<String> {
@@ -739,7 +806,7 @@ class RibbonFrameRenderer {
         var size = preferredSize
         var lines: List<String>
         while (true) {
-            textPaint.typeface = Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
+            textPaint.typeface = if (bold) boldTypeface else regularTypeface
             textPaint.textSize = size
             lines = wrapText(normalized, box.width(), maxLines)
             val lineHeight = size * 1.12f
@@ -786,7 +853,7 @@ class RibbonFrameRenderer {
         bold: Boolean,
         lineHeight: Float,
     ) {
-        textPaint.typeface = Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
+        textPaint.typeface = if (bold) boldTypeface else regularTypeface
         textPaint.textSize = size
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.color = color
@@ -798,7 +865,7 @@ class RibbonFrameRenderer {
     }
 
     private fun drawCenteredText(canvas: Canvas, text: String, x: Float, y: Float, size: Float, color: Int, bold: Boolean) {
-        textPaint.typeface = Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
+        textPaint.typeface = if (bold) boldTypeface else regularTypeface
         textPaint.textSize = size
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.color = color
