@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,25 +50,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * Video-editor style preview. Artwork transforms stay local while the user gestures and are
- * committed to the project only once on Done, so autosave/metadata/export are never thrashed.
+ * CapCut-style direct object transform on the real rendered frame.
+ *
+ * Gesture changes stay in [draft]. The StudioProject is written only when Done / Apply onward is
+ * pressed, so autosave and metadata are never hammered by pointer-move events. Unlike the previous
+ * overlay editor, the preview itself is rendered from the draft project. This keeps badge layering,
+ * crop, artwork clipping and renderer-specific composition truthful while editing.
  */
 @Composable
 internal fun DirectPreviewPage(
@@ -87,20 +93,25 @@ internal fun DirectPreviewPage(
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var editingIndex by remember { mutableStateOf<Int?>(null) }
     var draft by remember { mutableStateOf<StudioCard?>(null) }
+    var showVerticalGuide by remember { mutableStateOf(false) }
+    var showHorizontalGuide by remember { mutableStateOf(false) }
 
     val editing = editingIndex != null && draft != null
-    val renderProject = remember(project, editingIndex) {
+    val renderProject = remember(project, editingIndex, draft) {
         val index = editingIndex
-        if (index == null || index !in project.cards.indices) {
+        val value = draft
+        if (index == null || value == null || index !in project.cards.indices) {
             project
         } else {
             val cards = project.cards.toMutableList()
-            cards[index] = cards[index].copy(image = "")
+            cards[index] = value
             project.copy(cards = cards)
         }
     }
 
     LaunchedEffect(renderProject, frame) {
+        // Coalesce very dense pointer events without delaying normal seeking/playback.
+        if (editing) delay(10)
         runCatching {
             withContext(Dispatchers.Default) { RendererBridge.render(renderProject, frame, 640, 360) }
         }.onSuccess { next ->
@@ -110,13 +121,6 @@ internal fun DirectPreviewPage(
     }
     DisposableEffect(Unit) {
         onDispose { previewBitmap?.takeIf { !it.isRecycled }?.recycle() }
-    }
-
-    val editBitmap = remember(editingIndex, draft?.image) {
-        draft?.image?.takeIf { it.isNotBlank() }?.let(::decodeDirectPreviewBitmap)
-    }
-    DisposableEffect(editBitmap) {
-        onDispose { editBitmap?.takeIf { !it.isRecycled }?.recycle() }
     }
 
     LaunchedEffect(metadata.frameCount) {
@@ -137,7 +141,24 @@ internal fun DirectPreviewPage(
         if (editingIndex != null && editingIndex !in project.cards.indices) {
             editingIndex = null
             draft = null
+            showVerticalGuide = false
+            showHorizontalGuide = false
         }
+    }
+
+    val imageInfo = remember(draft?.image) {
+        draft?.image?.takeIf { it.isNotBlank() }?.let(::readImageInfo)
+    }
+
+    fun startEdit(index: Int) {
+        val value = project.cards.getOrNull(index) ?: return
+        if (value.image.isBlank()) return
+        playing = false
+        editingIndex = index
+        draft = value
+        showVerticalGuide = false
+        showHorizontalGuide = false
+        onSelectedCardChange(index)
     }
 
     fun finishEdit(commit: Boolean, applyFromHere: Boolean = false) {
@@ -168,6 +189,8 @@ internal fun DirectPreviewPage(
         }
         editingIndex = null
         draft = null
+        showVerticalGuide = false
+        showHorizontalGuide = false
     }
 
     LazyColumn(
@@ -180,7 +203,7 @@ internal fun DirectPreviewPage(
                 Column(Modifier.weight(1f)) {
                     Text("Preview", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                     Text(
-                        if (editing) "Direct transform" else accuracyLabel,
+                        if (editing) "Object transform" else accuracyLabel,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (editing || accuracyExact) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                     )
@@ -208,15 +231,9 @@ internal fun DirectPreviewPage(
                         .pointerInput(project.cards, frame, editingIndex, draft?.id) {
                             if (editingIndex == null) {
                                 detectTapGestures { point ->
-                                    val fraction = if (size.width > 0) point.x / size.width.toFloat() else 0.5f
-                                    val index = directPreviewCardAt(project, frame, fraction)
-                                    val card = index?.let(project.cards::getOrNull)
-                                    if (index != null && card != null && card.image.isNotBlank()) {
-                                        playing = false
-                                        editingIndex = index
-                                        draft = card
-                                        onSelectedCardChange(index)
-                                    }
+                                    val xFraction = if (size.width > 0) point.x / size.width.toFloat() else 0.5f
+                                    val yFraction = if (size.height > 0) point.y / size.height.toFloat() else 0.5f
+                                    directPreviewCardAt(project, frame, xFraction, yFraction)?.let(::startEdit)
                                 }
                             } else {
                                 detectTransformGestures { _, pan, zoom, rotation ->
@@ -225,13 +242,23 @@ internal fun DirectPreviewPage(
                                     val refHeight = RendererRuntime.active.referenceHeight.coerceAtLeast(1).toFloat()
                                     val viewWidth = size.width.toFloat().coerceAtLeast(1f)
                                     val viewHeight = size.height.toFloat().coerceAtLeast(1f)
+
+                                    var nextX = current.imageX + pan.x / viewWidth * refWidth
+                                    var nextY = current.imageY + pan.y / viewHeight * refHeight
+                                    val snapDistance = 14.0
+                                    showVerticalGuide = abs(nextX) <= snapDistance
+                                    showHorizontalGuide = abs(nextY) <= snapDistance
+                                    if (showVerticalGuide) nextX = 0.0
+                                    if (showHorizontalGuide) nextY = 0.0
+
                                     var angle = current.imageRotation + rotation.toDouble()
                                     angle %= 360.0
                                     if (angle > 180.0) angle -= 360.0
                                     if (angle < -180.0) angle += 360.0
+
                                     draft = current.copy(
-                                        imageX = (current.imageX + pan.x / viewWidth * refWidth).coerceIn(-2400.0, 2400.0),
-                                        imageY = (current.imageY + pan.y / viewHeight * refHeight).coerceIn(-2400.0, 2400.0),
+                                        imageX = nextX.coerceIn(-2400.0, 2400.0),
+                                        imageY = nextY.coerceIn(-2400.0, 2400.0),
                                         imageScale = (current.imageScale * zoom.toDouble()).coerceIn(0.05, 12.0),
                                         imageRotation = angle,
                                     )
@@ -253,112 +280,133 @@ internal fun DirectPreviewPage(
                     val current = draft
                     if (index != null && current != null) {
                         val geometry = directPreviewGeometry(project, frame, index)
-                        if (geometry != null && editBitmap != null) {
-                            val left = maxWidth * (geometry.left / geometry.referenceWidth)
-                            val top = maxHeight * (geometry.top / geometry.referenceHeight)
-                            val width = maxWidth * (geometry.width / geometry.referenceWidth)
-                            val height = maxHeight * (geometry.height / geometry.referenceHeight)
+                        val bounds = geometry?.let { directArtworkBounds(current, it, imageInfo) }
 
+                        if (geometry != null && showVerticalGuide) {
+                            val centreX = maxWidth * ((geometry.left + geometry.width / 2f) / geometry.referenceWidth)
                             Box(
-                                modifier = Modifier
-                                    .offset(x = left, y = top)
-                                    .width(width)
-                                    .height(height)
-                                    .clipToBounds()
-                                    .border(2.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(4.dp)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Image(
-                                    bitmap = editBitmap.asImageBitmap(),
-                                    contentDescription = "Selected artwork",
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer {
-                                            scaleX = current.imageScale.toFloat()
-                                            scaleY = current.imageScale.toFloat()
-                                            translationX = current.imageX.toFloat() / geometry.width.coerceAtLeast(1f) * size.width
-                                            translationY = current.imageY.toFloat() / geometry.height.coerceAtLeast(1f) * size.height
-                                            rotationZ = current.imageRotation.toFloat()
-                                        },
-                                    contentScale = ContentScale.Crop,
-                                )
-                            }
-
-                            DirectHandle(
-                                alignment = Alignment.TopStart,
-                                x = left,
-                                y = top,
-                                signX = -1f,
-                                signY = -1f,
-                            ) { delta ->
-                                draft = current.copy(imageScale = (current.imageScale * (1.0 + delta)).coerceIn(0.05, 12.0))
-                            }
-                            DirectHandle(
-                                alignment = Alignment.TopEnd,
-                                x = left + width,
-                                y = top,
-                                signX = 1f,
-                                signY = -1f,
-                            ) { delta ->
-                                draft = current.copy(imageScale = (current.imageScale * (1.0 + delta)).coerceIn(0.05, 12.0))
-                            }
-                            DirectHandle(
-                                alignment = Alignment.BottomStart,
-                                x = left,
-                                y = top + height,
-                                signX = -1f,
-                                signY = 1f,
-                            ) { delta ->
-                                draft = current.copy(imageScale = (current.imageScale * (1.0 + delta)).coerceIn(0.05, 12.0))
-                            }
-                            DirectHandle(
-                                alignment = Alignment.BottomEnd,
-                                x = left + width,
-                                y = top + height,
-                                signX = 1f,
-                                signY = 1f,
-                            ) { delta ->
-                                draft = current.copy(imageScale = (current.imageScale * (1.0 + delta)).coerceIn(0.05, 12.0))
-                            }
+                                Modifier
+                                    .offset(x = centreX - 0.5.dp)
+                                    .width(1.dp)
+                                    .fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)),
+                            )
+                        }
+                        if (geometry != null && showHorizontalGuide) {
+                            val centreY = maxHeight * ((geometry.top + geometry.height / 2f) / geometry.referenceHeight)
+                            Box(
+                                Modifier
+                                    .offset(y = centreY - 0.5.dp)
+                                    .height(1.dp)
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)),
+                            )
                         }
 
-                        Column(
-                            modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = { finishEdit(true) }) { Text("Done") }
-                                OutlinedButton(onClick = { finishEdit(false) }) { Text("Cancel") }
-                                OutlinedButton(onClick = {
-                                draft = current.copy(
-                                    imageX = 0.0,
-                                    imageY = 0.0,
-                                    imageScale = 1.0,
-                                    imageRotation = 0.0,
-                                    imageCropLeft = 0.0,
-                                    imageCropTop = 0.0,
-                                    imageCropRight = 0.0,
-                                    imageCropBottom = 0.0,
-                                )
-                                }) { Text("Reset") }
-                            }
-                            FilledTonalButton(
-                                enabled = index < project.cards.lastIndex,
-                                onClick = { finishEdit(true, applyFromHere = true) },
-                            ) {
-                                Text("Apply from card ${index + 1} onward")
-                            }
+                        if (bounds != null) {
+                            val left = maxWidth * (bounds.left / bounds.referenceWidth)
+                            val top = maxHeight * (bounds.top / bounds.referenceHeight)
+                            val width = maxWidth * (bounds.width / bounds.referenceWidth)
+                            val height = maxHeight * (bounds.height / bounds.referenceHeight)
+
+                            TransformSelectionBox(
+                                left = left,
+                                top = top,
+                                width = width,
+                                height = height,
+                                rotation = current.imageRotation.toFloat(),
+                                onScaleFactor = { factor ->
+                                    val latest = draft ?: return@TransformSelectionBox
+                                    draft = latest.copy(
+                                        imageScale = (latest.imageScale * factor).coerceIn(0.05, 12.0),
+                                    )
+                                },
+                                onRotationDelta = { delta ->
+                                    val latest = draft ?: return@TransformSelectionBox
+                                    var angle = (latest.imageRotation + delta) % 360.0
+                                    if (angle > 180.0) angle -= 360.0
+                                    if (angle < -180.0) angle += 360.0
+                                    draft = latest.copy(imageRotation = angle)
+                                },
+                            )
                         }
                     }
                 }
             }
             Text(
-                if (editing) "Drag to move · pinch to resize · twist to rotate · Apply from here copies this transform to every following card"
-                else "Tap artwork directly in the video to transform it",
+                if (editing) "Drag the object · pinch to resize · twist to rotate · use the corner handles for precise scaling"
+                else "Tap artwork directly in the video to select it",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        if (editing) {
+            item {
+                val index = editingIndex ?: 0
+                val current = draft ?: project.cards.getOrNull(index) ?: StudioCard()
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Card ${index + 1}", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "X ${current.imageX.roundToInt()} · Y ${current.imageY.roundToInt()} · ${"%.2f".format(current.imageScale)}× · ${current.imageRotation.roundToInt()}°",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Button(onClick = { finishEdit(true) }) { Text("Done") }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(onClick = { finishEdit(false) }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                            OutlinedButton(
+                                onClick = {
+                                    draft = current.copy(
+                                        imageX = 0.0,
+                                        imageY = 0.0,
+                                        imageScale = 1.0,
+                                        imageRotation = 0.0,
+                                        imageCropLeft = 0.0,
+                                        imageCropTop = 0.0,
+                                        imageCropRight = 0.0,
+                                        imageCropBottom = 0.0,
+                                    )
+                                    showVerticalGuide = true
+                                    showHorizontalGuide = true
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Reset") }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = current.imageLayer != "front",
+                                onClick = { draft = current.copy(imageLayer = "behind") },
+                                label = { Text("Behind badge") },
+                            )
+                            FilterChip(
+                                selected = current.imageLayer == "front",
+                                onClick = { draft = current.copy(imageLayer = "front") },
+                                label = { Text("In front") },
+                            )
+                        }
+
+                        FilledTonalButton(
+                            enabled = index < project.cards.lastIndex,
+                            onClick = { finishEdit(true, applyFromHere = true) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Apply from card ${index + 1} onward")
+                        }
+                    }
+                }
+            }
         }
 
         item {
@@ -422,6 +470,17 @@ private data class DirectPreviewGeometry(
     val referenceHeight: Float,
 )
 
+private data class DirectImageInfo(val width: Int, val height: Int)
+
+private data class DirectArtworkBounds(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+    val referenceWidth: Float,
+    val referenceHeight: Float,
+)
+
 private fun directPreviewGeometry(project: StudioProject, projectFrame: Int, index: Int): DirectPreviewGeometry? {
     if (index !in project.cards.indices) return null
     val spec = RendererRuntime.active
@@ -442,21 +501,55 @@ private fun directPreviewGeometry(project: StudioProject, projectFrame: Int, ind
     return DirectPreviewGeometry(left, 0f, width, height, refWidth, refHeight)
 }
 
-private fun directPreviewCardAt(project: StudioProject, projectFrame: Int, xFraction: Float): Int? {
+private fun directArtworkBounds(
+    card: StudioCard,
+    geometry: DirectPreviewGeometry,
+    imageInfo: DirectImageInfo?,
+): DirectArtworkBounds {
+    val sourceWidth = imageInfo?.width?.toFloat()?.coerceAtLeast(1f) ?: geometry.width
+    val sourceHeight = imageInfo?.height?.toFloat()?.coerceAtLeast(1f) ?: geometry.height
+    val cropWidth = sourceWidth * (1.0 - card.imageCropLeft.coerceIn(0.0, 0.95) - card.imageCropRight.coerceIn(0.0, 0.95)).coerceAtLeast(0.01).toFloat()
+    val cropHeight = sourceHeight * (1.0 - card.imageCropTop.coerceIn(0.0, 0.95) - card.imageCropBottom.coerceIn(0.0, 0.95)).coerceAtLeast(0.01).toFloat()
+    val coverScale = max(geometry.width / cropWidth.coerceAtLeast(1f), geometry.height / cropHeight.coerceAtLeast(1f))
+    val width = cropWidth * coverScale * card.imageScale.coerceIn(0.05, 12.0).toFloat()
+    val height = cropHeight * coverScale * card.imageScale.coerceIn(0.05, 12.0).toFloat()
+    val centreX = geometry.left + geometry.width / 2f + card.imageX.toFloat()
+    val centreY = geometry.top + geometry.height / 2f + card.imageY.toFloat()
+    return DirectArtworkBounds(
+        left = centreX - width / 2f,
+        top = centreY - height / 2f,
+        width = width,
+        height = height,
+        referenceWidth = geometry.referenceWidth,
+        referenceHeight = geometry.referenceHeight,
+    )
+}
+
+private fun directPreviewCardAt(
+    project: StudioProject,
+    projectFrame: Int,
+    xFraction: Float,
+    yFraction: Float,
+): Int? {
     if (project.cards.isEmpty()) return null
     val spec = RendererRuntime.active
     val rendererFrame = directRendererFrame(project, projectFrame, spec) ?: return null
     val refWidth = spec.referenceWidth.coerceAtLeast(1).toFloat()
+    val refHeight = spec.referenceHeight.coerceAtLeast(1).toFloat()
     val x = xFraction.coerceIn(0f, 1f) * refWidth
+    val y = yFraction.coerceIn(0f, 1f) * refHeight
+
     val visible = project.cards.indices.mapNotNull { index ->
-        directSlotX(project, rendererFrame, index, spec)?.let { index to it }
+        val geometry = directPreviewGeometry(project, projectFrame, index) ?: return@mapNotNull null
+        index to geometry
     }
-    visible.firstOrNull { (_, slotX) ->
-        val left = slotX + spec.bodyInset
-        x in left..(left + spec.bodyWidth)
+    visible.firstOrNull { (_, geometry) ->
+        x in geometry.left..(geometry.left + geometry.width) &&
+            y in geometry.top..(geometry.top + geometry.height)
     }?.let { return it.first }
-    return visible.minByOrNull { (_, slotX) ->
-        abs((slotX + spec.bodyInset + spec.bodyWidth / 2f) - x)
+
+    return visible.minByOrNull { (_, geometry) ->
+        abs((geometry.left + geometry.width / 2f) - x) + abs((geometry.top + geometry.height / 2f) - y)
     }?.first
 }
 
@@ -499,39 +592,80 @@ private fun directSlotX(project: StudioProject, frame: Int, index: Int, spec: Re
 }
 
 @Composable
-private fun BoxScope.DirectHandle(
+private fun TransformSelectionBox(
+    left: Dp,
+    top: Dp,
+    width: Dp,
+    height: Dp,
+    rotation: Float,
+    onScaleFactor: (Double) -> Unit,
+    onRotationDelta: (Double) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .offset(x = left, y = top)
+            .width(width.coerceAtLeast(24.dp))
+            .height(height.coerceAtLeast(24.dp))
+            .graphicsLayer { rotationZ = rotation }
+            .border(1.5.dp, Color.White, RoundedCornerShape(2.dp)),
+    ) {
+        TransformScaleHandle(Alignment.TopStart, -1f, -1f, onScaleFactor)
+        TransformScaleHandle(Alignment.TopEnd, 1f, -1f, onScaleFactor)
+        TransformScaleHandle(Alignment.BottomStart, -1f, 1f, onScaleFactor)
+        TransformScaleHandle(Alignment.BottomEnd, 1f, 1f, onScaleFactor)
+        TransformRotationHandle(onRotationDelta)
+    }
+}
+
+@Composable
+private fun BoxScope.TransformScaleHandle(
     alignment: Alignment,
-    x: androidx.compose.ui.unit.Dp,
-    y: androidx.compose.ui.unit.Dp,
     signX: Float,
     signY: Float,
-    onScaleDelta: (Double) -> Unit,
+    onScaleFactor: (Double) -> Unit,
 ) {
     Box(
         Modifier
-            .offset(x = x - 15.dp, y = y - 15.dp)
-            .size(30.dp)
-            .background(MaterialTheme.colorScheme.primary, CircleShape)
-            .border(2.dp, Color.White, CircleShape)
+            .align(alignment)
+            .size(26.dp)
+            .background(Color.White, CircleShape)
+            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
             .pointerInput(alignment, signX, signY) {
-                detectDragGestures { _, dragAmount ->
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
                     val signedPixels = dragAmount.x * signX + dragAmount.y * signY
-                    onScaleDelta((signedPixels / 240f).toDouble().coerceIn(-0.35, 0.35))
+                    val factor = (1.0 + signedPixels / 180.0).coerceIn(0.72, 1.28)
+                    onScaleFactor(factor)
                 }
             },
     )
 }
 
-private fun decodeDirectPreviewBitmap(path: String): Bitmap? = runCatching {
+@Composable
+private fun BoxScope.TransformRotationHandle(onRotationDelta: (Double) -> Unit) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 2.dp)
+            .size(28.dp)
+            .background(MaterialTheme.colorScheme.primary, CircleShape)
+            .border(2.dp, Color.White, CircleShape)
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    onRotationDelta((dragAmount.x * 0.65f).toDouble())
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("↻", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+    }
+}
+
+private fun readImageInfo(path: String): DirectImageInfo? = runCatching {
     val file = File(path)
     if (!file.isFile) return@runCatching null
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(path, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
-    var sample = 1
-    while (bounds.outWidth / sample > 1280 || bounds.outHeight / sample > 1280) sample *= 2
-    BitmapFactory.decodeFile(path, BitmapFactory.Options().apply {
-        inSampleSize = sample.coerceAtLeast(1)
-        inPreferredConfig = Bitmap.Config.ARGB_8888
-    })
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) null else DirectImageInfo(bounds.outWidth, bounds.outHeight)
 }.getOrNull()
