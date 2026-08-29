@@ -29,8 +29,12 @@ jobs:
         with:
           gradle-version: '8.14.3'
 
-      - name: Apply exact-v2 source patch
-        run: python3 tools/apply_relationships_precision_support.py
+      - name: Apply exact-v2 source patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/run_relationships_precision_patch.py
+          python3 tools/apply_relationships_precision_extras.py
 
       - name: Verify source diff
         run: git diff --check
@@ -48,13 +52,17 @@ jobs:
           set -euo pipefail
           rm .github/workflows/apply-relationships-precision-support.yml
           rm tools/apply_relationships_precision_support.py
+          rm tools/run_relationships_precision_patch.py
+          rm tools/apply_relationships_precision_extras.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt \
                   android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt \
                   android/app/src/main/java/io/github/retrofrost/cts/android/RelationshipsPrecisionFrameRenderer.kt \
                   .github/workflows/apply-relationships-precision-support.yml \
-                  tools/apply_relationships_precision_support.py
+                  tools/apply_relationships_precision_support.py \
+                  tools/run_relationships_precision_patch.py \
+                  tools/apply_relationships_precision_extras.py
           git commit -m 'renderer: complete source-exact relationships controls'
           git push origin HEAD:fork/2.0.7-renderer-bundles
 
