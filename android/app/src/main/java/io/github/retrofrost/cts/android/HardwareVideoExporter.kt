@@ -11,6 +11,7 @@ import android.net.Uri
 import android.opengl.EGL14
 import android.opengl.EGLExt
 import android.opengl.GLES20
+import android.opengl.GLUtils
 import android.os.Build
 import android.view.Surface
 import java.io.File
@@ -176,9 +177,13 @@ class HardwareVideoExporter(
 
             repeat(totalFrames) { frame ->
                 checkCancelled()
-                val rgba = RendererBridge.renderRgba(project, frame, width, height)
-                require(rgba.size == width * height * 4) { "Renderer returned an invalid RGBA frame." }
-                egl.draw(rgba, frame * 1_000_000_000L / fps)
+                val bitmap = RendererBridge.render(project, frame, width, height)
+                try {
+                    require(bitmap.width == width && bitmap.height == height) { "Renderer returned an invalid frame size." }
+                    egl.draw(bitmap, frame * 1_000_000_000L / fps)
+                } finally {
+                    bitmap.recycle()
+                }
                 val drain = drainCodec(codec, muxer, info, false, track, muxerStarted)
                 track = drain.track
                 muxerStarted = drain.started
@@ -312,6 +317,9 @@ private class CodecInputSurface(
     private val eglSurface: android.opengl.EGLSurface
     private val program: Int
     private val texture: Int
+    private val positionLocation: Int
+    private val texCoordLocation: Int
+    private val textureUniformLocation: Int
     private val vertices: FloatBuffer = ByteBuffer.allocateDirect(16 * 4)
         .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
             put(
@@ -368,34 +376,29 @@ private class CodecInputSurface(
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexImage2D(
+            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0,
+            GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null,
+        )
+        positionLocation = GLES20.glGetAttribLocation(program, "aPosition")
+        texCoordLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
+        textureUniformLocation = GLES20.glGetUniformLocation(program, "uTexture")
         glRenderer = GLES20.glGetString(GLES20.GL_RENDERER) ?: "Phone GPU"
     }
 
-    fun draw(rgba: ByteArray, presentationNanos: Long) {
+    fun draw(bitmap: android.graphics.Bitmap, presentationNanos: Long) {
         GLES20.glViewport(0, 0, width, height)
         GLES20.glUseProgram(program)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
         GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)
-        GLES20.glTexImage2D(
-            GLES20.GL_TEXTURE_2D,
-            0,
-            GLES20.GL_RGBA,
-            width,
-            height,
-            0,
-            GLES20.GL_RGBA,
-            GLES20.GL_UNSIGNED_BYTE,
-            ByteBuffer.wrap(rgba),
-        )
-        val position = GLES20.glGetAttribLocation(program, "aPosition")
-        val texCoord = GLES20.glGetAttribLocation(program, "aTexCoord")
+        GLUtils.texSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, bitmap)
         vertices.position(0)
-        GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 16, vertices)
-        GLES20.glEnableVertexAttribArray(position)
+        GLES20.glVertexAttribPointer(positionLocation, 2, GLES20.GL_FLOAT, false, 16, vertices)
+        GLES20.glEnableVertexAttribArray(positionLocation)
         vertices.position(2)
-        GLES20.glVertexAttribPointer(texCoord, 2, GLES20.GL_FLOAT, false, 16, vertices)
-        GLES20.glEnableVertexAttribArray(texCoord)
-        GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uTexture"), 0)
+        GLES20.glVertexAttribPointer(texCoordLocation, 2, GLES20.GL_FLOAT, false, 16, vertices)
+        GLES20.glEnableVertexAttribArray(texCoordLocation)
+        GLES20.glUniform1i(textureUniformLocation, 0)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         EGLExt.eglPresentationTimeANDROID(display, eglSurface, presentationNanos)
         check(EGL14.eglSwapBuffers(display, eglSurface)) { "The GPU encoder surface stopped responding." }
