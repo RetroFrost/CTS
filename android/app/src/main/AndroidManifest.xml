@@ -25,14 +25,48 @@
 
         <activity
             android:name=".RendererManagerActivity"
+            android:exported="false"
+            android:label="Renderer library" />
+
+        <activity
+            android:name=".RendererImportActivity"
+            android:excludeFromRecents="true"
             android:exported="true"
-            android:label="Import Cubical Compare renderer">
+            android:label="Import Cubical Compare renderer"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.CubicalCompare.RendererDialog">
+
+            <!-- Preferred MIME for renderers exported by Cubical Compare. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" android:mimeType="application/vnd.cubicalcompare.renderer" />
+                <data android:scheme="file" android:mimeType="application/vnd.cubicalcompare.renderer" />
+            </intent-filter>
+
+            <!-- Most Android file providers expose unknown .renderer files as octet-stream. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" android:mimeType="application/octet-stream" />
+            </intent-filter>
+
+            <!-- Direct file URI fallback; runtime preflight still verifies CCRNDR magic/checksum. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="file" android:pathPattern=".*\\.renderer" />
+            </intent-filter>
+
+            <!-- Allow Share -> Cubical Compare for .renderer packages. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.cubicalcompare.renderer" />
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
 
