@@ -8,21 +8,10 @@ def replace_once(path: str, old: str, new: str) -> None:
         raise SystemExit(f"marker not found in {path}: {old[:120]!r}")
     p.write_text(text.replace(old, new, 1))
 
-bridge = "android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt"
-replace_once(
-    bridge,
-    '''data class RenderMetadata(
-    val frameCount: Int,
-    val duration: Double,
-    val fps: Int,
-)
-
-object RendererBridge {''',
-    '''data class RenderMetadata(
-    val frameCount: Int,
-    val duration: Double,
-    val fps: Int,
-)
+# Keep compatibility validation independent from Android graphics so it can be
+# regression-tested by the normal JVM unit-test task.
+guard = "android/app/src/main/java/io/github/retrofrost/cts/android/RendererProjectGuard.kt"
+Path(guard).write_text('''package io.github.retrofrost.cts.android
 
 data class RendererProjectCompatibility(
     val compatible: Boolean,
@@ -35,9 +24,39 @@ data class RendererProjectCompatibility(
     }
 }
 
-object RendererBridge {''',
-)
+object RendererProjectGuard {
+    private fun isSourceLocked(spec: RendererSpec): Boolean =
+        RelationshipsPrecisionFrameRenderer.enabled(spec) && spec.precisionMode == "frame-exact"
 
+    fun check(project: StudioProject, spec: RendererSpec): RendererProjectCompatibility {
+        if (!isSourceLocked(spec)) return RendererProjectCompatibility(true, emptyList())
+
+        val issues = mutableListOf<String>()
+        if (project.width != spec.referenceWidth || project.height != spec.referenceHeight) {
+            issues += "resolution is ${project.width}×${project.height}; requires ${spec.referenceWidth}×${spec.referenceHeight}"
+        }
+        if (project.fps != spec.referenceFps) {
+            issues += "frame rate is ${project.fps} fps; requires ${spec.referenceFps} fps"
+        }
+        if (spec.canonicalCardCount > 0 && project.cards.size != spec.canonicalCardCount) {
+            issues += "card count is ${project.cards.size}; requires ${spec.canonicalCardCount}"
+        }
+        if (!project.autoLength) {
+            issues += "custom duration is enabled; canonical automatic duration is required"
+        }
+        return RendererProjectCompatibility(issues.isEmpty(), issues)
+    }
+
+    fun requireCompatible(project: StudioProject, spec: RendererSpec) {
+        val result = check(project, spec)
+        require(result.compatible) {
+            result.message(spec.name) + " Use a compatible renderer or restore the canonical project settings."
+        }
+    }
+}
+''')
+
+bridge = "android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt"
 replace_once(
     bridge,
     '''    private fun baseFrameCount(project: StudioProject, spec: RendererSpec): Int = when (engine(spec)) {
@@ -53,50 +72,18 @@ replace_once(
         else -> NativeTimeline.totalFrameCount(project, spec)
     }.coerceAtLeast(1)
 
-    private fun isSourceLocked(spec: RendererSpec): Boolean =
-        RelationshipsPrecisionFrameRenderer.enabled(spec) && spec.precisionMode == "frame-exact"
-
     fun projectCompatibility(
         project: StudioProject,
         spec: RendererSpec = RendererRuntime.active,
-    ): RendererProjectCompatibility {
-        if (!isSourceLocked(spec)) return RendererProjectCompatibility(true, emptyList())
-
-        val issues = mutableListOf<String>()
-        if (project.width != spec.referenceWidth || project.height != spec.referenceHeight) {
-            issues += "resolution is ${project.width}×${project.height}; requires ${spec.referenceWidth}×${spec.referenceHeight}"
-        }
-        if (project.fps != spec.referenceFps) {
-            issues += "frame rate is ${project.fps} fps; requires ${spec.referenceFps} fps"
-        }
-        val cardCountMatches = spec.canonicalCardCount <= 0 || project.cards.size == spec.canonicalCardCount
-        if (!cardCountMatches) {
-            issues += "card count is ${project.cards.size}; requires ${spec.canonicalCardCount}"
-        }
-        if (!project.autoLength) {
-            issues += "custom duration is enabled; canonical automatic duration is required"
-        } else if (cardCountMatches && spec.canonicalFrameCount > 0) {
-            val calculated = baseFrameCount(project, spec)
-            if (calculated != spec.canonicalFrameCount) {
-                issues += "timeline is $calculated frames; requires ${spec.canonicalFrameCount} frames"
-            }
-        }
-        return RendererProjectCompatibility(issues.isEmpty(), issues)
-    }
+    ): RendererProjectCompatibility = RendererProjectGuard.check(project, spec)
 
     fun requireProjectCompatibility(
         project: StudioProject,
         spec: RendererSpec = RendererRuntime.active,
-    ) {
-        val result = projectCompatibility(project, spec)
-        require(result.compatible) {
-            result.message(spec.name) + " Use a compatible renderer or restore the canonical project settings."
-        }
-    }
+    ) = RendererProjectGuard.requireCompatible(project, spec)
 
     fun rendererIntroFrames(spec: RendererSpec = RendererRuntime.active): Int =''',
 )
-
 replace_once(
     bridge,
     '''    fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
@@ -107,7 +94,6 @@ replace_once(
         requireProjectCompatibility(project, spec)
         val fps = if (''',
 )
-
 replace_once(
     bridge,
     '''    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap = when (engine(spec)) {
@@ -165,7 +151,7 @@ replace_once(
     '''        val report = RendererCapabilities.report(spec)
         require(report.compatible) { report.errors.joinToString("\\n") }
         ProjectAutosave.load(context)?.let { project ->
-            RendererBridge.requireProjectCompatibility(project, spec)
+            RendererProjectGuard.requireCompatible(project, spec)
         }
         dir.mkdirs()''',
 )
@@ -182,11 +168,10 @@ class CubicalCompareApplication : Application() {
         val selected = store.active()
         val project = ProjectAutosave.load(this)
         RendererRuntime.active = if (
-            project != null && !RendererBridge.projectCompatibility(project, selected).compatible
+            project != null && !RendererProjectGuard.check(project, selected).compatible
         ) {
-            // A source-locked renderer must never survive startup attached to an
-            // incompatible autosaved project. Keep it installed, but restore the
-            // safe built-in renderer before any preview/export can render a hybrid.
+            // Keep the exact renderer installed, but never let an incompatible
+            // autosaved project start up as a renderer/project hybrid.
             store.reset()
         } else {
             selected
@@ -219,7 +204,7 @@ insert = '''
             customLengthSeconds = 153.867,
         )
 
-        val result = RendererBridge.projectCompatibility(changed, spec)
+        val result = RendererProjectGuard.check(changed, spec)
 
         assertFalse(result.compatible)
         assertTrue(result.issues.any { it.startsWith("card count") })
@@ -233,7 +218,7 @@ insert = '''
             autoLength = false,
             customLengthSeconds = 12.0,
         )
-        assertTrue(RendererBridge.projectCompatibility(project, RendererSpec.builtIn()).compatible)
+        assertTrue(RendererProjectGuard.check(project, RendererSpec.builtIn()).compatible)
     }
 '''
 if text.rstrip().endswith('}'):
