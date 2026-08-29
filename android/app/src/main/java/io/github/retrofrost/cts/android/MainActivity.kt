@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -109,6 +110,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.abs
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -178,6 +181,7 @@ private fun CubicalCompareApp() {
     var project by remember { mutableStateOf(ProjectAutosave.load(context) ?: StudioProject()) }
     var page by remember { mutableStateOf(StudioPage.CARDS) }
     var selectedCard by remember { mutableIntStateOf(0) }
+    var transformRequestCardId by remember { mutableStateOf<String?>(null) }
     var metadata by remember { mutableStateOf(RenderMetadata(1, 0.0, 60)) }
     var metadataLoading by remember { mutableStateOf(true) }
     var saveState by remember { mutableStateOf("Saved") }
@@ -343,12 +347,28 @@ private fun CubicalCompareApp() {
                 StudioPage.CARDS -> CardsPage(
                     project = project,
                     selectedCard = selectedCard,
+                    startTransformCardId = transformRequestCardId,
+                    onTransformRequestConsumed = { transformRequestCardId = null },
                     onProjectChange = ::applyProject,
                     onSelectedCardChange = { selectedCard = it },
                     onChooseImage = { chooseImage.launch(arrayOf("image/*")) },
                     modifier = Modifier.padding(padding),
                 )
-                StudioPage.PREVIEW -> PreviewPage(project, metadata, metadataLoading, accuracy, Modifier.padding(padding))
+                StudioPage.PREVIEW -> PreviewPage(
+                    project = project,
+                    metadata = metadata,
+                    metadataLoading = metadataLoading,
+                    accuracy = accuracy,
+                    onEditArtwork = { index ->
+                        val target = project.cards.getOrNull(index)
+                        if (target != null) {
+                            selectedCard = index
+                            transformRequestCardId = target.id
+                            page = StudioPage.CARDS
+                        }
+                    },
+                    modifier = Modifier.padding(padding),
+                )
                 StudioPage.PROJECT -> ProjectPage(
                     project = project,
                     metadata = metadata,
@@ -388,6 +408,8 @@ private fun CubicalCompareApp() {
 private fun CardsPage(
     project: StudioProject,
     selectedCard: Int,
+    startTransformCardId: String?,
+    onTransformRequestConsumed: () -> Unit,
     onProjectChange: (StudioProject) -> Unit,
     onSelectedCardChange: (Int) -> Unit,
     onChooseImage: () -> Unit,
@@ -459,10 +481,16 @@ private fun CardsPage(
                     }
                     if (card.image.isBlank()) {
                         Text("No artwork selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (startTransformCardId == card.id) onTransformRequestConsumed()
                     } else {
-                        TransformArtworkEditor(card = card) { transformed ->
-                            updateCard(project, selectedCard, transformed, onProjectChange)
-                        }
+                        TransformArtworkEditor(
+                            card = card,
+                            startEditing = startTransformCardId == card.id,
+                            onStartConsumed = onTransformRequestConsumed,
+                            onCommit = { transformed ->
+                                updateCard(project, selectedCard, transformed, onProjectChange)
+                            },
+                        )
                         Text(card.image.substringAfterLast('/'), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
                     }
                 }
@@ -503,7 +531,12 @@ private fun CardsPage(
 }
 
 @Composable
-private fun TransformArtworkEditor(card: StudioCard, onCommit: (StudioCard) -> Unit) {
+private fun TransformArtworkEditor(
+    card: StudioCard,
+    startEditing: Boolean = false,
+    onStartConsumed: () -> Unit = {},
+    onCommit: (StudioCard) -> Unit,
+) {
     val bitmap = remember(card.image) { decodePreviewBitmap(card.image) }
     DisposableEffect(bitmap) {
         onDispose { bitmap?.takeIf { !it.isRecycled }?.recycle() }
@@ -517,6 +550,14 @@ private fun TransformArtworkEditor(card: StudioCard, onCommit: (StudioCard) -> U
 
     LaunchedEffect(card) {
         if (!editing) draft = card
+    }
+    LaunchedEffect(startEditing, card.id) {
+        if (startEditing) {
+            draft = card
+            editing = true
+            fineTune = false
+            onStartConsumed()
+        }
     }
 
     Card(
@@ -672,6 +713,7 @@ private fun PreviewPage(
     metadata: RenderMetadata,
     metadataLoading: Boolean,
     accuracy: AccuracyState,
+    onEditArtwork: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var frame by remember { mutableIntStateOf(0) }
@@ -718,11 +760,29 @@ private fun PreviewPage(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.Black),
             ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(project.cards, frame, RendererRuntime.active.id) {
+                            detectTapGestures { point ->
+                                val fraction = if (size.width > 0) point.x / size.width.toFloat() else 0.5f
+                                previewCardAt(project, frame, fraction)?.let { index ->
+                                    playing = false
+                                    onEditArtwork(index)
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
                     bitmap?.let { Image(it.asImageBitmap(), "Video preview", Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
                         ?: Text("Rendering…", color = Color.White)
                 }
             }
+            Text(
+                "Tap a card in the preview to transform its artwork",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         item {
             Text("Frame ${frame + 1} of ${metadata.frameCount}", fontWeight = FontWeight.Medium)
@@ -753,6 +813,56 @@ private fun PreviewPage(
             }
         }
     }
+}
+
+private fun previewCardAt(project: StudioProject, projectFrame: Int, xFraction: Float): Int? {
+    if (project.cards.isEmpty()) return null
+    val spec = RendererRuntime.active
+    var frame = projectFrame.coerceAtLeast(0)
+    when (project.introMode) {
+        IntroMode.RENDERER -> Unit
+        IntroMode.DISABLED -> frame += RendererBridge.rendererIntroFrames(spec)
+        IntroMode.CUSTOM -> {
+            if (project.introVideo.isBlank()) return null
+            val customFrames = RendererBridge.customIntroFrames(project)
+            if (frame < customFrames) return null
+            frame = frame - customFrames + RendererBridge.rendererIntroFrames(spec)
+        }
+    }
+
+    if (!RelationshipsTimeline.isRelationships(spec)) {
+        return project.cards.indices.minByOrNull { index ->
+            abs(RelationshipsTimeline.cardEntryFrame(project.cards.size, index, spec) - frame)
+        }
+    }
+
+    val x = xFraction.coerceIn(0f, 1f) * spec.referenceWidth.coerceAtLeast(1)
+    val positions = mutableListOf<Pair<Int, Float>>()
+    if (frame < spec.continuousStartFrame) {
+        val starts = spec.openingStarts
+        for (index in 0 until min(4, project.cards.size)) {
+            val start = starts.getOrElse(index) { starts.lastOrNull() ?: 384 + index * 140 }
+            if (frame >= start) positions += index to index * spec.slotPitch
+        }
+    } else {
+        val segment = (frame - spec.continuousStartFrame) / 4096
+        val scroll = spec.track("relationships.scroll.$segment", frame)
+            ?: ((frame - spec.continuousStartFrame) * 2f)
+        project.cards.indices.forEach { index ->
+            val slotX = index * spec.slotPitch - scroll
+            if (slotX > -spec.slotPitch && slotX < spec.referenceWidth + spec.slotPitch) {
+                positions += index to slotX
+            }
+        }
+    }
+    if (positions.isEmpty()) return null
+    positions.firstOrNull { (_, slotX) ->
+        val left = slotX + spec.bodyInset
+        x in left..(left + spec.bodyWidth)
+    }?.let { return it.first }
+    return positions.minByOrNull { (_, slotX) ->
+        abs((slotX + spec.bodyInset + spec.bodyWidth / 2f) - x)
+    }?.first
 }
 
 @Composable
