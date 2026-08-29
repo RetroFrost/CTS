@@ -73,9 +73,24 @@ class ExportService : Service() {
         job = scope.launch {
             try {
                 val project = StudioProject.fromJson(projectJson)
+                val spec = RendererRuntime.active
+                val exportProject = if (
+                    RelationshipsPrecisionFrameRenderer.enabled(spec) &&
+                    spec.precisionMode == "frame-exact"
+                ) {
+                    // A source-exact renderer has one canonical raster and timeline.
+                    // Never silently rescale it or change its cadence from project settings.
+                    project.copy(
+                        width = spec.referenceWidth,
+                        height = spec.referenceHeight,
+                        fps = spec.referenceFps,
+                    )
+                } else {
+                    project
+                }
                 HardwareVideoExporter(
                     context = applicationContext,
-                    project = project,
+                    project = exportProject,
                     shouldCancel = { cancelled },
                     onProgress = { percent, stage, detail ->
                         val value = ExportProgress(true, percent.coerceIn(0, 100), stage, detail)
