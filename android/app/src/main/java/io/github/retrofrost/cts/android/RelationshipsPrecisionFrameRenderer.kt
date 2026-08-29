@@ -133,6 +133,7 @@ class RelationshipsPrecisionFrameRenderer {
     }
 
     private fun drawIntroLogo(canvas: Canvas, frame: Int, spec: RendererSpec, cfg: ExactConfig) {
+        if (!cfg.bool("intro.enabled", false)) return
         val fadeIn = smooth((frame / cfg.float("intro.fadeInFrames", 36f)).coerceIn(0f, 1f))
         val legacyScale = when {
             frame < 90 -> 1.42f - 0.46f * smooth(frame / 90f)
