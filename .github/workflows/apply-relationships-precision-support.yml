@@ -1,0 +1,111 @@
+name: Apply relationships precision support
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - .github/workflows/apply-relationships-precision-support.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Add capability guard and BT.709 limited-range precision export metadata
+        shell: python
+        run: |
+          from pathlib import Path
+
+          bundle = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt')
+          text = bundle.read_text()
+          old = '''        "frame-addressed-shine",
+        "preview-frames",'''
+          new = '''        "frame-addressed-shine",
+        "relationships-exact-v2",
+        "preview-frames",'''
+          if '"relationships-exact-v2"' not in text:
+              if old not in text:
+                  raise SystemExit('Renderer capability insertion point not found')
+              text = text.replace(old, new, 1)
+              bundle.write_text(text)
+
+          exporter = Path('android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt')
+          text = exporter.read_text()
+          marker = '''            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_BIT_RATE, bitrate)'''
+          replacement = '''            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            if (RelationshipsPrecisionFrameRenderer.enabled(RendererRuntime.active) && Build.VERSION.SDK_INT >= 24) {
+                // The measured Relationships reference is SDR BT.709 with limited/video range.
+                // Declare it to the hardware encoder instead of leaving the conversion metadata
+                // device-dependent; this prevents the exact bundle's decoded colours from being
+                // remapped as full-range or a different colour standard.
+                setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+                setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+                setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+            }
+            setInteger(MediaFormat.KEY_BIT_RATE, bitrate)'''
+          if 'COLOR_STANDARD_BT709' not in text:
+              if marker not in text:
+                  raise SystemExit('MediaFormat insertion point not found')
+              text = text.replace(marker, replacement, 1)
+              exporter.write_text(text)
+
+      - name: Verify source diff
+        run: git diff --check
+
+      - name: Test and build release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
+
+      - name: Commit verified source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/apply-relationships-precision-support.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt \
+                  android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt \
+                  .github/workflows/apply-relationships-precision-support.yml
+          if git diff --cached --quiet; then
+            echo 'No source changes to commit.'
+          else
+            git commit -m 'renderer: guard exact-v2 and preserve BT.709 colour metadata'
+            git push origin HEAD:fork/2.0.7-renderer-bundles
+          fi
+
+      - name: Package APK
+        shell: bash
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk Cubical-Compare-2.0.7-Relationships-Precision.apk
+          sha256sum Cubical-Compare-2.0.7-Relationships-Precision.apk > Cubical-Compare-2.0.7-Relationships-Precision.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Compare-2.0.7-Relationships-Precision
+          path: |
+            Cubical-Compare-2.0.7-Relationships-Precision.apk
+            Cubical-Compare-2.0.7-Relationships-Precision.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
