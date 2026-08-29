@@ -32,6 +32,16 @@ jobs:
       - name: Apply renderer-wide anti-duplication fix
         run: python3 tools/fix_badge_duplication_forever.py
 
+      - name: Normalize generated text files
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('docs/wiki/Relationships-Exact-v2.md')
+          if p.exists():
+              p.write_text(p.read_text().rstrip() + '\n')
+          PY
+
       - name: Verify source diff
         run: git diff --check
 
