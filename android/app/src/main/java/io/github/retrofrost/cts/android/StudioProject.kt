@@ -10,8 +10,17 @@ enum class EncoderPreference(val wireName: String, val displayName: String) {
     H265("h265", "H.265");
 
     companion object {
-        fun fromWireName(value: String?): EncoderPreference =
-            entries.firstOrNull { it.wireName == value } ?: AUTO
+        fun fromWireName(value: String?): EncoderPreference = entries.firstOrNull { it.wireName == value } ?: AUTO
+    }
+}
+
+enum class IntroMode(val wireName: String, val displayName: String) {
+    RENDERER("renderer", "Renderer default"),
+    CUSTOM("custom", "Custom MP4"),
+    DISABLED("disabled", "Disabled");
+
+    companion object {
+        fun fromWireName(value: String?): IntroMode = entries.firstOrNull { it.wireName == value } ?: RENDERER
     }
 }
 
@@ -41,6 +50,8 @@ data class StudioProject(
     val fps: Int = 60,
     val showBadges: Boolean = true,
     val creditsEnabled: Boolean = true,
+    val introMode: IntroMode = IntroMode.RENDERER,
+    val introVideo: String = "",
     val soundtrack: String = "",
     val soundtrackVolume: Float = 0.75f,
     val soundtrackLoop: Boolean = true,
@@ -59,6 +70,8 @@ data class StudioProject(
             .put("custom_length_seconds", customLengthSeconds)
             .put("show_badges", showBadges)
             .put("credits_enabled", creditsEnabled)
+            .put("intro_mode", introMode.wireName)
+            .put("intro_video", introVideo)
             .put("soundtrack", soundtrack)
             .put("soundtrack_volume", soundtrackVolume)
             .put("soundtrack_loop", soundtrackLoop)
@@ -89,7 +102,7 @@ data class StudioProject(
         }
 
         return JSONObject()
-            .put("version", 3)
+            .put("version", 4)
             .put("name", name)
             .put("cards", cardArray)
             .put("settings", settings)
@@ -105,6 +118,8 @@ data class StudioProject(
 
     fun copyUiSettingsFrom(previous: StudioProject): StudioProject = copy(
         encoderPreference = previous.encoderPreference,
+        introMode = previous.introMode,
+        introVideo = previous.introVideo,
     )
 
     companion object {
@@ -117,9 +132,7 @@ data class StudioProject(
                     val card = jsonCards.getJSONObject(index)
                     add(
                         StudioCard(
-                            id = card.optString("id").ifBlank {
-                                UUID.randomUUID().toString().replace("-", "")
-                            },
+                            id = card.optString("id").ifBlank { UUID.randomUUID().toString().replace("-", "") },
                             title = card.optString("title"),
                             value = card.optString("value"),
                             badgeHeader = card.optString("badge_header", card.optString("badgeHeader")),
@@ -147,14 +160,14 @@ data class StudioProject(
                 fps = settings.optInt("fps", 60),
                 showBadges = settings.optBoolean("show_badges", true),
                 creditsEnabled = settings.optBoolean("credits_enabled", true),
+                introMode = IntroMode.fromWireName(settings.optString("intro_mode", "renderer")),
+                introVideo = settings.optString("intro_video", ""),
                 soundtrack = settings.optString("soundtrack", ""),
                 soundtrackVolume = settings.optDouble("soundtrack_volume", 0.75).toFloat(),
                 soundtrackLoop = settings.optBoolean("soundtrack_loop", true),
                 autoLength = settings.optBoolean("auto_length", true),
                 customLengthSeconds = settings.optDouble("custom_length_seconds", 90.0),
-                encoderPreference = EncoderPreference.fromWireName(
-                    settings.optString("encoder_preference", "auto"),
-                ),
+                encoderPreference = EncoderPreference.fromWireName(settings.optString("encoder_preference", "auto")),
             )
         }
     }
@@ -166,14 +179,21 @@ object DurationFormat {
         return "%02d:%02d".format(total / 60, total % 60)
     }
 
+    fun formatPrecise(seconds: Double): String {
+        val safe = seconds.coerceAtLeast(0.0)
+        val minutes = (safe / 60.0).toInt()
+        val remaining = safe - minutes * 60.0
+        return "%02d:%06.3f".format(minutes, remaining)
+    }
+
     fun parse(text: String): Double? {
         val parts = text.trim().split(':')
         return when (parts.size) {
             1 -> parts[0].toDoubleOrNull()?.takeIf { it > 0.0 }
             2 -> {
                 val minutes = parts[0].toIntOrNull() ?: return null
-                val seconds = parts[1].toIntOrNull() ?: return null
-                if (minutes < 0 || seconds !in 0..59) null else (minutes * 60 + seconds).toDouble()
+                val seconds = parts[1].toDoubleOrNull() ?: return null
+                if (minutes < 0 || seconds < 0.0 || seconds >= 60.0) null else minutes * 60.0 + seconds
             }
             else -> null
         }
