@@ -194,6 +194,8 @@ object RendererCapabilities {
         "per-badge-affine-transform",
         "frame-addressed-shine",
         "relationships-exact-v2",
+        "relationships-footer-waveform",
+        "relationships-rich-typography",
         "preview-frames",
     )
 
