@@ -267,6 +267,9 @@ class RendererStore(private val context: Context) {
         val spec = RendererBundle.read(ByteArrayInputStream(bytes))
         val report = RendererCapabilities.report(spec)
         require(report.compatible) { report.errors.joinToString("\n") }
+        ProjectAutosave.load(context)?.let { project ->
+            RendererProjectGuard.requireCompatible(project, spec)
+        }
         dir.mkdirs()
         if (activeFile.isFile) atomicWrite(previousFile, activeFile.readBytes())
         atomicWrite(activeFile, bytes)

@@ -32,6 +32,16 @@ object RendererBridge {
         else -> NativeTimeline.totalFrameCount(project, spec)
     }.coerceAtLeast(1)
 
+    fun projectCompatibility(
+        project: StudioProject,
+        spec: RendererSpec = RendererRuntime.active,
+    ): RendererProjectCompatibility = RendererProjectGuard.check(project, spec)
+
+    fun requireProjectCompatibility(
+        project: StudioProject,
+        spec: RendererSpec = RendererRuntime.active,
+    ) = RendererProjectGuard.requireCompatible(project, spec)
+
     fun rendererIntroFrames(spec: RendererSpec = RendererRuntime.active): Int =
         spec.openingStarts.firstOrNull()?.coerceAtLeast(0) ?: 0
 
@@ -42,6 +52,7 @@ object RendererBridge {
 
     fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
         val spec = RendererRuntime.active
+        requireProjectCompatibility(project, spec)
         val fps = if (
             RelationshipsPrecisionFrameRenderer.enabled(spec) &&
             spec.precisionMode == "frame-exact"
@@ -139,24 +150,30 @@ object RendererBridge {
         }
     }
 
-    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap = when (engine(spec)) {
-        "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
-            relationshipsPrecisionRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
-        } else {
-            relationshipsRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap {
+        requireProjectCompatibility(project, spec)
+        return when (engine(spec)) {
+            "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
+                relationshipsPrecisionRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            } else {
+                relationshipsRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            }
+            "ribbon-exact" -> ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            else -> nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         }
-        "ribbon-exact" -> ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
-        else -> nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
     }
 
-    private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray = when (engine(spec)) {
-        "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
-            relationshipsPrecisionRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
-        } else {
-            relationshipsRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+    private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray {
+        requireProjectCompatibility(project, spec)
+        return when (engine(spec)) {
+            "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
+                relationshipsPrecisionRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            } else {
+                relationshipsRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            }
+            "ribbon-exact" -> ribbonRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            else -> nativeRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         }
-        "ribbon-exact" -> ribbonRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
-        else -> nativeRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
     }
 
     fun importData(project: StudioProject, path: String): StudioProject = synchronized(lock) {
