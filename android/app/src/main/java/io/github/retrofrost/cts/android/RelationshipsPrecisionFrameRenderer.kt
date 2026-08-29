@@ -1,0 +1,655 @@
+package io.github.retrofrost.cts.android
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.util.Base64
+import java.io.File
+import java.nio.ByteBuffer
+import java.util.LinkedHashMap
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+
+/**
+ * Opt-in precision interpreter for relationships-exact renderer bundles.
+ *
+ * It is enabled by the renderer tag `relationships.exact.v2=true`. Existing
+ * relationships bundles continue to use [RelationshipsFrameRenderer]. The v2
+ * path deliberately moves source-specific values out of Kotlin and into the
+ * renderer bundle: exact card bands, divider, typefaces, badge polygon,
+ * gradient/stroke/shadow/shine and frame-addressed motion can all be declared.
+ */
+class RelationshipsPrecisionFrameRenderer {
+    private val imageCache = object : LinkedHashMap<String, Bitmap>(12, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
+            val remove = size > 12
+            if (remove) eldest?.value?.recycle()
+            return remove
+        }
+    }
+    private val typefaceCache = LinkedHashMap<String, Typeface>(8, 0.75f, true)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+
+    @Synchronized
+    fun render(project: StudioProject, frameIndex: Int, outputWidth: Int, outputHeight: Int): Bitmap {
+        val reference = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888)
+        val spec = RendererRuntime.active
+        val cfg = ExactConfig(spec)
+        drawReference(Canvas(reference), project, frameIndex.coerceAtLeast(0), spec, cfg)
+        if (outputWidth == 1920 && outputHeight == 1080) return reference
+        val output = Bitmap.createBitmap(outputWidth.coerceAtLeast(2), outputHeight.coerceAtLeast(2), Bitmap.Config.ARGB_8888)
+        paint.alpha = 255
+        paint.shader = null
+        Canvas(output).drawBitmap(reference, Rect(0, 0, 1920, 1080), Rect(0, 0, output.width, output.height), paint)
+        reference.recycle()
+        return output
+    }
+
+    @Synchronized
+    fun renderRgba(project: StudioProject, frameIndex: Int, outputWidth: Int, outputHeight: Int): ByteArray {
+        val bitmap = render(project, frameIndex, outputWidth, outputHeight)
+        return try {
+            ByteArray(bitmap.byteCount).also { bitmap.copyPixelsToBuffer(ByteBuffer.wrap(it)) }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun drawReference(canvas: Canvas, project: StudioProject, frame: Int, spec: RendererSpec, cfg: ExactConfig) {
+        canvas.drawColor(spec.backgroundColor)
+        if (project.cards.isEmpty()) {
+            drawIntroLogo(canvas, frame, spec, cfg)
+            return
+        }
+        val contentEnd = RelationshipsTimeline.contentEndFrame(project, spec)
+        when {
+            frame < spec.openingStarts.firstOrNull().orZero() -> drawIntroLogo(canvas, frame, spec, cfg)
+            frame < contentEnd -> drawContent(canvas, project, frame, spec, cfg)
+            else -> drawOutro(canvas, project, frame, contentEnd, spec, cfg)
+        }
+    }
+
+    private fun drawIntroLogo(canvas: Canvas, frame: Int, spec: RendererSpec, cfg: ExactConfig) {
+        val fadeIn = smooth((frame / cfg.float("intro.fadeInFrames", 36f)).coerceIn(0f, 1f))
+        val legacyScale = when {
+            frame < 90 -> 1.42f - 0.46f * smooth(frame / 90f)
+            else -> 0.96f + 0.04f * smooth(((180 - frame).coerceAtLeast(0)) / 90f)
+        }
+        val legacyAlpha = if (frame > 340) ((384 - frame) / 44f).coerceIn(0f, 1f) else 1f
+        val scale = spec.track("relationships.intro.logo.scale", frame) ?: legacyScale
+        val alpha = (spec.track("relationships.intro.logo.alpha", frame) ?: legacyAlpha).coerceIn(0f, 1f)
+        val cx = cfg.float("intro.logo.cx", 960f)
+        val cy = cfg.float("intro.logo.cy", 470f)
+        val rx = cfg.float("intro.logo.rx", 250f)
+        val ry = cfg.float("intro.logo.ry", 118f)
+        val gap = cfg.float("intro.logo.gap", 5f)
+
+        canvas.save()
+        canvas.scale(scale, scale, cx, cy)
+        paint.resetForShape()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = cfg.float("intro.logo.strokeWidth", 9f)
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.alpha = (255 * fadeIn * alpha).roundToInt().coerceIn(0, 255)
+        paint.color = cfg.color("intro.logo.leftColor", Color.rgb(216, 235, 42))
+        canvas.drawArc(RectF(cx - rx, cy - ry, cx - gap, cy + ry), cfg.float("intro.logo.leftStart", 42f), cfg.float("intro.logo.leftSweep", 276f), false, paint)
+        paint.color = cfg.color("intro.logo.rightColor", Color.rgb(238, 111, 139))
+        canvas.drawArc(RectF(cx + gap, cy - ry, cx + rx, cy + ry), cfg.float("intro.logo.rightStart", 222f), cfg.float("intro.logo.rightSweep", 276f), false, paint)
+
+        paint.strokeWidth = cfg.float("intro.logo.crossStrokeWidth", 3f)
+        paint.color = cfg.color("intro.logo.crossColor", Color.rgb(58, 58, 58))
+        val crossX = cfg.float("intro.logo.crossX", 168f)
+        val crossY = cfg.float("intro.logo.crossY", 86f)
+        val cross = Path().apply {
+            moveTo(cx - crossX, cy - crossY); lineTo(cx + crossX, cy + crossY)
+            moveTo(cx + crossX, cy - crossY); lineTo(cx - crossX, cy + crossY)
+        }
+        canvas.drawPath(cross, paint)
+        canvas.restore()
+        paint.resetForShape()
+
+        val full = cfg.string("intro.text", "Infinite\\nComparison").replace("\\n", "\n")
+        val chars = spec.track("relationships.intro.text.chars", frame)?.roundToInt()
+            ?: (((frame - cfg.int("intro.text.startFrame", 170)) / cfg.float("intro.text.framesPerChar", 2.4f)).toInt())
+        if (chars > 0) {
+            val visible = full.take(chars.coerceIn(0, full.length))
+            textPaint.alpha = (255 * alpha).roundToInt().coerceIn(0, 255)
+            textPaint.color = cfg.color("intro.text.color", Color.WHITE)
+            textPaint.textAlign = Paint.Align.CENTER
+            textPaint.typeface = typeface(spec, cfg, "intro", "sans-serif-light", Typeface.NORMAL)
+            textPaint.textSize = cfg.float("intro.text.size", 34f)
+            val y = cfg.float("intro.text.y", 640f)
+            val lineGap = cfg.float("intro.text.lineGap", 38f)
+            visible.split('\n').forEachIndexed { index, line -> canvas.drawText(line, cx, y + index * lineGap, textPaint) }
+            textPaint.alpha = 255
+        }
+    }
+
+    private fun drawContent(canvas: Canvas, project: StudioProject, frame: Int, spec: RendererSpec, cfg: ExactConfig) {
+        val positions = linkedMapOf<Int, Float>()
+        if (frame < spec.continuousStartFrame) {
+            val starts = spec.openingStarts
+            for (index in 0 until min(4, project.cards.size)) {
+                val start = starts.getOrElse(index) { starts.lastOrNull().orZero() + index * 140 }
+                if (frame >= start) {
+                    positions[index] = spec.track("card.$index.x", frame) ?: index * spec.slotPitch
+                }
+            }
+        } else {
+            val scroll = exactScroll(spec, frame) ?: ((frame - spec.continuousStartFrame) * 2f)
+            project.cards.indices.forEach { index ->
+                val baseX = index * spec.slotPitch - scroll
+                val x = spec.track("card.$index.x", frame) ?: baseX
+                if (x > -spec.slotPitch * 2f && x < 1920f + spec.slotPitch * 2f) positions[index] = x
+            }
+        }
+
+        positions.forEach { (index, x) ->
+            val y = spec.track("card.$index.y", frame) ?: 0f
+            canvas.save(); canvas.translate(0f, y)
+            drawCardBody(canvas, project.cards[index], x, spec, cfg, frame, index)
+            canvas.restore()
+        }
+        if (project.creditsEnabled && frame in spec.openingStarts.firstOrNull().orZero() until spec.continuousStartFrame) {
+            drawDisclaimer(canvas, frame, spec, cfg)
+        }
+        positions.forEach { (index, x) -> drawBadge(canvas, project, index, x, frame, spec, cfg) }
+        positions.forEach { (index, x) ->
+            if (project.cards[index].imageLayer.equals("front", true)) drawFrontArtwork(canvas, project.cards[index], x, spec, cfg)
+        }
+    }
+
+    private fun exactScroll(spec: RendererSpec, frame: Int): Float? {
+        if (frame < spec.continuousStartFrame) return null
+        val segment = (frame - spec.continuousStartFrame) / 4096
+        return spec.track("relationships.scroll.$segment", frame)
+    }
+
+    private fun drawCardBody(canvas: Canvas, card: StudioCard, slotX: Float, spec: RendererSpec, cfg: ExactConfig, frame: Int, index: Int) {
+        val left = slotX + spec.bodyInset
+        val right = left + spec.bodyWidth
+        val absoluteBands = cfg.bool("card.absoluteBands", true)
+        val hasTitle = card.title.isNotBlank()
+        val hasDescription = card.description.isNotBlank()
+
+        val imageBottom: Float
+        val titleTop: Float
+        val titleBottom: Float
+        val descriptionTop: Float
+        if (absoluteBands) {
+            imageBottom = spec.imageHeight
+            titleTop = imageBottom
+            titleBottom = titleTop + if (hasTitle) spec.titleHeight else 0f
+            descriptionTop = if (hasDescription) spec.descriptionTop else titleBottom
+        } else {
+            val descriptionHeight = if (hasDescription) cfg.float("card.legacyDescriptionHeight", 115f) else 0f
+            val titleHeight = if (hasTitle) spec.titleHeight else 0f
+            imageBottom = 1080f - descriptionHeight - titleHeight
+            titleTop = imageBottom
+            titleBottom = titleTop + titleHeight
+            descriptionTop = titleBottom
+        }
+
+        paint.resetForShape()
+        paint.color = cfg.color("card.imageFallbackColor", Color.rgb(30, 30, 30))
+        canvas.drawRect(left, 0f, right, imageBottom, paint)
+
+        val entry = RelationshipsTimeline.cardEntryFrame(projectSize = Int.MAX_VALUE, index = index, spec = spec)
+        val local = frame - entry
+        val legacyReveal = if (index < 4) ((local - 52f) / 42f).coerceIn(0f, 1f) else 1f
+        val reveal = (spec.track("card.$index.body.reveal", frame)
+            ?: spec.track("relationships.card.reveal", local)
+            ?: legacyReveal).coerceIn(0f, 1f)
+        if (!card.imageLayer.equals("front", true) && reveal > 0f) {
+            val revealBottom = imageBottom * reveal
+            canvas.save(); canvas.clipRect(left, 0f, right, revealBottom)
+            drawArtwork(canvas, card, RectF(left, 0f, right, imageBottom)); canvas.restore()
+        }
+
+        if (hasTitle) {
+            paint.resetForShape(); paint.color = spec.titleBackgroundColor
+            canvas.drawRect(left, titleTop, right, titleBottom, paint)
+            drawFitted(
+                canvas, card.title,
+                RectF(left + cfg.float("card.title.padX", 10f), titleTop + cfg.float("card.title.padTop", 1f), right - cfg.float("card.title.padX", 10f), titleBottom - cfg.float("card.title.padBottom", 1f)),
+                spec.titleTextColor, spec.titleTextSize,
+                typeface(spec, cfg, "title", "sans-serif", Typeface.BOLD),
+                cfg.int("card.title.maxLines", 1), cfg.float("card.title.lineHeight", 0.92f),
+            )
+        }
+
+        if (hasDescription && descriptionTop > titleBottom) {
+            paint.resetForShape(); paint.color = cfg.color("card.divider.color", spec.descriptionBackgroundColor)
+            canvas.drawRect(left, titleBottom, right, descriptionTop, paint)
+        }
+        if (hasDescription) {
+            paint.resetForShape(); paint.color = spec.descriptionBackgroundColor
+            canvas.drawRect(left, descriptionTop, right, 1080f, paint)
+            drawFitted(
+                canvas, card.description,
+                RectF(left + cfg.float("card.description.padX", 11f), descriptionTop + cfg.float("card.description.padTop", 4f), right - cfg.float("card.description.padX", 11f), 1080f - cfg.float("card.description.padBottom", 4f)),
+                spec.descriptionTextColor, spec.descriptionTextSize,
+                typeface(spec, cfg, "description", "sans-serif", Typeface.NORMAL),
+                cfg.int("card.description.maxLines", 4), cfg.float("card.description.lineHeight", 0.92f),
+            )
+        }
+    }
+
+    private fun drawFrontArtwork(canvas: Canvas, card: StudioCard, slotX: Float, spec: RendererSpec, cfg: ExactConfig) {
+        val absoluteBands = cfg.bool("card.absoluteBands", true)
+        val bottom = if (absoluteBands) spec.imageHeight else {
+            val desc = if (card.description.isBlank()) 0f else cfg.float("card.legacyDescriptionHeight", 115f)
+            val title = if (card.title.isBlank()) 0f else spec.titleHeight
+            1080f - desc - title
+        }
+        drawArtwork(canvas, card, RectF(slotX + spec.bodyInset, 0f, slotX + spec.bodyInset + spec.bodyWidth, bottom))
+    }
+
+    private fun drawArtwork(canvas: Canvas, card: StudioCard, destination: RectF) {
+        val bitmap = loadImage(card.image) ?: return
+        val left = (bitmap.width * card.imageCropLeft.coerceIn(0.0, 0.95)).roundToInt().coerceIn(0, bitmap.width - 1)
+        val top = (bitmap.height * card.imageCropTop.coerceIn(0.0, 0.95)).roundToInt().coerceIn(0, bitmap.height - 1)
+        val right = (bitmap.width * (1.0 - card.imageCropRight.coerceIn(0.0, 0.95))).roundToInt().coerceIn(left + 1, bitmap.width)
+        val bottom = (bitmap.height * (1.0 - card.imageCropBottom.coerceIn(0.0, 0.95))).roundToInt().coerceIn(top + 1, bitmap.height)
+        val source = Rect(left, top, right, bottom)
+        val base = max(destination.width() / source.width().coerceAtLeast(1), destination.height() / source.height().coerceAtLeast(1))
+        val scale = base * card.imageScale.coerceIn(0.05, 12.0).toFloat()
+        val w = source.width() * scale
+        val h = source.height() * scale
+        val cx = destination.centerX() + card.imageX.toFloat()
+        val cy = destination.centerY() + card.imageY.toFloat()
+        val target = RectF(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
+        canvas.save(); canvas.clipRect(destination)
+        if (card.imageRotation != 0.0) canvas.rotate(card.imageRotation.toFloat(), cx, cy)
+        paint.resetForShape(); paint.alpha = 255
+        canvas.drawBitmap(bitmap, source, target, paint)
+        canvas.restore()
+    }
+
+    private fun loadImage(path: String): Bitmap? {
+        if (path.isBlank() || path.startsWith("http://") || path.startsWith("https://")) return null
+        imageCache[path]?.let { if (!it.isRecycled) return it }
+        val file = File(path)
+        if (!file.isFile) return null
+        return runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()?.also { imageCache[path] = it }
+    }
+
+    private fun drawBadge(canvas: Canvas, project: StudioProject, index: Int, cardX: Float, frame: Int, spec: RendererSpec, cfg: ExactConfig) {
+        if (!project.showBadges) return
+        val card = project.cards[index]
+        if (card.value.isBlank() && card.badgeHeader.isBlank()) return
+        val entry = RelationshipsTimeline.cardEntryFrame(project.cards.size, index, spec)
+        val local = frame - entry
+        if (local < 0) return
+
+        val scale = (spec.track("card.$index.badge.scale", frame)
+            ?: spec.track("relationships.badge.scale", local)
+            ?: if (local < 45) smooth(local / 45f) else 1f).coerceIn(0f, cfg.float("badge.maxScale", 2f))
+        val yOffset = spec.track("card.$index.badge.y", frame) ?: spec.track("relationships.badge.y", local) ?: 0f
+        val xOffset = spec.track("card.$index.badge.x", frame) ?: 0f
+        val cx = spec.badgeCenterX
+        val cy = spec.badgeCenterY
+
+        canvas.save()
+        canvas.translate(cardX + xOffset, yOffset)
+        canvas.scale(scale * spec.badgeScale, scale * spec.badgeScale, cx, cy)
+        val path = badgePath(cfg, cx, cy)
+
+        val shadowColor = cfg.color("badge.shadow.color", Color.TRANSPARENT)
+        val shadowRadius = cfg.float("badge.shadow.radius", 0f)
+        paint.resetForShape()
+        if (Color.alpha(shadowColor) > 0 && shadowRadius > 0f) {
+            paint.color = spec.badgeColor
+            paint.setShadowLayer(shadowRadius, cfg.float("badge.shadow.dx", 0f), cfg.float("badge.shadow.dy", 0f), shadowColor)
+            canvas.drawPath(path, paint)
+            paint.clearShadowLayer()
+        }
+
+        val gradientTop = cfg.color("badge.gradient.top", spec.badgeColor)
+        val gradientBottom = cfg.color("badge.gradient.bottom", spec.badgeColor)
+        paint.resetForShape()
+        paint.style = Paint.Style.FILL
+        paint.shader = if (gradientTop != gradientBottom || cfg.has("badge.gradient.top") || cfg.has("badge.gradient.bottom")) {
+            LinearGradient(
+                cx,
+                cy + cfg.float("badge.gradient.startY", -cfg.float("badge.radiusY", 177f)),
+                cx,
+                cy + cfg.float("badge.gradient.endY", cfg.float("badge.radiusY", 177f)),
+                gradientTop,
+                gradientBottom,
+                Shader.TileMode.CLAMP,
+            )
+        } else null
+        paint.color = spec.badgeColor
+        canvas.drawPath(path, paint)
+        paint.shader = null
+
+        val strokeWidth = cfg.float("badge.stroke.width", 4f)
+        if (strokeWidth > 0f) {
+            paint.resetForShape(); paint.style = Paint.Style.STROKE; paint.strokeWidth = strokeWidth
+            paint.color = cfg.color("badge.stroke.color", spec.badgeDarkColor)
+            canvas.drawPath(path, paint)
+        }
+
+        drawBadgeShine(canvas, path, card, index, frame, local, spec, cfg)
+        drawBadgeText(canvas, card, spec, cfg)
+        canvas.restore()
+        paint.resetForShape()
+    }
+
+    private fun badgePath(cfg: ExactConfig, cx: Float, cy: Float): Path {
+        val declared = cfg.floatList("badge.points")
+        if (declared.size >= 6 && declared.size % 2 == 0) {
+            return Path().apply {
+                declared.chunked(2).forEachIndexed { i, p ->
+                    val x = cx + p[0]
+                    val y = cy + p[1]
+                    if (i == 0) moveTo(x, y) else lineTo(x, y)
+                }
+                close()
+            }
+        }
+        val rx = cfg.float("badge.radiusX", 184f)
+        val ry = cfg.float("badge.radiusY", 177f)
+        val cornerX = cfg.float("badge.cornerX", 92f)
+        val upperY = cfg.float("badge.upperCornerY", 88f)
+        val lowerY = cfg.float("badge.lowerCornerY", 86f)
+        val pts = arrayOf(
+            cx - cornerX to cy - ry,
+            cx + cornerX to cy - ry,
+            cx + rx to cy - upperY,
+            cx + rx to cy + lowerY,
+            cx + cornerX to cy + ry,
+            cx - cornerX to cy + ry,
+            cx - rx to cy + lowerY,
+            cx - rx to cy - upperY,
+        )
+        return Path().apply {
+            pts.forEachIndexed { i, p -> if (i == 0) moveTo(p.first, p.second) else lineTo(p.first, p.second) }
+            close()
+        }
+    }
+
+    private fun drawBadgeShine(canvas: Canvas, badgePath: Path, card: StudioCard, index: Int, frame: Int, local: Int, spec: RendererSpec, cfg: ExactConfig) {
+        val shineX = spec.track("card.$index.badge.shine.x", frame)
+            ?: spec.track("relationships.badge.shine.x", local)
+            ?: return
+        val trackAlpha = spec.track("card.$index.badge.shine.alpha", frame)
+            ?: spec.track("relationships.badge.shine.alpha", local)
+            ?: 1f
+        if (trackAlpha <= 0f) return
+        val width = cfg.float("badge.shine.width", 78f).coerceAtLeast(0f)
+        val slant = cfg.float("badge.shine.slant", 52f)
+        val top = spec.badgeCenterY - cfg.float("badge.radiusY", 177f) - 8f
+        val bottom = spec.badgeCenterY + cfg.float("badge.radiusY", 177f) + 8f
+        val alphaScale = cfg.float("badge.shine.alpha", 1f).coerceAtLeast(0f) * trackAlpha.coerceIn(0f, 1f)
+        val baseAlpha = Color.alpha(spec.shineColor)
+        val color = Color.argb((baseAlpha * alphaScale).roundToInt().coerceIn(0, 255), Color.red(spec.shineColor), Color.green(spec.shineColor), Color.blue(spec.shineColor))
+        val x = spec.badgeCenterX + shineX
+        val shine = Path().apply {
+            moveTo(x - width / 2f, top)
+            lineTo(x + width / 2f, top)
+            lineTo(x + width / 2f + slant, bottom)
+            lineTo(x - width / 2f + slant, bottom)
+            close()
+        }
+        canvas.save(); canvas.clipPath(badgePath)
+        paint.resetForShape(); paint.color = color
+        canvas.drawPath(shine, paint)
+        canvas.restore()
+    }
+
+    private fun drawBadgeText(canvas: Canvas, card: StudioCard, spec: RendererSpec, cfg: ExactConfig) {
+        val raw = card.value.trim()
+        val parts = raw.split(Regex("\\s+"), limit = 2)
+        val primary = parts.firstOrNull().orEmpty()
+        val unit = parts.getOrNull(1).orEmpty().ifBlank { cfg.string("badge.defaultUnit", "People") }
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.color = spec.badgeTextColor
+        textPaint.typeface = typeface(spec, cfg, "badge", "sans-serif", Typeface.NORMAL)
+        drawBadgeLine(canvas, card.badgeHeader.ifBlank { cfg.string("badge.defaultHeader", "1 in") }, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.header.y", -75f), spec.badgeHeaderSize, cfg.float("badge.header.minSize", 12f), cfg.float("badge.header.maxWidth", 230f))
+        drawBadgeLine(canvas, primary, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.value.y", 12f), spec.badgeValueSize, cfg.float("badge.value.minSize", 18f), cfg.float("badge.value.maxWidth", 300f))
+        drawBadgeLine(canvas, unit, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.unit.y", 70f), spec.badgeUnitSize, cfg.float("badge.unit.minSize", 12f), cfg.float("badge.unit.maxWidth", 245f))
+    }
+
+    private fun drawBadgeLine(canvas: Canvas, text: String, x: Float, y: Float, preferredSize: Float, minimumSize: Float, maxWidth: Float) {
+        if (text.isBlank()) return
+        textPaint.textSize = preferredSize
+        val measured = textPaint.measureText(text).coerceAtLeast(1f)
+        textPaint.textSize = if (measured <= maxWidth) preferredSize else (preferredSize * maxWidth / measured).coerceAtLeast(minimumSize)
+        canvas.drawText(text, x, y, textPaint)
+    }
+
+    private fun drawDisclaimer(canvas: Canvas, frame: Int, spec: RendererSpec, cfg: ExactConfig) {
+        val first = spec.openingStarts.firstOrNull().orZero()
+        val p = ((frame - first) / cfg.float("disclaimer.slideFrames", 70f)).coerceIn(0f, 1f)
+        val legacyX = cfg.float("disclaimer.restX", 1450f) + cfg.float("disclaimer.travelX", 470f) * (1f - smooth(p))
+        val x = spec.track("relationships.disclaimer.x", frame) ?: legacyX
+        val alpha = (spec.track("relationships.disclaimer.alpha", frame) ?: 1f).coerceIn(0f, 1f)
+        if (x >= 1920f || alpha <= 0f) return
+        paint.resetForShape(); paint.color = withAlpha(cfg.color("disclaimer.background", Color.rgb(22, 22, 22)), alpha)
+        canvas.drawRect(x, 0f, 1920f, 1080f, paint)
+        textPaint.textAlign = Paint.Align.LEFT
+        textPaint.typeface = typeface(spec, cfg, "disclaimer", "sans-serif", Typeface.NORMAL)
+        textPaint.textSize = cfg.float("disclaimer.textSize", 26f)
+        val raw = cfg.string("disclaimer.lines", "DISCLAIMER: This|comparison video|is based on public|data, surveys,|public comments|& discussions and|approximate|estimations that|might be|subjected to some|degree of error.")
+        val lines = raw.split('|')
+        var y = cfg.float("disclaimer.y", 220f)
+        val gap = cfg.float("disclaimer.lineGap", 38f)
+        lines.forEachIndexed { i, line ->
+            textPaint.color = withAlpha(if (i == 0) cfg.color("disclaimer.headerColor", Color.rgb(178, 0, 22)) else cfg.color("disclaimer.textColor", Color.LTGRAY), alpha)
+            canvas.drawText(line, x + cfg.float("disclaimer.padX", 30f), y, textPaint)
+            y += gap
+        }
+    }
+
+    private fun drawOutro(canvas: Canvas, project: StudioProject, frame: Int, contentEnd: Int, spec: RendererSpec, cfg: ExactConfig) {
+        val local = frame - contentEnd
+        canvas.drawColor(spec.backgroundColor)
+        val last = project.cards.last()
+        val cardX = spec.track("relationships.outro.card.x", frame) ?: when {
+            local < 80 -> lerp(320f, 781f, smooth(local / 80f))
+            else -> 781f
+        }
+        drawCardBody(canvas, last, cardX, spec, cfg, frame, project.cards.lastIndex)
+        drawBadge(canvas, project, project.cards.lastIndex, cardX, frame, spec, cfg)
+
+        val panelAlpha = (spec.track("relationships.outro.panel.alpha", frame) ?: if (local >= cfg.int("outro.panel.start", 58)) 1f else 0f).coerceIn(0f, 1f)
+        if (panelAlpha > 0f) {
+            val left = cfg.float("outro.panel.left", 1290f)
+            val top = cfg.float("outro.panel.top", 180f)
+            val right = cfg.float("outro.panel.right", 1732f)
+            val bottom = cfg.float("outro.panel.bottom", 910f)
+            paint.resetForShape(); paint.color = withAlpha(cfg.color("outro.panel.color", Color.rgb(28, 28, 28)), panelAlpha)
+            canvas.drawRect(left, top, right, bottom, paint)
+            textPaint.textAlign = Paint.Align.CENTER
+            textPaint.color = withAlpha(cfg.color("outro.panel.labelColor", Color.rgb(145, 145, 145)), panelAlpha)
+            textPaint.textSize = cfg.float("outro.panel.labelSize", 31f)
+            textPaint.typeface = typeface(spec, cfg, "outro", "sans-serif-light", Typeface.NORMAL)
+            canvas.drawText(cfg.string("outro.panel.label", "WATCH MORE"), cfg.float("outro.panel.labelX", (left + right) / 2f), cfg.float("outro.panel.labelY", 235f), textPaint)
+        }
+
+        val question = cfg.string("outro.question", "Which relationship type\\nare you in right now?").replace("\\n", "\n")
+        val questionChars = spec.track("relationships.outro.question.chars", frame)?.roundToInt()
+            ?: (((local - cfg.int("outro.question.start", 70)).coerceAtLeast(0) * cfg.float("outro.question.charsPerFrame", 0.52f)).toInt())
+        if (questionChars > 0) drawTyped(canvas, question.take(questionChars.coerceIn(0, question.length)), cfg.float("outro.question.x", 40f), cfg.float("outro.question.y", 390f), cfg.float("outro.question.size", 37f), cfg.color("outro.question.color", Color.WHITE), typeface(spec, cfg, "outro", "sans-serif", Typeface.NORMAL), cfg.float("outro.question.lineGap", 7f))
+
+        val comment = cfg.string("outro.comment", "Comment below!")
+        val commentChars = spec.track("relationships.outro.comment.chars", frame)?.roundToInt()
+            ?: (((local - cfg.int("outro.comment.start", 225)).coerceAtLeast(0) * cfg.float("outro.comment.charsPerFrame", 0.6f)).toInt())
+        if (commentChars > 0) drawTyped(canvas, comment.take(commentChars.coerceIn(0, comment.length)), cfg.float("outro.comment.x", 40f), cfg.float("outro.comment.y", 500f), cfg.float("outro.comment.size", 37f), cfg.color("outro.comment.color", Color.rgb(244, 159, 0)), typeface(spec, cfg, "outro", "sans-serif", Typeface.NORMAL), 7f)
+
+        val subscribeAlpha = (spec.track("relationships.outro.subscribe.alpha", frame) ?: if (local >= cfg.int("outro.subscribe.start", 290)) 1f else 0f).coerceIn(0f, 1f)
+        if (subscribeAlpha > 0f) {
+            textPaint.textAlign = Paint.Align.LEFT
+            textPaint.typeface = typeface(spec, cfg, "outroSubscribe", "sans-serif", Typeface.BOLD)
+            textPaint.textSize = cfg.float("outro.subscribe.size", 34f)
+            textPaint.color = withAlpha(cfg.color("outro.subscribe.color", Color.rgb(224, 10, 34)), subscribeAlpha)
+            canvas.drawText(cfg.string("outro.subscribe.text", "SUBSCRIBE"), cfg.float("outro.subscribe.x", 40f), cfg.float("outro.subscribe.y", 900f), textPaint)
+            textPaint.typeface = typeface(spec, cfg, "outro", "sans-serif-light", Typeface.NORMAL)
+            textPaint.color = withAlpha(cfg.color("outro.subscribe.restColor", Color.LTGRAY), subscribeAlpha)
+            textPaint.textSize = cfg.float("outro.subscribe.restSize", 30f)
+            canvas.drawText(cfg.string("outro.subscribe.rest1", "for more"), cfg.float("outro.subscribe.rest1X", 220f), cfg.float("outro.subscribe.y", 900f), textPaint)
+            canvas.drawText(cfg.string("outro.subscribe.rest2", "comparison videos."), cfg.float("outro.subscribe.x", 40f), cfg.float("outro.subscribe.rest2Y", 944f), textPaint)
+        }
+
+        val trackedFade = spec.track("relationships.outro.fade.alpha", frame)
+        val fadeAlpha = if (trackedFade != null) trackedFade.coerceIn(0f, 1f) else {
+            val fadeStart = max(0, RelationshipsTimeline.totalFrameCount(project, spec) - contentEnd - 42)
+            if (local >= fadeStart) ((local - fadeStart) / 42f).coerceIn(0f, 1f) else 0f
+        }
+        if (fadeAlpha > 0f) {
+            paint.resetForShape(); paint.color = Color.argb((fadeAlpha * 255).roundToInt().coerceIn(0, 255), 0, 0, 0)
+            canvas.drawRect(0f, 0f, 1920f, 1080f, paint)
+        }
+    }
+
+    private fun drawTyped(canvas: Canvas, text: String, x: Float, y: Float, size: Float, color: Int, face: Typeface, lineGap: Float) {
+        textPaint.textAlign = Paint.Align.LEFT
+        textPaint.typeface = face
+        textPaint.textSize = size
+        textPaint.color = color
+        text.split('\n').forEachIndexed { i, line -> canvas.drawText(line, x, y + i * (size + lineGap), textPaint) }
+    }
+
+    private fun drawFitted(canvas: Canvas, text: String, box: RectF, color: Int, preferred: Float, face: Typeface, maxLines: Int, lineHeightScale: Float) {
+        textPaint.color = color
+        textPaint.typeface = face
+        textPaint.textAlign = Paint.Align.CENTER
+        var size = preferred
+        var lines = wrap(text, box.width(), size, maxLines)
+        while ((lines.size > maxLines || lines.any { measure(it, size) > box.width() }) && size > 8f) {
+            size -= 0.5f
+            lines = wrap(text, box.width(), size, maxLines)
+        }
+        textPaint.textSize = size
+        val fm = textPaint.fontMetrics
+        val lineHeight = (fm.descent - fm.ascent) * lineHeightScale
+        var y = box.centerY() - (lines.size - 1) * lineHeight / 2f - (fm.ascent + fm.descent) / 2f
+        lines.take(maxLines).forEach { canvas.drawText(it, box.centerX(), y, textPaint); y += lineHeight }
+    }
+
+    private fun wrap(text: String, width: Float, size: Float, maxLines: Int): List<String> {
+        textPaint.textSize = size
+        val words = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.isEmpty()) return emptyList()
+        val lines = mutableListOf<String>()
+        var current = ""
+        words.forEach { word ->
+            val trial = if (current.isBlank()) word else "$current $word"
+            if (textPaint.measureText(trial) <= width || current.isBlank()) current = trial else { lines += current; current = word }
+        }
+        if (current.isNotBlank()) lines += current
+        if (lines.size <= maxLines) return lines
+        return lines.take(maxLines - 1) + lines.drop(maxLines - 1).joinToString(" ")
+    }
+
+    private fun measure(text: String, size: Float): Float {
+        textPaint.textSize = size
+        return textPaint.measureText(text)
+    }
+
+    private fun typeface(spec: RendererSpec, cfg: ExactConfig, role: String, fallbackFamily: String, fallbackStyle: Int): Typeface {
+        val asset = cfg.stringOrNull("font.$role.asset")
+        if (asset != null) {
+            val encoded = cfg.stringOrNull("font.asset.$asset.base64")
+            if (!encoded.isNullOrBlank()) {
+                val cacheKey = "${spec.id}:$asset:${encoded.hashCode()}"
+                typefaceCache[cacheKey]?.let { return it }
+                val built = runCatching {
+                    val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                    Typeface.Builder(ByteBuffer.wrap(bytes)).build()
+                }.getOrNull()
+                if (built != null) {
+                    if (typefaceCache.size >= 8) typefaceCache.remove(typefaceCache.keys.first())
+                    typefaceCache[cacheKey] = built
+                    return built
+                }
+            }
+        }
+        val family = cfg.string("font.$role.family", fallbackFamily)
+        val style = when (cfg.string("font.$role.style", "").lowercase()) {
+            "bold" -> Typeface.BOLD
+            "italic" -> Typeface.ITALIC
+            "bolditalic", "bold_italic", "bold-italic" -> Typeface.BOLD_ITALIC
+            "normal" -> Typeface.NORMAL
+            else -> fallbackStyle
+        }
+        return Typeface.create(family, style)
+    }
+
+    private fun withAlpha(color: Int, alpha: Float): Int = Color.argb(
+        (Color.alpha(color) * alpha.coerceIn(0f, 1f)).roundToInt().coerceIn(0, 255),
+        Color.red(color), Color.green(color), Color.blue(color),
+    )
+
+    private fun Paint.resetForShape() {
+        reset()
+        isAntiAlias = true
+        isFilterBitmap = true
+        style = Paint.Style.FILL
+        alpha = 255
+        shader = null
+    }
+
+    private fun smooth(x: Float): Float {
+        val p = x.coerceIn(0f, 1f)
+        return p * p * (3f - 2f * p)
+    }
+
+    private fun lerp(a: Float, b: Float, p: Float) = a + (b - a) * p.coerceIn(0f, 1f)
+    private fun Int?.orZero() = this ?: 0
+
+    private class ExactConfig(spec: RendererSpec) {
+        private val values: Map<String, String> = buildMap {
+            spec.tags.forEach { raw ->
+                val split = raw.indexOf('=')
+                if (split > 0) put(raw.substring(0, split).trim(), raw.substring(split + 1))
+            }
+        }
+
+        fun has(key: String): Boolean = values.containsKey(key)
+        fun string(key: String, fallback: String): String = values[key] ?: fallback
+        fun stringOrNull(key: String): String? = values[key]
+        fun bool(key: String, fallback: Boolean): Boolean = values[key]?.trim()?.lowercase()?.let {
+            when (it) {
+                "1", "true", "yes", "on" -> true
+                "0", "false", "no", "off" -> false
+                else -> fallback
+            }
+        } ?: fallback
+        fun int(key: String, fallback: Int): Int = values[key]?.trim()?.toIntOrNull() ?: fallback
+        fun float(key: String, fallback: Float): Float = values[key]?.trim()?.toFloatOrNull()?.takeIf { it.isFinite() } ?: fallback
+        fun color(key: String, fallback: Int): Int {
+            val raw = values[key]?.trim() ?: return fallback
+            return runCatching {
+                when {
+                    raw.startsWith("#") -> Color.parseColor(raw)
+                    raw.startsWith("0x", true) -> raw.substring(2).toLong(16).toInt()
+                    else -> raw.toLong().toInt()
+                }
+            }.getOrDefault(fallback)
+        }
+        fun floatList(key: String): List<Float> = values[key]
+            ?.split(',')
+            ?.mapNotNull { it.trim().toFloatOrNull()?.takeIf(Float::isFinite) }
+            .orEmpty()
+    }
+
+    companion object {
+        fun enabled(spec: RendererSpec): Boolean = spec.tags.any {
+            it.trim().equals("relationships.exact.v2=true", ignoreCase = true) ||
+                it.trim().equals("relationships.exact.v2=1", ignoreCase = true)
+        }
+    }
+}
