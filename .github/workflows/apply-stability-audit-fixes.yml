@@ -52,10 +52,44 @@ jobs:
           after = after.replace(original, wrong, 1)
           p.write_text(before + after)
 
+          policy = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RenderOutputPolicy.kt')
+          policy.write_text('''package io.github.retrofrost.cts.android
+
+/** Pure output policy shared by preview, metadata and export. */
+internal object RenderOutputPolicy {
+    fun resolve(project: StudioProject, spec: RendererSpec): StudioProject =
+        if (spec.precisionMode == "frame-exact") {
+            project.copy(
+                width = spec.referenceWidth.coerceAtLeast(2),
+                height = spec.referenceHeight.coerceAtLeast(2),
+                fps = spec.referenceFps.coerceIn(1, 240),
+            )
+        } else {
+            project.copy(
+                width = project.width.coerceAtLeast(2),
+                height = project.height.coerceAtLeast(2),
+                fps = project.fps.coerceIn(1, 120),
+            )
+        }
+}
+''')
+
+          bridge = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt')
+          b = bridge.read_text()
+          start = b.index('    fun resolveOutputProject(')
+          end = b.index('\n\n    fun projectCompatibility(', start)
+          replacement = '''    fun resolveOutputProject(
+        project: StudioProject,
+        spec: RendererSpec = RendererRuntime.active,
+    ): StudioProject = RenderOutputPolicy.resolve(project, spec)'''
+          b = b[:start] + replacement + b[end:]
+          bridge.write_text(b)
+
           test = Path('android/app/src/test/java/io/github/retrofrost/cts/android/RelationshipsPrecisionRendererTest.kt')
           t = test.read_text()
           if 'import org.junit.Assert.assertEquals' not in t:
               t = t.replace('import org.junit.Assert.assertFalse\n', 'import org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\n', 1)
+          t = t.replace('RendererBridge.resolveOutputProject(project, spec)', 'RenderOutputPolicy.resolve(project, spec)')
           test.write_text(t)
 
           codec = Path('android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt')
