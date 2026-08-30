@@ -31,7 +31,11 @@ object HardwareAudioTranscoder {
         val inputFormat = extractor.getTrackFormat(inputTrack)
         val inputMime = requireNotNull(inputFormat.getString(MediaFormat.KEY_MIME))
         val sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-        val channels = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT).coerceIn(1, 2)
+        val sourceChannels = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        require(sourceChannels in 1..2) {
+            "The selected soundtrack has $sourceChannels channels. Cubical Compare currently supports mono or stereo audio."
+        }
+        val channels = sourceChannels
         runCatching { inputFormat.setInteger(MediaFormat.KEY_PCM_ENCODING, 2) }
 
         val decoder = MediaCodec.createDecoderByType(inputMime)

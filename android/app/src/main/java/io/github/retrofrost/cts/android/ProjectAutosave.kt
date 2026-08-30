@@ -2,6 +2,10 @@ package io.github.retrofrost.cts.android
 
 import android.content.Context
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 object ProjectAutosave {
     private const val FILE_NAME = "current.ccproject.json"
@@ -15,9 +19,21 @@ object ProjectAutosave {
         val dir = File(context.filesDir, "autosave").apply { mkdirs() }
         val destination = File(dir, FILE_NAME)
         val temp = File(dir, "$FILE_NAME.tmp")
-        temp.writeText(project.toJson())
-        if (destination.exists()) destination.delete()
-        check(temp.renameTo(destination)) { "Could not update autosave." }
+        val bytes = project.toJson().toByteArray(Charsets.UTF_8)
+        FileOutputStream(temp).use { output ->
+            output.write(bytes)
+            output.fd.sync()
+        }
+        try {
+            Files.move(
+                temp.toPath(),
+                destination.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(temp.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
     }
 
     fun clear(context: Context) {

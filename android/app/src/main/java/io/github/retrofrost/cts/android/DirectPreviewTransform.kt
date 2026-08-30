@@ -491,14 +491,17 @@ private fun directPreviewGeometry(project: StudioProject, projectFrame: Int, ind
     val refHeight = spec.referenceHeight.coerceAtLeast(1).toFloat()
     val left = slotX + spec.bodyInset
     val width = spec.bodyWidth.coerceAtLeast(1f)
-    val height = if (RelationshipsTimeline.isRelationships(spec)) {
-        val descriptionHeight = if (card.description.isBlank()) 0f else 115f
-        val titleHeight = if (card.title.isBlank()) 0f else spec.titleHeight
-        (refHeight - descriptionHeight - titleHeight).coerceAtLeast(1f)
-    } else {
-        spec.imageHeight.coerceIn(1f, refHeight)
+    val height = when {
+        RelationshipsPrecisionFrameRenderer.enabled(spec) -> spec.imageHeight.coerceIn(1f, refHeight)
+        RelationshipsTimeline.isRelationships(spec) -> {
+            val descriptionHeight = if (card.description.isBlank()) 0f else 115f
+            val titleHeight = if (card.title.isBlank()) 0f else spec.titleHeight
+            (refHeight - descriptionHeight - titleHeight).coerceAtLeast(1f)
+        }
+        else -> spec.imageHeight.coerceIn(1f, refHeight)
     }
-    return DirectPreviewGeometry(left, 0f, width, height, refWidth, refHeight)
+    val top = if (RelationshipsPrecisionFrameRenderer.enabled(spec)) spec.track("card.$index.y", rendererFrame) ?: 0f else 0f
+    return DirectPreviewGeometry(left, top, width, height, refWidth, refHeight)
 }
 
 private fun directArtworkBounds(
@@ -576,7 +579,8 @@ private fun directSlotX(project: StudioProject, frame: Int, index: Int, spec: Re
         }
         if (frame < start) return null
         if (index >= 4 && RelationshipsTimeline.isRelationships(spec)) return null
-        return index * spec.slotPitch
+        val base = index * spec.slotPitch
+        return if (RelationshipsPrecisionFrameRenderer.enabled(spec)) spec.track("card.$index.x", frame) ?: base else base
     }
 
     val scroll = if (RelationshipsTimeline.isRelationships(spec)) {
@@ -586,7 +590,8 @@ private fun directSlotX(project: StudioProject, frame: Int, index: Int, spec: Re
     } else {
         ((frame - spec.continuousStartFrame) * 2f)
     }
-    val slotX = index * spec.slotPitch - scroll
+    val baseX = index * spec.slotPitch - scroll
+    val slotX = if (RelationshipsPrecisionFrameRenderer.enabled(spec)) spec.track("card.$index.x", frame) ?: baseX else baseX
     val refWidth = spec.referenceWidth.coerceAtLeast(1).toFloat()
     return slotX.takeIf { it > -spec.slotPitch && it < refWidth + spec.slotPitch }
 }

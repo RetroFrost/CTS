@@ -9,6 +9,10 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.InputStream
+import java.io.FileOutputStream
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.zip.CRC32
@@ -276,7 +280,7 @@ class RendererStore(private val context: Context) {
         dir.mkdirs()
         if (activeFile.isFile) atomicWrite(previousFile, activeFile.readBytes())
         atomicWrite(activeFile, bytes)
-        RendererRuntime.active = spec
+        RendererBridge.setRuntimeActive(spec)
         return spec
     }
 
@@ -287,7 +291,7 @@ class RendererStore(private val context: Context) {
         val current = if (activeFile.isFile) activeFile.readBytes() else null
         atomicWrite(activeFile, bytes)
         if (current != null) atomicWrite(previousFile, current) else previousFile.delete()
-        RendererRuntime.active = spec
+        RendererBridge.setRuntimeActive(spec)
         return spec
     }
 
@@ -320,7 +324,7 @@ class RendererStore(private val context: Context) {
     fun reset(): RendererSpec {
         if (activeFile.isFile) atomicWrite(previousFile, activeFile.readBytes())
         activeFile.delete()
-        return RendererSpec.builtIn().also { RendererRuntime.active = it }
+        return RendererSpec.builtIn().also(RendererBridge::setRuntimeActive)
     }
 
     fun export(output: OutputStream) = RendererBundle.write(active(), output)
@@ -328,9 +332,15 @@ class RendererStore(private val context: Context) {
     private fun atomicWrite(destination: File, bytes: ByteArray) {
         destination.parentFile?.mkdirs()
         val tmp = File(destination.parentFile, destination.name + ".tmp")
-        tmp.outputStream().use { it.write(bytes) }
-        if (!tmp.renameTo(destination)) tmp.copyTo(destination, overwrite = true)
-        tmp.delete()
+        FileOutputStream(tmp).use { output ->
+            output.write(bytes)
+            output.fd.sync()
+        }
+        try {
+            Files.move(tmp.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(tmp.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
     }
 
     private fun readLimited(input: InputStream, limit: Int): ByteArray {

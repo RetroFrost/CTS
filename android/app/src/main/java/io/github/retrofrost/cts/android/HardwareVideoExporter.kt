@@ -26,6 +26,7 @@ data class SelectedVideoCodec(
     val name: String,
     val mime: String,
     val label: String,
+    val bitrateMode: Int?,
 )
 
 object HardwareCodecSelector {
@@ -53,14 +54,22 @@ object HardwareCodecSelector {
                 if (info.supportedTypes.none { it.equals(mime, ignoreCase = true) }) continue
                 val capabilities = runCatching { info.getCapabilitiesForType(mime) }.getOrNull() ?: continue
                 if (!capabilities.colorFormats.contains(MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)) continue
+                val videoCapabilities = capabilities.videoCapabilities ?: continue
                 val supported = runCatching {
-                    capabilities.videoCapabilities.areSizeAndRateSupported(width, height, fps.toDouble())
+                    videoCapabilities.areSizeAndRateSupported(width, height, fps.toDouble())
                 }.getOrDefault(false)
                 if (!supported) continue
+                val encoderCapabilities = capabilities.encoderCapabilities
+                val bitrateMode = when {
+                    encoderCapabilities?.let { runCatching { it.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) }.getOrDefault(false) } == true -> MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR
+                    encoderCapabilities?.let { runCatching { it.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) }.getOrDefault(false) } == true -> MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR
+                    else -> null
+                }
                 return SelectedVideoCodec(
                     name = info.name,
                     mime = mime,
                     label = if (mime == HEVC) "H.265 (HEVC)" else "H.264 (AVC)",
+                    bitrateMode = bitrateMode,
                 )
             }
         }
@@ -88,10 +97,12 @@ object HardwareCodecSelector {
 
 class HardwareVideoExporter(
     private val context: Context,
-    private val project: StudioProject,
+    sourceProject: StudioProject,
+    private val rendererSpec: RendererSpec,
     private val shouldCancel: () -> Boolean,
     private val onProgress: (Int, String, String) -> Unit,
 ) {
+    private val project = RendererBridge.resolveOutputProject(sourceProject, rendererSpec)
     fun export(destination: Uri) {
         require(project.cards.isNotEmpty()) { "Add at least one card before exporting." }
         val marker = System.nanoTime()
@@ -99,7 +110,7 @@ class HardwareVideoExporter(
         val audio = File(context.cacheDir, "cc-$marker-audio.m4a")
         val final = File(context.cacheDir, "cc-$marker-final.mp4")
         try {
-            val metadata = RendererBridge.metadata(project)
+            val metadata = RendererBridge.metadata(project, rendererSpec)
             val selected = encodeVideo(video, metadata)
             val completed = if (project.soundtrack.isNotBlank() && project.soundtrackVolume > 0f) {
                 checkCancelled()
@@ -146,14 +157,15 @@ class HardwareVideoExporter(
         val height = project.height.coerceAtLeast(2).let { it - it % 2 }
         val fps = project.fps.coerceIn(1, 120)
         val selected = HardwareCodecSelector.select(project.encoderPreference, width, height, fps)
+        val pixelsPerSecond = width.toLong() * height.toLong() * fps.toLong()
         val bitrate = if (selected.mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
-            (width * height * fps * 0.075).roundToInt().coerceIn(3_000_000, 32_000_000)
+            (pixelsPerSecond * 0.075).toLong().coerceIn(3_000_000L, 32_000_000L).toInt()
         } else {
-            (width * height * fps * 0.11).roundToInt().coerceIn(4_000_000, 45_000_000)
+            (pixelsPerSecond * 0.11).toLong().coerceIn(4_000_000L, 45_000_000L).toInt()
         }
         val format = MediaFormat.createVideoFormat(selected.mime, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            if (RelationshipsPrecisionFrameRenderer.enabled(RendererRuntime.active) && Build.VERSION.SDK_INT >= 24) {
+            if (RelationshipsPrecisionFrameRenderer.enabled(rendererSpec) && Build.VERSION.SDK_INT >= 24) {
                 // The measured Relationships reference is SDR BT.709 with limited/video range.
                 // Do not leave the RGB->YUV signalling device-dependent for frame-exact exports.
                 setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
@@ -163,7 +175,7 @@ class HardwareVideoExporter(
             setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
-            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            selected.bitrateMode?.let { setInteger(MediaFormat.KEY_BITRATE_MODE, it) }
         }
         val codec = MediaCodec.createByCodecName(selected.name)
         var inputSurface: Surface? = null
@@ -184,7 +196,7 @@ class HardwareVideoExporter(
 
             repeat(totalFrames) { frame ->
                 checkCancelled()
-                val bitmap = RendererBridge.render(project, frame, width, height)
+                val bitmap = RendererBridge.renderWithSpecTimeline(project, rendererSpec, frame, width, height)
                 try {
                     require(bitmap.width == width && bitmap.height == height) { "Renderer returned an invalid frame size." }
                     egl.draw(bitmap, frame * 1_000_000_000L / fps)

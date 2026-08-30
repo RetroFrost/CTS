@@ -39,6 +39,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.List
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -147,7 +148,7 @@ private val CubicalLightColours = lightColorScheme(
 )
 
 private enum class StudioPage(val title: String, val icon: ImageVector) {
-    CARDS("Cards", Icons.Rounded.List),
+    CARDS("Cards", Icons.AutoMirrored.Rounded.List),
     PREVIEW("Preview", Icons.Rounded.PlayArrow),
     PROJECT("Project", Icons.Rounded.Tune),
     MORE("More", Icons.Rounded.MoreHoriz),
@@ -186,6 +187,8 @@ private fun CubicalCompareApp() {
     var metadataLoading by remember { mutableStateOf(true) }
     var saveState by remember { mutableStateOf("Saved") }
     val exportProgress by ExportState.state.collectAsState()
+    val rendererRevision by RendererBridge.runtimeRevision.collectAsState()
+    val activeRenderer = RendererRuntime.active
 
     fun report(error: Throwable) {
         scope.launch { snackbar.showSnackbar(error.message ?: "Something went wrong.") }
@@ -206,7 +209,7 @@ private fun CubicalCompareApp() {
         project.width,
         project.height,
         project.fps,
-        RendererRuntime.active.id,
+        rendererRevision,
     ) {
         metadataLoading = true
         runCatching { withContext(Dispatchers.Default) { RendererBridge.metadata(project) } }
@@ -304,7 +307,12 @@ private fun CubicalCompareApp() {
     var pendingExport by remember { mutableStateOf<StudioProject?>(null) }
     val exportVideo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
         val value = pendingExport
-        if (uri != null && value != null) ExportService.start(context, value, uri)
+        if (uri != null && value != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            runCatching { ExportService.start(context, value, uri) }.onFailure(::report)
+        }
     }
 
     val darkTheme = isSystemInDarkTheme()
@@ -314,7 +322,7 @@ private fun CubicalCompareApp() {
         darkTheme -> CubicalDarkColours
         else -> CubicalLightColours
     }
-    val accuracy = accuracyState(project)
+    val accuracy = accuracyState(project, activeRenderer)
 
     MaterialTheme(colorScheme = colours) {
         Scaffold(
@@ -324,7 +332,7 @@ private fun CubicalCompareApp() {
                     title = {
                         Column {
                             Text(project.name.ifBlank { "Untitled" }, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                            Text("${RendererRuntime.active.name} · $saveState", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${activeRenderer.name} · $saveState", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -377,6 +385,7 @@ private fun CubicalCompareApp() {
                 StudioPage.MORE -> MorePage(
                     project = project,
                     metadata = metadata,
+                    rendererSpec = activeRenderer,
                     exportProgress = exportProgress,
                     onNew = { applyProject(StudioProject()); selectedCard = 0; page = StudioPage.CARDS },
                     onOpen = { openProject.launch(arrayOf("application/json", "text/json", "*/*")) },
@@ -979,6 +988,7 @@ private fun ProjectPage(
 private fun MorePage(
     project: StudioProject,
     metadata: RenderMetadata,
+    rendererSpec: RendererSpec,
     exportProgress: ExportProgress,
     onNew: () -> Unit,
     onOpen: () -> Unit,
@@ -991,8 +1001,9 @@ private fun MorePage(
     onCancelExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val codec = remember(project.encoderPreference, project.width, project.height, project.fps) {
-        HardwareCodecSelector.describe(project.encoderPreference, project.width, project.height, project.fps)
+    val outputProject = remember(project, rendererSpec) { RendererBridge.resolveOutputProject(project, rendererSpec) }
+    val codec = remember(outputProject.encoderPreference, outputProject.width, outputProject.height, outputProject.fps) {
+        HardwareCodecSelector.describe(outputProject.encoderPreference, outputProject.width, outputProject.height, outputProject.fps)
     }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -1017,7 +1028,7 @@ private fun MorePage(
         }
         item {
             SectionCard("Export") {
-                SettingRow("Output", "${project.width}×${project.height} · ${project.fps} FPS")
+                SettingRow("Output", "${outputProject.width}×${outputProject.height} · ${outputProject.fps} FPS")
                 SettingRow("Length", "${DurationFormat.formatPrecise(metadata.duration)} · ${metadata.frameCount} frames")
                 SettingRow("Encoder", codec)
                 if (exportProgress.running || exportProgress.stage != "Ready") {

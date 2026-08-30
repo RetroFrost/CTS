@@ -61,6 +61,12 @@ class RendererImportActivity : ComponentActivity() {
         } else Unit
     }
 
+    override fun onDestroy() {
+        preview?.takeIf { !it.isRecycled }?.recycle()
+        preview = null
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

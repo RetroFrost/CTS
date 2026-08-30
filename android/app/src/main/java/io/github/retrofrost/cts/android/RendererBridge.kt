@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.OpenableColumns
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
 /** Native 2.0.7 renderer bridge. No Python, Chaquopy, Pillow or openpyxl. */
@@ -19,6 +21,17 @@ object RendererBridge {
     private val ribbonRenderer = RibbonFrameRenderer()
     private val relationshipsRenderer = RelationshipsFrameRenderer()
     private val relationshipsPrecisionRenderer = RelationshipsPrecisionFrameRenderer()
+    private val runtimeRevisionMutable = MutableStateFlow(0L)
+    val runtimeRevision = runtimeRevisionMutable.asStateFlow()
+
+    fun setRuntimeActive(spec: RendererSpec) = synchronized(lock) {
+        if (RendererRuntime.active != spec) {
+            RendererRuntime.active = spec
+            runtimeRevisionMutable.value = runtimeRevisionMutable.value + 1L
+        } else {
+            RendererRuntime.active = spec
+        }
+    }
 
     private fun engine(spec: RendererSpec = RendererRuntime.active): String = when {
         RelationshipsTimeline.isRelationships(spec) -> "relationships-exact"
@@ -31,6 +44,12 @@ object RendererBridge {
         "ribbon-exact" -> RibbonTimeline.totalFrameCount(project, spec)
         else -> NativeTimeline.totalFrameCount(project, spec)
     }.coerceAtLeast(1)
+
+    /** Frame-exact means one canonical raster and cadence. Preview/export use this same rule. */
+    fun resolveOutputProject(
+        project: StudioProject,
+        spec: RendererSpec = RendererRuntime.active,
+    ): StudioProject = RenderOutputPolicy.resolve(project, spec)
 
     fun projectCompatibility(
         project: StudioProject,
@@ -45,112 +64,157 @@ object RendererBridge {
     fun rendererIntroFrames(spec: RendererSpec = RendererRuntime.active): Int =
         spec.openingStarts.firstOrNull()?.coerceAtLeast(0) ?: 0
 
-    fun customIntroFrames(project: StudioProject): Int {
+    fun customIntroFrames(
+        project: StudioProject,
+        spec: RendererSpec = RendererRuntime.active,
+    ): Int {
         if (project.introMode != IntroMode.CUSTOM || project.introVideo.isBlank()) return 0
-        return IntroVideoSource.frameCount(project.introVideo, project.fps.coerceAtLeast(1))
+        val fps = resolveOutputProject(project, spec).fps
+        return IntroVideoSource.frameCount(project.introVideo, fps)
     }
 
-    fun metadata(project: StudioProject): RenderMetadata = synchronized(lock) {
-        val spec = RendererRuntime.active
-        val fps = if (
-            RelationshipsPrecisionFrameRenderer.enabled(spec) &&
-            spec.precisionMode == "frame-exact"
-        ) {
-            spec.referenceFps.coerceIn(1, 240)
-        } else {
-            project.fps.coerceIn(1, 120)
-        }
-        val base = baseFrameCount(project, spec)
+    fun metadata(
+        project: StudioProject,
+        spec: RendererSpec = RendererRuntime.active,
+    ): RenderMetadata = synchronized(lock) {
+        val outputProject = resolveOutputProject(project, spec)
+        val fps = outputProject.fps
+        val base = baseFrameCount(outputProject, spec)
         val rendererIntro = rendererIntroFrames(spec).coerceAtMost(base - 1)
-        val frameCount = when (project.introMode) {
+        val frameCount = when (outputProject.introMode) {
             IntroMode.RENDERER -> base
             IntroMode.DISABLED -> base - rendererIntro
             IntroMode.CUSTOM -> {
-                require(project.introVideo.isNotBlank()) { "Choose a custom MP4 intro or switch the intro mode." }
-                IntroVideoSource.frameCount(project.introVideo, fps) + (base - rendererIntro)
+                require(outputProject.introVideo.isNotBlank()) { "Choose a custom MP4 intro or switch the intro mode." }
+                IntroVideoSource.frameCount(outputProject.introVideo, fps) + (base - rendererIntro)
             }
         }.coerceAtLeast(1)
         RenderMetadata(frameCount, frameCount.toDouble() / fps, fps)
     }
 
-    /**
-     * Keep the canonical renderer path identical to the pre-intro implementation.
-     * The common RENDERER mode must not pay custom-intro mapping/decoder overhead per frame.
-     */
-    fun renderRgba(project: StudioProject, frame: Int, width: Int, height: Int): ByteArray = synchronized(lock) {
-        val spec = RendererRuntime.active
-        val safeWidth = width.coerceAtLeast(2)
-        val safeHeight = height.coerceAtLeast(2)
-        when (project.introMode) {
-            IntroMode.RENDERER -> renderEngineRgba(project, spec, frame, safeWidth, safeHeight)
-            IntroMode.DISABLED -> renderEngineRgba(
-                project,
-                spec,
-                frame.coerceAtLeast(0) + rendererIntroFrames(spec),
-                safeWidth,
-                safeHeight,
-            )
-            IntroMode.CUSTOM -> {
-                require(project.introVideo.isNotBlank()) { "Choose a custom MP4 intro or switch the intro mode." }
-                val customFrames = IntroVideoSource.frameCount(project.introVideo, project.fps.coerceAtLeast(1))
-                if (frame < customFrames) {
-                    IntroVideoSource.renderRgba(project.introVideo, frame.coerceAtLeast(0), project.fps, safeWidth, safeHeight)
-                } else {
-                    renderEngineRgba(
-                        project,
-                        spec,
-                        frame - customFrames + rendererIntroFrames(spec),
-                        safeWidth,
-                        safeHeight,
-                    )
-                }
-            }
-        }
-    }
+    fun renderRgba(project: StudioProject, frame: Int, width: Int, height: Int): ByteArray =
+        renderRgbaWithSpec(project, RendererRuntime.active, frame, width, height)
 
-    fun render(project: StudioProject, frame: Int, width: Int, height: Int): Bitmap = synchronized(lock) {
-        val spec = RendererRuntime.active
-        val safeWidth = width.coerceAtLeast(2)
-        val safeHeight = height.coerceAtLeast(2)
-        when (project.introMode) {
-            IntroMode.RENDERER -> renderEngine(project, spec, frame, safeWidth, safeHeight)
-            IntroMode.DISABLED -> renderEngine(
-                project,
-                spec,
-                frame.coerceAtLeast(0) + rendererIntroFrames(spec),
-                safeWidth,
-                safeHeight,
-            )
-            IntroMode.CUSTOM -> {
-                require(project.introVideo.isNotBlank()) { "Choose a custom MP4 intro or switch the intro mode." }
-                val customFrames = IntroVideoSource.frameCount(project.introVideo, project.fps.coerceAtLeast(1))
-                if (frame < customFrames) {
-                    IntroVideoSource.render(project.introVideo, frame.coerceAtLeast(0), project.fps, safeWidth, safeHeight)
-                } else {
-                    renderEngine(
-                        project,
-                        spec,
-                        frame - customFrames + rendererIntroFrames(spec),
-                        safeWidth,
-                        safeHeight,
-                    )
-                }
-            }
-        }
-    }
-
-    fun renderWithSpec(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap = synchronized(lock) {
+    fun renderRgbaWithSpec(
+        project: StudioProject,
+        spec: RendererSpec,
+        frame: Int,
+        width: Int,
+        height: Int,
+    ): ByteArray = synchronized(lock) {
         val previous = RendererRuntime.active
-        return try {
+        try {
             RendererRuntime.active = spec
-            renderEngine(project.copy(introMode = IntroMode.RENDERER, introVideo = ""), spec, frame, width, height)
+            renderTimelineRgba(resolveOutputProject(project, spec), spec, frame, width, height)
         } finally {
             RendererRuntime.active = previous
         }
     }
 
-    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap {
-        return when (engine(spec)) {
+    fun render(project: StudioProject, frame: Int, width: Int, height: Int): Bitmap =
+        renderWithSpecTimeline(project, RendererRuntime.active, frame, width, height)
+
+    /** Render a real project against a frozen renderer spec, preserving its intro mode. */
+    fun renderWithSpecTimeline(
+        project: StudioProject,
+        spec: RendererSpec,
+        frame: Int,
+        width: Int,
+        height: Int,
+    ): Bitmap = synchronized(lock) {
+        val previous = RendererRuntime.active
+        try {
+            RendererRuntime.active = spec
+            renderTimeline(resolveOutputProject(project, spec), spec, frame, width, height)
+        } finally {
+            RendererRuntime.active = previous
+        }
+    }
+
+    /** Preflight helper: renderer-owned intro only, no project custom-intro substitution. */
+    fun renderWithSpec(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap = synchronized(lock) {
+        val previous = RendererRuntime.active
+        try {
+            RendererRuntime.active = spec
+            val value = resolveOutputProject(project.copy(introMode = IntroMode.RENDERER, introVideo = ""), spec)
+            renderEngine(value, spec, frame, width, height)
+        } finally {
+            RendererRuntime.active = previous
+        }
+    }
+
+    private fun renderTimeline(
+        project: StudioProject,
+        spec: RendererSpec,
+        frame: Int,
+        width: Int,
+        height: Int,
+    ): Bitmap {
+        val safeWidth = width.coerceAtLeast(2)
+        val safeHeight = height.coerceAtLeast(2)
+        val safeFrame = frame.coerceAtLeast(0)
+        return when (project.introMode) {
+            IntroMode.RENDERER -> renderEngine(project, spec, safeFrame, safeWidth, safeHeight)
+            IntroMode.DISABLED -> renderEngine(
+                project,
+                spec,
+                safeFrame + rendererIntroFrames(spec),
+                safeWidth,
+                safeHeight,
+            )
+            IntroMode.CUSTOM -> {
+                require(project.introVideo.isNotBlank()) { "Choose a custom MP4 intro or switch the intro mode." }
+                val fps = project.fps.coerceAtLeast(1)
+                val customFrames = IntroVideoSource.frameCount(project.introVideo, fps)
+                if (safeFrame < customFrames) {
+                    IntroVideoSource.render(project.introVideo, safeFrame, fps, safeWidth, safeHeight)
+                } else {
+                    renderEngine(
+                        project,
+                        spec,
+                        safeFrame - customFrames + rendererIntroFrames(spec),
+                        safeWidth,
+                        safeHeight,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun renderTimelineRgba(
+        project: StudioProject,
+        spec: RendererSpec,
+        frame: Int,
+        width: Int,
+        height: Int,
+    ): ByteArray {
+        val safeWidth = width.coerceAtLeast(2)
+        val safeHeight = height.coerceAtLeast(2)
+        val safeFrame = frame.coerceAtLeast(0)
+        return when (project.introMode) {
+            IntroMode.RENDERER -> renderEngineRgba(project, spec, safeFrame, safeWidth, safeHeight)
+            IntroMode.DISABLED -> renderEngineRgba(project, spec, safeFrame + rendererIntroFrames(spec), safeWidth, safeHeight)
+            IntroMode.CUSTOM -> {
+                require(project.introVideo.isNotBlank()) { "Choose a custom MP4 intro or switch the intro mode." }
+                val fps = project.fps.coerceAtLeast(1)
+                val customFrames = IntroVideoSource.frameCount(project.introVideo, fps)
+                if (safeFrame < customFrames) {
+                    IntroVideoSource.renderRgba(project.introVideo, safeFrame, fps, safeWidth, safeHeight)
+                } else {
+                    renderEngineRgba(
+                        project,
+                        spec,
+                        safeFrame - customFrames + rendererIntroFrames(spec),
+                        safeWidth,
+                        safeHeight,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap =
+        when (engine(spec)) {
             "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
                 relationshipsPrecisionRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             } else {
@@ -159,10 +223,9 @@ object RendererBridge {
             "ribbon-exact" -> ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             else -> nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         }
-    }
 
-    private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray {
-        return when (engine(spec)) {
+    private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray =
+        when (engine(spec)) {
             "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
                 relationshipsPrecisionRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             } else {
@@ -171,7 +234,6 @@ object RendererBridge {
             "ribbon-exact" -> ribbonRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             else -> nativeRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         }
-    }
 
     fun importData(project: StudioProject, path: String): StudioProject = synchronized(lock) {
         NativeImporters.importData(project, File(path))

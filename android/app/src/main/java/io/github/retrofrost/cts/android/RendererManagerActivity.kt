@@ -188,6 +188,7 @@ class RendererManagerActivity : ComponentActivity() {
                                                     store.activate(pending.spec.id)
                                                 }.onSuccess {
                                                     candidate = null
+                                                    previewBitmap?.takeIf { !it.isRecycled }?.recycle()
                                                     previewBitmap = null
                                                     message = "Installed and activated ${it.name}."
                                                     refresh()
@@ -198,6 +199,7 @@ class RendererManagerActivity : ComponentActivity() {
                                         OutlinedButton(
                                             onClick = {
                                                 candidate = null
+                                                previewBitmap?.takeIf { !it.isRecycled }?.recycle()
                                                 previewBitmap = null
                                                 message = "Import cancelled. Active renderer was not changed."
                                             },
@@ -289,6 +291,12 @@ class RendererManagerActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        previewBitmap?.takeIf { !it.isRecycled }?.recycle()
+        previewBitmap = null
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -296,7 +304,7 @@ class RendererManagerActivity : ComponentActivity() {
     }
 
     private fun refresh() {
-        active = store.active().also { RendererRuntime.active = it }
+        active = store.active().also(RendererBridge::setRuntimeActive)
         installed = store.listInstalled()
     }
 
@@ -322,8 +330,9 @@ class RendererManagerActivity : ComponentActivity() {
         val project = previewProject(pending.spec)
         runCatching {
             RendererBridge.renderWithSpec(project, pending.spec, frames[previewIndex], 640, 360)
-        }.onSuccess {
-            previewBitmap = it
+        }.onSuccess { next ->
+            previewBitmap?.takeIf { it !== next && !it.isRecycled }?.recycle()
+            previewBitmap = next
         }.onFailure {
             previewBitmap = null
             message = "Renderer preview failed: ${it.message ?: "unknown renderer error"}"

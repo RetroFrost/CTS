@@ -16,9 +16,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
+import java.util.UUID
 import java.util.concurrent.CancellationException
 
 data class ExportProgress(
@@ -29,7 +30,7 @@ data class ExportProgress(
 )
 
 object ExportState {
-    private val mutable = MutableStateFlow(ExportProgress())
+    private val mutable = kotlinx.coroutines.flow.MutableStateFlow(ExportProgress())
     val state = mutable.asStateFlow()
     fun update(progress: ExportProgress) { mutable.value = progress }
 }
@@ -37,96 +38,112 @@ object ExportState {
 class ExportService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
-    @Volatile private var cancelled = false
-    private var wakeLock: PowerManager.WakeLock? = null
+    @Volatile private var activeToken: String? = null
+    @Volatile private var cancelRequestedToken: String? = null
 
     override fun onCreate() {
         super.onCreate()
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Video exports", NotificationManager.IMPORTANCE_LOW),
         )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_CANCEL) {
-            cancelled = true
-            ExportState.update(ExportState.state.value.copy(stage = "Cancelling", detail = "Stopping safely"))
-            updateNotification(ExportState.state.value)
+            val token = activeToken
+            if (token != null) {
+                cancelRequestedToken = token
+                job?.cancel()
+                val cancelling = ExportState.state.value.copy(stage = "Cancelling", detail = "Stopping safely")
+                ExportState.update(cancelling)
+                updateNotification(cancelling)
+            }
             return START_NOT_STICKY
         }
-        val projectJson = intent?.getStringExtra(EXTRA_PROJECT)
+
+        val snapshotPath = intent?.getStringExtra(EXTRA_SNAPSHOT)
         val destinationText = intent?.getStringExtra(EXTRA_URI)
-        if (projectJson.isNullOrBlank() || destinationText.isNullOrBlank()) {
+        if (snapshotPath.isNullOrBlank() || destinationText.isNullOrBlank()) {
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        cancelled = false
+        val snapshotDir = File(snapshotPath)
+        val token = snapshotDir.name
+        activeToken = token
+        cancelRequestedToken = null
+        job?.cancel()
+
         val initial = ExportProgress(true, 0, "Preparing", "Starting the GPU renderer")
         ExportState.update(initial)
         startForeground(NOTIFICATION_ID, notification(initial))
-        wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CubicalCompare:GpuExport")
+
+        val localWakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CubicalCompare:GpuExport:$token")
             .apply { acquire(6 * 60 * 60 * 1000L) }
 
-        job?.cancel()
         job = scope.launch {
+            fun ownsExport(): Boolean = activeToken == token
+            fun cancelled(): Boolean = !ownsExport() || cancelRequestedToken == token
+            fun publish(value: ExportProgress) {
+                if (!ownsExport()) return
+                ExportState.update(value)
+                updateNotification(value)
+            }
+
             try {
-                val project = StudioProject.fromJson(projectJson)
-                val spec = RendererRuntime.active
-                val exportProject = if (
-                    RelationshipsPrecisionFrameRenderer.enabled(spec) &&
-                    spec.precisionMode == "frame-exact"
-                ) {
-                    // A source-exact renderer has one canonical raster and timeline.
-                    // Never silently rescale it or change its cadence from project settings.
-                    project.copy(
-                        width = spec.referenceWidth,
-                        height = spec.referenceHeight,
-                        fps = spec.referenceFps,
-                    )
-                } else {
-                    project
-                }
+                val projectFile = File(snapshotDir, PROJECT_FILE)
+                val rendererFile = File(snapshotDir, RENDERER_FILE)
+                require(projectFile.isFile && rendererFile.isFile) { "The export snapshot is incomplete." }
+                val project = StudioProject.fromJson(projectFile.readText())
+                val spec = rendererFile.inputStream().use(RendererBundle::read)
+                val exportProject = RendererBridge.resolveOutputProject(project, spec)
                 HardwareVideoExporter(
                     context = applicationContext,
-                    project = exportProject,
-                    shouldCancel = { cancelled },
+                    sourceProject = exportProject,
+                    rendererSpec = spec,
+                    shouldCancel = ::cancelled,
                     onProgress = { percent, stage, detail ->
-                        val value = ExportProgress(true, percent.coerceIn(0, 100), stage, detail)
-                        ExportState.update(value)
-                        updateNotification(value)
+                        publish(ExportProgress(true, percent.coerceIn(0, 100), stage, detail))
                     },
                 ).export(Uri.parse(destinationText))
-                val done = ExportProgress(false, 100, "Finished", "The MP4 is ready")
-                ExportState.update(done)
-                updateNotification(done)
+                publish(ExportProgress(false, 100, "Finished", "The MP4 is ready"))
             } catch (_: CancellationException) {
-                val stopped = ExportProgress(false, 0, "Cancelled", "Export cancelled")
-                ExportState.update(stopped)
-                updateNotification(stopped)
+                publish(ExportProgress(false, 0, "Cancelled", "Export cancelled"))
             } catch (error: Throwable) {
-                val failed = ExportProgress(
-                    false,
-                    0,
-                    "Export failed",
-                    error.message ?: error::class.java.simpleName,
+                publish(
+                    ExportProgress(
+                        false,
+                        0,
+                        "Export failed",
+                        error.message ?: error::class.java.simpleName,
+                    ),
                 )
-                ExportState.update(failed)
-                updateNotification(failed)
             } finally {
-                if (wakeLock?.isHeld == true) wakeLock?.release()
-                wakeLock = null
-                stopForeground(false)
-                stopSelf(startId)
+                if (localWakeLock.isHeld) localWakeLock.release()
+                snapshotDir.deleteRecursively()
+                if (activeToken == token) {
+                    activeToken = null
+                    cancelRequestedToken = null
+                    stopForeground(STOP_FOREGROUND_DETACH)
+                    stopSelfResult(startId)
+                }
             }
         }
         return START_REDELIVER_INTENT
     }
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        activeToken?.let { cancelRequestedToken = it }
+        job?.cancel()
+        val timedOut = ExportProgress(false, 0, "Export stopped", "Android ended the media-processing time window")
+        ExportState.update(timedOut)
+        updateNotification(timedOut)
+        stopForeground(STOP_FOREGROUND_DETACH)
+        stopSelf(startId)
+    }
+
     private fun updateNotification(progress: ExportProgress) {
-        getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, notification(progress))
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(progress))
     }
 
     private fun notification(progress: ExportProgress): Notification {
@@ -157,8 +174,8 @@ class ExportService : Service() {
     }
 
     override fun onDestroy() {
+        activeToken?.let { cancelRequestedToken = it }
         job?.cancel()
-        if (wakeLock?.isHeld == true) wakeLock?.release()
         scope.cancel()
         super.onDestroy()
     }
@@ -170,15 +187,26 @@ class ExportService : Service() {
         private const val NOTIFICATION_ID = 207
         private const val ACTION_START = "io.github.retrofrost.cts.android.EXPORT"
         private const val ACTION_CANCEL = "io.github.retrofrost.cts.android.CANCEL_EXPORT"
-        private const val EXTRA_PROJECT = "project"
+        private const val EXTRA_SNAPSHOT = "snapshot"
         private const val EXTRA_URI = "uri"
+        private const val PROJECT_FILE = "project.json"
+        private const val RENDERER_FILE = "renderer.renderer"
 
         fun start(context: Context, project: StudioProject, destination: Uri) {
-            val intent = Intent(context, ExportService::class.java)
-                .setAction(ACTION_START)
-                .putExtra(EXTRA_PROJECT, project.toJson())
-                .putExtra(EXTRA_URI, destination.toString())
-            context.startForegroundService(intent)
+            val queue = File(context.filesDir, "export-queue").apply { mkdirs() }
+            val snapshot = File(queue, UUID.randomUUID().toString()).apply { mkdirs() }
+            try {
+                File(snapshot, PROJECT_FILE).writeText(project.toJson())
+                File(snapshot, RENDERER_FILE).outputStream().use { RendererBundle.write(RendererRuntime.active, it) }
+                val intent = Intent(context, ExportService::class.java)
+                    .setAction(ACTION_START)
+                    .putExtra(EXTRA_SNAPSHOT, snapshot.absolutePath)
+                    .putExtra(EXTRA_URI, destination.toString())
+                context.startForegroundService(intent)
+            } catch (error: Throwable) {
+                snapshot.deleteRecursively()
+                throw error
+            }
         }
 
         fun cancel(context: Context) {

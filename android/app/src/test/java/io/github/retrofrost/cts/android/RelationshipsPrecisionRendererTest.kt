@@ -1,5 +1,6 @@
 package io.github.retrofrost.cts.android
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -81,6 +82,26 @@ class RelationshipsPrecisionRendererTest {
     fun rendererAdvertisesGlobalAntiDuplicationCapabilities() {
         assertTrue(RendererCapabilities.features.contains("relationships-shadow-mask-v1"))
         assertTrue(RendererCapabilities.features.contains("relationships-single-owner-pass-v1"))
+    }
+
+
+
+    @Test
+    fun frameExactOutputResolutionIsCanonical() {
+        val spec = RendererSpec(
+            id = "relationships.test.output",
+            engine = "relationships-exact",
+            precisionMode = "frame-exact",
+            referenceWidth = 1920,
+            referenceHeight = 1080,
+            referenceFps = 60,
+            tags = listOf("relationships.exact.v2=true"),
+        )
+        val project = StudioProject(width = 1280, height = 720, fps = 30)
+        val resolved = RenderOutputPolicy.resolve(project, spec)
+        assertEquals(1920, resolved.width)
+        assertEquals(1080, resolved.height)
+        assertEquals(60, resolved.fps)
     }
 
 }
