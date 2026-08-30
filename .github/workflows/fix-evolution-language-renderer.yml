@@ -1,0 +1,103 @@
+name: Fix Evolution Language renderer
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - .github/workflows/fix-evolution-language-renderer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+
+      - name: Patch Ribbon exact-track support
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt')
+          s = p.read_text()
+
+          old = '''private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? {
+    val centre = spec.track(target, frame) ?: return null
+    val previous = spec.track(target, frame - 1) ?: centre
+    val next = spec.track(target, frame + 1) ?: centre
+    return previous * 0.20f + centre * 0.60f + next * 0.20f
+}'''
+          new = '''private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? {
+    val centre = spec.track(target, frame) ?: return null
+    // Frame-measured bundles must not be filtered after measurement: doing so
+    // changes the source motion by definition. Legacy Ribbon bundles retain the
+    // old 20/60/20 temporal filter unless they explicitly opt into raw tracks.
+    if (spec.tags.contains("ribbon-raw-frame-tracks-v1")) return centre
+    val previous = spec.track(target, frame - 1) ?: centre
+    val next = spec.track(target, frame + 1) ?: centre
+    return previous * 0.20f + centre * 0.60f + next * 0.20f
+}
+
+private fun rendererTag(spec: RendererSpec, key: String): String? =
+    spec.tags.firstOrNull { it.startsWith("$key=") }
+        ?.substringAfter('=')
+        ?.replace("\\\\n", "\\n")'''
+          assert old in s
+          s = s.replace(old, new)
+
+          old = '''            "The values presented are estimates\\nfrom publicly available\\nsources. Individual results may\\nvary depending\\non concentration, temperature,\\nexposure time, and\\nother factors. Do not attempt\\nany experiments.",'''
+          new = '''            rendererTag(spec, "ribbon.credits.intro")
+                ?: "The values presented are estimates\\nfrom publicly available\\nsources. Individual results may\\nvary depending\\non concentration, temperature,\\nexposure time, and\\nother factors. Do not attempt\\nany experiments.",'''
+          assert old in s
+          s = s.replace(old, new)
+
+          old = '''        if (index < 4) {
+            if (local < OPENING_BADGE_FIRST_FRAME) return
+            age = ((local.coerceAtMost(OPENING_BADGE_FINAL_FRAME) - OPENING_BADGE_FIRST_FRAME).toFloat() /
+                (OPENING_BADGE_FINAL_FRAME - OPENING_BADGE_FIRST_FRAME)) * BADGE_ENTRY_AGE
+
+            // Corrected hand-dissolve bundles provide a different measured affine'''
+          new = '''        if (index < 4) {
+            val firstFrame = spec.track("ribbon.open.$index.entry.first", 0)?.roundToInt() ?: OPENING_BADGE_FIRST_FRAME
+            val finalFrame = spec.track("ribbon.open.$index.entry.final", 0)?.roundToInt() ?: OPENING_BADGE_FINAL_FRAME
+            if (local < firstFrame) return
+            age = ((local.coerceAtMost(finalFrame) - firstFrame).toFloat() /
+                (finalFrame - firstFrame).coerceAtLeast(1)) * BADGE_ENTRY_AGE
+
+            // Corrected hand-dissolve bundles provide a different measured affine'''
+          assert old in s
+          s = s.replace(old, new)
+
+          old = '''        val exactProgress = if (index < 4) motionTrack(spec, "ribbon.open.$index.shine.progress", local) else null
+        val exactAlpha = if (index < 4) motionTrack(spec, "ribbon.open.$index.shine.alpha", local) else null'''
+          new = '''        val exactProgress = if (index < 4) {
+            motionTrack(spec, "ribbon.open.$index.shine.progress", local)
+        } else {
+            motionTrack(spec, "ribbon.later.shine.progress", local)
+        }
+        val exactAlpha = if (index < 4) {
+            motionTrack(spec, "ribbon.open.$index.shine.alpha", local)
+        } else {
+            motionTrack(spec, "ribbon.later.shine.alpha", local)
+        }'''
+          assert old in s
+          s = s.replace(old, new)
+
+          p.write_text(s)
+
+      - name: Build and test
+        run: |
+          gradle --project-dir android :app:assembleRelease :app:testDebugUnitTest --stacktrace --console=plain
+
+      - name: Commit fix
+        run: |
+          git config user.name "RetroFrost"
+          git config user.email "routerifter@gmail.com"
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+          git commit -m "renderer: honour raw frame-measured Ribbon motion"
+          git push origin HEAD:fork/2.0.7-renderer-bundles
