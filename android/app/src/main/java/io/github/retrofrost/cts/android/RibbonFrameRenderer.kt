@@ -88,7 +88,7 @@ class RibbonFrameRenderer {
     }
 
     private fun drawReference(canvas: Canvas, project: StudioProject, frame: Int, spec: RendererSpec) {
-        canvas.drawColor(spec.backgroundColor)
+        canvas.drawColor(frameBackgroundColor(spec, frame))
         if (project.cards.isEmpty()) return
         val contentEnd = RibbonTimeline.contentEndFrame(project, spec)
         if (frame < contentEnd) {
@@ -215,6 +215,20 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
     val next = spec.track(target, frame + 1) ?: centre
     return previous * 0.20f + centre * 0.60f + next * 0.20f
 }
+
+    private fun frameBackgroundColor(spec: RendererSpec, frame: Int): Int {
+        val gray = motionTrack(spec, "ribbon.background.gray", frame)
+        val r = motionTrack(spec, "ribbon.background.r", frame)
+        val g = motionTrack(spec, "ribbon.background.g", frame)
+        val b = motionTrack(spec, "ribbon.background.b", frame)
+        if (gray == null && r == null && g == null && b == null) return spec.backgroundColor
+        val fallback = gray ?: 0f
+        return Color.rgb(
+            (r ?: fallback).roundToInt().coerceIn(0, 255),
+            (g ?: fallback).roundToInt().coerceIn(0, 255),
+            (b ?: fallback).roundToInt().coerceIn(0, 255),
+        )
+    }
 
     private fun exactScroll(spec: RendererSpec, frame: Int): Float? {
         if (frame < spec.continuousStartFrame) return null
@@ -361,10 +375,11 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
             Color.WHITE,
             false,
             24f,
+            project,
         )
         paint.color = Color.rgb(180, 180, 180)
         canvas.drawRect(x + 47f, 200f, x + spec.bodyWidth - 47f, 202f, paint)
-        drawCenteredText(canvas, "Credits", cx, 286f, 44f, Color.WHITE, true)
+        drawCenteredText(canvas, "Credits", cx, 286f, 44f, Color.WHITE, true, project)
 
         val rows = listOf(
             "Lead Research & Sourcing" to "Ahmed",
@@ -376,8 +391,8 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         )
         var y = 370f
         rows.forEach { (label, value) ->
-            drawCenteredText(canvas, label, cx, y, 18f, Color.WHITE, false)
-            drawCenteredText(canvas, value, cx, y + 28f, 18f, Color.WHITE, true)
+            drawCenteredText(canvas, label, cx, y, 18f, Color.WHITE, false, project)
+            drawCenteredText(canvas, value, cx, y + 28f, 18f, Color.WHITE, true, project)
             y += 83f
         }
         drawSimpleMultiline(
@@ -389,6 +404,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
             Color.rgb(220, 220, 220),
             false,
             14f,
+            project,
         )
     }
 
@@ -409,13 +425,17 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         val age: Float
         val matrix = Matrix()
         if (index < 4) {
-            if (local < OPENING_BADGE_FIRST_FRAME) return
-            age = ((local.coerceAtMost(OPENING_BADGE_FINAL_FRAME) - OPENING_BADGE_FIRST_FRAME).toFloat() /
-                (OPENING_BADGE_FINAL_FRAME - OPENING_BADGE_FIRST_FRAME)) * BADGE_ENTRY_AGE
-
-            // Corrected hand-dissolve bundles provide a different measured affine
-            // path for each opening badge. Older Ribbon bundles keep their shared path.
             val exactPrefix = "ribbon.open.$index"
+            val explicitVisibility = motionTrack(spec, "$exactPrefix.visible", local)
+            if (explicitVisibility != null) {
+                if (explicitVisibility <= 0.001f) return
+            } else if (local < OPENING_BADGE_FIRST_FRAME) return
+            age = motionTrack(spec, "$exactPrefix.age", local)
+                ?: ((local.coerceAtMost(OPENING_BADGE_FINAL_FRAME) - OPENING_BADGE_FIRST_FRAME).toFloat() /
+                    (OPENING_BADGE_FINAL_FRAME - OPENING_BADGE_FIRST_FRAME)) * BADGE_ENTRY_AGE
+
+            // Source-exact bundles may provide a different frame-addressed affine
+            // path for every opening badge. Older Ribbon bundles keep their shared path.
             val prefix = if (spec.track("$exactPrefix.m00", local) != null) exactPrefix else "ribbon.open"
             val values = floatArrayOf(
                 motionTrack(spec, "$prefix.m00", local) ?: 1f,
@@ -498,11 +518,19 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         canvas.drawPath(path, paint)
         paint.style = Paint.Style.FILL
 
-        drawRibbonBadgeText(canvas, project, card, age, spec)
+        drawRibbonBadgeText(canvas, project, card, age, spec, index, local)
         drawRibbonShine(canvas, age, path, spec, index, local)
     }
 
-    private fun drawRibbonBadgeText(canvas: Canvas, project: StudioProject, card: StudioCard, age: Float, spec: RendererSpec) {
+    private fun drawRibbonBadgeText(
+        canvas: Canvas,
+        project: StudioProject,
+        card: StudioCard,
+        age: Float,
+        spec: RendererSpec,
+        cardIndex: Int,
+        local: Int,
+    ) {
         val lines = valueLines(card.value)
         val header = card.badgeHeader.trim().uppercase()
         val layout: List<Triple<String, Float, Float>> = when {
@@ -525,11 +553,20 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
             val text = item.first
             if (text.isBlank()) return@forEachIndexed
             val startAge = 0.90f + index * 0.10f
-            val progress = ((age - startAge) / 0.42f).coerceIn(0f, 1f)
+            val prefix = if (cardIndex < 4) "ribbon.open.$cardIndex" else "ribbon.card.$cardIndex"
+            val groupProgress = motionTrack(spec, "$prefix.text.progress", local)
+            val exactProgress = motionTrack(spec, "$prefix.text.$index.progress", local) ?: groupProgress
+            val progress = (exactProgress ?: ((age - startAge) / 0.42f)).coerceIn(0f, 1f)
             if (progress <= 0f) return@forEachIndexed
             val eased = 1f - (1f - progress) * (1f - progress) * (1f - progress)
-            val y = item.second + textLandingOffset(age) - (1f - eased) * 112f
-            val alpha = (255f * (progress * 1.75f).coerceIn(0f, 1f)).roundToInt()
+            val exactOffset = motionTrack(spec, "$prefix.text.$index.y", local)
+                ?: motionTrack(spec, "$prefix.text.y", local)
+            val y = item.second + (exactOffset ?: (textLandingOffset(age) - (1f - eased) * 112f))
+            val exactAlpha = motionTrack(spec, "$prefix.text.$index.alpha", local)
+                ?: motionTrack(spec, "$prefix.text.alpha", local)
+            val alpha = (255f * (exactAlpha ?: (progress * 1.75f)).coerceIn(0f, 1f)).roundToInt()
+            val exactBlur = motionTrack(spec, "$prefix.text.$index.blur", local)
+                ?: motionTrack(spec, "$prefix.text.blur", local)
             var size = item.third
             textPaint.typeface = ProjectFontResolver.resolve(project, boldTypeface, Typeface.BOLD)
             textPaint.textAlign = Paint.Align.CENTER
@@ -546,7 +583,10 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
                     val trailAlpha = (alpha * (1f - fraction) * 0.18f).roundToInt()
                     if (trailAlpha <= 0) continue
                     textPaint.color = Color.argb(trailAlpha, 255, 255, 255)
-                    textPaint.maskFilter = BlurMaskFilter(max(0.2f, (1f - progress) * 5.8f), BlurMaskFilter.Blur.NORMAL)
+                    textPaint.maskFilter = BlurMaskFilter(
+                        max(0.2f, exactBlur ?: ((1f - progress) * 5.8f)),
+                        BlurMaskFilter.Blur.NORMAL,
+                    )
                     drawCenteredBaselineText(canvas, text, spec.badgeCenterX, y - trailLength * fraction, textPaint)
                 }
             }
@@ -554,9 +594,12 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
             textPaint.color = Color.argb((alpha * 0.42f).roundToInt(), 20, 20, 20)
             drawCenteredBaselineText(canvas, text, spec.badgeCenterX + 3f, y + 5f, textPaint)
             textPaint.color = Color.argb(alpha, 255, 255, 255)
-            textPaint.maskFilter = if (progress < 0.96f) {
-                BlurMaskFilter(max(0.2f, (1f - progress) * 5.8f), BlurMaskFilter.Blur.NORMAL)
-            } else null
+            textPaint.maskFilter = when {
+                exactBlur != null && exactBlur > 0.05f -> BlurMaskFilter(exactBlur, BlurMaskFilter.Blur.NORMAL)
+                exactBlur != null -> null
+                progress < 0.96f -> BlurMaskFilter(max(0.2f, (1f - progress) * 5.8f), BlurMaskFilter.Blur.NORMAL)
+                else -> null
+            }
             drawCenteredBaselineText(canvas, text, spec.badgeCenterX, y, textPaint)
             textPaint.maskFilter = null
         }
@@ -663,17 +706,17 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
             return
         }
 
-        drawContent(canvas, project, (contentEnd - 1).coerceAtLeast(0), spec)
+        drawOutroAnchor(canvas, project, (contentEnd - 1).coerceAtLeast(0), local, spec)
         if (local < spec.endWipeFrames) {
             val coverY = motionTrack(spec, "ribbon.outro.cover.y", local)
                 ?: (REFERENCE_HEIGHT * (local.toFloat() / spec.endWipeFrames.coerceAtLeast(1))).coerceIn(0f, REFERENCE_HEIGHT.toFloat())
-            paint.color = spec.backgroundColor
+            paint.color = frameBackgroundColor(spec, frame)
             paint.style = Paint.Style.FILL
             canvas.drawRect(0f, 0f, 1440f, coverY, paint)
             return
         }
 
-        paint.color = spec.backgroundColor
+        paint.color = frameBackgroundColor(spec, frame)
         paint.style = Paint.Style.FILL
         canvas.drawRect(0f, 0f, 1440f, REFERENCE_HEIGHT.toFloat(), paint)
 
@@ -685,6 +728,24 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
                 ?: (255f * (1f - (local - fadeStart).toFloat() / spec.fadeFrames.coerceAtLeast(1))).coerceIn(0f, 255f)
             paint.color = Color.argb((255f - remaining).roundToInt().coerceIn(0, 255), 0, 0, 0)
             canvas.drawRect(0f, 0f, REFERENCE_WIDTH.toFloat(), REFERENCE_HEIGHT.toFloat(), paint)
+        }
+    }
+
+    private fun drawOutroAnchor(
+        canvas: Canvas,
+        project: StudioProject,
+        settledFrame: Int,
+        local: Int,
+        spec: RendererSpec,
+    ) {
+        if (project.cards.isEmpty()) return
+        val index = project.cards.lastIndex
+        val defaultX = if (project.cards.size >= 4) 3f * spec.slotPitch else index * spec.slotPitch
+        val x = motionTrack(spec, "ribbon.outro.card.x", local) ?: defaultX
+        drawCardBody(canvas, project, project.cards[index], x, spec)
+        drawBadge(canvas, project, index, x, settledFrame, spec)
+        if (project.cards[index].imageLayer.equals("front", ignoreCase = true)) {
+            drawFrontArtwork(canvas, project.cards[index], x, spec)
         }
     }
 
@@ -922,8 +983,11 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         color: Int,
         bold: Boolean,
         lineHeight: Float,
+        project: StudioProject? = null,
     ) {
-        textPaint.typeface = if (bold) boldTypeface else regularTypeface
+        val style = if (bold) Typeface.BOLD else Typeface.NORMAL
+        val fallback = if (bold) boldTypeface else regularTypeface
+        textPaint.typeface = if (project != null) ProjectFontResolver.resolve(project, fallback, style) else fallback
         textPaint.textSize = size
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.color = color
@@ -934,8 +998,19 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         }
     }
 
-    private fun drawCenteredText(canvas: Canvas, text: String, x: Float, y: Float, size: Float, color: Int, bold: Boolean) {
-        textPaint.typeface = if (bold) boldTypeface else regularTypeface
+    private fun drawCenteredText(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        y: Float,
+        size: Float,
+        color: Int,
+        bold: Boolean,
+        project: StudioProject? = null,
+    ) {
+        val style = if (bold) Typeface.BOLD else Typeface.NORMAL
+        val fallback = if (bold) boldTypeface else regularTypeface
+        textPaint.typeface = if (project != null) ProjectFontResolver.resolve(project, fallback, style) else fallback
         textPaint.textSize = size
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.color = color
@@ -1030,14 +1105,14 @@ object RibbonTimeline {
         if (count <= 0) return 0
         if (!project.autoLength) {
             val requested = (project.customLengthSeconds * project.fps.coerceAtLeast(1)).roundToInt() - spec.outroFrames
-            val minimum = if (count <= 4) spec.openingEnds.getOrElse(count - 1) { spec.continuousStartFrame }
+            val minimum = if (count <= 4) spec.continuousStartFrame
             else spec.continuousStartFrame + (count - 4)
             return max(minimum, requested)
         }
         val canonicalCount = spec.track("ribbon.card_count", 0)?.roundToInt()
         val canonicalEnd = spec.track("ribbon.content_end", 0)?.roundToInt()
         if (canonicalCount != null && canonicalEnd != null && count == canonicalCount) return canonicalEnd
-        if (count <= 4) return spec.openingEnds.getOrElse(count - 1) { spec.continuousStartFrame }
+        if (count <= 4) return spec.continuousStartFrame
         return spec.continuousStartFrame + (count - 4) * spec.continuousStepFrames
     }
 
