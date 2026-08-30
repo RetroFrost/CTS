@@ -30,9 +30,27 @@ jobs:
           gradle-version: '8.14.3'
 
       - name: Apply audited stability fixes
+        shell: bash
         run: |
+          set -euo pipefail
           python3 tools/apply_stability_audit_fixes.py
           sed -i '/import kotlinx.coroutines.launch/a import kotlinx.coroutines.flow.asStateFlow' android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt')
+          text = p.read_text()
+          wrong = 'SettingRow("Output", "${outputProject.width}×${outputProject.height} · ${outputProject.fps} FPS")'
+          original = 'SettingRow("Output", "${project.width}×${project.height} · ${project.fps} FPS")'
+          if wrong not in text:
+              raise SystemExit('project-page output marker not found')
+          text = text.replace(wrong, original, 1)
+          split = text.index('private fun MorePage(')
+          before, after = text[:split], text[split:]
+          if original not in after:
+              raise SystemExit('export output marker not found')
+          after = after.replace(original, wrong, 1)
+          p.write_text(before + after)
+          PY
 
       - name: Verify source diff
         run: git diff --check
