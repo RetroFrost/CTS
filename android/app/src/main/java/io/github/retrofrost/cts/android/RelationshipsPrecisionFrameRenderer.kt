@@ -246,30 +246,30 @@ class RelationshipsPrecisionFrameRenderer {
             for (index in 0 until min(4, project.cards.size)) {
                 val start = starts.getOrElse(index) { starts.lastOrNull().orZero() + index * 140 }
                 if (frame >= start) {
-                    positions[index] = spec.track("card.$index.x", frame) ?: index * spec.slotPitch
+                    positions[index] = spec.trackWindowed("card.$index.x", frame) ?: index * spec.slotPitch
                 }
             }
         } else {
             val scroll = exactScroll(spec, frame) ?: ((frame - spec.continuousStartFrame) * 2f)
             project.cards.indices.forEach { index ->
                 val baseX = index * spec.slotPitch - scroll
-                val x = spec.track("card.$index.x", frame) ?: baseX
+                val x = spec.trackWindowed("card.$index.x", frame) ?: baseX
                 if (x > -spec.slotPitch * 2f && x < 1920f + spec.slotPitch * 2f) positions[index] = x
             }
         }
 
         positions.forEach { (index, x) ->
             ledger.once("card.$index.body") {
-                val y = spec.track("card.$index.y", frame) ?: 0f
+                val y = spec.trackWindowed("card.$index.y", frame) ?: 0f
                 val entry = RelationshipsTimeline.cardEntryFrame(project.cards.size, index, spec)
                 val local = frame - entry
-                val uniform = spec.track("card.$index.body.scale", frame)
+                val uniform = spec.trackWindowed("card.$index.body.scale", frame)
                     ?: spec.track("relationships.card.body.scale", local)
                     ?: 1f
-                val scaleX = spec.track("card.$index.body.scaleX", frame)
+                val scaleX = spec.trackWindowed("card.$index.body.scaleX", frame)
                     ?: spec.track("relationships.card.body.scaleX", local)
                     ?: uniform
-                val scaleY = spec.track("card.$index.body.scaleY", frame)
+                val scaleY = spec.trackWindowed("card.$index.body.scaleY", frame)
                     ?: spec.track("relationships.card.body.scaleY", local)
                     ?: uniform
                 val pivotX = x + cfg.float("card.body.pivotX", spec.bodyInset + spec.bodyWidth / 2f)
@@ -290,16 +290,16 @@ class RelationshipsPrecisionFrameRenderer {
         positions.forEach { (index, x) ->
             if (project.cards[index].imageLayer.equals("front", true)) {
                 ledger.once("card.$index.artwork.front") {
-                    val y = spec.track("card.$index.y", frame) ?: 0f
+                    val y = spec.trackWindowed("card.$index.y", frame) ?: 0f
                     val entry = RelationshipsTimeline.cardEntryFrame(project.cards.size, index, spec)
                     val local = frame - entry
-                    val uniform = spec.track("card.$index.body.scale", frame)
+                    val uniform = spec.trackWindowed("card.$index.body.scale", frame)
                         ?: spec.track("relationships.card.body.scale", local)
                         ?: 1f
-                    val scaleX = spec.track("card.$index.body.scaleX", frame)
+                    val scaleX = spec.trackWindowed("card.$index.body.scaleX", frame)
                         ?: spec.track("relationships.card.body.scaleX", local)
                         ?: uniform
-                    val scaleY = spec.track("card.$index.body.scaleY", frame)
+                    val scaleY = spec.trackWindowed("card.$index.body.scaleY", frame)
                         ?: spec.track("relationships.card.body.scaleY", local)
                         ?: uniform
                     val pivotX = x + cfg.float("card.body.pivotX", spec.bodyInset + spec.bodyWidth / 2f)
@@ -355,7 +355,7 @@ class RelationshipsPrecisionFrameRenderer {
         val entry = RelationshipsTimeline.cardEntryFrame(projectSize = Int.MAX_VALUE, index = index, spec = spec)
         val local = frame - entry
         val legacyReveal = if (index < 4) ((local - 52f) / 42f).coerceIn(0f, 1f) else 1f
-        val reveal = (spec.track("card.$index.body.reveal", frame)
+        val reveal = (spec.trackWindowed("card.$index.body.reveal", frame)
             ?: spec.track("relationships.card.reveal", local)
             ?: legacyReveal).coerceIn(0f, 1f)
         if (!card.imageLayer.equals("front", true) && reveal > 0f) {
@@ -376,10 +376,10 @@ class RelationshipsPrecisionFrameRenderer {
             } else {
                 canvas.drawRect(titleRect, paint)
             }
-            val titleAlpha = (spec.track("card.$index.title.alpha", frame)
+            val titleAlpha = (spec.trackWindowed("card.$index.title.alpha", frame)
                 ?: spec.track("relationships.card.title.alpha", local)
                 ?: 1f).coerceIn(0f, 1f)
-            val titleChars = spec.track("card.$index.title.chars", frame)?.roundToInt()
+            val titleChars = spec.trackWindowed("card.$index.title.chars", frame)?.roundToInt()
                 ?: spec.track("relationships.card.title.chars", local)?.roundToInt()
             val titleText = if (titleChars == null) card.title else card.title.take(titleChars.coerceIn(0, card.title.length))
             if (titleText.isNotBlank() && titleAlpha > 0f) {
@@ -406,10 +406,10 @@ class RelationshipsPrecisionFrameRenderer {
             } else {
                 canvas.drawRect(descriptionRect, paint)
             }
-            val descriptionAlpha = (spec.track("card.$index.description.alpha", frame)
+            val descriptionAlpha = (spec.trackWindowed("card.$index.description.alpha", frame)
                 ?: spec.track("relationships.card.description.alpha", local)
                 ?: 1f).coerceIn(0f, 1f)
-            val descriptionChars = spec.track("card.$index.description.chars", frame)?.roundToInt()
+            val descriptionChars = spec.trackWindowed("card.$index.description.chars", frame)?.roundToInt()
                 ?: spec.track("relationships.card.description.chars", local)?.roundToInt()
             val descriptionText = if (descriptionChars == null) card.description else card.description.take(descriptionChars.coerceIn(0, card.description.length))
             if (descriptionText.isNotBlank() && descriptionAlpha > 0f) {
@@ -490,11 +490,11 @@ class RelationshipsPrecisionFrameRenderer {
         val local = frame - entry
         if (local < 0) return
 
-        val scale = (spec.track("card.$index.badge.scale", frame)
+        val scale = (spec.trackWindowed("card.$index.badge.scale", frame)
             ?: spec.track("relationships.badge.scale", local)
             ?: if (local < 45) smooth(local / 45f) else 1f).coerceIn(0f, cfg.float("badge.maxScale", 2f))
-        val yOffset = spec.track("card.$index.badge.y", frame) ?: spec.track("relationships.badge.y", local) ?: 0f
-        val xOffset = spec.track("card.$index.badge.x", frame) ?: 0f
+        val yOffset = spec.trackWindowed("card.$index.badge.y", frame) ?: spec.track("relationships.badge.y", local) ?: 0f
+        val xOffset = spec.trackWindowed("card.$index.badge.x", frame) ?: 0f
         val cx = spec.badgeCenterX
         val cy = spec.badgeCenterY
 
@@ -541,7 +541,7 @@ class RelationshipsPrecisionFrameRenderer {
         }
 
         drawBadgeShine(canvas, path, card, index, frame, local, spec, cfg)
-        val textAlpha = (spec.track("card.$index.badge.text.alpha", frame)
+        val textAlpha = (spec.trackWindowed("card.$index.badge.text.alpha", frame)
             ?: spec.track("relationships.badge.text.alpha", local)
             ?: 1f).coerceIn(0f, 1f)
         if (textAlpha > 0f) drawBadgeText(canvas, card, spec, cfg, textAlpha)
@@ -626,10 +626,10 @@ class RelationshipsPrecisionFrameRenderer {
     }
 
     private fun drawBadgeShine(canvas: Canvas, badgePath: Path, card: StudioCard, index: Int, frame: Int, local: Int, spec: RendererSpec, cfg: ExactConfig) {
-        val shineX = spec.track("card.$index.badge.shine.x", frame)
+        val shineX = spec.trackWindowed("card.$index.badge.shine.x", frame)
             ?: spec.track("relationships.badge.shine.x", local)
             ?: return
-        val trackAlpha = spec.track("card.$index.badge.shine.alpha", frame)
+        val trackAlpha = spec.trackWindowed("card.$index.badge.shine.alpha", frame)
             ?: spec.track("relationships.badge.shine.alpha", local)
             ?: 1f
         if (trackAlpha <= 0f) return

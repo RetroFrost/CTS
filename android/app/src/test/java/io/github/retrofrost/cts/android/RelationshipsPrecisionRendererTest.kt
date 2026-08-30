@@ -2,6 +2,7 @@ package io.github.retrofrost.cts.android
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -103,6 +104,35 @@ class RelationshipsPrecisionRendererTest {
         assertEquals(1920, resolved.width)
         assertEquals(1080, resolved.height)
         assertEquals(60, resolved.fps)
+    }
+
+
+
+    @Test
+    fun openingCardPositionTrackExpiresBeforeContinuousScroll() {
+        val spec = RendererSpec(
+            tracks = listOf(
+                RendererTrack(
+                    target = "card.0.x",
+                    keyframes = listOf(
+                        RendererKeyframe(374, 0f),
+                        RendererKeyframe(899, 0f),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(0f, spec.trackWindowed("card.0.x", 374))
+        assertEquals(0f, spec.trackWindowed("card.0.x", 899))
+        assertNull(spec.trackWindowed("card.0.x", 900))
+
+        // Persistent track semantics are unchanged for properties that need them.
+        assertEquals(0f, spec.track("card.0.x", 900))
+    }
+
+    @Test
+    fun rendererAdvertisesWindowedPerCardAnimationTracks() {
+        assertTrue(RendererCapabilities.features.contains("relationships-windowed-card-tracks-v1"))
     }
 
 }

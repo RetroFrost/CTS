@@ -61,6 +61,21 @@ data class RendererTrack(
         return left.value + (right.value - left.value) * p
     }
 
+    /**
+     * Returns a value only while this track is actually active.
+     *
+     * valueAt() intentionally holds the first/last value outside the keyed range,
+     * which is useful for persistent properties. Absolute animation overrides such
+     * as card.0.x must instead expire when their final keyframe is passed, otherwise
+     * the opening position remains pinned while the conveyor starts and later cards
+     * collide with it.
+     */
+    fun valueAtWindowed(timeMs: Int): Float? {
+        if (keyframes.isEmpty()) return null
+        if (timeMs < keyframes.first().timeMs || timeMs > keyframes.last().timeMs) return null
+        return valueAt(timeMs)
+    }
+
     private fun easing(x: Float, name: String): Float = when (name.lowercase()) {
         "ease-in", "easein" -> x * x
         "ease-out", "easeout" -> 1f - (1f - x) * (1f - x)
@@ -140,6 +155,16 @@ data class RendererSpec(
         return null
     }
 
+    /** Like [track], but an override disappears outside its declared keyframe window. */
+    fun trackWindowed(target: String, timeMs: Int): Float? {
+        tracksByTarget[target]?.valueAtWindowed(timeMs)?.let { return it }
+        val pieces = target.split('.')
+        if (pieces.size >= 3 && pieces[0] == "card") {
+            tracksByTarget["card.*.${pieces.drop(2).joinToString(".")}"]?.valueAtWindowed(timeMs)?.let { return it }
+        }
+        return null
+    }
+
     val outroFrames: Int
         get() = endWipeFrames + endRiseFrames + endHoldFrames + fadeFrames + blackTailFrames
 
@@ -203,6 +228,7 @@ object RendererCapabilities {
         "relationships-shadow-mask-v1",
         "relationships-shadow-outside-v2",
         "relationships-single-owner-pass-v1",
+        "relationships-windowed-card-tracks-v1",
         "preview-frames",
     )
 

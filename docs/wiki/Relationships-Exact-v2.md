@@ -221,3 +221,7 @@ The v2 path is opt-in. A bundle without `relationships.exact.v2=true` is rendere
 ### Renderer-wide anti-duplication guarantee
 
 Exact-v2 builds advertise `relationships-shadow-mask-v1`, `relationships-shadow-outside-v2` and `relationships-single-owner-pass-v1`. Every logical frame element has one owning paint pass: intro, footer, content, each card body, each badge, front artwork, disclaimer, and outro. Intentional layers inside a single element (for example a gradient plus stroke plus shine) remain part of that one owner. Badge shadows never paint a second complete badge silhouette: the cast-shadow body is path-differenced against the real badge and its blur is outer-only, while the actual badge polygon is filled exactly once. Preview and export both execute the same precision renderer, so the invariant applies to both paths.
+
+### Windowed per-card animation overrides
+
+Exact-v2 per-card animation tracks (`card.<index>.*`) are windowed. They apply only from their first keyframe through their last keyframe and then release ownership back to the normal conveyor/local animation. This prevents opening X/Y/scale/badge tracks from pinning an old card pose into the continuous-scroll phase and colliding with later cards. Persistent global tracks keep the existing hold-before/hold-after behaviour.
