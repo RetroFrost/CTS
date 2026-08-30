@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Apply exact renderer patch
         run: python tools/apply_evolution_exact_engine.py
@@ -50,4 +52,5 @@ jobs:
           git config user.email 'routerifter@gmail.com'
           git add android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt .github/workflows/apply-evolution-exact-engine.yml tools/apply_evolution_exact_engine.py
           git commit -m 'renderer: honor exact source-frame tracks'
-          git push
+          git pull --rebase origin fork/2.0.7-renderer-bundles
+          git push origin HEAD:fork/2.0.7-renderer-bundles
