@@ -125,7 +125,7 @@ class RelationshipsFrameRenderer {
             }
         }
 
-        positions.forEach { (index, x) -> drawCardBody(canvas, project.cards[index], x, spec, frame, index) }
+        positions.forEach { (index, x) -> drawCardBody(canvas, project, project.cards[index], x, spec, frame, index) }
         if (project.creditsEnabled && frame in spec.openingStarts.firstOrNull().orZero() until spec.continuousStartFrame) drawDisclaimer(canvas, frame, spec)
         positions.forEach { (index, x) -> drawBadge(canvas, project, index, x, frame, spec) }
         positions.forEach { (index, x) ->
@@ -139,7 +139,7 @@ class RelationshipsFrameRenderer {
         return spec.track("relationships.scroll.$segment", frame)
     }
 
-    private fun drawCardBody(canvas: Canvas, card: StudioCard, slotX: Float, spec: RendererSpec, frame: Int, index: Int) {
+    private fun drawCardBody(canvas: Canvas, project: StudioProject, card: StudioCard, slotX: Float, spec: RendererSpec, frame: Int, index: Int) {
         val left = slotX + spec.bodyInset
         val right = left + spec.bodyWidth
         val descriptionHeight = if (card.description.isBlank()) 0f else 115f
@@ -162,13 +162,13 @@ class RelationshipsFrameRenderer {
         if (card.title.isNotBlank()) {
             paint.color = spec.titleBackgroundColor
             canvas.drawRect(left, cursor, right, cursor + titleHeight, paint)
-            drawFitted(canvas, card.title, RectF(left + 10f, cursor + 1f, right - 10f, cursor + titleHeight - 1f), spec.titleTextColor, spec.titleTextSize, true, 1)
+            drawFitted(canvas, card.title, RectF(left + 10f, cursor + 1f, right - 10f, cursor + titleHeight - 1f), spec.titleTextColor, spec.titleTextSize, true, 1, project)
             cursor += titleHeight
         }
         if (card.description.isNotBlank()) {
             paint.color = spec.descriptionBackgroundColor
             canvas.drawRect(left, cursor, right, 1080f, paint)
-            drawFitted(canvas, card.description, RectF(left + 11f, cursor + 4f, right - 11f, 1076f), spec.descriptionTextColor, spec.descriptionTextSize, false, 4)
+            drawFitted(canvas, card.description, RectF(left + 11f, cursor + 4f, right - 11f, 1076f), spec.descriptionTextColor, spec.descriptionTextSize, false, 4, project)
         }
     }
 
@@ -217,7 +217,7 @@ class RelationshipsFrameRenderer {
         val path = octagon(spec.badgeCenterX, spec.badgeCenterY, 184f, 177f)
         paint.style = Paint.Style.FILL; paint.color = spec.badgeColor; canvas.drawPath(path, paint)
         paint.style = Paint.Style.STROKE; paint.strokeWidth = 4f; paint.color = spec.badgeDarkColor; canvas.drawPath(path, paint); paint.style = Paint.Style.FILL
-        drawBadgeText(canvas, card, spec)
+        drawBadgeText(canvas, project, card, spec)
         canvas.restore()
     }
 
@@ -235,14 +235,14 @@ class RelationshipsFrameRenderer {
         return Path().apply { pts.forEachIndexed { i, p -> if (i == 0) moveTo(p.first, p.second) else lineTo(p.first, p.second) }; close() }
     }
 
-    private fun drawBadgeText(canvas: Canvas, card: StudioCard, spec: RendererSpec) {
+    private fun drawBadgeText(canvas: Canvas, project: StudioProject, card: StudioCard, spec: RendererSpec) {
         val raw = card.value.trim()
         val parts = raw.split(Regex("\\s+"), limit = 2)
         val primary = parts.firstOrNull().orEmpty()
         val unit = parts.getOrNull(1).orEmpty().ifBlank { "People" }
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.color = spec.badgeTextColor
-        textPaint.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        textPaint.typeface = ProjectFontResolver.resolve(project, Typeface.create("sans-serif", Typeface.NORMAL), Typeface.NORMAL)
         drawBadgeLine(
             canvas = canvas,
             text = card.badgeHeader.ifBlank { "1 in" },
@@ -314,7 +314,7 @@ class RelationshipsFrameRenderer {
             local < 80 -> lerp(320f, 781f, smooth(local / 80f))
             else -> 781f
         }
-        drawCardBody(canvas, last, cardX, spec, frame, project.cards.lastIndex)
+        drawCardBody(canvas, project, last, cardX, spec, frame, project.cards.lastIndex)
         drawBadge(canvas, project, project.cards.lastIndex, cardX, frame, spec)
 
         if (local >= 58) {
@@ -350,8 +350,9 @@ class RelationshipsFrameRenderer {
         text.split('\n').forEachIndexed { i, line -> canvas.drawText(line, x, y + i * (size + 7f), textPaint) }
     }
 
-    private fun drawFitted(canvas: Canvas, text: String, box: RectF, color: Int, preferred: Float, bold: Boolean, maxLines: Int) {
-        textPaint.color = color; textPaint.typeface = Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL); textPaint.textAlign = Paint.Align.CENTER
+    private fun drawFitted(canvas: Canvas, text: String, box: RectF, color: Int, preferred: Float, bold: Boolean, maxLines: Int, project: StudioProject) {
+        val style = if (bold) Typeface.BOLD else Typeface.NORMAL
+        textPaint.color = color; textPaint.typeface = ProjectFontResolver.resolve(project, Typeface.create("sans-serif", style), style); textPaint.textAlign = Paint.Align.CENTER
         var size = preferred; var lines = wrap(text, box.width(), size, maxLines)
         while ((lines.size > maxLines || lines.any { measure(it, size) > box.width() }) && size > 11f) { size -= 1f; lines = wrap(text, box.width(), size, maxLines) }
         textPaint.textSize = size

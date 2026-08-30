@@ -110,7 +110,7 @@ class RibbonFrameRenderer {
         }
 
         bodyOrder.forEach { index ->
-            drawCardBody(canvas, project.cards[index], positions.getValue(index), spec)
+            drawCardBody(canvas, project, project.cards[index], positions.getValue(index), spec)
         }
 
         drawOpeningCredits(canvas, project, frame, spec)
@@ -186,7 +186,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         return p * p * (3f - 2f * p)
     }
 
-    private fun drawCardBody(canvas: Canvas, card: StudioCard, slotX: Float, spec: RendererSpec) {
+    private fun drawCardBody(canvas: Canvas, project: StudioProject, card: StudioCard, slotX: Float, spec: RendererSpec) {
         val left = slotX + spec.bodyInset
         val right = left + spec.bodyWidth
         val hasTitle = card.title.isNotBlank()
@@ -216,6 +216,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
                 22f,
                 2,
                 true,
+                project,
             )
             cursor += titleHeight
         }
@@ -231,6 +232,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
                 12f,
                 4,
                 false,
+                project,
             )
         }
     }
@@ -394,7 +396,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         canvas.translate(cardX, 0f)
         canvas.concat(matrix)
         canvas.scale(stageScale, stageScale, spec.badgeCenterX, spec.badgeCenterY)
-        drawBadgeSource(canvas, card, age, spec, index, local)
+        drawBadgeSource(canvas, project, card, age, spec, index, local)
         canvas.restore()
     }
 
@@ -423,6 +425,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
 
     private fun drawBadgeSource(
         canvas: Canvas,
+        project: StudioProject,
         card: StudioCard,
         age: Float,
         spec: RendererSpec,
@@ -453,11 +456,11 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         canvas.drawPath(path, paint)
         paint.style = Paint.Style.FILL
 
-        drawRibbonBadgeText(canvas, card, age, spec)
+        drawRibbonBadgeText(canvas, project, card, age, spec)
         drawRibbonShine(canvas, age, path, spec, index, local)
     }
 
-    private fun drawRibbonBadgeText(canvas: Canvas, card: StudioCard, age: Float, spec: RendererSpec) {
+    private fun drawRibbonBadgeText(canvas: Canvas, project: StudioProject, card: StudioCard, age: Float, spec: RendererSpec) {
         val lines = valueLines(card.value)
         val header = card.badgeHeader.trim().uppercase()
         val layout: List<Triple<String, Float, Float>> = when {
@@ -486,7 +489,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
             val y = item.second + textLandingOffset(age) - (1f - eased) * 112f
             val alpha = (255f * (progress * 1.75f).coerceIn(0f, 1f)).roundToInt()
             var size = item.third
-            textPaint.typeface = boldTypeface
+            textPaint.typeface = ProjectFontResolver.resolve(project, boldTypeface, Typeface.BOLD)
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.textSize = size
             while (textPaint.measureText(text) > 264f && size > 18f) {
@@ -814,13 +817,16 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         minimumSize: Float,
         maxLines: Int,
         bold: Boolean,
+        project: StudioProject,
     ) {
         val normalized = text.trim().replace(Regex("\\s+"), " ")
         if (normalized.isBlank()) return
         var size = preferredSize
         var lines: List<String>
         while (true) {
-            textPaint.typeface = if (bold) boldTypeface else regularTypeface
+            val style = if (bold) Typeface.BOLD else Typeface.NORMAL
+            val fallback = if (bold) boldTypeface else regularTypeface
+            textPaint.typeface = ProjectFontResolver.resolve(project, fallback, style)
             textPaint.textSize = size
             lines = wrapText(normalized, box.width(), maxLines)
             val lineHeight = size * 1.12f

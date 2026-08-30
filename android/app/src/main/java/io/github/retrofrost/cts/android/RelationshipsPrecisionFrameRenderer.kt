@@ -277,7 +277,7 @@ class RelationshipsPrecisionFrameRenderer {
                 canvas.save()
                 canvas.translate(0f, y)
                 canvas.scale(scaleX, scaleY, pivotX, pivotY)
-                drawCardBody(canvas, project.cards[index], x, spec, cfg, frame, index)
+                drawCardBody(canvas, project, project.cards[index], x, spec, cfg, frame, index)
                 canvas.restore()
             }
         }
@@ -320,7 +320,7 @@ class RelationshipsPrecisionFrameRenderer {
         return spec.track("relationships.scroll.$segment", frame)
     }
 
-    private fun drawCardBody(canvas: Canvas, card: StudioCard, slotX: Float, spec: RendererSpec, cfg: ExactConfig, frame: Int, index: Int) {
+    private fun drawCardBody(canvas: Canvas, project: StudioProject, card: StudioCard, slotX: Float, spec: RendererSpec, cfg: ExactConfig, frame: Int, index: Int) {
         val left = slotX + spec.bodyInset
         val right = left + spec.bodyWidth
         val absoluteBands = cfg.bool("card.absoluteBands", true)
@@ -387,7 +387,7 @@ class RelationshipsPrecisionFrameRenderer {
                     canvas, titleText,
                     RectF(left + cfg.float("card.title.padX", 10f), titleTop + cfg.float("card.title.padTop", 1f), right - cfg.float("card.title.padX", 10f), titleBottom - cfg.float("card.title.padBottom", 1f)),
                     spec.titleTextColor, spec.titleTextSize,
-                    typeface(spec, cfg, "title", "sans-serif", Typeface.BOLD),
+                    ProjectFontResolver.resolve(project, typeface(spec, cfg, "title", "sans-serif", Typeface.BOLD), Typeface.BOLD),
                     cfg.int("card.title.maxLines", 1), cfg.float("card.title.lineHeight", 0.92f), titleAlpha, cfg.float("font.title.letterSpacing", 0f),
                 )
             }
@@ -417,7 +417,7 @@ class RelationshipsPrecisionFrameRenderer {
                     canvas, descriptionText,
                     RectF(left + cfg.float("card.description.padX", 11f), descriptionTop + cfg.float("card.description.padTop", 4f), right - cfg.float("card.description.padX", 11f), 1080f - cfg.float("card.description.padBottom", 4f)),
                     spec.descriptionTextColor, spec.descriptionTextSize,
-                    typeface(spec, cfg, "description", "sans-serif", Typeface.NORMAL),
+                    ProjectFontResolver.resolve(project, typeface(spec, cfg, "description", "sans-serif", Typeface.NORMAL), Typeface.NORMAL),
                     cfg.int("card.description.maxLines", 4), cfg.float("card.description.lineHeight", 0.92f), descriptionAlpha, cfg.float("font.description.letterSpacing", 0f),
                 )
             }
@@ -544,7 +544,7 @@ class RelationshipsPrecisionFrameRenderer {
         val textAlpha = (spec.trackWindowed("card.$index.badge.text.alpha", frame)
             ?: spec.track("relationships.badge.text.alpha", local)
             ?: 1f).coerceIn(0f, 1f)
-        if (textAlpha > 0f) drawBadgeText(canvas, card, spec, cfg, textAlpha)
+        if (textAlpha > 0f) drawBadgeText(canvas, project, card, spec, cfg, textAlpha)
         canvas.restore()
         paint.resetForShape()
     }
@@ -668,7 +668,7 @@ class RelationshipsPrecisionFrameRenderer {
         canvas.restore()
     }
 
-    private fun drawBadgeText(canvas: Canvas, card: StudioCard, spec: RendererSpec, cfg: ExactConfig, alpha: Float = 1f) {
+    private fun drawBadgeText(canvas: Canvas, project: StudioProject, card: StudioCard, spec: RendererSpec, cfg: ExactConfig, alpha: Float = 1f) {
         val raw = card.value.trim()
         val parts = raw.split(Regex("\\s+"), limit = 2)
         val primary = parts.firstOrNull().orEmpty()
@@ -686,13 +686,13 @@ class RelationshipsPrecisionFrameRenderer {
                 shadowColor,
             )
         }
-        textPaint.typeface = typeface(spec, cfg, "badgeHeader", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL)
+        textPaint.typeface = ProjectFontResolver.resolve(project, typeface(spec, cfg, "badgeHeader", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL), Typeface.NORMAL)
         textPaint.letterSpacing = cfg.float("font.badgeHeader.letterSpacing", cfg.float("font.badge.letterSpacing", 0f))
         drawBadgeLine(canvas, card.badgeHeader.ifBlank { cfg.string("badge.defaultHeader", "1 in") }, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.header.y", -75f), spec.badgeHeaderSize, cfg.float("badge.header.minSize", 12f), cfg.float("badge.header.maxWidth", 230f))
-        textPaint.typeface = typeface(spec, cfg, "badgeValue", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL)
+        textPaint.typeface = ProjectFontResolver.resolve(project, typeface(spec, cfg, "badgeValue", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL), Typeface.NORMAL)
         textPaint.letterSpacing = cfg.float("font.badgeValue.letterSpacing", cfg.float("font.badge.letterSpacing", 0f))
         drawBadgeLine(canvas, primary, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.value.y", 12f), spec.badgeValueSize, cfg.float("badge.value.minSize", 18f), cfg.float("badge.value.maxWidth", 300f))
-        textPaint.typeface = typeface(spec, cfg, "badgeUnit", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL)
+        textPaint.typeface = ProjectFontResolver.resolve(project, typeface(spec, cfg, "badgeUnit", cfg.string("font.badge.family", "sans-serif"), Typeface.NORMAL), Typeface.NORMAL)
         textPaint.letterSpacing = cfg.float("font.badgeUnit.letterSpacing", cfg.float("font.badge.letterSpacing", 0f))
         drawBadgeLine(canvas, unit, spec.badgeCenterX, spec.badgeCenterY + cfg.float("badge.unit.y", 70f), spec.badgeUnitSize, cfg.float("badge.unit.minSize", 12f), cfg.float("badge.unit.maxWidth", 245f))
         textPaint.clearShadowLayer()
@@ -784,7 +784,7 @@ class RelationshipsPrecisionFrameRenderer {
             local < 80 -> lerp(320f, 781f, smooth(local / 80f))
             else -> 781f
         }
-        ledger.once("card.$lastIndex.body") { drawCardBody(canvas, last, cardX, spec, cfg, frame, lastIndex) }
+        ledger.once("card.$lastIndex.body") { drawCardBody(canvas, project, last, cardX, spec, cfg, frame, lastIndex) }
         ledger.once("card.$lastIndex.badge") { drawBadge(canvas, project, lastIndex, cardX, frame, spec, cfg) }
 
         val panelAlpha = (spec.track("relationships.outro.panel.alpha", frame) ?: if (local >= cfg.int("outro.panel.start", 58)) 1f else 0f).coerceIn(0f, 1f)

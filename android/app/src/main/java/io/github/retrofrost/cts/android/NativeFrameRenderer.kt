@@ -168,7 +168,7 @@ class NativeFrameRenderer {
                 preferredSize = spec.titleTextSize,
                 minSize = 18f,
                 maxLines = 2,
-                typeface = Typeface.create("sans-serif", Typeface.BOLD),
+                typeface = ProjectFontResolver.resolve(project, Typeface.create("sans-serif", Typeface.BOLD), Typeface.BOLD),
             )
             cursor += titleHeight
         }
@@ -183,7 +183,7 @@ class NativeFrameRenderer {
                 preferredSize = spec.descriptionTextSize,
                 minSize = 14f,
                 maxLines = 3,
-                typeface = Typeface.create("sans-serif", Typeface.BOLD),
+                typeface = ProjectFontResolver.resolve(project, Typeface.create("sans-serif", Typeface.BOLD), Typeface.BOLD),
             )
         }
 
@@ -199,7 +199,7 @@ class NativeFrameRenderer {
             canvas.save()
             canvas.translate(badgeX, badgeY)
             if (badgeAlpha < 0.999f) canvas.saveLayerAlpha(null, (badgeAlpha * 255).toInt())
-            drawBadge(canvas, card, localFrame, spec)
+            drawBadge(canvas, project, card, localFrame, spec)
             if (badgeAlpha < 0.999f) canvas.restore()
             canvas.restore()
         }
@@ -244,7 +244,7 @@ class NativeFrameRenderer {
         return decoded
     }
 
-    private fun drawBadge(canvas: Canvas, card: StudioCard, localFrame: Int, spec: RendererSpec) {
+    private fun drawBadge(canvas: Canvas, project: StudioProject, card: StudioCard, localFrame: Int, spec: RendererSpec) {
         val path = badgePath(spec)
         paint.style = Paint.Style.FILL
         paint.color = spec.badgeColor
@@ -275,7 +275,7 @@ class NativeFrameRenderer {
 
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.color = spec.badgeTextColor
-        textPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        textPaint.typeface = ProjectFontResolver.resolve(project, Typeface.create("sans-serif", Typeface.BOLD), Typeface.BOLD)
         val cx = spec.badgeCenterX
         val cy = spec.badgeCenterY
 

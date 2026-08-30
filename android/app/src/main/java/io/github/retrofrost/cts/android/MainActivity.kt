@@ -155,6 +155,15 @@ private enum class StudioPage(val title: String, val icon: ImageVector) {
 }
 
 private data class AccuracyState(val label: String, val detail: String, val exact: Boolean)
+private data class FontChoice(val label: String, val family: String)
+
+private val ProjectFontChoices = listOf(
+    FontChoice("Renderer default", ""),
+    FontChoice("Sans", "sans-serif"),
+    FontChoice("Condensed", "sans-serif-condensed"),
+    FontChoice("Serif", "serif"),
+    FontChoice("Mono", "monospace"),
+)
 
 private fun accuracyState(project: StudioProject, spec: RendererSpec = RendererRuntime.active): AccuracyState {
     if (spec.precisionMode != "frame-exact") {
@@ -165,6 +174,7 @@ private fun accuracyState(project: StudioProject, spec: RendererSpec = RendererR
     if (project.fps != spec.referenceFps) issues += "frame rate"
     if (spec.canonicalCardCount > 0 && project.cards.size != spec.canonicalCardCount) issues += "card count"
     if (!project.autoLength) issues += "duration"
+    if (project.fontFamily.isNotBlank() || project.fontFile.isNotBlank()) issues += "font"
     if (issues.isNotEmpty()) return AccuracyState("Modified", "Changed: ${issues.joinToString()}.", false)
     return when (project.introMode) {
         IntroMode.RENDERER -> AccuracyState("Pixel exact", "Canonical renderer settings are intact.", true)
@@ -304,6 +314,20 @@ private fun CubicalCompareApp() {
         }
     }
 
+    val chooseFont = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val file = RendererBridge.materialize(context, uri, "font")
+                    require(ProjectFontResolver.isUsable(file)) { "The selected file is not a readable font." }
+                    file
+                }
+            }.onSuccess { file ->
+                applyProject(project.copy(fontFamily = "", fontFile = file.absolutePath))
+            }.onFailure(::report)
+        }
+    }
+
     var pendingExport by remember { mutableStateOf<StudioProject?>(null) }
     val exportVideo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
         val value = pendingExport
@@ -380,6 +404,7 @@ private fun CubicalCompareApp() {
                     onProjectChange = ::applyProject,
                     onChooseIntro = { chooseIntro.launch(arrayOf("video/mp4", "video/*")) },
                     onChooseSoundtrack = { chooseSoundtrack.launch(arrayOf("audio/*")) },
+                    onChooseFont = { chooseFont.launch(arrayOf("font/*", "application/x-font-ttf", "application/x-font-opentype", "application/octet-stream")) },
                     modifier = Modifier.padding(padding),
                 )
                 StudioPage.MORE -> MorePage(
@@ -878,6 +903,7 @@ private fun ProjectPage(
     onProjectChange: (StudioProject) -> Unit,
     onChooseIntro: () -> Unit,
     onChooseSoundtrack: () -> Unit,
+    onChooseFont: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var durationText by remember(project.customLengthSeconds) { mutableStateOf(DurationFormat.formatPrecise(project.customLengthSeconds)) }
@@ -943,6 +969,35 @@ private fun ProjectPage(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+            }
+        }
+        item {
+            SectionCard("Typography") {
+                SettingRow("Comparison font", ProjectFontResolver.displayName(project))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(ProjectFontChoices) { _, choice ->
+                        FilterChip(
+                            selected = project.fontFile.isBlank() && project.fontFamily == choice.family,
+                            onClick = { onProjectChange(project.copy(fontFamily = choice.family, fontFile = "")) },
+                            label = { Text(choice.label) },
+                        )
+                    }
+                }
+                Button(onClick = onChooseFont, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (project.fontFile.isBlank()) "Choose TTF / OTF" else "Replace custom font")
+                }
+                if (project.fontFile.isNotBlank()) {
+                    Text(project.fontFile.substringAfterLast('/'), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(
+                        onClick = { onProjectChange(project.copy(fontFamily = "", fontFile = "")) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Use renderer default") }
+                }
+                Text(
+                    "Applies to card titles, descriptions and badge text. Renderer-owned intro, credits and outro typography stay unchanged.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         item {

@@ -58,6 +58,8 @@ data class StudioProject(
     val autoLength: Boolean = true,
     val customLengthSeconds: Double = 90.0,
     val encoderPreference: EncoderPreference = EncoderPreference.AUTO,
+    val fontFamily: String = "",
+    val fontFile: String = "",
 ) {
     fun toJson(): String {
         val settings = JSONObject()
@@ -76,6 +78,8 @@ data class StudioProject(
             .put("soundtrack_volume", soundtrackVolume)
             .put("soundtrack_loop", soundtrackLoop)
             .put("encoder_preference", encoderPreference.wireName)
+            .put("font_family", fontFamily)
+            .put("font_file", fontFile)
             .put("encoder_preset", "faster")
             .put("encoder_crf", 18)
 
@@ -102,7 +106,7 @@ data class StudioProject(
         }
 
         return JSONObject()
-            .put("version", 4)
+            .put("version", 5)
             .put("name", name)
             .put("cards", cardArray)
             .put("settings", settings)
@@ -120,6 +124,8 @@ data class StudioProject(
         encoderPreference = previous.encoderPreference,
         introMode = previous.introMode,
         introVideo = previous.introVideo,
+        fontFamily = previous.fontFamily,
+        fontFile = previous.fontFile,
     )
 
     companion object {
@@ -168,6 +174,8 @@ data class StudioProject(
                 autoLength = settings.optBoolean("auto_length", true),
                 customLengthSeconds = settings.optDouble("custom_length_seconds", 90.0),
                 encoderPreference = EncoderPreference.fromWireName(settings.optString("encoder_preference", "auto")),
+                fontFamily = settings.optString("font_family", ""),
+                fontFile = settings.optString("font_file", ""),
             )
         }
     }
