@@ -34,76 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/apply_stability_audit_fixes.py
-          sed -i '/import kotlinx.coroutines.launch/a import kotlinx.coroutines.flow.asStateFlow' android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path('android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt')
-          text = p.read_text()
-          wrong = 'SettingRow("Output", "${outputProject.width}×${outputProject.height} · ${outputProject.fps} FPS")'
-          original = 'SettingRow("Output", "${project.width}×${project.height} · ${project.fps} FPS")'
-          if wrong not in text:
-              raise SystemExit('project-page output marker not found')
-          text = text.replace(wrong, original, 1)
-          split = text.index('private fun MorePage(')
-          before, after = text[:split], text[split:]
-          if original not in after:
-              raise SystemExit('export output marker not found')
-          after = after.replace(original, wrong, 1)
-          p.write_text(before + after)
-
-          policy = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RenderOutputPolicy.kt')
-          policy.write_text('''package io.github.retrofrost.cts.android
-
-/** Pure output policy shared by preview, metadata and export. */
-internal object RenderOutputPolicy {
-    fun resolve(project: StudioProject, spec: RendererSpec): StudioProject =
-        if (spec.precisionMode == "frame-exact") {
-            project.copy(
-                width = spec.referenceWidth.coerceAtLeast(2),
-                height = spec.referenceHeight.coerceAtLeast(2),
-                fps = spec.referenceFps.coerceIn(1, 240),
-            )
-        } else {
-            project.copy(
-                width = project.width.coerceAtLeast(2),
-                height = project.height.coerceAtLeast(2),
-                fps = project.fps.coerceIn(1, 120),
-            )
-        }
-}
-''')
-
-          bridge = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt')
-          b = bridge.read_text()
-          start = b.index('    fun resolveOutputProject(')
-          end = b.index('\n\n    fun projectCompatibility(', start)
-          replacement = '''    fun resolveOutputProject(
-        project: StudioProject,
-        spec: RendererSpec = RendererRuntime.active,
-    ): StudioProject = RenderOutputPolicy.resolve(project, spec)'''
-          b = b[:start] + replacement + b[end:]
-          bridge.write_text(b)
-
-          test = Path('android/app/src/test/java/io/github/retrofrost/cts/android/RelationshipsPrecisionRendererTest.kt')
-          t = test.read_text()
-          if 'import org.junit.Assert.assertEquals' not in t:
-              t = t.replace('import org.junit.Assert.assertFalse\n', 'import org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\n', 1)
-          t = t.replace('RendererBridge.resolveOutputProject(project, spec)', 'RenderOutputPolicy.resolve(project, spec)')
-          test.write_text(t)
-
-          codec = Path('android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt')
-          c = codec.read_text()
-          c = c.replace(
-              'runCatching { encoderCapabilities.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) }.getOrDefault(false)',
-              'encoderCapabilities?.let { runCatching { it.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) }.getOrDefault(false) } == true',
-          )
-          c = c.replace(
-              'runCatching { encoderCapabilities.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) }.getOrDefault(false)',
-              'encoderCapabilities?.let { runCatching { it.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) }.getOrDefault(false) } == true',
-          )
-          codec.write_text(c)
-          PY
+          python3 tools/post_stability_audit_fixes.py
 
       - name: Verify source diff
         run: git diff --check
@@ -122,6 +53,7 @@ internal object RenderOutputPolicy {
           rm -f .github/workflows/apply-stability-audit-fixes.yml
           rm -f .github/workflows/audit-2.0.7-bugs.yml
           rm -f tools/apply_stability_audit_fixes.py
+          rm -f tools/post_stability_audit_fixes.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
