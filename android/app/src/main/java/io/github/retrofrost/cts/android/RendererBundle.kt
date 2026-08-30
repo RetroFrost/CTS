@@ -89,7 +89,7 @@ data class RendererTrack(
 
 data class RendererSpec(
     val id: String = "cubical.2.0.7.native",
-    val name: String = "Cubical Compare 2.0.7 Native",
+    val name: String = "Cubical Compare 2.0.8 Native",
     val author: String = "Cubical Compare",
     val formatVersion: Int = 1,
     val rendererApi: Int = 1,
@@ -202,7 +202,7 @@ data class InstalledRenderer(
 )
 
 object RendererCapabilities {
-    const val APP_VERSION = "2.0.7"
+    const val APP_VERSION = "2.0.8"
     const val RENDERER_API = 2
 
     val engines = setOf(

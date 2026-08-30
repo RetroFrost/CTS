@@ -89,7 +89,7 @@ class RendererManagerActivity : ComponentActivity() {
                 ) {
                     item {
                         Text("Cubical Compare renderers", style = MaterialTheme.typography.headlineSmall)
-                        Text("2.0.7 • renderer API ${RendererCapabilities.RENDERER_API}", style = MaterialTheme.typography.labelLarge)
+                        Text("${BuildConfig.VERSION_NAME} • renderer API ${RendererCapabilities.RENDERER_API}", style = MaterialTheme.typography.labelLarge)
                     }
                     item {
                         OutlinedCard(Modifier.fillMaxWidth()) {
@@ -107,6 +107,14 @@ class RendererManagerActivity : ComponentActivity() {
                             onClick = { importRenderer.launch(arrayOf("application/octet-stream", "*/*")) },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Inspect .renderer") }
+                    }
+                    item {
+                        OutlinedButton(
+                            onClick = {
+                                startActivity(Intent(this@RendererManagerActivity, RendererRepositoryActivity::class.java))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Browse official renderer repository") }
                     }
 
                     candidate?.let { pending ->
@@ -264,7 +272,7 @@ class RendererManagerActivity : ComponentActivity() {
                         OutlinedButton(
                             onClick = {
                                 active = store.reset()
-                                message = "Built-in 2.0.7 native renderer restored."
+                                message = "Built-in renderer restored."
                                 refresh()
                             },
                             modifier = Modifier.fillMaxWidth(),
