@@ -1,0 +1,71 @@
+name: Fix badge shadow duplication v2
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - '.github/workflows/fix-badge-shadow-duplication-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Apply outside-only badge shadow fix
+        run: python3 tools/fix_badge_shadow_duplication_v2.py
+
+      - name: Verify source diff
+        run: git diff --check
+
+      - name: Test, lint and build release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          android/gradlew -p android :app:testDebugUnitTest :app:lintDebug :app:assembleRelease --stacktrace --console=plain
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/fix-badge-shadow-duplication-v2.yml
+          rm -f tools/fix_badge_shadow_duplication_v2.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'renderer: make badge shadow outside-only'
+          git push origin HEAD:fork/2.0.7-renderer-bundles
+
+      - name: Package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp android/app/build/outputs/apk/release/app-release.apk Cubical-Compare-2.0.7-NoDuplicateBadge-v2.apk
+          sha256sum Cubical-Compare-2.0.7-NoDuplicateBadge-v2.apk > Cubical-Compare-2.0.7-NoDuplicateBadge-v2.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Compare-2.0.7-NoDuplicateBadge-v2
+          path: |
+            Cubical-Compare-2.0.7-NoDuplicateBadge-v2.apk
+            Cubical-Compare-2.0.7-NoDuplicateBadge-v2.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
