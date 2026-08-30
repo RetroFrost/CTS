@@ -81,6 +81,7 @@ class RelationshipsPrecisionRendererTest {
     @Test
     fun rendererAdvertisesGlobalAntiDuplicationCapabilities() {
         assertTrue(RendererCapabilities.features.contains("relationships-shadow-mask-v1"))
+        assertTrue(RendererCapabilities.features.contains("relationships-shadow-outside-v2"))
         assertTrue(RendererCapabilities.features.contains("relationships-single-owner-pass-v1"))
     }
 

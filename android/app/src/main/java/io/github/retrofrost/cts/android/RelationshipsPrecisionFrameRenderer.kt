@@ -504,18 +504,11 @@ class RelationshipsPrecisionFrameRenderer {
         val path = badgePath(cfg, cx, cy)
 
         val shadowColor = cfg.color("badge.shadow.color", Color.TRANSPARENT)
-        val shadowRadius = cfg.float("badge.shadow.radius", 0f)
-        if (Color.alpha(shadowColor) > 0 && shadowRadius > 0f) {
-            // Shadow-only pass: never repaint the badge fill as part of a shadow.
-            paint.resetForShape()
-            paint.style = Paint.Style.FILL
-            paint.color = shadowColor
-            paint.maskFilter = BlurMaskFilter(shadowRadius, BlurMaskFilter.Blur.NORMAL)
-            canvas.save()
-            canvas.translate(cfg.float("badge.shadow.dx", 0f), cfg.float("badge.shadow.dy", 0f))
-            canvas.drawPath(path, paint)
-            canvas.restore()
-            paint.maskFilter = null
+        val shadowRadius = cfg.float("badge.shadow.radius", 0f).coerceAtLeast(0f)
+        val shadowDx = cfg.float("badge.shadow.dx", 0f)
+        val shadowDy = cfg.float("badge.shadow.dy", 0f)
+        if (Color.alpha(shadowColor) > 0 && (shadowRadius > 0f || shadowDx != 0f || shadowDy != 0f)) {
+            drawBadgeShadow(canvas, path, shadowColor, shadowRadius, shadowDx, shadowDy)
         }
 
         val gradientTop = cfg.color("badge.gradient.top", spec.badgeColor)
@@ -587,6 +580,49 @@ class RelationshipsPrecisionFrameRenderer {
             pts.forEachIndexed { i, p -> if (i == 0) moveTo(p.first, p.second) else lineTo(p.first, p.second) }
             close()
         }
+    }
+
+    /**
+     * Draws a cast shadow without ever painting a second badge silhouette.
+     *
+     * The previous blur-mask fix translated and blurred the complete polygon.
+     * With a visible offset that full mask itself could read as a duplicate badge.
+     * Here the hard cast-shadow body is path-differenced against the real badge,
+     * and the soft component uses OUTER blur only. The real badge fill below is
+     * therefore the only complete badge-shaped fill on the frame.
+     */
+    private fun drawBadgeShadow(
+        canvas: Canvas,
+        badgePath: Path,
+        color: Int,
+        radius: Float,
+        dx: Float,
+        dy: Float,
+    ) {
+        val shifted = Path(badgePath).apply { offset(dx, dy) }
+
+        if (radius > 0f) {
+            paint.resetForShape()
+            paint.style = Paint.Style.FILL
+            paint.color = color
+            paint.maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.OUTER)
+            canvas.drawPath(shifted, paint)
+            paint.maskFilter = null
+        }
+
+        if (dx != 0f || dy != 0f) {
+            val outside = Path()
+            val hasOutside = runCatching {
+                outside.op(shifted, badgePath, Path.Op.DIFFERENCE)
+            }.getOrDefault(false)
+            if (hasOutside && !outside.isEmpty) {
+                paint.resetForShape()
+                paint.style = Paint.Style.FILL
+                paint.color = color
+                canvas.drawPath(outside, paint)
+            }
+        }
+        paint.resetForShape()
     }
 
     private fun drawBadgeShine(canvas: Canvas, badgePath: Path, card: StudioCard, index: Int, frame: Int, local: Int, spec: RendererSpec, cfg: ExactConfig) {
