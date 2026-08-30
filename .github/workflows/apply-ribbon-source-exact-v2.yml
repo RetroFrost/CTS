@@ -1,0 +1,142 @@
+name: Apply Ribbon source-exact v2
+
+on:
+  push:
+    branches: [fork/2.0.7-renderer-bundles]
+    paths: [.github/workflows/apply-ribbon-source-exact-v2.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+          fetch-depth: 0
+      - name: Patch Ribbon exact engine
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt')
+          s = p.read_text()
+
+          old = '''private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? {
+    val centre = spec.track(target, frame) ?: return null
+    val previous = spec.track(target, frame - 1) ?: centre
+    val next = spec.track(target, frame + 1) ?: centre
+    return previous * 0.20f + centre * 0.60f + next * 0.20f
+}'''
+          new = '''private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? {
+    val centre = spec.track(target, frame) ?: return null
+    // A frame-exact bundle owns the sampled value for this exact frame. Never
+    // blur it with neighbouring frames: that changes measured timing/position.
+    if (spec.precisionMode == "frame-exact") return centre
+    val previous = spec.track(target, frame - 1) ?: centre
+    val next = spec.track(target, frame + 1) ?: centre
+    return previous * 0.20f + centre * 0.60f + next * 0.20f
+}'''
+          assert old in s
+          s = s.replace(old, new)
+
+          anchor = '''    private fun drawOpeningCredits(canvas: Canvas, project: StudioProject, frame: Int, spec: RendererSpec) {'''
+          helper = '''    private fun rendererText(spec: RendererSpec, key: String, fallback: String): String =
+        spec.tags.firstOrNull { it.startsWith("$key=") }
+            ?.substringAfter('=')
+            ?.replace("\\\\n", "\\n")
+            ?: fallback
+
+    private fun drawOpeningCredits(canvas: Canvas, project: StudioProject, frame: Int, spec: RendererSpec) {'''
+          assert anchor in s
+          s = s.replace(anchor, helper)
+
+          old_intro = '''            "The values presented are estimates\\nfrom publicly available\\nsources. Individual results may\\nvary depending\\non concentration, temperature,\\nexposure time, and\\nother factors. Do not attempt\\nany experiments.",'''
+          new_intro = '''            rendererText(
+                spec,
+                "ribbon.credits.intro",
+                "The values presented are estimates\\nfrom publicly available\\nsources. Individual results may\\nvary depending\\non concentration, temperature,\\nexposure time, and\\nother factors. Do not attempt\\nany experiments.",
+            ),'''
+          assert old_intro in s
+          s = s.replace(old_intro, new_intro)
+
+          old_rows = '''        val rows = listOf(
+            "Lead Research & Sourcing" to "Ahmed",
+            "Independent Fact Check" to "Alex Lambert",
+            "Lead Graphic Designer" to "Jack H",
+            "Edit & Post-Production" to "Alex Pacheco",
+            "Thumbnail Designer" to "Diego Garcia",
+            "Video Idea & Quality Check" to "Ideaguys.co",
+        )'''
+          new_rows = '''        val rows = listOf(
+            rendererText(spec, "ribbon.credits.0.label", "Lead Research & Sourcing") to rendererText(spec, "ribbon.credits.0.value", "Ahmed"),
+            rendererText(spec, "ribbon.credits.1.label", "Independent Fact Check") to rendererText(spec, "ribbon.credits.1.value", "Alex Lambert"),
+            rendererText(spec, "ribbon.credits.2.label", "Lead Graphic Designer") to rendererText(spec, "ribbon.credits.2.value", "Jack H"),
+            rendererText(spec, "ribbon.credits.3.label", "Edit & Post-Production") to rendererText(spec, "ribbon.credits.3.value", "Alex Pacheco"),
+            rendererText(spec, "ribbon.credits.4.label", "Thumbnail Designer") to rendererText(spec, "ribbon.credits.4.value", "Diego Garcia"),
+            rendererText(spec, "ribbon.credits.5.label", "Video Idea & Quality Check") to rendererText(spec, "ribbon.credits.5.value", "Ideaguys.co"),
+        )'''
+          assert old_rows in s
+          s = s.replace(old_rows, new_rows, 1)
+
+          old_y = '''            matrix.setTranslate(0f, motionTrack(spec, "ribbon.later.badge.y", local) ?: 0f)'''
+          new_y = '''            val exactY = motionTrack(spec, "ribbon.card.$index.badge.y", local)
+                ?: motionTrack(spec, "ribbon.later.badge.y", local)
+                ?: 0f
+            matrix.setTranslate(0f, exactY)'''
+          assert old_y in s
+          s = s.replace(old_y, new_y)
+
+          old_scale = '''        val stageScale = badgeDeemphasisScale(project, index, globalFrame, spec) * spec.badgeScale'''
+          new_scale = '''        val exactScale = motionTrack(spec, "ribbon.card.$index.badge.scale", local) ?: 1f
+        val stageScale = badgeDeemphasisScale(project, index, globalFrame, spec) * spec.badgeScale * exactScale'''
+          assert old_scale in s
+          s = s.replace(old_scale, new_scale)
+
+          old_shine = '''        val exactProgress = if (index < 4) motionTrack(spec, "ribbon.open.$index.shine.progress", local) else null
+        val exactAlpha = if (index < 4) motionTrack(spec, "ribbon.open.$index.shine.alpha", local) else null'''
+          new_shine = '''        val exactProgress = motionTrack(spec, "ribbon.card.$index.shine.progress", local)
+            ?: if (index < 4) motionTrack(spec, "ribbon.open.$index.shine.progress", local) else null
+        val exactAlpha = motionTrack(spec, "ribbon.card.$index.shine.alpha", local)
+            ?: if (index < 4) motionTrack(spec, "ribbon.open.$index.shine.alpha", local) else null'''
+          assert old_shine in s
+          s = s.replace(old_shine, new_shine)
+
+          old_call = '''        motionTrack(spec, "ribbon.outro.group.y", local)?.let { drawEndGroup(canvas, it) }'''
+          new_call = '''        motionTrack(spec, "ribbon.outro.group.y", local)?.let { drawEndGroup(canvas, it, spec) }'''
+          assert old_call in s
+          s = s.replace(old_call, new_call)
+
+          old_sig = '''    private fun drawEndGroup(canvas: Canvas, top: Float) {'''
+          new_sig = '''    private fun drawEndGroup(canvas: Canvas, top: Float, spec: RendererSpec) {'''
+          assert old_sig in s
+          s = s.replace(old_sig, new_sig)
+
+          old_outro_rows = '''        val rows = listOf(
+            "Lead Research & Sourcing     Lead Graphic Designer",
+            "Ahmed                       Jack H",
+            "Independent Fact Check      Edit & Post-Production",
+            "Alex Lambert                 Alex Pacheco",
+            "Thumbnail Designer           Video Idea & Quality Check",
+            "Diego Garcia                 Ideaguys.co",
+        )'''
+          new_outro_rows = '''        val rows = listOf(
+            rendererText(spec, "ribbon.outro.credit.row.0", "Lead Research & Sourcing     Lead Graphic Designer"),
+            rendererText(spec, "ribbon.outro.credit.row.1", "Ahmed                       Jack H"),
+            rendererText(spec, "ribbon.outro.credit.row.2", "Independent Fact Check      Edit & Post-Production"),
+            rendererText(spec, "ribbon.outro.credit.row.3", "Alex Lambert                 Alex Pacheco"),
+            rendererText(spec, "ribbon.outro.credit.row.4", "Thumbnail Designer           Video Idea & Quality Check"),
+            rendererText(spec, "ribbon.outro.credit.row.5", "Diego Garcia                 Ideaguys.co"),
+        )'''
+          assert old_outro_rows in s
+          s = s.replace(old_outro_rows, new_outro_rows, 1)
+
+          p.write_text(s)
+      - name: Commit exact engine changes
+        run: |
+          git config user.name RetroFrost
+          git config user.email routerifter@gmail.com
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+          git commit -m "renderer: make Ribbon frame-exact truly source-addressable"
+          git push origin HEAD:fork/2.0.7-renderer-bundles
