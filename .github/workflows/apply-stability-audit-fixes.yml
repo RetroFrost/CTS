@@ -37,6 +37,7 @@ jobs:
           sed -i '/import kotlinx.coroutines.launch/a import kotlinx.coroutines.flow.asStateFlow' android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('android/app/src/main/java/io/github/retrofrost/cts/android/MainActivity.kt')
           text = p.read_text()
           wrong = 'SettingRow("Output", "${outputProject.width}×${outputProject.height} · ${outputProject.fps} FPS")'
@@ -50,6 +51,24 @@ jobs:
               raise SystemExit('export output marker not found')
           after = after.replace(original, wrong, 1)
           p.write_text(before + after)
+
+          test = Path('android/app/src/test/java/io/github/retrofrost/cts/android/RelationshipsPrecisionRendererTest.kt')
+          t = test.read_text()
+          if 'import org.junit.Assert.assertEquals' not in t:
+              t = t.replace('import org.junit.Assert.assertFalse\n', 'import org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\n', 1)
+          test.write_text(t)
+
+          codec = Path('android/app/src/main/java/io/github/retrofrost/cts/android/HardwareVideoExporter.kt')
+          c = codec.read_text()
+          c = c.replace(
+              'runCatching { encoderCapabilities.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) }.getOrDefault(false)',
+              'encoderCapabilities?.let { runCatching { it.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) }.getOrDefault(false) } == true',
+          )
+          c = c.replace(
+              'runCatching { encoderCapabilities.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) }.getOrDefault(false)',
+              'encoderCapabilities?.let { runCatching { it.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) }.getOrDefault(false) } == true',
+          )
+          codec.write_text(c)
           PY
 
       - name: Verify source diff
