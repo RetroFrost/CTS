@@ -1,0 +1,71 @@
+name: Fix exact renderer animation overlap
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - '.github/workflows/fix-animation-track-overlap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Apply animation overlap fix
+        run: python3 tools/fix_animation_track_overlap.py
+
+      - name: Verify source diff
+        run: git diff --check
+
+      - name: Unit tests, lint, release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          android/gradlew -p android :app:testDebugUnitTest :app:lintDebug :app:assembleRelease --stacktrace --console=plain
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/fix-animation-track-overlap.yml
+          rm -f tools/fix_animation_track_overlap.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'renderer: expire opening overrides before continuous motion'
+          git push origin HEAD:fork/2.0.7-renderer-bundles
+
+      - name: Package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp android/app/build/outputs/apk/release/app-release.apk Cubical-Compare-2.0.7-Animation-Overlap-Fix.apk
+          sha256sum Cubical-Compare-2.0.7-Animation-Overlap-Fix.apk > Cubical-Compare-2.0.7-Animation-Overlap-Fix.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Compare-2.0.7-Animation-Overlap-Fix
+          path: |
+            Cubical-Compare-2.0.7-Animation-Overlap-Fix.apk
+            Cubical-Compare-2.0.7-Animation-Overlap-Fix.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
