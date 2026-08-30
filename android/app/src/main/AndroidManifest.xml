@@ -9,7 +9,7 @@
         android:name=".CubicalCompareApplication"
         android:allowBackup="true"
         android:icon="@drawable/icon"
-        android:label="Cubical Compare 2.0.7 Native"
+        android:label="Cubical Compare 2.0.8"
         android:roundIcon="@drawable/icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.CubicalCompare">
