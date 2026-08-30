@@ -402,9 +402,9 @@ private fun CubicalCompareApp() {
                     metadata = metadata,
                     accuracy = accuracy,
                     onProjectChange = ::applyProject,
-                    onChooseIntro = { chooseIntro.launch(arrayOf("video/mp4", "video/*")) },
+                    onChooseIntro = { chooseIntro.launch(arrayOf("video/mp4")) },
                     onChooseSoundtrack = { chooseSoundtrack.launch(arrayOf("audio/*")) },
-                    onChooseFont = { chooseFont.launch(arrayOf("font/*", "application/x-font-ttf", "application/x-font-opentype", "application/octet-stream")) },
+                    onChooseFont = { chooseFont.launch(arrayOf("font/ttf", "font/otf", "application/x-font-ttf", "application/x-font-opentype", "application/octet-stream", "*/*")) },
                     modifier = Modifier.padding(padding),
                 )
                 StudioPage.MORE -> MorePage(
@@ -413,13 +413,13 @@ private fun CubicalCompareApp() {
                     rendererSpec = activeRenderer,
                     exportProgress = exportProgress,
                     onNew = { applyProject(StudioProject()); selectedCard = 0; page = StudioPage.CARDS },
-                    onOpen = { openProject.launch(arrayOf("application/json", "text/json", "*/*")) },
+                    onOpen = { openProject.launch(arrayOf("application/json", "text/plain", "*/*")) },
                     onSave = {
                         pendingProjectSave = project
-                        saveProject.launch("${safeName(project.name)}.ccproject.json")
+                        saveProject.launch("${safeName(project.name)}.json")
                     },
-                    onImportData = { importData.launch(arrayOf("text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel")) },
-                    onImportMegaPack = { importMegaPack.launch(arrayOf("application/zip", "*/*")) },
+                    onImportData = { importData.launch(arrayOf("text/csv", "text/tab-separated-values", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "*/*")) },
+                    onImportMegaPack = { importMegaPack.launch(arrayOf("application/zip", "application/x-zip-compressed", "*/*")) },
                     onImportRenderer = { context.startActivity(Intent(context, RendererImportActivity::class.java)) },
                     onRendererLibrary = { context.startActivity(Intent(context, RendererManagerActivity::class.java)) },
                     onExport = {
@@ -445,7 +445,8 @@ private fun CardsPage(
     onChooseImage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val card = project.cards.getOrNull(selectedCard)
+    val index = selectedCard.coerceIn(0, project.cards.lastIndex.coerceAtLeast(0))
+    val card = project.cards.getOrElse(index) { StudioCard() }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -470,89 +471,70 @@ private fun CardsPage(
         }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                itemsIndexed(project.cards, key = { _, item -> item.id }) { index, item ->
+                itemsIndexed(project.cards) { itemIndex, item ->
                     FilterChip(
-                        selected = selectedCard == index,
-                        onClick = { onSelectedCardChange(index) },
-                        label = { Text("${index + 1} · ${item.title.ifBlank { "Untitled" }}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        selected = itemIndex == index,
+                        onClick = { onSelectedCardChange(itemIndex) },
+                        label = { Text("${itemIndex + 1} · ${item.title.ifBlank { "Untitled" }.take(24)}") },
                     )
                 }
             }
         }
-        if (card != null) {
-            item {
-                SectionCard("Card ${selectedCard + 1}") {
-                    CardTextField("Title", card.title) { updateCard(project, selectedCard, card.copy(title = it), onProjectChange) }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = card.badgeHeader,
-                            onValueChange = { updateCard(project, selectedCard, card.copy(badgeHeader = it), onProjectChange) },
-                            label = { Text("Badge header") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = card.value,
-                            onValueChange = { updateCard(project, selectedCard, card.copy(value = it), onProjectChange) },
-                            label = { Text("Value") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    CardTextField("Description", card.description, false) { updateCard(project, selectedCard, card.copy(description = it), onProjectChange) }
-                }
-            }
-            item {
-                SectionCard("Artwork") {
-                    Button(onClick = onChooseImage, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Rounded.Image, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (card.image.isBlank()) "Choose artwork" else "Replace artwork")
-                    }
-                    if (card.image.isBlank()) {
-                        Text("No artwork selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (startTransformCardId == card.id) onTransformRequestConsumed()
-                    } else {
-                        TransformArtworkEditor(
-                            card = card,
-                            startEditing = startTransformCardId == card.id,
-                            onStartConsumed = onTransformRequestConsumed,
-                            onCommit = { transformed ->
-                                updateCard(project, selectedCard, transformed, onProjectChange)
-                            },
-                        )
-                        Text(card.image.substringAfterLast('/'), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-            }
-            item {
+        item {
+            TransformArtworkEditor(
+                card = card,
+                startEditing = startTransformCardId == card.id,
+                onStartConsumed = onTransformRequestConsumed,
+                onCommit = { updateCard(project, index, it, onProjectChange) },
+            )
+        }
+        item {
+            SectionCard("Content") {
+                CardTextField("Title", card.title) { updateCard(project, index, card.copy(title = it), onProjectChange) }
+                CardTextField("Badge header", card.badgeHeader) { updateCard(project, index, card.copy(badgeHeader = it), onProjectChange) }
+                CardTextField("Value", card.value) { updateCard(project, index, card.copy(value = it), onProjectChange) }
+                CardTextField("Description", card.description, singleLine = false) { updateCard(project, index, card.copy(description = it), onProjectChange) }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = {
-                            val copy = card.copy(id = java.util.UUID.randomUUID().toString().replace("-", ""))
-                            val next = project.cards.toMutableList().apply { add(selectedCard + 1, copy) }
-                            onProjectChange(project.copy(cards = next))
-                            onSelectedCardChange(selectedCard + 1)
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Rounded.ContentCopy, null)
+                    OutlinedButton(onClick = onChooseImage, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.Image, null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Duplicate")
+                        Text(if (card.image.isBlank()) "Choose image" else "Replace image")
                     }
-                    OutlinedButton(
-                        enabled = project.cards.size > 1,
-                        onClick = {
-                            val next = project.cards.toMutableList().apply { removeAt(selectedCard) }
-                            onProjectChange(project.copy(cards = next))
-                            onSelectedCardChange(selectedCard.coerceAtMost(next.lastIndex))
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Rounded.Delete, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Delete")
+                    if (card.image.isNotBlank()) {
+                        OutlinedButton(onClick = { updateCard(project, index, card.copy(image = ""), onProjectChange) }, modifier = Modifier.weight(1f)) {
+                            Text("Remove")
+                        }
                     }
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = {
+                        val copy = card.copy(id = java.util.UUID.randomUUID().toString().replace("-", ""))
+                        val next = project.cards.toMutableList().apply { add(selectedCard + 1, copy) }
+                        onProjectChange(project.copy(cards = next))
+                        onSelectedCardChange(selectedCard + 1)
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Duplicate")
+                }
+                OutlinedButton(
+                    enabled = project.cards.size > 1,
+                    onClick = {
+                        val next = project.cards.toMutableList().apply { removeAt(selectedCard) }
+                        onProjectChange(project.copy(cards = next))
+                        onSelectedCardChange(selectedCard.coerceAtMost(next.lastIndex))
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Rounded.Delete, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Delete")
                 }
             }
         }
@@ -973,7 +955,7 @@ private fun ProjectPage(
         }
         item {
             SectionCard("Typography") {
-                SettingRow("Comparison font", ProjectFontResolver.displayName(project))
+                Text("Font", fontWeight = FontWeight.Medium)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     itemsIndexed(ProjectFontChoices) { _, choice ->
                         FilterChip(
@@ -1024,7 +1006,7 @@ private fun ProjectPage(
                 HorizontalDivider()
                 ToggleRow("Credits", project.creditsEnabled) { onProjectChange(project.copy(creditsEnabled = it)) }
                 HorizontalDivider()
-                Text("Encoder", fontWeight = FontWeight.Medium)
+                Text("Video codec", fontWeight = FontWeight.Medium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     EncoderPreference.entries.forEach { encoder ->
                         FilterChip(
@@ -1085,7 +1067,7 @@ private fun MorePage(
             SectionCard("Export") {
                 SettingRow("Output", "${outputProject.width}×${outputProject.height} · ${outputProject.fps} FPS")
                 SettingRow("Length", "${DurationFormat.formatPrecise(metadata.duration)} · ${metadata.frameCount} frames")
-                SettingRow("Encoder", codec)
+                SettingRow("Hardware encoder", codec)
                 if (exportProgress.running || exportProgress.stage != "Ready") {
                     Text(exportProgress.stage, fontWeight = FontWeight.Medium)
                     Text(exportProgress.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
