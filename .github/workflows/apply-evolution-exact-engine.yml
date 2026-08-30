@@ -1,0 +1,38 @@
+name: Apply Evolution exact engine
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - .github/workflows/apply-evolution-exact-engine.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+
+      - name: Apply engine patch
+        run: python tools/patch_evolution_exact_engine.py
+
+      - name: Build and test
+        run: gradle --project-dir android :app:assembleRelease :app:testDebugUnitTest --stacktrace --console=plain
+
+      - name: Commit source fix
+        run: |
+          git config user.name "RetroFrost"
+          git config user.email "routerifter@gmail.com"
+          rm -f tools/patch_evolution_exact_engine.py
+          rm -f .github/workflows/apply-evolution-exact-engine.yml
+          rm -f .github/workflows/fix-evolution-language-renderer.yml
+          git add -A
+          git commit -m "renderer: honour source-measured Ribbon motion"
+          git push origin HEAD:fork/2.0.7-renderer-bundles
