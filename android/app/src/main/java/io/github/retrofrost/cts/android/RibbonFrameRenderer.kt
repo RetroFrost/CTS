@@ -465,7 +465,9 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
     private fun badgeDeemphasisScale(project: StudioProject, index: Int, globalFrame: Int, spec: RendererSpec): Float {
         fun legacyTrigger(nextIndex: Int): Float {
             val start = RibbonTimeline.cardStartFrame(project, spec, nextIndex)
-            return if (nextIndex < 4) start + 99f else start.toFloat()
+            // The source starts de-emphasising an earlier badge as the next badge
+            // begins its visible entry, not ~100 frames later.
+            return if (nextIndex < 4) start + OPENING_BADGE_FIRST_FRAME.toFloat() else start.toFloat()
         }
         fun measuredStart(stageIndex: Int): Float? = if (stageIndex in 0..3) {
             spec.track("ribbon.open.$stageIndex.deemphasis.1.start", 0)
@@ -475,12 +477,12 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         if (index + 1 < project.cards.size) {
             val firstStart = measuredStart(index) ?: legacyTrigger(index + 1)
             val p = easeInOutCubic((globalFrame - firstStart) / 60f)
-            scale = lerp(1f, 272f / 298f, p)
+            scale = lerp(1f, 0.90f, p)
         }
         if (index + 2 < project.cards.size) {
             val secondStart = measuredStart(index + 1) ?: legacyTrigger(index + 2)
             val p = easeInOutCubic((globalFrame - secondStart) / 60f)
-            if (p > 0f) scale = lerp(272f / 298f, 248f / 298f, p)
+            if (p > 0f) scale = lerp(0.90f, 0.75f, p)
         }
         return scale
     }
