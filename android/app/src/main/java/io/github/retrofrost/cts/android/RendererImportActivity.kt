@@ -11,6 +11,16 @@ import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -20,10 +30,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -48,6 +60,8 @@ class RendererImportActivity : ComponentActivity() {
     private var preview by mutableStateOf<Bitmap?>(null)
     private var error by mutableStateOf<String?>(null)
     private var sourceName by mutableStateOf<String?>(null)
+
+    private enum class ImportUiState { INSPECTING, READY, ERROR }
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) finish() else inspect(uri)
@@ -106,33 +120,80 @@ class RendererImportActivity : ComponentActivity() {
     private fun ImportDialog() {
         val pending = candidate
         val failure = error
+        val state = when {
+            failure != null -> ImportUiState.ERROR
+            pending != null -> ImportUiState.READY
+            else -> ImportUiState.INSPECTING
+        }
+
         AlertDialog(
             onDismissRequest = { finish() },
             title = { Text("Import renderer") },
             text = {
                 Column(
-                    Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 620.dp)
+                        .verticalScroll(rememberScrollState())
+                        .animateContentSize(animationSpec = tween(durationMillis = 240)),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    when {
-                        failure != null -> {
-                            Text("Cubical Compare couldn't import this renderer.", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
-                            sourceName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                            Text(failure)
-                            Text("The active renderer was not changed.", style = MaterialTheme.typography.bodySmall)
+                    AnimatedContent(
+                        targetState = state,
+                        transitionSpec = {
+                            (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 10 }) togetherWith
+                                (fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 14 })
+                        },
+                        label = "renderer-import-state",
+                    ) { target ->
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            when (target) {
+                                ImportUiState.ERROR -> {
+                                    Text(
+                                        "Cubical Compare couldn't import this renderer.",
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    sourceName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                    Text(failure.orEmpty())
+                                    Text("The active renderer was not changed.", style = MaterialTheme.typography.bodySmall)
+                                }
+                                ImportUiState.INSPECTING -> {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                                        Text("Inspecting renderer…")
+                                    }
+                                }
+                                ImportUiState.READY -> pending?.let { CandidateContent(it) }
+                            }
                         }
-                        pending == null -> Text("Inspecting renderer…")
-                        else -> CandidateContent(pending)
                     }
                 }
             },
             confirmButton = {
-                when {
-                    pending != null -> Button(enabled = pending.report.compatible && preview != null, onClick = { installAndUse(pending) }) { Text("Install & use") }
-                    failure != null -> Button(onClick = {
-                        error = null
-                        picker.launch(arrayOf(RENDERER_MIME, "application/octet-stream", "*/*"))
-                    }) { Text("Choose another") }
+                AnimatedContent(
+                    targetState = state,
+                    transitionSpec = {
+                        (fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.96f)) togetherWith
+                            (fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.98f))
+                    },
+                    label = "renderer-import-primary-action",
+                ) { target ->
+                    when (target) {
+                        ImportUiState.READY -> Button(
+                            enabled = pending?.report?.compatible == true && preview != null,
+                            onClick = { pending?.let(::installAndUse) },
+                        ) { Text("Install & use") }
+                        ImportUiState.ERROR -> Button(onClick = {
+                            error = null
+                            picker.launch(arrayOf(RENDERER_MIME, "application/octet-stream", "*/*"))
+                        }) { Text("Choose another") }
+                        ImportUiState.INSPECTING -> Box(Modifier.size(1.dp))
+                    }
                 }
             },
             dismissButton = { OutlinedButton(onClick = { finish() }) { Text("Cancel") } },
@@ -160,9 +221,26 @@ class RendererImportActivity : ComponentActivity() {
         pending.report.warnings.forEach { Text("Warning: $it", color = MaterialTheme.colorScheme.tertiary) }
         if (pending.report.compatible) {
             Text("Pre-activation preview", fontWeight = FontWeight.SemiBold)
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black), contentAlignment = Alignment.Center) {
-                preview?.let { Image(it.asImageBitmap(), "Renderer preview", Modifier.fillMaxWidth(), contentScale = ContentScale.Fit) }
-                    ?: Text("Rendering preview…", color = Color.White)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .background(Color.Black)
+                    .animateContentSize(animationSpec = tween(durationMillis = 220)),
+                contentAlignment = Alignment.Center,
+            ) {
+                AnimatedContent(
+                    targetState = preview,
+                    transitionSpec = {
+                        (fadeIn(tween(240)) + scaleIn(tween(240), initialScale = 0.985f)) togetherWith
+                            (fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.99f))
+                    },
+                    label = "renderer-preview",
+                ) { bitmap ->
+                    bitmap?.let {
+                        Image(it.asImageBitmap(), "Renderer preview", Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
+                    } ?: Text("Rendering preview…", color = Color.White)
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
