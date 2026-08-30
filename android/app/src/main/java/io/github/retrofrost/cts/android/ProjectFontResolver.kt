@@ -17,11 +17,14 @@ object ProjectFontResolver {
         if (customPath.isNotEmpty()) {
             val file = File(customPath)
             if (file.isFile) {
-                val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}"
-                val base = fileCache[key] ?: runCatching { Typeface.createFromFile(file) }.getOrNull()?.also {
+                val bold = style and Typeface.BOLD != 0
+                val italic = style and Typeface.ITALIC != 0
+                val weight = if (bold) 700 else 400
+                val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}:$weight:$italic"
+                val resolved = fileCache[key] ?: buildFileTypeface(file, weight, italic, style)?.also {
                     fileCache[key] = it
                 }
-                if (base != null) return if (style == Typeface.NORMAL) base else Typeface.create(base, style)
+                if (resolved != null) return resolved
             }
         }
 
@@ -30,11 +33,32 @@ object ProjectFontResolver {
         return fallback
     }
 
+    /**
+     * Typeface.Builder is important for OpenType variable fonts: setWeight/setItalic
+     * select the requested point on supported variation axes instead of relying on
+     * synthetic bold/italic after loading only the font's default instance.
+     */
+    private fun buildFileTypeface(file: File, weight: Int, italic: Boolean, style: Int): Typeface? {
+        return runCatching {
+            Typeface.Builder(file)
+                .setWeight(weight)
+                .setItalic(italic)
+                .build()
+        }.getOrNull() ?: runCatching {
+            // Keep compatibility with unusual static fonts that the builder rejects.
+            val base = Typeface.createFromFile(file)
+            if (style == Typeface.NORMAL) base else Typeface.create(base, style)
+        }.getOrNull()
+    }
+
     fun displayName(project: StudioProject): String = when {
         project.fontFile.isNotBlank() -> File(project.fontFile).nameWithoutExtension.ifBlank { "Custom font" }
         project.fontFamily.isNotBlank() -> project.fontFamily
         else -> "Renderer default"
     }
 
-    fun isUsable(file: File): Boolean = file.isFile && runCatching { Typeface.createFromFile(file) }.getOrNull() != null
+    fun isUsable(file: File): Boolean = file.isFile && (
+        runCatching { Typeface.Builder(file).build() }.getOrNull() != null ||
+            runCatching { Typeface.createFromFile(file) }.getOrNull() != null
+        )
 }
