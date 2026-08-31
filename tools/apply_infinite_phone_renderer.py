@@ -26,7 +26,7 @@ bundle = replace_once(
 bundle = replace_once(
     bundle,
     '        "preview-frames",\n',
-    '        "preview-frames",\n        "infinite-timeline-source-v1",\n        "source-30fps",\n        "direct-gpu-canvas",\n',
+    '        "preview-frames",\n        "infinite-timeline-source-v1",\n        "infinite-timeline-source-v2",\n        "source-30fps",\n        "direct-gpu-canvas",\n',
     "renderer feature capability",
 )
 BUNDLE.write_text(bundle)
@@ -79,4 +79,4 @@ gpu = replace_once(
 )
 GPU.write_text(gpu)
 
-print("Registered Infinite Timeline source-exact engine in capabilities, bridge and direct GPU export")
+print("Registered Infinite Timeline source-exact v2 engine in capabilities, bridge and direct GPU export")
