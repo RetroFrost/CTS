@@ -18,6 +18,33 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 ribbon = RIBBON.read_text()
+
+# The source full-size badge, measured from settled frames, is a regular six-point
+# red badge. These source-space points are chosen so that the source's active 1.12x
+# stage scale about (234,198), followed by the measured +42 y translation, lands on
+# the source vertices: top≈(236,32), sides≈(56/417,136/345), bottom≈(237,449).
+path_marker = '''    private val badgePath = Path().apply {
+        moveTo(224f, 16f)
+        lineTo(396f, 104f)
+        lineTo(396f, 292f)
+        lineTo(252f, 380f)
+        lineTo(72f, 292f)
+        lineTo(72f, 104f)
+        close()
+    }
+'''
+path_replacement = path_marker + '''    private val pubertyBadgePath = Path().apply {
+        moveTo(236f, 12f)
+        lineTo(397f, 105f)
+        lineTo(397f, 292f)
+        lineTo(237f, 385f)
+        lineTo(75f, 292f)
+        lineTo(75f, 105f)
+        close()
+    }
+'''
+ribbon = replace_once(ribbon, path_marker, path_replacement, "source badge polygon")
+
 ribbon = replace_once(
     ribbon,
     "        val local = globalFrame - start\n\n        val age: Float",
@@ -42,6 +69,13 @@ ribbon = replace_once(
     "        canvas.save()\n        if (sourceLockedBadge) {\n            // In the source video the badge layer is masked to the dark artwork\n            // lane. During entry only the tip is initially visible; the full-size\n            // badge itself is moving behind this mask.\n            canvas.clipRect(0f, 0f, REFERENCE_WIDTH.toFloat(), spec.imageHeight)\n        }\n        canvas.translate(cardX, 0f)",
     "badge lane clip",
 )
+
+ribbon = replace_once(
+    ribbon,
+    "        val path = badgePath\n",
+    "        val path = if (spec.tags.contains(\"puberty-badge-source-lock-v3\")) pubertyBadgePath else badgePath\n",
+    "badge source path selection",
+)
 RIBBON.write_text(ribbon)
 
 bundle = BUNDLE.read_text()
@@ -54,4 +88,4 @@ if '"puberty-badge-source-lock-v3"' not in bundle:
     )
 BUNDLE.write_text(bundle)
 
-print("Applied Puberty source-locked badge masking and attached-text motion")
+print("Applied Puberty source-locked badge polygon, masking, and attached-text motion")
