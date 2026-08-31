@@ -5,92 +5,140 @@
 ![Android](https://img.shields.io/badge/android-Kotlin%20%2B%20Compose-3ddc84)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
 
-CVM creates continuously scrolling comparison videos from CSV-style data. Version 0.5.0 brings the Android and desktop editions back together: both use the same canonical **Reference Timeline** design, project version, card fields, timing constants, animation curve, layout coordinates, compatibility IDs, colors, and starter data.
+**CVM (Comparison Video Maker)** is a cross-platform tool for creating continuously scrolling comparison videos from structured data, artwork, and optional audio.
 
-The desktop edition is no longer an older independent design. Historical desktop model IDs still load, but they normalize to the shared four-column Reference Timeline without discarding card content.
+Instead of manually building every card and animation in a video editor, CVM turns rows of data into a synchronized animated timeline. The Android and desktop editions share the same project model, card structure, animation timings, layout rules, and compatibility contract so a project behaves consistently across platforms.
 
-## Normal workflow
+## What CVM does
 
-1. Paste CSV text with a header row.
-2. Confirm the synchronized Reference Timeline design.
-3. Add optional music.
-4. Keep automatic timing or enter a target video length.
-5. Export the video, or open the manual editor for detailed changes.
+CVM is designed around a simple idea: provide the comparison data, choose or edit the presentation, and export the finished video.
 
-Recommended fields:
+It supports:
+
+- CSV-style comparison data;
+- image artwork for individual cards;
+- optional soundtrack audio;
+- automatic video timing;
+- custom target video lengths;
+- continuously scrolling comparison timelines;
+- animated badges, cards, wipes, holds, and fades;
+- synchronized Android and desktop project behavior;
+- manual editing when the automatic workflow is not enough;
+- MP4 export and live preview;
+- compatibility with projects created using older CVM/CTS model identifiers.
+
+## Basic workflow
+
+1. Paste or import comparison data.
+2. Review the generated cards.
+3. Add artwork and optional music.
+4. Use automatic timing or set a custom video duration.
+5. Preview the result.
+6. Adjust individual cards or timing when needed.
+7. Export the completed comparison video.
+
+A basic dataset looks like this:
 
 ```csv
 Badge Value,Badge Label,Title,Description,Artwork
 10,SECONDS OLD,Breathing,A baby's first breath requires blood flow through the heart.,image.png
+20,SECONDS OLD,First Cry,The first cry helps expand the lungs.,cry.png
 ```
 
-Every field is optional. Each following row becomes one card.
+Every field is optional. Each data row becomes one comparison card.
 
-## One shared Android–desktop contract
+## Reference Timeline
 
-The editable cross-platform source of truth is:
+The current canonical presentation is the **Reference Timeline**.
+
+Its shared behavior includes:
+
+- four equal visible columns;
+- left-to-right opening wipes;
+- staggered card reveals;
+- a short hold after the opening viewport fills;
+- Material-eased one-card horizontal scrolling;
+- animated badge entrances;
+- ending hold and fade sequences;
+- whole-animation scaling when a custom target duration is used;
+- image transforms scoped to their own cards.
+
+Desktop preview and desktop MP4 export use the same renderer. Android uses the corresponding shared project model and timing engine so both implementations follow the same visual contract.
+
+## Cross-platform contract
+
+The editable source of truth for shared Android/desktop behavior is:
 
 ```text
 shared/cts_contract.json
 ```
 
-It defines:
+The filename retains the original CTS project identifier for compatibility.
 
-- the canonical model ID and visible-card count;
+The contract defines:
+
+- canonical model identifiers;
+- visible-card count;
 - legacy model compatibility;
 - project version and card fields;
 - reveal, scroll, hold, fade, wipe, and badge timings;
-- the Material easing curve;
-- normalized image, title, description, and badge frames;
-- shared colors and starter cards.
+- animation easing;
+- normalized image, title, description, and badge geometry;
+- shared colors;
+- starter data.
 
-Generated adapters live at:
+Generated platform adapters are located at:
 
 ```text
 comparison_studio/shared_contract.py
 android/app/src/main/java/io/github/retrofrost/cts/android/shared/SharedContract.kt
 ```
 
-After editing the JSON contract, regenerate both adapters:
+After changing the contract, regenerate both adapters:
 
 ```bash
 python tools/sync_shared_contract.py
 ```
 
-Check for drift without changing files:
+To check for drift without modifying files:
 
 ```bash
 python tools/sync_shared_contract.py --check
 ```
 
-GitHub Actions rejects a pull request when either generated adapter, the Android Program Monitor geometry/colors, or the desktop shared behavior no longer matches the contract.
+GitHub Actions verifies that the generated adapters and shared renderer behavior remain synchronized.
 
-Compose and PySide6 remain native implementations. A platform-specific interaction or renderer-code change therefore needs a corresponding Android and desktop implementation in the same pull request; it cannot be safely translated from Kotlin to Python or vice versa by text generation alone.
+## Android and desktop
 
-## Canonical Reference Timeline
+CVM intentionally keeps native implementations on both platforms.
 
-Both platforms now use:
+### Desktop
 
-- exactly four equal columns;
-- left-to-right opening wipes two seconds apart;
-- a short hold after the opening viewport fills;
-- Material-eased one-card horizontal movement;
-- oversized red badge entrances that settle into place;
-- a two-second ending hold and 0.8-second fade;
-- whole-animation scaling for a custom target duration;
-- image transforms owned by their individual parent card.
+The desktop application uses **Python + PySide6** and provides the editing, preview, and export workflow.
 
-Desktop preview and MP4 export resolve the same renderer. Android uses the corresponding shared project model and timing engine.
+### Android
+
+The Android application uses **Kotlin + Jetpack Compose** with the same shared project semantics and timing rules.
+
+Because the UI and renderer implementations are native to each platform, a renderer or interaction change may require corresponding work on both Android and desktop rather than a direct source-code translation.
 
 ## Desktop installation
 
-Requirements: Python 3.10 or later, FFmpeg, and system fonts.
+Requirements:
+
+- Python 3.10 or later;
+- FFmpeg;
+- system fonts required by the renderer.
+
+On Debian/Ubuntu-based systems:
 
 ```bash
 sudo apt update
 sudo apt install python3-venv ffmpeg fonts-urw-base35
+
 git clone https://github.com/RetroFrost/CTS.git
 cd CTS
+
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -102,14 +150,26 @@ Do not use `sudo pip` or `--break-system-packages`.
 
 ## Android build
 
-The Android project is in `android/` and uses JDK 17 plus Gradle 8.13.
+The Android source is located in `android/`.
+
+Requirements:
+
+- JDK 17;
+- Gradle 8.13 or a compatible wrapper/environment.
+
+Run the Android tests:
 
 ```bash
 gradle --project-dir android :app:testDebugUnitTest
+```
+
+Build a debug APK:
+
+```bash
 gradle --project-dir android :app:assembleDebug
 ```
 
-The debug APK is written to:
+The APK is written to:
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
@@ -117,30 +177,40 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 ## Validation
 
+Before committing shared renderer or contract changes, run:
+
 ```bash
 python tools/sync_shared_contract.py --check
 python -m unittest discover -s tests -v
 gradle --project-dir android :app:testDebugUnitTest
 ```
 
-The platform-parity workflow also compiles the Python source tree. The Android workflow builds the APK and runs Kotlin tests whenever Android or the shared contract changes. The desktop workflow runs the complete unit and offscreen UI suite and preserves its full failure log as an artifact.
+CI additionally checks platform parity, compiles the Python source tree, runs the Android tests/build, and runs the desktop unit and offscreen UI test suites.
 
 ## Project structure
 
 ```text
 shared/cts_contract.json                    Cross-platform source of truth
-tools/sync_shared_contract.py               Generator and parity checker
-comparison_studio/shared_contract.py        Generated desktop adapter
+tools/sync_shared_contract.py               Contract generator and parity checker
+comparison_studio/shared_contract.py        Generated desktop contract adapter
 comparison_studio/reference_illustrated.py  Canonical desktop renderer
-comparison_studio/easy_timing.py            Android-compatible desktop timing
-comparison_studio/csv_text_easy.py          Synchronized desktop workflow
-android/.../shared/SharedContract.kt         Generated Android adapter
-android/.../model/CtsProject.kt              Shared project/card model
-android/.../timeline/TimelineEngine.kt       Shared timing behavior
+comparison_studio/easy_timing.py            Shared-compatible desktop timing
+comparison_studio/csv_text_easy.py          Desktop data workflow
+android/.../shared/SharedContract.kt         Generated Android contract adapter
+android/.../model/CtsProject.kt              Android project/card model
+android/.../timeline/TimelineEngine.kt       Android timing behavior
 android/.../ui/ProgramMonitor.kt             Native Compose renderer
 ```
 
-See [Platform parity](docs/platform-parity.md) for contribution rules.
+Some internal paths and class names still contain **CTS**. They are retained for compatibility and do not change the public **CVM** product name.
+
+See [Platform parity](docs/platform-parity.md) for contribution and synchronization rules.
+
+## Project history
+
+CVM was previously named **CTS — Comparison Timeline Studio**. The public project name has changed to **Comparison Video Maker** because it more directly describes the purpose of the application.
+
+Existing internal identifiers may continue to use `CTS` while the rename is completed without breaking project compatibility.
 
 ## License
 
