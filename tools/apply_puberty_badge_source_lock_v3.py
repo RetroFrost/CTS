@@ -19,10 +19,14 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 ribbon = RIBBON.read_text()
 
-# The source full-size badge, measured from settled frames, is a regular six-point
-# red badge. These source-space points are chosen so that the source's active 1.12x
-# stage scale about (234,198), followed by the measured +42 y translation, lands on
-# the source vertices: top≈(236,32), sides≈(56/417,136/345), bottom≈(237,449).
+# The later-card source full-size badge, measured from settled frames, is a
+# regular six-point red badge. These source-space points are chosen so that the
+# source's active 1.12x stage scale about (234,198), followed by the measured
+# +42 y translation, lands on the source vertices: top≈(236,32),
+# sides≈(56/417,136/345), bottom≈(237,449).
+#
+# Opening badges keep the already source-measured opening path/affine tracks;
+# they use a different giant-entry transform and must not be perturbed.
 path_marker = '''    private val badgePath = Path().apply {
         moveTo(224f, 16f)
         lineTo(396f, 104f)
@@ -33,7 +37,7 @@ path_marker = '''    private val badgePath = Path().apply {
         close()
     }
 '''
-path_replacement = path_marker + '''    private val pubertyBadgePath = Path().apply {
+path_replacement = path_marker + '''    private val pubertyLaterBadgePath = Path().apply {
         moveTo(236f, 12f)
         lineTo(397f, 105f)
         lineTo(397f, 292f)
@@ -73,7 +77,7 @@ ribbon = replace_once(
 ribbon = replace_once(
     ribbon,
     "        val path = badgePath\n",
-    "        val path = if (spec.tags.contains(\"puberty-badge-source-lock-v3\")) pubertyBadgePath else badgePath\n",
+    "        val path = if (index >= 4 && spec.tags.contains(\"puberty-badge-source-lock-v3\")) pubertyLaterBadgePath else badgePath\n",
     "badge source path selection",
 )
 RIBBON.write_text(ribbon)
@@ -88,4 +92,4 @@ if '"puberty-badge-source-lock-v3"' not in bundle:
     )
 BUNDLE.write_text(bundle)
 
-print("Applied Puberty source-locked badge polygon, masking, and attached-text motion")
+print("Applied Puberty source-locked later badge polygon, masking, and attached-text motion")
