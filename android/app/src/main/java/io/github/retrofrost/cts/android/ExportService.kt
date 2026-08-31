@@ -73,7 +73,7 @@ class ExportService : Service() {
         cancelRequestedToken = null
         job?.cancel()
 
-        val initial = ExportProgress(true, 0, "Preparing", "Starting the GPU renderer")
+        val initial = ExportProgress(true, 0, "Preparing", "Starting the direct GPU renderer")
         ExportState.update(initial)
         startForeground(NOTIFICATION_ID, notification(initial))
 
@@ -97,7 +97,7 @@ class ExportService : Service() {
                 val project = StudioProject.fromJson(projectFile.readText())
                 val spec = rendererFile.inputStream().use(RendererBundle::read)
                 val exportProject = RendererBridge.resolveOutputProject(project, spec)
-                HardwareVideoExporter(
+                DirectGpuVideoExporter(
                     context = applicationContext,
                     sourceProject = exportProject,
                     rendererSpec = spec,
