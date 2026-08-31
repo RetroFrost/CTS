@@ -18,9 +18,10 @@ import java.util.concurrent.CancellationException
 /**
  * Frame-bitmap-free export path.
  *
- * The renderer records directly into the MediaCodec input Surface through a
- * hardware-accelerated Canvas. There is no full-frame Bitmap -> GL texture
- * upload between the renderer and the video encoder.
+ * Renderer frames are drawn directly into the MediaCodec input Surface through
+ * a hardware-accelerated Canvas. Custom MP4 intro frames are hardware-decoded
+ * directly into that same encoder Surface. No full-frame Bitmap -> GL upload
+ * sits between either source and the video encoder.
  */
 class DirectGpuVideoExporter(
     private val context: android.content.Context,
@@ -34,21 +35,6 @@ class DirectGpuVideoExporter(
 
     fun export(destination: Uri) {
         require(project.cards.isNotEmpty()) { "Add at least one card before exporting." }
-
-        // Keep custom-intro support intact until the zero-copy decoder hand-off is
-        // available on every vendor codec. Normal renderer exports never take this path.
-        if (project.introMode == IntroMode.CUSTOM && project.introVideo.isNotBlank()) {
-            onProgress(0, "Preparing", "Custom intro compatibility path")
-            HardwareVideoExporter(
-                context = context,
-                sourceProject = project,
-                rendererSpec = rendererSpec,
-                shouldCancel = shouldCancel,
-                onProgress = onProgress,
-            ).export(destination)
-            return
-        }
-
         val marker = System.nanoTime()
         val video = File(context.cacheDir, "cc-$marker-video.mp4")
         val audio = File(context.cacheDir, "cc-$marker-audio.m4a")
@@ -133,33 +119,21 @@ class DirectGpuVideoExporter(
             var track = -1
             var writtenFrames = 0L
             val totalFrames = metadata.frameCount.coerceAtLeast(1)
+            val customFrames = if (project.introMode == IntroMode.CUSTOM && project.introVideo.isNotBlank()) {
+                RendererBridge.customIntroFrames(project, rendererSpec).coerceIn(0, totalFrames - 1)
+            } else {
+                0
+            }
+            val rendererProject = if (customFrames > 0) {
+                project.copy(introMode = IntroMode.DISABLED, introVideo = "")
+            } else {
+                project
+            }
             val started = System.nanoTime()
-            onProgress(0, "Preparing GPU", "Direct hardware Canvas • ${selected.label}")
+            var submittedFrames = 0
+            onProgress(0, "Preparing GPU", "Direct Surface pipeline • ${selected.label}")
 
-            repeat(totalFrames) { frame ->
-                checkCancelled()
-                val surface = requireNotNull(inputSurface)
-                val canvas = try {
-                    surface.lockHardwareCanvas()
-                } catch (error: Throwable) {
-                    throw IllegalStateException(
-                        "This device's ${selected.label} input surface cannot accept direct GPU Canvas frames.",
-                        error,
-                    )
-                }
-                try {
-                    directRenderer.drawTimeline(
-                        canvas = canvas,
-                        project = project,
-                        spec = rendererSpec,
-                        frame = frame,
-                        outputWidth = width,
-                        outputHeight = height,
-                    )
-                } finally {
-                    surface.unlockCanvasAndPost(canvas)
-                }
-
+            fun drainAfterFrame() {
                 val drain = drainCodec(
                     codec = codec,
                     muxer = muxer,
@@ -173,16 +147,62 @@ class DirectGpuVideoExporter(
                 track = drain.track
                 muxerStarted = drain.started
                 writtenFrames = drain.writtenFrames
+            }
 
-                if (frame == 0 || frame + 1 == totalFrames || frame % fps == 0) {
-                    val elapsed = (System.nanoTime() - started).coerceAtLeast(1)
-                    val renderedFps = (frame + 1) * 1_000_000_000.0 / elapsed
-                    val remaining = ((totalFrames - frame - 1) / renderedFps.coerceAtLeast(0.01)).toInt()
-                    onProgress(
-                        ((frame + 1) * 82 / totalFrames).coerceIn(0, 82),
-                        "Direct GPU rendering + encoding",
-                        "${frame + 1} / $totalFrames • ${"%.1f".format(renderedFps)} fps • ${remaining}s left",
+            fun publishProgress() {
+                val elapsed = (System.nanoTime() - started).coerceAtLeast(1)
+                val renderedFps = submittedFrames.coerceAtLeast(1) * 1_000_000_000.0 / elapsed
+                val remaining = ((totalFrames - submittedFrames).coerceAtLeast(0) / renderedFps.coerceAtLeast(0.01)).toInt()
+                onProgress(
+                    (submittedFrames * 82 / totalFrames).coerceIn(0, 82),
+                    "Direct GPU rendering + encoding",
+                    "$submittedFrames / $totalFrames • ${"%.1f".format(renderedFps)} fps • ${remaining}s left",
+                )
+            }
+
+            if (customFrames > 0) {
+                onProgress(0, "GPU intro", "Hardware decode → encoder Surface")
+                decodeCustomIntroDirect(
+                    destination = requireNotNull(inputSurface),
+                    targetFrames = customFrames,
+                ) {
+                    submittedFrames += 1
+                    drainAfterFrame()
+                    if (submittedFrames == 1 || submittedFrames == customFrames || submittedFrames % fps == 0) {
+                        publishProgress()
+                    }
+                }
+            }
+
+            val rendererFrames = totalFrames - customFrames
+            repeat(rendererFrames) { rendererFrame ->
+                checkCancelled()
+                val surface = requireNotNull(inputSurface)
+                val canvas = try {
+                    surface.lockHardwareCanvas()
+                } catch (error: Throwable) {
+                    throw IllegalStateException(
+                        "This device's ${selected.label} input surface cannot accept direct GPU Canvas frames.",
+                        error,
                     )
+                }
+                try {
+                    directRenderer.drawTimeline(
+                        canvas = canvas,
+                        project = rendererProject,
+                        spec = rendererSpec,
+                        frame = rendererFrame,
+                        outputWidth = width,
+                        outputHeight = height,
+                    )
+                } finally {
+                    surface.unlockCanvasAndPost(canvas)
+                }
+
+                submittedFrames += 1
+                drainAfterFrame()
+                if (submittedFrames == 1 || submittedFrames == totalFrames || submittedFrames % fps == 0) {
+                    publishProgress()
                 }
             }
 
@@ -212,6 +232,93 @@ class DirectGpuVideoExporter(
             if (muxerStarted) runCatching { muxer?.stop() }
             muxer?.release()
             inputSurface?.release()
+        }
+    }
+
+    /**
+     * Sends decoded intro frames straight to the encoder's input Surface.
+     * The decoder and hardware Canvas are never connected to the Surface at the
+     * same time: the decoder is fully released before generated frames begin.
+     */
+    private fun decodeCustomIntroDirect(
+        destination: Surface,
+        targetFrames: Int,
+        onFrameSubmitted: () -> Unit,
+    ) {
+        if (targetFrames <= 0) return
+        val source = project.introVideo
+        require(source.isNotBlank()) { "Choose a custom MP4 intro or switch the intro mode." }
+        val extractor = MediaExtractor()
+        val uri = Uri.parse(source)
+        when (uri.scheme?.lowercase()) {
+            "content", "android.resource" -> extractor.setDataSource(context, uri, null)
+            "file" -> extractor.setDataSource(requireNotNull(uri.path) { "Invalid custom intro path." })
+            else -> extractor.setDataSource(source)
+        }
+        val trackIndex = (0 until extractor.trackCount).firstOrNull {
+            extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+        } ?: run {
+            extractor.release()
+            error("The selected custom intro has no video track.")
+        }
+        extractor.selectTrack(trackIndex)
+        val inputFormat = extractor.getTrackFormat(trackIndex)
+        val mime = requireNotNull(inputFormat.getString(MediaFormat.KEY_MIME))
+        val decoder = MediaCodec.createDecoderByType(mime)
+        val info = MediaCodec.BufferInfo()
+        var inputEnded = false
+        var outputEnded = false
+        var rendered = 0
+        try {
+            decoder.configure(inputFormat, destination, null, 0)
+            decoder.start()
+            while (!outputEnded && rendered < targetFrames) {
+                checkCancelled()
+                if (!inputEnded) {
+                    val inputIndex = decoder.dequeueInputBuffer(10_000)
+                    if (inputIndex >= 0) {
+                        val input = requireNotNull(decoder.getInputBuffer(inputIndex)).apply { clear() }
+                        val size = extractor.readSampleData(input, 0)
+                        if (size < 0) {
+                            decoder.queueInputBuffer(
+                                inputIndex,
+                                0,
+                                0,
+                                extractor.sampleTime.coerceAtLeast(0),
+                                MediaCodec.BUFFER_FLAG_END_OF_STREAM,
+                            )
+                            inputEnded = true
+                        } else {
+                            decoder.queueInputBuffer(inputIndex, 0, size, extractor.sampleTime.coerceAtLeast(0), 0)
+                            extractor.advance()
+                        }
+                    }
+                }
+
+                val outputIndex = decoder.dequeueOutputBuffer(info, 10_000)
+                when {
+                    outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
+                    outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> Unit
+                    outputIndex >= 0 -> {
+                        val eos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                        val render = rendered < targetFrames && !(eos && info.size == 0)
+                        decoder.releaseOutputBuffer(outputIndex, render)
+                        if (render) {
+                            rendered += 1
+                            onFrameSubmitted()
+                        }
+                        if (eos) outputEnded = true
+                    }
+                }
+            }
+            require(rendered == targetFrames) {
+                "Custom intro decoded $rendered frames but the project timeline requires $targetFrames. " +
+                    "Use an intro encoded at the project frame rate for the direct GPU path."
+            }
+        } finally {
+            extractor.release()
+            runCatching { decoder.stop() }
+            decoder.release()
         }
     }
 
@@ -251,9 +358,9 @@ class DirectGpuVideoExporter(
                     if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
                     if (info.size > 0) {
                         check(started) { "Video encoder produced data before its format." }
-                        // Canvas-posted encoder surfaces do not expose eglPresentationTimeANDROID.
-                        // Re-stamp access units in render order so the MP4 keeps the exact project
-                        // cadence while frames can still be produced faster than real time.
+                        // Canvas-posted and decoder-posted input Surfaces use different producer
+                        // clocks. Re-stamp access units in submission order so the MP4 always
+                        // keeps the exact project cadence while still exporting faster than real time.
                         info.presentationTimeUs = frameCounter * 1_000_000L / fps.coerceAtLeast(1)
                         frameCounter += 1
                         buffer.position(info.offset)
@@ -344,7 +451,7 @@ private class DirectCanvasFrameRenderer {
             val engineFrame = when (project.introMode) {
                 IntroMode.RENDERER -> safeFrame
                 IntroMode.DISABLED -> safeFrame + RendererBridge.rendererIntroFrames(spec)
-                IntroMode.CUSTOM -> error("Custom intro frames are handled before direct renderer frames.")
+                IntroMode.CUSTOM -> error("Custom intro frames must be decoded directly before renderer frames.")
             }
 
             canvas.save()
