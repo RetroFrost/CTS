@@ -1,11 +1,11 @@
-# CTS — Comparison Timeline Studio
+# CVM — Comparison Video Maker
 
 ![Version](https://img.shields.io/badge/version-0.5.0-6d55f7)
 ![Desktop](https://img.shields.io/badge/desktop-Python%20%2B%20PySide6-41cd52)
 ![Android](https://img.shields.io/badge/android-Kotlin%20%2B%20Compose-3ddc84)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
 
-CTS creates continuously scrolling comparison videos from CSV-style data. Version 0.5.0 brings the Android and desktop editions back together: both use the same canonical **Reference Timeline** design, project version, card fields, timing constants, animation curve, layout coordinates, compatibility IDs, colors, and starter data.
+CVM creates continuously scrolling comparison videos from CSV-style data. Version 0.5.0 brings the Android and desktop editions back together: both use the same canonical **Reference Timeline** design, project version, card fields, timing constants, animation curve, layout coordinates, compatibility IDs, colors, and starter data.
 
 The desktop edition is no longer an older independent design. Historical desktop model IDs still load, but they normalize to the shared four-column Reference Timeline without discarding card content.
 
@@ -144,4 +144,4 @@ See [Platform parity](docs/platform-parity.md) for contribution rules.
 
 ## License
 
-CTS is released under [CC0 1.0 Universal](LICENSE).
+CVM is released under [CC0 1.0 Universal](LICENSE).
