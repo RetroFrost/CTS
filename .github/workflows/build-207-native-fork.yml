@@ -1,5 +1,6 @@
 name: Build 2.0.8
 
+# Fresh installable APK baseline before the renderer/GPU refactor.
 on:
   push:
     branches:
