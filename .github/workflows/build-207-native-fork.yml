@@ -8,6 +8,8 @@ on:
       - android/**
       - tools/apply_phone_reference_build_fixes.py
       - tools/apply_renderer_import_ux.py
+      - tools/apply_infinite_phone_renderer.py
+      - tools/apply_infinite_source_exact_v2.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -36,10 +38,14 @@ jobs:
           set -euo pipefail
           python3 tools/apply_phone_reference_build_fixes.py
           python3 tools/apply_renderer_import_ux.py
+          python3 tools/apply_infinite_phone_renderer.py
+          python3 tools/apply_infinite_source_exact_v2.py
           grep -q 'BuildConfig.VERSION_NAME.substringBefore' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           grep -q 'openingBadgeAffine' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
           grep -q 'DirectGpuVideoExporter' android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
           grep -q 'Ready for Cubical Compare' android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt
+          grep -q 'infinite-timeline-exact' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
+          grep -q 'SOURCE_EXACT_V2 = true' android/app/src/main/java/io/github/retrofrost/cts/android/InfiniteTimelineFrameRenderer.kt
 
       - uses: actions/setup-java@v5
         with:
@@ -63,14 +69,14 @@ jobs:
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
-          cp "$APK" Cubical-Compare-2.0.8-Direct-GPU.apk
-          sha256sum Cubical-Compare-2.0.8-Direct-GPU.apk > Cubical-Compare-2.0.8-Direct-GPU.apk.sha256
+          cp "$APK" Cubical-Compare-2.0.8-Infinite-Source-Exact.apk
+          sha256sum Cubical-Compare-2.0.8-Infinite-Source-Exact.apk > Cubical-Compare-2.0.8-Infinite-Source-Exact.apk.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-2.0.8-Direct-GPU
+          name: Cubical-Compare-2.0.8-Infinite-Source-Exact
           path: |
-            Cubical-Compare-2.0.8-Direct-GPU.apk
-            Cubical-Compare-2.0.8-Direct-GPU.apk.sha256
+            Cubical-Compare-2.0.8-Infinite-Source-Exact.apk
+            Cubical-Compare-2.0.8-Infinite-Source-Exact.apk.sha256
           if-no-files-found: error
           retention-days: 14
