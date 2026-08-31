@@ -7,6 +7,7 @@ on:
     paths:
       - android/**
       - tools/apply_phone_reference_build_fixes.py
+      - tools/apply_renderer_import_ux.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -34,9 +35,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/apply_phone_reference_build_fixes.py
+          python3 tools/apply_renderer_import_ux.py
           grep -q 'BuildConfig.VERSION_NAME.substringBefore' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           grep -q 'openingBadgeAffine' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
           grep -q 'DirectGpuVideoExporter' android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
+          grep -q 'Ready for Cubical Compare' android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt
 
       - uses: actions/setup-java@v5
         with:
