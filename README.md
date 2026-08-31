@@ -1,6 +1,6 @@
 # CVM — Comparison Video Maker
 
-![Version](https://img.shields.io/badge/version-2.0.8-6d55f7)
+![Version](https://img.shields.io/github/v/release/RetroFrost/CTS?display_name=tag&sort=semver)
 ![Desktop](https://img.shields.io/badge/desktop-Python%20%2B%20PySide6-41cd52)
 ![Android](https://img.shields.io/badge/android-Kotlin%20%2B%20Compose-3ddc84)
 ![License](https://img.shields.io/badge/license-CC0-lightgrey)
