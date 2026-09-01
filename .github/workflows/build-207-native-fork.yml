@@ -13,6 +13,7 @@ on:
       - tools/apply_puberty_outro_source_lock_v1.py
       - tools/apply_runtime_integrity_fixes_v1.py
       - tools/apply_runtime_integrity_fixes_v2.py
+      - tools/apply_runtime_integrity_fixes_v3.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -46,6 +47,7 @@ jobs:
           python3 tools/apply_puberty_outro_source_lock_v1.py
           python3 tools/apply_runtime_integrity_fixes_v1.py
           python3 tools/apply_runtime_integrity_fixes_v2.py
+          python3 tools/apply_runtime_integrity_fixes_v3.py
 
           require_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; grep -Fq "$needle" "$file" || { echo "FAILED: $label"; exit 1; }; }
           forbid_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; if grep -Fq "$needle" "$file"; then echo "FAILED: $label"; exit 1; fi; }
