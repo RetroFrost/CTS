@@ -47,31 +47,45 @@ jobs:
           python3 tools/apply_runtime_integrity_fixes_v1.py
           python3 tools/apply_runtime_integrity_fixes_v2.py
 
-          grep -q 'BuildConfig.VERSION_NAME.substringBefore' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
-          grep -q 'openingBadgeAffine' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
-          grep -q 'DirectGpuVideoExporter' android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
-          grep -q 'Ready for Cubical Compare' android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt
-          grep -q 'infinite-timeline-exact' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
-          grep -q 'puberty-badge-source-lock-v3' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
-          grep -q 'puberty-badge-source-lock-v3' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
-          grep -q 'puberty-outro-source-lock-v1' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+          require_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; grep -Fq "$needle" "$file" || { echo "FAILED: $label"; exit 1; }; }
+          forbid_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; if grep -Fq "$needle" "$file"; then echo "FAILED: $label"; exit 1; fi; }
 
-          # Runtime integrity assertions: compilation alone is not enough.
-          grep -q 'runtime-integrity-fixes-v1' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
-          grep -q 'activeBytes?.contentEquals(bytes)' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
-          grep -q 'activeSha256' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
-          grep -q 'exactActive' android/app/src/main/java/io/github/retrofrost/cts/android/RendererRepositoryActivity.kt
-          grep -q 'KEY_MAX_B_FRAMES, 0' android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt
-          grep -q 'withRenderLock' android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt
-          grep -q 'put("version", 6)' android/app/src/main/java/io/github/retrofrost/cts/android/StudioProject.kt
-          ! grep -q 'what-males-learn-at-each-age' android/app/src/main/java/io/github/retrofrost/cts/android/StudioProject.kt
-          ! grep -A20 'if (background != null || subject != null)' android/app/src/main/java/io/github/retrofrost/cts/android/NativeImporters.kt | grep -q '471'
-          grep -q 'RendererArtworkLayout.imageBottom' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
-          grep -q 'RendererArtworkLayout.imageBottom' android/app/src/main/java/io/github/retrofrost/cts/android/NativeFrameRenderer.kt
-          grep -q 'RendererArtworkLayout.imageBottom' android/app/src/main/java/io/github/retrofrost/cts/android/RelationshipsFrameRenderer.kt
-          grep -q 'RendererArtworkLayout.imageBottom' android/app/src/main/java/io/github/retrofrost/cts/android/DirectPreviewTransform.kt
-          grep -q 'rendererTrackTime' android/app/src/main/java/io/github/retrofrost/cts/android/NativeFrameRenderer.kt
-          ! grep -q 'count == 57' android/app/src/main/java/io/github/retrofrost/cts/android/NativeFrameRenderer.kt
+          RB=android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
+          RF=android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+          ES=android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
+          RI=android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt
+          RR=android/app/src/main/java/io/github/retrofrost/cts/android/RendererRepositoryActivity.kt
+          DG=android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt
+          SP=android/app/src/main/java/io/github/retrofrost/cts/android/StudioProject.kt
+          NI=android/app/src/main/java/io/github/retrofrost/cts/android/NativeImporters.kt
+          NF=android/app/src/main/java/io/github/retrofrost/cts/android/NativeFrameRenderer.kt
+          RF2=android/app/src/main/java/io/github/retrofrost/cts/android/RelationshipsFrameRenderer.kt
+          DP=android/app/src/main/java/io/github/retrofrost/cts/android/DirectPreviewTransform.kt
+
+          require_grep 'runtime app version' 'BuildConfig.VERSION_NAME.substringBefore' "$RB"
+          require_grep 'opening affine renderer' 'openingBadgeAffine' "$RF"
+          require_grep 'direct GPU exporter wired' 'DirectGpuVideoExporter' "$ES"
+          require_grep 'renderer import UX' 'Ready for Cubical Compare' "$RI"
+          require_grep 'Infinite exact engine' 'infinite-timeline-exact' "$RB"
+          require_grep 'Puberty badge source lock' 'puberty-badge-source-lock-v3' "$RF"
+          require_grep 'Puberty runtime capability' 'puberty-badge-source-lock-v3' "$RB"
+          require_grep 'Puberty outro source lock' 'puberty-outro-source-lock-v1' "$RF"
+          require_grep 'runtime integrity marker' 'runtime-integrity-fixes-v1' "$RB"
+          require_grep 'same-ID exact byte identity' 'activeBytes?.contentEquals(bytes)' "$RB"
+          require_grep 'active renderer SHA' 'activeSha256' "$RB"
+          require_grep 'repository exact SHA state' 'exactActive' "$RR"
+          require_grep 'disable encoder B frames' 'KEY_MAX_B_FRAMES, 0' "$DG"
+          require_grep 'shared render lock' 'withRenderLock' "$DG"
+          require_grep 'project schema v6' 'put("version", 6)' "$SP"
+          forbid_grep 'stale males model metadata' 'what-males-learn-at-each-age' "$SP"
+          echo 'CHECK: no fixed 471px MegaPack image frame'
+          if grep -A20 'if (background != null || subject != null)' "$NI" | grep -Fq '471'; then echo 'FAILED: fixed 471px MegaPack image frame remains'; exit 1; fi
+          require_grep 'Ribbon renderer-owned artwork geometry' 'RendererArtworkLayout.imageBottom' "$RF"
+          require_grep 'Native renderer-owned artwork geometry' 'RendererArtworkLayout.imageBottom' "$NF"
+          require_grep 'Relationships renderer-owned artwork geometry' 'RendererArtworkLayout.imageBottom' "$RF2"
+          require_grep 'Preview renderer-owned artwork geometry' 'RendererArtworkLayout.imageBottom' "$DP"
+          require_grep 'native timeline-unit conversion' 'rendererTrackTime' "$NF"
+          forbid_grep 'archived 57-card timeline special case' 'count == 57' "$NF"
 
       - uses: actions/setup-java@v5
         with:
