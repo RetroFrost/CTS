@@ -17,6 +17,7 @@ on:
       - tools/apply_runtime_integrity_fixes_v4.py
       - tools/apply_runtime_integrity_fixes_v4_fixed.py
       - tools/apply_runtime_integrity_fixes_v5.py
+      - tools/apply_runtime_integrity_fixes_v5_fixed.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -52,7 +53,7 @@ jobs:
           python3 tools/apply_runtime_integrity_fixes_v2.py
           python3 tools/apply_runtime_integrity_fixes_v3.py
           python3 tools/apply_runtime_integrity_fixes_v4_fixed.py
-          python3 tools/apply_runtime_integrity_fixes_v5.py
+          python3 tools/apply_runtime_integrity_fixes_v5_fixed.py
 
           require_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; grep -Fq "$needle" "$file" || { echo "FAILED: $label"; exit 1; }; }
           forbid_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; if grep -Fq "$needle" "$file"; then echo "FAILED: $label"; exit 1; fi; }
