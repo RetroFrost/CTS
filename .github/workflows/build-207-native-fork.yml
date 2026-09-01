@@ -11,6 +11,7 @@ on:
       - tools/apply_infinite_phone_renderer.py
       - tools/apply_puberty_badge_source_lock_v3.py
       - tools/apply_puberty_outro_source_lock_v1.py
+      - tools/apply_puberty_renderer_quality_v2.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -42,6 +43,7 @@ jobs:
           python3 tools/apply_infinite_phone_renderer.py
           python3 tools/apply_puberty_badge_source_lock_v3.py
           python3 tools/apply_puberty_outro_source_lock_v1.py
+          python3 tools/apply_puberty_renderer_quality_v2.py
           grep -q 'BuildConfig.VERSION_NAME.substringBefore' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           grep -q 'openingBadgeAffine' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
           grep -q 'DirectGpuVideoExporter' android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
@@ -50,6 +52,8 @@ jobs:
           grep -q 'puberty-badge-source-lock-v3' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
           grep -q 'puberty-badge-source-lock-v3' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           grep -q 'puberty-outro-source-lock-v1' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+          grep -q 'puberty-description-artwork-v1' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+          grep -q 'ribbon-adaptive-outro-v1' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
 
       - uses: actions/setup-java@v5
         with:
