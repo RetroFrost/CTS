@@ -12,6 +12,7 @@ on:
       - tools/apply_puberty_badge_source_lock_v3.py
       - tools/apply_puberty_outro_source_lock_v1.py
       - tools/apply_runtime_integrity_fixes_v1.py
+      - tools/apply_runtime_integrity_fixes_v2.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -44,6 +45,7 @@ jobs:
           python3 tools/apply_puberty_badge_source_lock_v3.py
           python3 tools/apply_puberty_outro_source_lock_v1.py
           python3 tools/apply_runtime_integrity_fixes_v1.py
+          python3 tools/apply_runtime_integrity_fixes_v2.py
 
           grep -q 'BuildConfig.VERSION_NAME.substringBefore' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           grep -q 'openingBadgeAffine' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
@@ -57,11 +59,19 @@ jobs:
           # Runtime integrity assertions: compilation alone is not enough.
           grep -q 'runtime-integrity-fixes-v1' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           grep -q 'activeBytes?.contentEquals(bytes)' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
+          grep -q 'activeSha256' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
+          grep -q 'exactActive' android/app/src/main/java/io/github/retrofrost/cts/android/RendererRepositoryActivity.kt
           grep -q 'KEY_MAX_B_FRAMES, 0' android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt
           grep -q 'withRenderLock' android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt
           grep -q 'put("version", 6)' android/app/src/main/java/io/github/retrofrost/cts/android/StudioProject.kt
           ! grep -q 'what-males-learn-at-each-age' android/app/src/main/java/io/github/retrofrost/cts/android/StudioProject.kt
           ! grep -A20 'if (background != null || subject != null)' android/app/src/main/java/io/github/retrofrost/cts/android/NativeImporters.kt | grep -q '471'
+          grep -q 'RendererArtworkLayout.imageBottom' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+          grep -q 'RendererArtworkLayout.imageBottom' android/app/src/main/java/io/github/retrofrost/cts/android/NativeFrameRenderer.kt
+          grep -q 'RendererArtworkLayout.imageBottom' android/app/src/main/java/io/github/retrofrost/cts/android/RelationshipsFrameRenderer.kt
+          grep -q 'RendererArtworkLayout.imageBottom' android/app/src/main/java/io/github/retrofrost/cts/android/DirectPreviewTransform.kt
+          grep -q 'rendererTrackTime' android/app/src/main/java/io/github/retrofrost/cts/android/NativeFrameRenderer.kt
+          ! grep -q 'count == 57' android/app/src/main/java/io/github/retrofrost/cts/android/NativeFrameRenderer.kt
 
       - uses: actions/setup-java@v5
         with:
