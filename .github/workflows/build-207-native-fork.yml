@@ -11,6 +11,7 @@ on:
       - tools/apply_infinite_phone_renderer.py
       - tools/apply_puberty_badge_source_lock_v3.py
       - tools/apply_puberty_outro_source_lock_v1.py
+      - tools/apply_runtime_integrity_fixes_v1.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -19,9 +20,9 @@ permissions:
 
 jobs:
   android:
-    name: Android 2.0.8 source-exact renderers
+    name: Android 2.0.8 source-exact + runtime smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +43,8 @@ jobs:
           python3 tools/apply_infinite_phone_renderer.py
           python3 tools/apply_puberty_badge_source_lock_v3.py
           python3 tools/apply_puberty_outro_source_lock_v1.py
+          python3 tools/apply_runtime_integrity_fixes_v1.py
+
           grep -q 'BuildConfig.VERSION_NAME.substringBefore' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           grep -q 'openingBadgeAffine' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
           grep -q 'DirectGpuVideoExporter' android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
@@ -50,6 +53,15 @@ jobs:
           grep -q 'puberty-badge-source-lock-v3' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
           grep -q 'puberty-badge-source-lock-v3' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           grep -q 'puberty-outro-source-lock-v1' android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+
+          # Runtime integrity assertions: compilation alone is not enough.
+          grep -q 'runtime-integrity-fixes-v1' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
+          grep -q 'activeBytes?.contentEquals(bytes)' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
+          grep -q 'KEY_MAX_B_FRAMES, 0' android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt
+          grep -q 'withRenderLock' android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt
+          grep -q 'put("version", 6)' android/app/src/main/java/io/github/retrofrost/cts/android/StudioProject.kt
+          ! grep -q 'what-males-learn-at-each-age' android/app/src/main/java/io/github/retrofrost/cts/android/StudioProject.kt
+          ! grep -A20 'if (background != null || subject != null)' android/app/src/main/java/io/github/retrofrost/cts/android/NativeImporters.kt | grep -q '471'
 
       - uses: actions/setup-java@v5
         with:
@@ -60,12 +72,29 @@ jobs:
         with:
           gradle-version: '8.14.3'
 
-      - name: Test and build
+      - name: Unit test and build
         shell: bash
         run: |
           set -euo pipefail
           chmod +x android/gradlew
-          android/gradlew -p android :app:testDebugUnitTest :app:assembleRelease --stacktrace --console=plain
+          android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease --stacktrace --console=plain
+
+      - name: Enable KVM for Android runtime smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Runtime smoke test on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: android/gradlew -p android :app:connectedDebugAndroidTest --stacktrace --console=plain
 
       - name: Verify APK
         shell: bash
