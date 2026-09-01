@@ -18,6 +18,7 @@ on:
       - tools/apply_runtime_integrity_fixes_v4_fixed.py
       - tools/apply_runtime_integrity_fixes_v5.py
       - tools/apply_runtime_integrity_fixes_v5_fixed.py
+      - tools/apply_puberty_text_glass_v1.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -54,6 +55,7 @@ jobs:
           python3 tools/apply_runtime_integrity_fixes_v3.py
           python3 tools/apply_runtime_integrity_fixes_v4_fixed.py
           python3 tools/apply_runtime_integrity_fixes_v5_fixed.py
+          python3 tools/apply_puberty_text_glass_v1.py
 
           require_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; grep -Fq "$needle" "$file" || { echo "FAILED: $label"; exit 1; }; }
           forbid_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; if grep -Fq "$needle" "$file"; then echo "FAILED: $label"; exit 1; fi; }
@@ -105,6 +107,10 @@ jobs:
           require_grep 'renderer lower-artwork capability' 'ribbon-artwork-region-v1' "$RB"
           require_grep 'renderer lower-artwork region' 'rendererArtworkRect' "$RF"
           require_grep 'renderer contain fit' 'fit.equals("contain"' "$RF"
+          require_grep 'renderer text-wipe capability' 'ribbon-text-wipe-v1' "$RB"
+          require_grep 'renderer glass-shine capability' 'ribbon-glass-shine-v1' "$RB"
+          require_grep 'source text reveal implementation' 'drawRendererTextReveal' "$RF"
+          require_grep 'source glass shine implementation' 'drawRendererGlassShine' "$RF"
 
       - uses: actions/setup-java@v5
         with:
