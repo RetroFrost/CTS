@@ -14,6 +14,7 @@ on:
       - tools/apply_runtime_integrity_fixes_v1.py
       - tools/apply_runtime_integrity_fixes_v2.py
       - tools/apply_runtime_integrity_fixes_v3.py
+      - tools/apply_runtime_integrity_fixes_v4.py
       - .github/workflows/build-207-native-fork.yml
   workflow_dispatch:
 
@@ -48,12 +49,14 @@ jobs:
           python3 tools/apply_runtime_integrity_fixes_v1.py
           python3 tools/apply_runtime_integrity_fixes_v2.py
           python3 tools/apply_runtime_integrity_fixes_v3.py
+          python3 tools/apply_runtime_integrity_fixes_v4.py
 
           require_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; grep -Fq "$needle" "$file" || { echo "FAILED: $label"; exit 1; }; }
           forbid_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; if grep -Fq "$needle" "$file"; then echo "FAILED: $label"; exit 1; fi; }
 
           RB=android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
           RF=android/app/src/main/java/io/github/retrofrost/cts/android/RibbonFrameRenderer.kt
+          BR=android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt
           ES=android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
           RI=android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt
           RR=android/app/src/main/java/io/github/retrofrost/cts/android/RendererRepositoryActivity.kt
@@ -71,7 +74,7 @@ jobs:
           require_grep 'Infinite exact engine' 'infinite-timeline-exact' "$RB"
           require_grep 'Puberty badge source lock' 'puberty-badge-source-lock-v3' "$RF"
           require_grep 'Puberty runtime capability' 'puberty-badge-source-lock-v3' "$RB"
-          require_grep 'Puberty outro source lock' 'puberty-outro-source-lock-v1' "$RF"
+          require_grep 'Puberty outro capability' 'puberty-outro-source-lock-v1' "$RB"
           require_grep 'runtime integrity marker' 'runtime-integrity-fixes-v1' "$RB"
           require_grep 'same-ID exact byte identity' 'activeBytes?.contentEquals(bytes)' "$RB"
           require_grep 'active renderer SHA' 'activeSha256' "$RB"
@@ -88,6 +91,13 @@ jobs:
           require_grep 'Preview renderer-owned artwork geometry' 'RendererArtworkLayout.imageBottom' "$DP"
           require_grep 'native timeline-unit conversion' 'rendererTrackTime' "$NF"
           forbid_grep 'archived 57-card timeline special case' 'count == 57' "$NF"
+          require_grep 'manifest-owned engine dispatch' 'internal fun engineKind' "$BR"
+          require_grep 'direct export manifest engine dispatch' 'when (RendererBridge.engineKind(spec))' "$DG"
+          require_grep 'renderer track window metadata' 'fun trackStart(target: String)' "$RB"
+          require_grep 'renderer tag capability contract' 'requireDeclaredForTag' "$RB"
+          require_grep 'opening renderer track ownership' 'explicitAffine' "$RF"
+          require_grep 'later renderer track ownership' 'exactBadgeStart' "$RF"
+          require_grep 'Ribbon engine field authority' 'spec.engine == "ribbon-exact"' "$RF"
 
       - uses: actions/setup-java@v5
         with:
