@@ -1,0 +1,70 @@
+name: Renderer v3 compiler
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Renderer API v3 source JSON path
+        required: true
+        default: renderer-v3/examples/watchdata-hand-dissolve.json
+  push:
+    paths:
+      - 'tools/renderer_v3_compiler.py'
+      - 'renderer-v3/**'
+      - '.github/workflows/renderer-v3-compiler.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select source
+        id: source
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SOURCE='${{ inputs.source }}'
+          else
+            SOURCE='renderer-v3/examples/watchdata-hand-dissolve.json'
+          fi
+          test -f "$SOURCE"
+          echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
+          base="$(basename "$SOURCE" .json)"
+          echo "output=dist/${base}.renderer3" >> "$GITHUB_OUTPUT"
+
+      - name: Python syntax check
+        run: python3 -m py_compile tools/renderer_v3_compiler.py
+
+      - name: Compiler self-test
+        run: python3 tools/renderer_v3_compiler.py selftest
+
+      - name: Lint Renderer v3 source
+        run: python3 tools/renderer_v3_compiler.py lint '${{ steps.source.outputs.source }}'
+
+      - name: Compile deterministic bundle
+        run: |
+          mkdir -p dist
+          python3 tools/renderer_v3_compiler.py compile '${{ steps.source.outputs.source }}' -o '${{ steps.source.outputs.output }}'
+
+      - name: Inspect compiled bundle
+        run: python3 tools/renderer_v3_compiler.py inspect '${{ steps.source.outputs.output }}'
+
+      - name: Exercise selector cascade
+        if: steps.source.outputs.source == 'renderer-v3/examples/watchdata-hand-dissolve.json'
+        run: |
+          python3 tools/renderer_v3_compiler.py explain '${{ steps.source.outputs.source }}' --object badge@528 --frame 650 > dist/cascade-example.json
+          cat dist/cascade-example.json
+
+      - name: Checksums
+        run: sha256sum '${{ steps.source.outputs.output }}' | tee dist/SHA256SUMS.txt
+
+      - name: Upload compiled renderer
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-v3-compiled
+          path: dist/
+          if-no-files-found: error
