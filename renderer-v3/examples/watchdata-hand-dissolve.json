@@ -1,0 +1,159 @@
+{
+  "api": 3,
+  "id": "watchdata.hand-dissolve.v3-demo",
+  "name": "WatchData Hand Dissolve — Renderer v3 Demo",
+  "author": "Cubical Compare",
+  "canvas": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "lock": true
+  },
+  "timeline": {
+    "frames": 13120,
+    "clock": "absolute",
+    "implicitAnimation": false
+  },
+  "resources": {
+    "badgeFace": {
+      "type": "polygon",
+      "points": [[232,32],[385,116],[385,289],[239,375],[88,289],[88,116]],
+      "fill": "#D30809",
+      "stroke": {"color":"#AB0006","width":1.2},
+      "properties": {
+        "opacity": 1.0,
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "skewX": 0,
+          "skewY": 0,
+          "anchorX": 236.5,
+          "anchorY": 203.5
+        }
+      }
+    },
+    "badgeShadow": {
+      "type": "shadow",
+      "color": "#73000000",
+      "offsetX": 6,
+      "offsetY": 9,
+      "blur": 8
+    },
+    "badgeShine": {
+      "type": "shine",
+      "blend": "screen",
+      "bands": [
+        {"id":"broad","width":80,"blur":8.5,"opacity":0.13},
+        {"id":"core","width":14,"blur":2.4,"opacity":0.24}
+      ]
+    },
+    "badgeGroup": {
+      "type": "group",
+      "children": ["badgeShadow", "badgeFace", "badgeShine"]
+    },
+    "cardMask": {
+      "type": "mask",
+      "shape": "rect",
+      "x": 0,
+      "y": 0,
+      "width": 477,
+      "height": 1080
+    }
+  },
+  "objects": [
+    {"id":"badge@0","kind":"badge","frame":0,"resource":"badgeGroup"},
+    {"id":"badge@120","kind":"badge","frame":120,"resource":"badgeGroup"},
+    {"id":"badge@240","kind":"badge","frame":240,"resource":"badgeGroup"},
+    {"id":"badge@360","kind":"badge","frame":360,"resource":"badgeGroup"},
+    {"id":"badge@528","kind":"badge","frame":528,"resource":"badgeGroup"},
+    {"id":"badge@742","kind":"badge","frame":742,"resource":"badgeGroup"},
+    {"id":"badge@956","kind":"badge","frame":956,"resource":"badgeGroup"}
+  ],
+  "selectors": [
+    {
+      "select": "badge[*]",
+      "timeline": "relative",
+      "properties": {
+        "visible": {"value": true},
+        "transform": {"opacity": {"value": 1.0}}
+      }
+    },
+    {
+      "select": "badge[every=214,from=528]",
+      "timeline": "relative",
+      "properties": {
+        "movement": {
+          "y": {
+            "track": [[122,-430],[142,-410],[160,-300],[180,-121],[200,-10],[206,0]],
+            "interpolation": "linear",
+            "extrapolate": "hold"
+          }
+        },
+        "shine": {
+          "topX": {
+            "dense": {"start":208,"values":[130,152,178,207,239,273,309,348,389,420]},
+            "timeline": "relative",
+            "interpolation": "raw",
+            "extrapolate": "none"
+          },
+          "bottomX": {
+            "dense": {"start":208,"values":[-178,-153,-126,-98,-68,-36,-2,34,72,110]},
+            "timeline": "relative",
+            "interpolation": "raw",
+            "extrapolate": "none"
+          },
+          "broadWidth": {"value": 80},
+          "coreWidth": {"value": 14},
+          "alpha": {
+            "dense": {"start":208,"values":[0.10,0.31,0.52,0.69,0.86,1.0,0.90,0.60,0.22,0.0]},
+            "timeline": "relative",
+            "interpolation": "raw",
+            "extrapolate": "none"
+          }
+        }
+      }
+    },
+    {
+      "select": "badge[frame=120]",
+      "timeline": "relative",
+      "properties": {
+        "transform": {
+          "affine": {
+            "dense": {
+              "start": 35,
+              "values": [
+                [0.60,-0.08,-0.28,1.19,-126,-19],
+                [0.62,-0.08,-0.28,1.19,-121,-16],
+                [0.64,-0.08,-0.28,1.18,-116,-13]
+              ]
+            },
+            "interpolation": "raw",
+            "extrapolate": "none"
+          }
+        }
+      }
+    }
+  ],
+  "layers": [
+    {"name":"card-bodies","select":"card[*]"},
+    {"name":"badge-shadows","select":"badge[*].shadow"},
+    {"name":"badge-faces","select":"badge[*].face"},
+    {"name":"badge-text","select":"badge[*].text"},
+    {"name":"badge-shine","select":"badge[*].shine"}
+  ],
+  "checkpoints": [
+    {"frame":120,"reference":"reference/frame-00120.png","mode":"rgba"},
+    {"frame":528,"reference":"reference/frame-00528.png","mode":"rgba"},
+    {"frame":650,"reference":"reference/frame-00650.png","mode":"rgba"}
+  ],
+  "audit": {
+    "pixelDiff": {
+      "mode": "rgba",
+      "maxMeanAbsoluteError": 0.0,
+      "maxDifferentPixels": 0
+    }
+  }
+}
