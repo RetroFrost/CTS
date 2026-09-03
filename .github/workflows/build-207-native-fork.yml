@@ -1,4 +1,4 @@
-name: Build 2.0.8
+name: Build 3.0.300
 
 on:
   push:
@@ -6,6 +6,9 @@ on:
       - fork/2.0.7-renderer-bundles
     paths:
       - android/**
+      - renderer-v3/**
+      - tools/renderer_v3_compiler.py
+      - tools/apply_renderer_v3_runtime.py
       - tools/apply_phone_reference_build_fixes.py
       - tools/apply_renderer_import_ux.py
       - tools/apply_infinite_phone_renderer.py
@@ -27,7 +30,7 @@ permissions:
 
 jobs:
   android:
-    name: Android 2.0.8 source-exact + runtime smoke
+    name: Android 3.0.300 + Renderer API v3 runtime smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 60
 
@@ -41,7 +44,14 @@ jobs:
           test ! -d android/app/src/main/python
           ! grep -R "chaquo\|PyApplication\|com\.chaquo" android --exclude-dir=build --exclude='*.lock'
 
-      - name: Apply source-measured 2.0.8 fixes
+      - name: Validate Renderer API v3 compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/renderer_v3_compiler.py selftest
+          python3 tools/renderer_v3_compiler.py lint renderer-v3/examples/watchdata-hand-dissolve.json
+
+      - name: Apply source-measured fixes and Renderer API v3 runtime
         shell: bash
         run: |
           set -euo pipefail
@@ -56,6 +66,8 @@ jobs:
           python3 tools/apply_runtime_integrity_fixes_v4_fixed.py
           python3 tools/apply_runtime_integrity_fixes_v5_fixed.py
           python3 tools/apply_puberty_text_glass_v1.py
+          # Must run last: it upgrades the already-integrity-patched runtime dispatcher.
+          python3 tools/apply_renderer_v3_runtime.py
 
           require_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; grep -Fq "$needle" "$file" || { echo "FAILED: $label"; exit 1; }; }
           forbid_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; if grep -Fq "$needle" "$file"; then echo "FAILED: $label"; exit 1; fi; }
@@ -72,8 +84,23 @@ jobs:
           NF=android/app/src/main/java/io/github/retrofrost/cts/android/NativeFrameRenderer.kt
           RF2=android/app/src/main/java/io/github/retrofrost/cts/android/RelationshipsFrameRenderer.kt
           DP=android/app/src/main/java/io/github/retrofrost/cts/android/DirectPreviewTransform.kt
+          V3=android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3.kt
+          V3R=android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt
+          GRADLE=android/app/build.gradle.kts
+          AM=android/app/src/main/AndroidManifest.xml
 
+          require_grep '3.0.300 version name' 'versionName = "3.0.300"' "$GRADLE"
+          require_grep '3.0.300 version code' 'versionCode = 300300' "$GRADLE"
+          require_grep '3.0.300 Android label' 'Cubical Compare 3.0.300' "$AM"
           require_grep 'runtime app version' 'BuildConfig.VERSION_NAME.substringBefore' "$RB"
+          require_grep 'Renderer API v3 capability' 'const val RENDERER_API = 3' "$RB"
+          require_grep 'Renderer v3 engine capability' '"scene-v3"' "$RB"
+          require_grep 'Renderer v3 bundle dispatch' 'RendererV3Bundle.accepts(bytes)' "$RB"
+          require_grep 'Renderer v3 package loader' 'ZipInputStream' "$V3"
+          require_grep 'Renderer v3 selectors' 'property-level' "$V3"
+          require_grep 'Renderer v3 frame renderer' 'class RendererV3FrameRenderer' "$V3R"
+          require_grep 'Renderer v3 preview/export dispatch' '"scene-v3" -> rendererV3.render' "$BR"
+          require_grep 'Renderer v3 MIME' 'application/vnd.cubicalcompare.renderer3' "$AM"
           require_grep 'opening affine renderer' 'openingBadgeAffine' "$RF"
           require_grep 'direct GPU exporter wired' 'DirectGpuVideoExporter' "$ES"
           require_grep 'renderer import UX' 'Ready for Cubical Compare' "$RI"
@@ -151,14 +178,14 @@ jobs:
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
-          cp "$APK" Cubical-Compare-2.0.8-Source-Exact.apk
-          sha256sum Cubical-Compare-2.0.8-Source-Exact.apk > Cubical-Compare-2.0.8-Source-Exact.apk.sha256
+          cp "$APK" Cubical-Compare-3.0.300-Renderer-v3.apk
+          sha256sum Cubical-Compare-3.0.300-Renderer-v3.apk > Cubical-Compare-3.0.300-Renderer-v3.apk.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-2.0.8-Source-Exact
+          name: Cubical-Compare-3.0.300-Renderer-v3
           path: |
-            Cubical-Compare-2.0.8-Source-Exact.apk
-            Cubical-Compare-2.0.8-Source-Exact.apk.sha256
+            Cubical-Compare-3.0.300-Renderer-v3.apk
+            Cubical-Compare-3.0.300-Renderer-v3.apk.sha256
           if-no-files-found: error
           retention-days: 14
