@@ -3,6 +3,7 @@ package io.github.retrofrost.cts.android
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** Regression coverage for the 3.0.300 Puberty Renderer v3 import dialog. */
 class RendererV3CompatibilityTest {
     @Test
     fun app30300AcceptsRenderer30300PlusAndAnimatedRectClip() {
