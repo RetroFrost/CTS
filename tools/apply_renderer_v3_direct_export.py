@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Keep Renderer API v3 preview and direct GPU export on the same scene evaluator."""
 from pathlib import Path
+import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt"
@@ -90,4 +92,15 @@ if helper not in text:
     text = text.replace(helper_anchor, helper + helper_anchor, 1)
 
 PATH.write_text(text)
-print("Applied Renderer API v3 direct GPU export dispatch")
+
+# This is deliberately last in the v3 patch chain: project binding/group/homography
+# and direct-export dispatch must exist before the dedicated feature implementations
+# are patched and tested.
+for script in (
+    "apply_renderer_v3_feature_contracts.py",
+    "apply_renderer_v3_feature_compat.py",
+    "apply_renderer_v3_feature_tests.py",
+):
+    subprocess.run([sys.executable, str(ROOT / "tools" / script)], check=True)
+
+print("Applied Renderer API v3 direct GPU export dispatch + real dedicated feature contracts")
