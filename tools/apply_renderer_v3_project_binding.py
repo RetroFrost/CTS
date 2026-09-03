@@ -59,20 +59,21 @@ new = '''        val resource = scene.resource(obj.resource) ?: JSONObject().put
                 "ellipse" -> drawEllipse(resource, boundProps, opacity, canvas)
                 "image" -> drawImage(scene, project, resource, boundProps, opacity, canvas)
                 "text" -> drawText(resource, boundProps, opacity, canvas)
-                "group" -> drawResourceGroup(scene, project, resource, boundProps, opacity, frame, canvas)
+                "group" -> drawResourceGroup(scene, project, obj, resource, boundProps, opacity, frame, canvas)
                 else -> drawPolygonLike(resource, boundProps, opacity, canvas)
             }
         }
 '''
 text = replace_once(text, old, new, "v3 project property binding")
 
-# Add a usable resource-group implementation. Children are resource IDs; their
-# defaults are rendered under the parent object's transform/material opacity.
+# Add a usable resource-group implementation. Children inherit the parent's
+# cardIndex/dataIndex, so `$card.*` bindings work inside reusable group resources.
 helper_anchor = '''    private fun drawPolygonLike(resource: JSONObject, props: Map<String, Any?>, opacity: Float, canvas: Canvas) {
 '''
 helper = '''    private fun drawResourceGroup(
         scene: RendererV3Scene,
         project: StudioProject,
+        bindingObject: RendererV3Object,
         resource: JSONObject,
         props: Map<String, Any?>,
         opacity: Float,
@@ -85,16 +86,7 @@ helper = '''    private fun drawResourceGroup(
             val child = scene.resource(childId) ?: return@repeat
             val childType = child.optString("type", "custom").lowercase()
             val defaults = RendererV3Evaluator.flatten(child.optJSONObject("properties") ?: JSONObject())
-                .mapValues { (_, value) -> bindProjectValue(value, project, RendererV3Object(
-                    id = "resource:$childId",
-                    kind = childType,
-                    frame = frame,
-                    resource = childId,
-                    lifespanStart = frame,
-                    lifespanEnd = frame,
-                    properties = JSONObject(),
-                    raw = JSONObject(),
-                )) }
+                .mapValues { (_, value) -> bindProjectValue(value, project, bindingObject) }
             canvas.save()
             applyObjectTransform(defaults, canvas)
             when (childType) {
@@ -103,7 +95,7 @@ helper = '''    private fun drawResourceGroup(
                 "ellipse" -> drawEllipse(child, defaults, opacity, canvas)
                 "image" -> drawImage(scene, project, child, defaults, opacity, canvas)
                 "text" -> drawText(child, defaults, opacity, canvas)
-                "group" -> drawResourceGroup(scene, project, child, defaults, opacity, frame, canvas)
+                "group" -> drawResourceGroup(scene, project, bindingObject, child, defaults, opacity, frame, canvas)
             }
             canvas.restore()
         }
@@ -226,4 +218,4 @@ text = text.replace('token.startsWith("$card.")', r'token.startsWith("\$card.")'
 text = text.replace('token.removePrefix("$card.")', r'token.removePrefix("\$card.")')
 
 PATH.write_text(text)
-print("Applied Renderer API v3 project/card bindings, groups, homography and project images")
+print("Applied Renderer API v3 project/card bindings, inheritable groups, homography and project images")
