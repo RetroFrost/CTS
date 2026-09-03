@@ -49,6 +49,9 @@ jobs:
           start = source.index('# A tag that changes interpreter behaviour')
           end = source.index('# Semantic validation:')
           source = source[:start] + '# Legacy source-specific capabilities are not advertised by the generic v3 runtime.\n' + source[end:]
+          # Current Ribbon uses a static zero fallback; v4 was authored against a
+          # removed helper. Adapt both its expected source and replacement source.
+          source = source.replace('?: laterBadgeYOffset(local)', '?: 0f')
           wrong = 'path = ANDROID / "../androidTest/java/io/github/retrofrost/cts/android/RuntimeIntegrityInstrumentedTest.kt"\npath = path.resolve()'
           right = 'path = ROOT / "android/app/src/androidTest/java/io/github/retrofrost/cts/android/RuntimeIntegrityInstrumentedTest.kt"'
           source = source.replace(wrong, right, 1)
