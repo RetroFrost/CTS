@@ -38,6 +38,14 @@ jobs:
       - name: Apply large-package memory fix
         run: python tools/apply_renderer_v3_streaming_package.py
 
+      - name: Put runtime regression under Android instrumentation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android/app/src/androidTest/java/io/github/retrofrost/cts/android
+          mv android/app/src/test/java/io/github/retrofrost/cts/android/RendererV3StreamingPackageTest.kt \
+             android/app/src/androidTest/java/io/github/retrofrost/cts/android/RendererV3StreamingPackageTest.kt
+
       - name: Verify streaming implementation is present
         shell: bash
         run: |
@@ -47,13 +55,22 @@ jobs:
           grep -q 'LruCache<String, Bitmap>(48 \* 1024 \* 1024)' android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt
           grep -q 'cache = false' android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt
 
-      - name: Unit tests and release build
+      - name: Unit tests and APK builds
         working-directory: android
         shell: bash
         run: |
           set -euxo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease --stacktrace
+          ./gradlew :app:testDebugUnitTest :app:assembleDebugAndroidTest :app:assembleDebug :app:assembleRelease --stacktrace
+
+      - name: Run large-package regression on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: cd android && ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.retrofrost.cts.android.RendererV3StreamingPackageTest --stacktrace
 
       - name: Stage APKs and checksums
         shell: bash
@@ -81,7 +98,7 @@ jobs:
                   android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt \
                   android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt \
                   android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt \
-                  android/app/src/test/java/io/github/retrofrost/cts/android/RendererV3StreamingPackageTest.kt
+                  android/app/src/androidTest/java/io/github/retrofrost/cts/android/RendererV3StreamingPackageTest.kt
           if git diff --cached --quiet; then
             echo 'Streaming Renderer v3 package support already integrated.'
             exit 0
