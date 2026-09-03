@@ -218,5 +218,12 @@ if binding_helpers not in text:
         raise SystemExit("v3 project-binding helper anchor changed")
     text = text.replace(binding_anchor, binding_helpers + binding_anchor, 1)
 
+# Kotlin string templates require a backslash for literal renderer binding tokens.
+text = text.replace('token.startsWith("$")', r'token.startsWith("\$")')
+text = text.replace('token.startsWith("$project.")', r'token.startsWith("\$project.")')
+text = text.replace('token.removePrefix("$project.")', r'token.removePrefix("\$project.")')
+text = text.replace('token.startsWith("$card.")', r'token.startsWith("\$card.")')
+text = text.replace('token.removePrefix("$card.")', r'token.removePrefix("\$card.")')
+
 PATH.write_text(text)
 print("Applied Renderer API v3 project/card bindings, groups, homography and project images")
