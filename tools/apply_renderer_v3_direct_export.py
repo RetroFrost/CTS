@@ -122,10 +122,19 @@ helper = '''    private fun drawRendererV3(
     }
 
 '''
-if helper not in text:
+# The source may already contain the helper with comments or formatting that differ
+# from this migration's exact string. Function identity, not exact text, is the
+# idempotence contract: never insert a second Kotlin overload with the same signature.
+helper_marker = "    private fun drawRendererV3("
+helper_count = text.count(helper_marker)
+if helper_count == 0:
     if text.count(helper_anchor) != 1:
         raise SystemExit("v3 direct-export helper anchor changed")
     text = text.replace(helper_anchor, helper + helper_anchor, 1)
+elif helper_count == 1:
+    print("Renderer v3 direct-export helper already present")
+else:
+    raise SystemExit(f"v3 direct-export helper already duplicated in source: {helper_count} copies")
 PATH.write_text(text)
 prepare_low_memory_patch()
 run_feature_migrations()
