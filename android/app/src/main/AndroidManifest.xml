@@ -10,7 +10,7 @@
         android:name=".CubicalCompareApplication"
         android:allowBackup="true"
         android:icon="@drawable/icon"
-        android:label="Cubical Compare 2.0.8"
+        android:label="Cubical Compare 3.0.300"
         android:roundIcon="@drawable/icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.CubicalCompare">
@@ -42,7 +42,7 @@
             android:launchMode="singleTop"
             android:theme="@style/Theme.CubicalCompare.RendererDialog">
 
-            <!-- Preferred MIME for renderers exported by Cubical Compare. -->
+            <!-- Preferred MIME for legacy/API-v2 renderer packages. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -51,7 +51,16 @@
                 <data android:scheme="file" android:mimeType="application/vnd.cubicalcompare.renderer" />
             </intent-filter>
 
-            <!-- Most Android file providers expose unknown .renderer files as octet-stream. -->
+            <!-- Renderer API v3 raw scenes/packages. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" android:mimeType="application/vnd.cubicalcompare.renderer3" />
+                <data android:scheme="file" android:mimeType="application/vnd.cubicalcompare.renderer3" />
+            </intent-filter>
+
+            <!-- Most Android file providers expose unknown .renderer/.renderer3 files as octet-stream. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -59,11 +68,12 @@
                 <data android:scheme="content" android:mimeType="application/octet-stream" />
             </intent-filter>
 
-            <!-- Allow Share -> Cubical Compare for .renderer packages. -->
+            <!-- Allow Share -> Cubical Compare for renderer packages. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/vnd.cubicalcompare.renderer" />
+                <data android:mimeType="application/vnd.cubicalcompare.renderer3" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
