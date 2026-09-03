@@ -1,0 +1,90 @@
+name: Fix Renderer v3 large-package memory
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - tools/apply_renderer_v3_streaming_package.py
+      - .github/workflows/fix-renderer-v3-large-package-memory.yml
+      - .github/renderer-v3-streaming-trigger.txt
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-renderer-v3-large-package-memory
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Apply large-package memory fix
+        run: python tools/apply_renderer_v3_streaming_package.py
+
+      - name: Verify streaming implementation is present
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -q 'val sourceFile: File? = null' android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt
+          grep -q 'val packageFile: File? = null' android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3.kt
+          grep -q 'LruCache<String, Bitmap>(48 \* 1024 \* 1024)' android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt
+          grep -q 'cache = false' android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt
+
+      - name: Unit tests and release build
+        working-directory: android
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease --stacktrace
+
+      - name: Stage APKs and checksums
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Cubical-Compare-3.0.300-Renderer-v3-streaming-debug.apk
+          cp android/app/build/outputs/apk/release/app-release.apk dist/Cubical-Compare-3.0.300-Renderer-v3-streaming-release.apk
+          (cd dist && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Upload verified APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cubical-Compare-3.0.300-Renderer-v3-streaming
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Commit integrated source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3.kt \
+                  android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt \
+                  android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt \
+                  android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt \
+                  android/app/src/test/java/io/github/retrofrost/cts/android/RendererV3StreamingPackageTest.kt
+          if git diff --cached --quiet; then
+            echo 'Streaming Renderer v3 package support already integrated.'
+            exit 0
+          fi
+          git commit -m 'Fix large Renderer v3 package memory usage'
+          git push origin HEAD:fork/2.0.7-renderer-bundles
