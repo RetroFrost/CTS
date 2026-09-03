@@ -29,7 +29,9 @@ def make_integrity_migrations_idempotent() -> None:
         "apply_runtime_integrity_fixes_v1.py",
         "apply_runtime_integrity_fixes_v2.py",
         "apply_runtime_integrity_fixes_v3.py",
+        "apply_runtime_integrity_fixes_v4.py",
         "apply_runtime_integrity_fixes_v4_fixed.py",
+        "apply_runtime_integrity_fixes_v5.py",
         "apply_runtime_integrity_fixes_v5_fixed.py",
     ):
         path = ROOT / "tools" / name
