@@ -40,6 +40,8 @@ jobs:
           python tools/apply_runtime_integrity_fixes_v1.py
           python tools/apply_runtime_integrity_fixes_v2.py
           python tools/apply_runtime_integrity_fixes_v3.py
+          python tools/apply_infinite_source_exact_v2.py
+          python tools/apply_infinite_phone_renderer.py
           python - <<'PY'
           from pathlib import Path
           source_path = Path('tools/apply_runtime_integrity_fixes_v4.py')
