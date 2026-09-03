@@ -9,6 +9,8 @@ on:
       - renderer-v3/**
       - tools/renderer_v3_compiler.py
       - tools/apply_renderer_v3_runtime.py
+      - tools/apply_renderer_v3_project_binding.py
+      - tools/apply_renderer_v3_manager_files.py
       - tools/apply_renderer_v3_direct_export.py
       - tools/apply_phone_reference_build_fixes.py
       - tools/apply_renderer_import_ux.py
@@ -67,9 +69,10 @@ jobs:
           python3 tools/apply_runtime_integrity_fixes_v4_fixed.py
           python3 tools/apply_runtime_integrity_fixes_v5_fixed.py
           python3 tools/apply_puberty_text_glass_v1.py
-          # Must run after integrity patches: upgrades the manifest dispatcher to v3.
+          # V3 patches run last so they extend the integrity-patched dispatcher rather than replacing it.
           python3 tools/apply_renderer_v3_runtime.py
-          # Keep direct Surface export on the exact same v3 scene evaluator.
+          python3 tools/apply_renderer_v3_project_binding.py
+          python3 tools/apply_renderer_v3_manager_files.py
           python3 tools/apply_renderer_v3_direct_export.py
 
           require_grep() { local label="$1" needle="$2" file="$3"; echo "CHECK: $label"; grep -Fq "$needle" "$file" || { echo "FAILED: $label"; exit 1; }; }
@@ -80,6 +83,7 @@ jobs:
           BR=android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt
           ES=android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
           RI=android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt
+          RM=android/app/src/main/java/io/github/retrofrost/cts/android/RendererManagerActivity.kt
           RR=android/app/src/main/java/io/github/retrofrost/cts/android/RendererRepositoryActivity.kt
           DG=android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt
           SP=android/app/src/main/java/io/github/retrofrost/cts/android/StudioProject.kt
@@ -102,10 +106,14 @@ jobs:
           require_grep 'Renderer v3 package loader' 'ZipInputStream' "$V3"
           require_grep 'Renderer v3 selector cascade' 'fun properties(scene: RendererV3Scene' "$V3"
           require_grep 'Renderer v3 frame renderer' 'class RendererV3FrameRenderer' "$V3R"
+          require_grep 'Renderer v3 project bindings' 'bindProjectValue' "$V3R"
+          require_grep 'Renderer v3 homography' 'transform.homography' "$V3R"
+          require_grep 'Renderer v3 resource groups' 'drawResourceGroup' "$V3R"
           require_grep 'Renderer v3 preview/export dispatch' '"scene-v3" -> rendererV3.render' "$BR"
           require_grep 'Renderer v3 direct GPU dispatch' '"scene-v3" ->' "$DG"
           require_grep 'Renderer v3 direct Surface helper' 'drawRendererV3' "$DG"
           require_grep 'Renderer v3 MIME' 'application/vnd.cubicalcompare.renderer3' "$AM"
+          require_grep 'Renderer manager v3 file label' 'Inspect .renderer / .renderer3' "$RM"
           require_grep 'opening affine renderer' 'openingBadgeAffine' "$RF"
           require_grep 'direct GPU exporter wired' 'DirectGpuVideoExporter' "$ES"
           require_grep 'renderer import UX' 'Ready for Cubical Compare' "$RI"
