@@ -1,0 +1,79 @@
+name: Auto-integrate Renderer API v3
+
+on:
+  push:
+    branches:
+      - fork/2.0.7-renderer-bundles
+    paths:
+      - .github/workflows/auto-integrate-renderer-v3.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-integrate-renderer-v3
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork/2.0.7-renderer-bundles
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Apply pending runtime integrity patches
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python tools/apply_runtime_integrity_fixes_v1.py
+          python tools/apply_runtime_integrity_fixes_v2.py
+          python tools/apply_runtime_integrity_fixes_v3.py
+          python tools/apply_runtime_integrity_fixes_v4_fixed.py
+          python tools/apply_runtime_integrity_fixes_v5_fixed.py
+
+      - name: Integrate Renderer API v3
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python tools/apply_renderer_v3_runtime.py
+          python tools/apply_renderer_v3_project_binding.py
+          python tools/apply_renderer_v3_feature_contracts.py
+          python tools/apply_renderer_v3_feature_compat.py
+          python tools/apply_renderer_v3_animated_clip.py
+          python tools/apply_renderer_v3_direct_export.py
+          python tools/apply_renderer_v3_manager_files.py
+          python tools/apply_renderer_import_ux.py
+          python tools/apply_renderer_v3_feature_tests.py
+
+      - name: Verify Android build
+        working-directory: android
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace
+
+      - name: Commit integrated app source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add android tools
+          if git diff --cached --quiet; then
+            echo 'Renderer v3 runtime is already fully integrated.'
+            exit 0
+          fi
+          git commit -m 'Integrate Renderer API v3 into Android runtime'
+          git push origin HEAD:fork/2.0.7-renderer-bundles
