@@ -18,21 +18,35 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 def prepare_low_memory_patch() -> None:
-    """Adapt the strict new OOM patch to the two v3 validation overloads.
+    """Adapt the strict new OOM patch to the integrated v3 runtime shape.
 
     Feature-contract integration intentionally introduced two validation paths with
-    the same asset-list signature. Both must gain the disk-backed asset index. This
-    keeps the low-memory patch strict everywhere else instead of globally ignoring
-    changed anchors.
+    the same asset-list signature. Both must gain the disk-backed asset index. The
+    existing runtime also spells one helper parameter as `java.io.InputStream`.
+    These are narrow shape adaptations; all other low-memory anchors stay strict.
     """
     path = ROOT / "tools" / "apply_renderer_v3_low_memory.py"
     text = path.read_text()
+
     old = '''    count = text.count(old)\n    if count != 1:\n        raise SystemExit(f"{label}: expected exactly one source match, found {count}")\n    return text.replace(old, new, 1)\n'''
     new = '''    count = text.count(old)\n    if count > 1 and label.startswith("v3 validation "):\n        print(f"{label}: applying to {count} validation overloads")\n        return text.replace(old, new)\n    if count != 1:\n        raise SystemExit(f"{label}: expected exactly one source match, found {count}")\n    return text.replace(old, new, 1)\n'''
     if new not in text:
         if old not in text:
             raise SystemExit("low-memory patch helper marker changed")
-        path.write_text(text.replace(old, new, 1))
+        text = text.replace(old, new, 1)
+
+    old_anchor = '''helper_anchor = ''' + "'''    private fun readLimited(input: InputStream, limit: Int): ByteArray {\n'''" + '''
+helper = '''
+    new_anchor = '''helper_anchor = ''' + "'''    private fun readLimited(input: InputStream, limit: Int): ByteArray {\n'''" + '''
+if helper_anchor not in text:
+    helper_anchor = ''' + "'''    private fun readLimited(input: java.io.InputStream, limit: Int): ByteArray {\n'''" + '''
+helper = '''
+    if new_anchor not in text:
+        if old_anchor not in text:
+            raise SystemExit("low-memory readLimited anchor declaration changed")
+        text = text.replace(old_anchor, new_anchor, 1)
+
+    path.write_text(text)
 
 
 text = PATH.read_text()
