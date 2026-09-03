@@ -15,6 +15,37 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def make_integrity_migrations_idempotent() -> None:
+    """Build-time migrations must not abort when their result is already in source.
+
+    The branch now carries several integrity fixes permanently. CI still replays the
+    historical migration scripts so clean/older checkouts get the same state. A
+    superseded source anchor is therefore normal, not a build error; the workflow's
+    structural greps, Gradle tests and emulator tests remain the authority.
+    """
+    old = '''    count = text.count(old)\n    if count != 1:\n        raise SystemExit(f"{label}: expected exactly one source match, found {count}")\n    return text.replace(old, new, 1)\n'''
+    new = '''    count = text.count(old)\n    if count == 0:\n        print(f"{label}: already migrated or superseded; skipping")\n        return text\n    if count != 1:\n        raise SystemExit(f"{label}: expected exactly one source match, found {count}")\n    return text.replace(old, new, 1)\n'''
+    for name in (
+        "apply_runtime_integrity_fixes_v1.py",
+        "apply_runtime_integrity_fixes_v2.py",
+        "apply_runtime_integrity_fixes_v3.py",
+        "apply_runtime_integrity_fixes_v4_fixed.py",
+        "apply_runtime_integrity_fixes_v5_fixed.py",
+    ):
+        path = ROOT / "tools" / name
+        if not path.is_file():
+            continue
+        text = path.read_text()
+        if new in text:
+            continue
+        if old in text:
+            path.write_text(text.replace(old, new, 1))
+            print(f"Made {name} idempotent for staged 3.0.300 builds")
+
+
+# This must run even when the Puberty outro itself is already baked into source.
+make_integrity_migrations_idempotent()
+
 ribbon = RIBBON.read_text()
 if MARKER in ribbon:
     print("Puberty source-locked outro already applied")
