@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: auto-integrate-renderer-v3
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   integrate:
@@ -40,7 +40,22 @@ jobs:
           python tools/apply_runtime_integrity_fixes_v1.py
           python tools/apply_runtime_integrity_fixes_v2.py
           python tools/apply_runtime_integrity_fixes_v3.py
-          python tools/apply_infinite_source_exact_v2.py
+          python - <<'PY'
+          from pathlib import Path
+          source_path = Path('tools/apply_infinite_source_exact_v2.py')
+          source = source_path.read_text()
+          # The patch script embeds Kotlin inside a Python triple-quoted string.
+          # Preserve Kotlin's literal \n escapes instead of turning them into
+          # physical newlines inside Kotlin string/character literals.
+          source = source.replace(
+              'val rest = " for more\\ncomparison videos."',
+              'val rest = " for more\\\\ncomparison videos."',
+          )
+          source = source.replace("substringBefore('\\n')", "substringBefore('\\\\n')")
+          source = source.replace("if ('\\n' in restVisible)", "if ('\\\\n' in restVisible)")
+          source = source.replace("substringAfter('\\n')", "substringAfter('\\\\n')")
+          exec(compile(source, str(source_path), 'exec'), {'__name__': '__main__', '__file__': str(source_path)})
+          PY
           python tools/apply_infinite_phone_renderer.py
           python - <<'PY'
           from pathlib import Path
@@ -74,13 +89,12 @@ jobs:
           set -euxo pipefail
           python tools/apply_renderer_v3_runtime.py
           python tools/apply_renderer_v3_project_binding.py
-          python tools/apply_renderer_v3_feature_contracts.py
-          python tools/apply_renderer_v3_feature_compat.py
           python tools/apply_renderer_v3_animated_clip.py
+          # This script deliberately applies feature contracts, compatibility and
+          # feature tests itself as the final v3 runtime patch. Do not run them twice.
           python tools/apply_renderer_v3_direct_export.py
           python tools/apply_renderer_v3_manager_files.py
           python tools/apply_renderer_import_ux.py
-          python tools/apply_renderer_v3_feature_tests.py
 
       - name: Verify Android build
         working-directory: android
