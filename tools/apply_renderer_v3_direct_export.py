@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Keep Renderer API v3 preview and direct GPU export on the same scene evaluator."""
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PATH = ROOT / "android/app/src/main/java/io/github/retrofrost/cts/android/DirectGpuVideoExporter.kt"
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if new in text:
+        return text
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected exactly one source match, found {count}")
+    return text.replace(old, new, 1)
+
+
+text = PATH.read_text()
+
+field = '    private val relationshipsPrecisionRenderer = bridgeField("relationshipsPrecisionRenderer")\n'
+text = replace_once(
+    text,
+    field,
+    field + '    private val rendererV3 = bridgeField("rendererV3") as RendererV3FrameRenderer\n',
+    "v3 direct-export renderer field",
+)
+
+# All engines are reference-space renderers; use the manifest reference dimensions
+# instead of permanently assuming 1920x1080. Existing engines still declare 1920x1080.
+text = replace_once(
+    text,
+    '''            canvas.scale(
+                outputWidth.coerceAtLeast(2) / 1920f,
+                outputHeight.coerceAtLeast(2) / 1080f,
+            )
+''',
+    '''            canvas.scale(
+                outputWidth.coerceAtLeast(2) / spec.referenceWidth.coerceAtLeast(1).toFloat(),
+                outputHeight.coerceAtLeast(2) / spec.referenceHeight.coerceAtLeast(1).toFloat(),
+            )
+''',
+    "manifest reference-space export scale",
+)
+
+# runtime-integrity-v4 has already made this a manifest-owned when(engineKind).
+anchor = '''                "ribbon-exact" ->
+                    drawFourArg(ribbonRenderer, canvas, project, engineFrame, spec)
+                else ->
+                    drawFourArg(nativeRenderer, canvas, project, engineFrame, spec)
+'''
+replacement = '''                "ribbon-exact" ->
+                    drawFourArg(ribbonRenderer, canvas, project, engineFrame, spec)
+                "scene-v3" ->
+                    drawRendererV3(canvas, project, engineFrame, spec)
+                else ->
+                    drawFourArg(nativeRenderer, canvas, project, engineFrame, spec)
+'''
+text = replace_once(text, anchor, replacement, "v3 direct GPU dispatch")
+
+helper_anchor = '''    private fun drawFourArg(
+        renderer: Any,
+'''
+helper = '''    private fun drawRendererV3(
+        canvas: Canvas,
+        project: StudioProject,
+        frame: Int,
+        spec: RendererSpec,
+    ) {
+        // RendererV3FrameRenderer is the single scene evaluator. The direct Surface
+        // path composites its exact reference raster into the already-scaled encoder
+        // Canvas, avoiding a second implementation with different selector semantics.
+        val bitmap = rendererV3.render(
+            project = project,
+            spec = spec,
+            frame = frame,
+            width = spec.referenceWidth.coerceAtLeast(2),
+            height = spec.referenceHeight.coerceAtLeast(2),
+        )
+        try {
+            canvas.drawBitmap(bitmap, 0f, 0f, null)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+'''
+if helper not in text:
+    if text.count(helper_anchor) != 1:
+        raise SystemExit("v3 direct-export helper anchor changed")
+    text = text.replace(helper_anchor, helper + helper_anchor, 1)
+
+PATH.write_text(text)
+print("Applied Renderer API v3 direct GPU export dispatch")
