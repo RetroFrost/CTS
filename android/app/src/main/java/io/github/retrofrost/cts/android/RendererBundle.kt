@@ -90,7 +90,7 @@ data class RendererTrack(
 
 data class RendererSpec(
     val id: String = "cubical.2.0.7.native",
-    val name: String = "Cubical Compare 2.0.8 Native",
+    val name: String = "Cubical Compare 3.0.300 Native",
     val author: String = "Cubical Compare",
     val formatVersion: Int = 1,
     val rendererApi: Int = 1,
