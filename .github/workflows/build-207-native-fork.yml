@@ -97,7 +97,7 @@ jobs:
           require_grep 'Renderer v3 engine capability' '"scene-v3"' "$RB"
           require_grep 'Renderer v3 bundle dispatch' 'RendererV3Bundle.accepts(bytes)' "$RB"
           require_grep 'Renderer v3 package loader' 'ZipInputStream' "$V3"
-          require_grep 'Renderer v3 selectors' 'property-level' "$V3"
+          require_grep 'Renderer v3 selector cascade' 'fun properties(scene: RendererV3Scene' "$V3"
           require_grep 'Renderer v3 frame renderer' 'class RendererV3FrameRenderer' "$V3R"
           require_grep 'Renderer v3 preview/export dispatch' '"scene-v3" -> rendererV3.render' "$BR"
           require_grep 'Renderer v3 MIME' 'application/vnd.cubicalcompare.renderer3' "$AM"
