@@ -29,7 +29,6 @@ class RendererV3InstrumentedTest {
 
         val first = requireNotNull(read.scene.objectById("badge@0"))
         val firstProperties = RendererV3Evaluator.properties(read.scene, first, 0)
-        // Object property wins over badge[*] on only the property it declares.
         assertEquals(9.0, (firstProperties["movement.x"] as Number).toDouble(), 0.0001)
         assertEquals(-100.0, (firstProperties["movement.y"] as Number).toDouble(), 0.0001)
 
@@ -68,53 +67,81 @@ class RendererV3InstrumentedTest {
         assertTrue("renderer-api-v3-scene-ir" in RendererCapabilities.features)
     }
 
-    private fun sourceScene(): JSONObject = JSONObject().apply {
-        put("api", 3)
-        put("id", "v3-smoke")
-        put("name", "Renderer v3 Smoke")
-        put("canvas", JSONObject().put("width", 1920).put("height", 1080).put("fps", 60))
-        put("timeline", JSONObject().put("frames", 240).put("clock", "absolute").put("implicitAnimation", false))
-        put("features", JSONArray().put("renderer-api-v3-scene-ir"))
-        put("resources", JSONObject().put("badge", JSONObject()
-            .put("type", "polygon")
-            .put("points", JSONArray()
-                .put(JSONArray().put(0).put(0))
-                .put(JSONArray().put(100).put(0))
-                .put(JSONArray().put(100).put(100))
-                .put(JSONArray().put(0).put(100)))))
-        put("objects", JSONArray()
-            .put(JSONObject()
-                .put("id", "badge@0")
-                .put("kind", "badge")
-                .put("frame", 0)
-                .put("resource", "badge")
-                .put("properties", JSONObject()
-                    .put("movement", JSONObject().put("x", JSONObject().put("value", 9)))))
-            .put(JSONObject()
-                .put("id", "badge@120")
-                .put("kind", "badge")
-                .put("frame", 120)
-                .put("resource", "badge")))
-        put("selectors", JSONArray()
-            .put(JSONObject()
-                .put("select", "badge[*]")
-                .put("timeline", "relative")
-                .put("properties", JSONObject()
-                    .put("movement", JSONObject()
-                        .put("x", JSONObject().put("value", 1)))))
-            .put(JSONObject()
-                .put("select", "badge[frame>=0]")
-                .put("timeline", "relative")
-                .put("properties", JSONObject()
-                    .put("movement", JSONObject()
-                        .put("y", JSONObject()
-                            .put("dense", JSONObject()
-                                .put("start", 0)
-                                .put("values", JSONArray().put(-100).put(-50).put(0)))
+    private fun sourceScene(): JSONObject {
+        val badgePoints = JSONArray()
+            .put(JSONArray().put(0).put(0))
+            .put(JSONArray().put(100).put(0))
+            .put(JSONArray().put(100).put(100))
+            .put(JSONArray().put(0).put(100))
+        val resources = JSONObject().put(
+            "badge",
+            JSONObject().put("type", "polygon").put("points", badgePoints),
+        )
+
+        val firstObject = JSONObject()
+            .put("id", "badge@0")
+            .put("kind", "badge")
+            .put("frame", 0)
+            .put("resource", "badge")
+            .put(
+                "properties",
+                JSONObject().put(
+                    "movement",
+                    JSONObject().put("x", JSONObject().put("value", 9)),
+                ),
+            )
+        val secondObject = JSONObject()
+            .put("id", "badge@120")
+            .put("kind", "badge")
+            .put("frame", 120)
+            .put("resource", "badge")
+        val objects = JSONArray().put(firstObject).put(secondObject)
+
+        val sharedX = JSONObject()
+            .put("select", "badge[*]")
+            .put("timeline", "relative")
+            .put(
+                "properties",
+                JSONObject().put(
+                    "movement",
+                    JSONObject().put("x", JSONObject().put("value", 1)),
+                ),
+            )
+        val sharedY = JSONObject()
+            .put("select", "badge[frame>=0]")
+            .put("timeline", "relative")
+            .put(
+                "properties",
+                JSONObject().put(
+                    "movement",
+                    JSONObject().put(
+                        "y",
+                        JSONObject()
+                            .put(
+                                "dense",
+                                JSONObject()
+                                    .put("start", 0)
+                                    .put("values", JSONArray().put(-100).put(-50).put(0)),
+                            )
                             .put("interpolation", "raw")
-                            .put("extrapolate", "hold")))))
-        put("layers", JSONArray().put("badge@0").put("badge@120"))
-        put("checkpoints", JSONArray().put(JSONObject().put("frame", 0)).put(JSONObject().put("frame", 120)))
+                            .put("extrapolate", "hold"),
+                    ),
+                ),
+            )
+        val selectors = JSONArray().put(sharedX).put(sharedY)
+
+        return JSONObject()
+            .put("api", 3)
+            .put("id", "v3-smoke")
+            .put("name", "Renderer v3 Smoke")
+            .put("canvas", JSONObject().put("width", 1920).put("height", 1080).put("fps", 60))
+            .put("timeline", JSONObject().put("frames", 240).put("clock", "absolute").put("implicitAnimation", false))
+            .put("features", JSONArray().put("renderer-api-v3-scene-ir"))
+            .put("resources", resources)
+            .put("objects", objects)
+            .put("selectors", selectors)
+            .put("layers", JSONArray().put("badge@0").put("badge@120"))
+            .put("checkpoints", JSONArray().put(JSONObject().put("frame", 0)).put(JSONObject().put("frame", 120)))
     }
 
     private fun renderer3(scene: JSONObject): ByteArray {
