@@ -48,21 +48,29 @@ ribbon = replace_once(
     "source lock flag",
 )
 
-# Newer integrity passes already own the later-entry start from the renderer's
-# explicit tracks. In that form the sourceLockedBadge/BADGE_ENTRY_AGE branch is
-# still present, so do not try to replace the archived fallback block again.
+# Two supported source shapes exist. Older branches use the fallback entry window;
+# current integrity-patched branches let exact renderer tracks own their start frame.
+# In both cases source-locked Puberty badges are already full-size while moving.
 if "age = if (sourceLockedBadge) BADGE_ENTRY_AGE" not in ribbon:
-    ribbon = replace_once(
-        ribbon,
-        "        } else {\n            if (local < spec.laterBadgeFallStartFrame) return\n            age = (local - spec.laterBadgeFallStartFrame).toFloat() / 103f * 2.25f\n            matrix.setTranslate(0f, motionTrack(spec, \"ribbon.card.$index.badge.y\", local) ?: motionTrack(spec, \"ribbon.later.badge.y\", local) ?: laterBadgeYOffset(local))\n        }",
-        "        } else {\n            if (local < spec.laterBadgeFallStartFrame) return\n            age = if (sourceLockedBadge) BADGE_ENTRY_AGE else\n                (local - spec.laterBadgeFallStartFrame).toFloat() / 103f * 2.25f\n            matrix.setTranslate(0f, motionTrack(spec, \"ribbon.card.$index.badge.y\", local) ?: motionTrack(spec, \"ribbon.later.badge.y\", local) ?: laterBadgeYOffset(local))\n        }",
-        "later badge source motion",
-    )
+    old_integrity_age = '''            age = (local - (exactBadgeStart ?: spec.laterBadgeFallStartFrame)).toFloat() / 103f * 2.25f
+'''
+    new_integrity_age = '''            age = if (sourceLockedBadge) BADGE_ENTRY_AGE else
+                (local - (exactBadgeStart ?: spec.laterBadgeFallStartFrame)).toFloat() / 103f * 2.25f
+'''
+    if old_integrity_age in ribbon:
+        ribbon = ribbon.replace(old_integrity_age, new_integrity_age, 1)
+    else:
+        ribbon = replace_once(
+            ribbon,
+            "        } else {\n            if (local < spec.laterBadgeFallStartFrame) return\n            age = (local - spec.laterBadgeFallStartFrame).toFloat() / 103f * 2.25f\n            matrix.setTranslate(0f, motionTrack(spec, \"ribbon.card.$index.badge.y\", local) ?: motionTrack(spec, \"ribbon.later.badge.y\", local) ?: laterBadgeYOffset(local))\n        }",
+            "        } else {\n            if (local < spec.laterBadgeFallStartFrame) return\n            age = if (sourceLockedBadge) BADGE_ENTRY_AGE else\n                (local - spec.laterBadgeFallStartFrame).toFloat() / 103f * 2.25f\n            matrix.setTranslate(0f, motionTrack(spec, \"ribbon.card.$index.badge.y\", local) ?: motionTrack(spec, \"ribbon.later.badge.y\", local) ?: laterBadgeYOffset(local))\n        }",
+            "later badge source motion",
+        )
 
 ribbon = replace_once(
     ribbon,
     "        canvas.save()\n        canvas.translate(cardX, 0f)",
-    "        canvas.save()\n        if (sourceLockedBadge) {\n            // In the source video the badge layer is masked to the dark artwork\n            // lane. During entry only the tip is initially visible; the full-size\n            // badge itself is moving behind this mask.\n            canvas.clipRect(0f, 0f, REFERENCE_WIDTH.toFloat(), spec.imageHeight)\n        }\n        canvas.translate(cardX, 0f)",
+    "        canvas.save()\n        if (sourceLockedBadge) {\n            // The source badge is full-size and moves behind the dark artwork lane.\n            canvas.clipRect(0f, 0f, REFERENCE_WIDTH.toFloat(), spec.imageHeight)\n        }\n        canvas.translate(cardX, 0f)",
     "badge lane clip",
 )
 
@@ -84,4 +92,4 @@ if '"puberty-badge-source-lock-v3"' not in bundle:
     )
 BUNDLE.write_text(bundle)
 
-print("Puberty source-locked badge migration is present and idempotent")
+print("Puberty source-locked badge migration is present and idempotent across integrity timing")
