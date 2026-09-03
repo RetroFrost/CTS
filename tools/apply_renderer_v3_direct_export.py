@@ -100,7 +100,8 @@ for script in (
     "apply_renderer_v3_feature_contracts.py",
     "apply_renderer_v3_feature_compat.py",
     "apply_renderer_v3_feature_tests.py",
+    "apply_renderer_v3_low_memory.py",
 ):
     subprocess.run([sys.executable, str(ROOT / "tools" / script)], check=True)
 
-print("Applied Renderer API v3 direct GPU export dispatch + real dedicated feature contracts")
+print("Applied Renderer API v3 direct GPU export dispatch + real dedicated feature contracts + low-memory package runtime")
