@@ -18,11 +18,15 @@ data class RenderMetadata(
 object RendererBridge {
     private val lock = Any()
     private val nativeRenderer = NativeFrameRenderer()
+    private val infiniteRenderer = InfiniteTimelineFrameRenderer()
     private val ribbonRenderer = RibbonFrameRenderer()
     private val relationshipsRenderer = RelationshipsFrameRenderer()
     private val relationshipsPrecisionRenderer = RelationshipsPrecisionFrameRenderer()
+    private val rendererV3 = RendererV3FrameRenderer()
     private val runtimeRevisionMutable = MutableStateFlow(0L)
     val runtimeRevision = runtimeRevisionMutable.asStateFlow()
+
+    internal fun <T> withRenderLock(block: () -> T): T = synchronized(lock) { block() }
 
     fun setRuntimeActive(spec: RendererSpec) = synchronized(lock) {
         if (RendererRuntime.active != spec) {
@@ -33,17 +37,25 @@ object RendererBridge {
         }
     }
 
-    private fun engine(spec: RendererSpec = RendererRuntime.active): String = when {
-        RelationshipsTimeline.isRelationships(spec) -> "relationships-exact"
-        RibbonTimeline.isRibbon(spec) -> "ribbon-exact"
-        else -> "native-standard"
+    internal fun engineKind(spec: RendererSpec = RendererRuntime.active): String = when (spec.engine) {
+        "infinite-timeline-exact" -> "infinite-timeline-exact"
+        "relationships-exact" -> "relationships-exact"
+        "ribbon-exact" -> "ribbon-exact"
+        "native-standard" -> "native-standard"
+        "scene-v3" -> "scene-v3"
+        else -> error("Renderer engine '${spec.engine}' passed validation but has no runtime dispatcher.")
     }
 
-    private fun baseFrameCount(project: StudioProject, spec: RendererSpec): Int = when (engine(spec)) {
-        "relationships-exact" -> RelationshipsTimeline.totalFrameCount(project, spec)
-        "ribbon-exact" -> RibbonTimeline.totalFrameCount(project, spec)
-        else -> NativeTimeline.totalFrameCount(project, spec)
-    }.coerceAtLeast(1)
+    private fun baseFrameCount(project: StudioProject, spec: RendererSpec): Int {
+        if (project.cards.isEmpty() && spec.canonicalFrameCount > 0) return spec.canonicalFrameCount
+        return when (engineKind(spec)) {
+            "infinite-timeline-exact" -> InfiniteTimeline.totalFrameCount(project, spec)
+            "relationships-exact" -> RelationshipsTimeline.totalFrameCount(project, spec)
+            "ribbon-exact" -> RibbonTimeline.totalFrameCount(project, spec)
+            "scene-v3" -> RendererV3Runtime.scene(spec)?.timeline?.frames ?: spec.canonicalFrameCount
+            else -> NativeTimeline.totalFrameCount(project, spec)
+        }.coerceAtLeast(1)
+    }
 
     /** Frame-exact means one canonical raster and cadence. Preview/export use this same rule. */
     fun resolveOutputProject(
@@ -62,7 +74,8 @@ object RendererBridge {
     ) = RendererProjectGuard.requireCompatible(project, spec)
 
     fun rendererIntroFrames(spec: RendererSpec = RendererRuntime.active): Int =
-        spec.openingStarts.firstOrNull()?.coerceAtLeast(0) ?: 0
+        if (spec.rendererApi >= 3 || spec.engine == "scene-v3") 0
+        else spec.openingStarts.firstOrNull()?.coerceAtLeast(0) ?: 0
 
     fun customIntroFrames(
         project: StudioProject,
@@ -214,24 +227,28 @@ object RendererBridge {
     }
 
     private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap =
-        when (engine(spec)) {
+        when (engineKind(spec)) {
+            "infinite-timeline-exact" -> infiniteRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
                 relationshipsPrecisionRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             } else {
                 relationshipsRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             }
             "ribbon-exact" -> ribbonRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            "scene-v3" -> rendererV3.render(project, spec, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             else -> nativeRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         }
 
     private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray =
-        when (engine(spec)) {
+        when (engineKind(spec)) {
+            "infinite-timeline-exact" -> infiniteRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
                 relationshipsPrecisionRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             } else {
                 relationshipsRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             }
             "ribbon-exact" -> ribbonRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
+            "scene-v3" -> rendererV3.renderRgba(project, spec, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
             else -> nativeRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))
         }
 

@@ -247,15 +247,14 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         val right = left + spec.bodyWidth
         val hasTitle = card.title.isNotBlank()
         val hasDescription = card.description.isNotBlank()
-        val canonicalDescriptionHeight = REFERENCE_HEIGHT - spec.descriptionTop
-        val descriptionHeight = if (hasDescription) canonicalDescriptionHeight else 0f
         val titleHeight = if (hasTitle) spec.titleHeight else 0f
-        val imageBottom = (REFERENCE_HEIGHT - descriptionHeight - titleHeight).coerceAtLeast(1f)
+        val imageBottom = RendererArtworkLayout.imageBottom(card, spec)
 
+        val rendererArtwork = rendererArtworkRect(card, slotX, spec)
         paint.style = Paint.Style.FILL
-        paint.color = Color.rgb(0, 105, 211)
+        paint.color = if (rendererArtwork != null) spec.backgroundColor else Color.rgb(0, 105, 211)
         canvas.drawRect(left, 0f, right, imageBottom, paint)
-        if (!card.imageLayer.equals("front", ignoreCase = true)) {
+        if (!card.imageLayer.equals("front", ignoreCase = true) && rendererArtwork == null) {
             drawArtwork(canvas, card, RectF(left, 0f, right, imageBottom))
         }
 
@@ -291,22 +290,23 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
                 project,
             )
         }
+        if (!card.imageLayer.equals("front", ignoreCase = true) && rendererArtwork != null) {
+            drawArtwork(canvas, card, rendererArtwork, rendererArtworkFit(spec))
+        }
     }
 
     private fun drawFrontArtwork(canvas: Canvas, card: StudioCard, slotX: Float, spec: RendererSpec) {
-        val hasTitle = card.title.isNotBlank()
-        val hasDescription = card.description.isNotBlank()
-        val descriptionHeight = if (hasDescription) REFERENCE_HEIGHT - spec.descriptionTop else 0f
-        val titleHeight = if (hasTitle) spec.titleHeight else 0f
-        val imageBottom = (REFERENCE_HEIGHT - descriptionHeight - titleHeight).coerceAtLeast(1f)
-        drawArtwork(
-            canvas,
-            card,
-            RectF(slotX + spec.bodyInset, 0f, slotX + spec.bodyInset + spec.bodyWidth, imageBottom),
+        val custom = rendererArtworkRect(card, slotX, spec)
+        val destination = custom ?: RectF(
+            slotX + spec.bodyInset,
+            0f,
+            slotX + spec.bodyInset + spec.bodyWidth,
+            RendererArtworkLayout.imageBottom(card, spec),
         )
+        drawArtwork(canvas, card, destination, if (custom != null) rendererArtworkFit(spec) else "cover")
     }
 
-    private fun drawArtwork(canvas: Canvas, card: StudioCard, destination: RectF) {
+    private fun drawArtwork(canvas: Canvas, card: StudioCard, destination: RectF, fit: String = "cover") {
         val bitmap = loadImage(card.image) ?: return
         val leftCrop = card.imageCropLeft.coerceIn(0.0, 0.95)
         val topCrop = card.imageCropTop.coerceIn(0.0, 0.95)
@@ -319,7 +319,11 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         val source = Rect(srcLeft, srcTop, srcRight, srcBottom)
         val sourceWidth = source.width().toFloat().coerceAtLeast(1f)
         val sourceHeight = source.height().toFloat().coerceAtLeast(1f)
-        val baseScale = max(destination.width() / sourceWidth, destination.height() / sourceHeight)
+        val baseScale = if (fit.equals("contain", ignoreCase = true)) {
+            min(destination.width() / sourceWidth, destination.height() / sourceHeight)
+        } else {
+            max(destination.width() / sourceWidth, destination.height() / sourceHeight)
+        }
         val scale = baseScale * card.imageScale.coerceIn(0.05, 12.0).toFloat()
         val drawnWidth = sourceWidth * scale
         val drawnHeight = sourceHeight * scale
@@ -334,6 +338,29 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         canvas.drawBitmap(bitmap, source, target, paint)
         canvas.restore()
     }
+
+    private fun rendererArtworkRect(card: StudioCard, slotX: Float, spec: RendererSpec): RectF? {
+        val region = tagText(spec, "ribbon.artwork.region", "").lowercase()
+        if (region != "description" && region != "custom") return null
+        val inset = tagFloat(spec, "ribbon.artwork.inset-x", 0f).coerceAtLeast(0f)
+        val top = tagFloat(spec, "ribbon.artwork.top", spec.descriptionTop)
+            .coerceIn(0f, REFERENCE_HEIGHT.toFloat())
+        val bottom = tagFloat(spec, "ribbon.artwork.bottom", REFERENCE_HEIGHT.toFloat())
+            .coerceIn(top + 1f, REFERENCE_HEIGHT.toFloat())
+        val left = slotX + spec.bodyInset + inset
+        val right = slotX + spec.bodyInset + spec.bodyWidth - inset
+        if (right <= left + 1f) return null
+        return RectF(left, top, right, bottom)
+    }
+
+    private fun rendererArtworkFit(spec: RendererSpec): String =
+        tagText(spec, "ribbon.artwork.fit", "cover").lowercase()
+
+    private fun tagFloat(spec: RendererSpec, key: String, fallback: Float): Float =
+        spec.tags.firstOrNull { it.startsWith("$key=") }
+            ?.substringAfter('=')
+            ?.toFloatOrNull()
+            ?: fallback
 
     private fun loadImage(path: String): Bitmap? {
         if (path.isBlank() || path.startsWith("http://") || path.startsWith("https://")) return null
@@ -426,9 +453,19 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
         val matrix = Matrix()
         if (index < 4) {
             val exactPrefix = "ribbon.open.$index"
-            val explicitVisibility = motionTrack(spec, "$exactPrefix.visible", local)
-            if (explicitVisibility != null) {
-                if (explicitVisibility <= 0.001f) return
+            val explicitVisibilityTrack = spec.hasTrack("$exactPrefix.visible")
+            val explicitAffine = listOf("m00", "m01", "m10", "m11", "tx", "ty")
+                .any { spec.hasTrack("$exactPrefix.$it") }
+            if (explicitVisibilityTrack) {
+                val visible = spec.trackWindowed("$exactPrefix.visible", local)
+                    ?: spec.track("$exactPrefix.visible", local)
+                    ?: 0f
+                if (visible <= 0.001f) return
+            } else if (explicitAffine) {
+                val firstExactFrame = listOf("m00", "m01", "m10", "m11", "tx", "ty")
+                    .mapNotNull { spec.trackStart("$exactPrefix.$it") }
+                    .minOrNull() ?: 0
+                if (local < firstExactFrame) return
             } else if (local < OPENING_BADGE_FIRST_FRAME) return
             age = motionTrack(spec, "$exactPrefix.age", local)
                 ?: ((local.coerceAtMost(OPENING_BADGE_FINAL_FRAME) - OPENING_BADGE_FIRST_FRAME).toFloat() /
@@ -436,7 +473,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
 
             // Source-exact bundles may provide a different frame-addressed affine
             // path for every opening badge. Older Ribbon bundles keep their shared path.
-            val prefix = if (spec.track("$exactPrefix.m00", local) != null) exactPrefix else "ribbon.open"
+            val prefix = if (explicitAffine) exactPrefix else "ribbon.open"
             val values = floatArrayOf(
                 motionTrack(spec, "$prefix.m00", local) ?: 1f,
                 motionTrack(spec, "$prefix.m01", local) ?: 0f,
@@ -448,8 +485,17 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
             )
             matrix.setValues(values)
         } else {
-            if (local < spec.laterBadgeFallStartFrame) return
-            age = (local - spec.laterBadgeFallStartFrame).toFloat() / 103f * 2.25f
+            val exactBadgeTargets = listOf(
+                "ribbon.card.$index.badge.y",
+                "ribbon.card.$index.badge.scale",
+                "ribbon.card.$index.text.progress",
+                "ribbon.card.$index.shine.progress",
+            )
+            val exactBadgeStart = exactBadgeTargets.mapNotNull(spec::trackStart).minOrNull()
+            if (exactBadgeStart != null) {
+                if (local < exactBadgeStart) return
+            } else if (local < spec.laterBadgeFallStartFrame) return
+            age = (local - (exactBadgeStart ?: spec.laterBadgeFallStartFrame)).toFloat() / 103f * 2.25f
             matrix.setTranslate(0f, motionTrack(spec, "ribbon.card.$index.badge.y", local) ?: motionTrack(spec, "ribbon.later.badge.y", local) ?: 0f)
         }
 
@@ -1086,7 +1132,7 @@ private fun motionTrack(spec: RendererSpec, target: String, frame: Int): Float? 
 }
 
 object RibbonTimeline {
-    fun isRibbon(spec: RendererSpec): Boolean = spec.id.startsWith("ribbon.")
+    fun isRibbon(spec: RendererSpec): Boolean = spec.engine == "ribbon-exact"
 
     fun cardStartFrame(project: StudioProject, spec: RendererSpec, index: Int): Int {
         if (index < 4) return spec.openingStarts.getOrElse(index) { index * 120 }

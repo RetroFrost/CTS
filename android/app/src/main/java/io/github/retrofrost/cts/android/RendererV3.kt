@@ -274,6 +274,16 @@ object RendererV3Bundle {
             }
         }.filter { it in 0 until frames }
 
+        validateDedicatedFeatureContracts(
+            root = root,
+            features = features.distinct(),
+            resources = resources,
+            objects = objects,
+            selectors = selectors,
+            assets = assets,
+            frames = frames,
+        )
+
         return RendererV3Scene(
             api = api,
             id = id,
@@ -291,6 +301,117 @@ object RendererV3Bundle {
             assets = assets,
             originalBytes = originalBytes,
         )
+    }
+
+    private fun validateDedicatedFeatureContracts(
+        root: JSONObject,
+        features: List<String>,
+        resources: JSONObject,
+        objects: List<RendererV3Object>,
+        selectors: List<RendererV3Selector>,
+        assets: Map<String, ByteArray>,
+        frames: Int,
+    ) {
+        val resourceEntries = buildList<Pair<String, JSONObject>> {
+            val keys = resources.keys()
+            while (keys.hasNext()) {
+                val id = keys.next()
+                resources.optJSONObject(id)?.let { add(id to it) }
+            }
+        }
+
+        fun typeCount(vararg names: String): Int = resourceEntries.count { (_, resource) ->
+            resource.optString("type").lowercase() in names
+        }
+        fun requireFeatureForTypes(feature: String, vararg names: String) {
+            val count = typeCount(*names)
+            if (count > 0) require(feature in features) {
+                "Renderer v3 resource type ${names.joinToString("/")} requires feature '$feature'."
+            }
+        }
+        fun assetExists(path: String): Boolean {
+            val normalized = path.replace('\\', '/').removePrefix("./")
+            return assets.containsKey(normalized) || assets.keys.any { it.endsWith("/$normalized") }
+        }
+        fun staticAsset(resource: JSONObject): String? = sequenceOf("source", "asset", "relativeAsset")
+            .map { resource.optString(it) }
+            .firstOrNull { it.isNotBlank() && !it.startsWith("$") }
+
+        requireFeatureForTypes("source-baked-text-raster", "text-raster", "source-text-raster")
+        requireFeatureForTypes("independent-shadow-resource", "independent-shadow")
+        requireFeatureForTypes("exact-outro-overlay", "outro-overlay", "exact-outro-overlay")
+
+        resourceEntries.forEach { (id, resource) ->
+            when (resource.optString("type").lowercase()) {
+                "text-raster", "source-text-raster" -> {
+                    val inline = resource.optString("base64").isNotBlank()
+                    val asset = staticAsset(resource)
+                    require(inline || asset != null) {
+                        "Source-baked text raster '$id' must contain base64 pixels or a sidecar asset."
+                    }
+                    if (!inline && asset != null) require(assetExists(asset)) {
+                        "Source-baked text raster '$id' is missing sidecar asset '$asset'."
+                    }
+                    val sampling = resource.optString("sampling", "nearest").lowercase()
+                    require(sampling in setOf("nearest", "linear")) {
+                        "Source-baked text raster '$id' has unsupported sampling '$sampling'."
+                    }
+                }
+                "independent-shadow" -> {
+                    val target = resource.optString("target").ifBlank {
+                        resource.optString("sourceObject")
+                    }
+                    require(target.isNotBlank()) { "Independent shadow '$id' has no target object." }
+                    val targetObject = objects.firstOrNull { it.id == target }
+                        ?: error("Independent shadow '$id' targets missing object '$target'.")
+                    val targetType = resources.optJSONObject(targetObject.resource ?: "")
+                        ?.optString("type", targetObject.kind)?.lowercase()
+                        ?: targetObject.kind.lowercase()
+                    require(targetType in setOf("polygon", "path", "rect", "ellipse", "custom")) {
+                        "Independent shadow '$id' target '$target' is not a supported silhouette type."
+                    }
+                }
+                "outro-overlay", "exact-outro-overlay" -> {
+                    val start = resource.optInt("startFrame", -1)
+                    val end = resource.optInt("endFrame", -1)
+                    require(start in 0 until frames && end in start until frames) {
+                        "Exact outro overlay '$id' has invalid frame window $start..$end."
+                    }
+                    val frameMap = resource.optJSONObject("frames")
+                    val frameArray = resource.optJSONArray("frames")
+                    val pattern = resource.optString("assetPattern")
+                    require(frameMap != null || frameArray != null || pattern.isNotBlank()) {
+                        "Exact outro overlay '$id' must provide frames or assetPattern."
+                    }
+                    if (frameArray != null) require(frameArray.length() >= end - start + 1) {
+                        "Exact outro overlay '$id' frame array is shorter than its declared window."
+                    }
+                    if (pattern.isNotBlank()) require(
+                        pattern.contains("{frame}") || pattern.contains("{local}") || pattern.contains("{index}")
+                    ) { "Exact outro overlay '$id' assetPattern needs {frame}, {local}, or {index}." }
+                }
+            }
+        }
+
+        // Older source-measured v3 manifests may declare these capabilities using
+        // pre-scene-IR track/selector layouts. The evaluator implements the modern
+        // contracts, while legacy manifests remain importable for migration.
+        // preview-export-identical-path is an engine invariant: RendererV3FrameRenderer.renderRgba()
+        // always derives its bytes from render(), so there is no second implementation to drift.
+    }
+
+    private fun containsRawFrameTrack(value: Any?): Boolean = when (value) {
+        is JSONObject -> {
+            if (value.has("dense") || (value.optString("interpolation").equals("raw", true) && value.has("track"))) true
+            else {
+                val keys = value.keys()
+                var found = false
+                while (keys.hasNext() && !found) found = containsRawFrameTrack(value.opt(keys.next()))
+                found
+            }
+        }
+        is JSONArray -> (0 until value.length()).any { containsRawFrameTrack(value.opt(it)) }
+        else -> false
     }
 
     private fun specFor(scene: RendererV3Scene): RendererSpec {

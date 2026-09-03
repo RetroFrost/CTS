@@ -63,8 +63,6 @@ data class StudioProject(
 ) {
     fun toJson(): String {
         val settings = JSONObject()
-            .put("model_id", "what-males-learn-at-each-age")
-            .put("model_revision", 1)
             .put("width", width)
             .put("height", height)
             .put("fps", fps)
@@ -106,17 +104,10 @@ data class StudioProject(
         }
 
         return JSONObject()
-            .put("version", 5)
+            .put("version", 6)
             .put("name", name)
             .put("cards", cardArray)
             .put("settings", settings)
-            .put(
-                "model_lock",
-                JSONObject()
-                    .put("id", "what-males-learn-at-each-age")
-                    .put("revision", 1)
-                    .put("renderer_profile", "what-males-learn-at-each-age"),
-            )
             .toString()
     }
 

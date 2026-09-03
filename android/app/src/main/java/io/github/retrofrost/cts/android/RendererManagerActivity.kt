@@ -104,9 +104,9 @@ class RendererManagerActivity : ComponentActivity() {
                     item { Text(message) }
                     item {
                         Button(
-                            onClick = { importRenderer.launch(arrayOf("application/octet-stream", "*/*")) },
+                            onClick = { importRenderer.launch(arrayOf(RendererImportActivity.RENDERER_MIME, RendererImportActivity.RENDERER_V3_MIME, "application/zip", "application/octet-stream", "*/*")) },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Inspect .renderer") }
+                        ) { Text("Inspect .renderer / .renderer3") }
                     }
                     item {
                         OutlinedButton(
@@ -280,7 +280,7 @@ class RendererManagerActivity : ComponentActivity() {
                     }
                     item {
                         OutlinedButton(
-                            onClick = { exportRenderer.launch("${active.id}.renderer") },
+                            onClick = { exportRenderer.launch("${active.id}.${if (active.rendererApi >= 3) "renderer3" else "renderer"}") },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Export active renderer") }
                     }

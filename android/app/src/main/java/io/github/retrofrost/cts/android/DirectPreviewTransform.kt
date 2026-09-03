@@ -493,12 +493,7 @@ private fun directPreviewGeometry(project: StudioProject, projectFrame: Int, ind
     val width = spec.bodyWidth.coerceAtLeast(1f)
     val height = when {
         RelationshipsPrecisionFrameRenderer.enabled(spec) -> spec.imageHeight.coerceIn(1f, refHeight)
-        RelationshipsTimeline.isRelationships(spec) -> {
-            val descriptionHeight = if (card.description.isBlank()) 0f else 115f
-            val titleHeight = if (card.title.isBlank()) 0f else spec.titleHeight
-            (refHeight - descriptionHeight - titleHeight).coerceAtLeast(1f)
-        }
-        else -> spec.imageHeight.coerceIn(1f, refHeight)
+        else -> RendererArtworkLayout.imageBottom(card, spec).coerceIn(1f, refHeight)
     }
     val top = if (RelationshipsPrecisionFrameRenderer.enabled(spec)) spec.track("card.$index.y", rendererFrame) ?: 0f else 0f
     return DirectPreviewGeometry(left, top, width, height, refWidth, refHeight)
@@ -583,12 +578,19 @@ private fun directSlotX(project: StudioProject, frame: Int, index: Int, spec: Re
         return if (RelationshipsPrecisionFrameRenderer.enabled(spec)) spec.track("card.$index.x", frame) ?: base else base
     }
 
-    val scroll = if (RelationshipsTimeline.isRelationships(spec)) {
-        val segment = (frame - spec.continuousStartFrame) / 4096
-        spec.track("relationships.scroll.$segment", frame)
-            ?: ((frame - spec.continuousStartFrame) * 2f)
-    } else {
-        ((frame - spec.continuousStartFrame) * 2f)
+    val scroll = when {
+        RelationshipsTimeline.isRelationships(spec) -> {
+            val segment = (frame - spec.continuousStartFrame) / 4096
+            spec.track("relationships.scroll.$segment", frame)
+                ?: ((frame - spec.continuousStartFrame) * 2f)
+        }
+        RibbonTimeline.isRibbon(spec) -> {
+            val segment = (frame - spec.continuousStartFrame) / 4096
+            spec.track("ribbon.scroll.$segment", frame)
+                ?: ((frame - spec.continuousStartFrame).toFloat() /
+                    RibbonTimeline.continuousStepFrames(project, spec).coerceAtLeast(1) * spec.slotPitch)
+        }
+        else -> ((frame - spec.continuousStartFrame) * 2f)
     }
     val baseX = index * spec.slotPitch - scroll
     val slotX = if (RelationshipsPrecisionFrameRenderer.enabled(spec)) spec.track("card.$index.x", frame) ?: baseX else baseX

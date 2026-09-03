@@ -142,9 +142,8 @@ class RelationshipsFrameRenderer {
     private fun drawCardBody(canvas: Canvas, project: StudioProject, card: StudioCard, slotX: Float, spec: RendererSpec, frame: Int, index: Int) {
         val left = slotX + spec.bodyInset
         val right = left + spec.bodyWidth
-        val descriptionHeight = if (card.description.isBlank()) 0f else 115f
         val titleHeight = if (card.title.isBlank()) 0f else spec.titleHeight
-        val imageBottom = 1080f - descriptionHeight - titleHeight
+        val imageBottom = RendererArtworkLayout.imageBottom(card, spec)
         paint.style = Paint.Style.FILL
         paint.color = Color.rgb(30, 30, 30)
         canvas.drawRect(left, 0f, right, imageBottom, paint)
@@ -173,9 +172,16 @@ class RelationshipsFrameRenderer {
     }
 
     private fun drawFrontArtwork(canvas: Canvas, card: StudioCard, slotX: Float, spec: RendererSpec) {
-        val desc = if (card.description.isBlank()) 0f else 115f
-        val title = if (card.title.isBlank()) 0f else spec.titleHeight
-        drawArtwork(canvas, card, RectF(slotX + spec.bodyInset, 0f, slotX + spec.bodyInset + spec.bodyWidth, 1080f - desc - title))
+        drawArtwork(
+            canvas,
+            card,
+            RectF(
+                slotX + spec.bodyInset,
+                0f,
+                slotX + spec.bodyInset + spec.bodyWidth,
+                RendererArtworkLayout.imageBottom(card, spec),
+            ),
+        )
     }
 
     private fun drawArtwork(canvas: Canvas, card: StudioCard, destination: RectF) {

@@ -216,6 +216,100 @@ class RuntimeIntegrityInstrumentedTest {
         }
     }
 
+    @Test
+    fun rendererEngineFieldIsAuthoritativeInsteadOfIdPrefix() {
+        assertEquals("ribbon-exact", RendererBridge.engineKind(RendererSpec(id = "not-a-ribbon-prefix", engine = "ribbon-exact")))
+        assertEquals("native-standard", RendererBridge.engineKind(RendererSpec(id = "ribbon.misleading-id", engine = "native-standard")))
+    }
+
+    @Test
+    fun sourceLockedTagsCannotSilentlyFallBackWithoutRequiredCapability() {
+        val bad = RendererSpec(
+            id = "ribbon.bad-source-lock-contract",
+            engine = "ribbon-exact",
+            tags = listOf("puberty-outro-source-lock-v1"),
+            requiredFeatures = listOf("custom-outro"),
+        )
+        val report = RendererCapabilities.report(bad)
+        assertFalse(report.compatible)
+        assertTrue(report.errors.any { it.contains("puberty-outro-source-lock-v1") })
+    }
+
+    @Test
+    fun emptyProjectKeepsCanonicalRendererTimelineLoaded() {
+        val spec = RendererSpec(
+            id = "ribbon.empty-project-test",
+            engine = "ribbon-exact",
+            canonicalFrameCount = 777,
+            canonicalCardCount = 50,
+        )
+        val project = StudioProject(cards = emptyList(), fps = 60)
+        val metadata = RendererBridge.metadata(project, spec)
+        assertEquals(777, metadata.frameCount)
+    }
+
+    @Test
+    fun explicitRibbonAnimationTracksExposeTheirOwnWindow() {
+        val spec = RendererSpec(
+            id = "ribbon.track-window-test",
+            engine = "ribbon-exact",
+            tracks = listOf(
+                RendererTrack("ribbon.card.4.badge.y", listOf(RendererKeyframe(91, 900f), RendererKeyframe(120, 0f))),
+            ),
+        )
+        assertTrue(spec.hasTrack("ribbon.card.4.badge.y"))
+        assertEquals(91, spec.trackStart("ribbon.card.4.badge.y"))
+        assertEquals(120, spec.trackEnd("ribbon.card.4.badge.y"))
+        assertEquals(null, spec.trackWindowed("ribbon.card.4.badge.y", 90))
+        assertEquals(900f, spec.trackWindowed("ribbon.card.4.badge.y", 91)!!, 0.001f)
+    }
+
+    @Test
+    fun ribbonRendererOwnsLowerArtworkRegionInsteadOfForcingImageAtTop() {
+        val image = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        image.eraseColor(Color.GREEN)
+        val imageFile = File(scratch, "green-artwork.png")
+        imageFile.outputStream().use { out -> check(image.compress(Bitmap.CompressFormat.PNG, 100, out)) }
+        image.recycle()
+
+        val spec = RendererSpec(
+            id = "ribbon.lower-artwork-test",
+            engine = "ribbon-exact",
+            backgroundColor = Color.rgb(17, 17, 17),
+            descriptionBackgroundColor = Color.rgb(106, 104, 98),
+            bodyInset = 1f,
+            bodyWidth = 470f,
+            imageHeight = 477f,
+            titleHeight = 100f,
+            descriptionTop = 577f,
+            openingStarts = listOf(0),
+            openingEnds = listOf(120),
+            continuousStartFrame = 120,
+            requiredFeatures = listOf("ribbon-artwork-region-v1"),
+            tags = listOf(
+                "ribbon.artwork.region=description",
+                "ribbon.artwork.top=720",
+                "ribbon.artwork.bottom=1060",
+                "ribbon.artwork.inset-x=55",
+                "ribbon.artwork.fit=contain",
+            ),
+        )
+        val project = StudioProject(
+            cards = listOf(StudioCard(title = "Title", value = "", description = "Description", image = imageFile.absolutePath)),
+            width = 1920,
+            height = 1080,
+            fps = 60,
+            showBadges = false,
+        )
+        val bitmap = RendererBridge.renderWithSpec(project, spec, 119, 1920, 1080)
+        try {
+            assertNotEquals(Color.GREEN, bitmap.getPixel(235, 200))
+            assertEquals(Color.GREEN, bitmap.getPixel(235, 890))
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     private fun rendererBytes(spec: RendererSpec): ByteArray = ByteArrayOutputStream().use { output ->
         RendererBundle.write(spec, output)
         output.toByteArray()

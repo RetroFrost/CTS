@@ -64,15 +64,15 @@ class NativeFrameRenderer {
         if (project.cards.isEmpty()) return
 
         val contentEnd = NativeTimeline.contentEndFrame(project, spec)
-        val timeMs = frame * 1000 / project.fps.coerceAtLeast(1)
+        val trackTime = rendererTrackTime(project, spec, frame)
 
         if (frame < contentEnd) {
-            drawCards(canvas, project, frame, timeMs, spec)
+            drawCards(canvas, project, frame, trackTime, spec)
             return
         }
 
         // Keep the last comparison frame underneath the measured-length outro.
-        drawCards(canvas, project, (contentEnd - 1).coerceAtLeast(0), timeMs, spec)
+        drawCards(canvas, project, (contentEnd - 1).coerceAtLeast(0), trackTime, spec)
         val outro = frame - contentEnd
         val wipeEnd = spec.endWipeFrames
         val riseEnd = wipeEnd + spec.endRiseFrames
@@ -149,8 +149,7 @@ class NativeFrameRenderer {
         val bodyLeft = spec.bodyInset
         val bodyRight = bodyLeft + spec.bodyWidth
         val titleHeight = if (card.title.isBlank()) 0f else spec.titleHeight
-        val descriptionHeight = if (card.description.isBlank()) 0f else REFERENCE_HEIGHT - spec.descriptionTop
-        val imageBottom = (REFERENCE_HEIGHT - titleHeight - descriptionHeight).coerceAtLeast(1f)
+        val imageBottom = RendererArtworkLayout.imageBottom(card, spec)
 
         paint.color = Color.rgb(19, 141, 219)
         canvas.drawRect(bodyLeft, 0f, bodyRight, imageBottom, paint)
@@ -376,6 +375,16 @@ class NativeFrameRenderer {
         return lines.take(maxLines)
     }
 
+    private fun rendererTrackTime(project: StudioProject, spec: RendererSpec, frame: Int): Int = when (spec.timelineUnit) {
+        "milliseconds" -> (frame.toLong() * 1000L / project.fps.coerceAtLeast(1)).toInt()
+        "normalized" -> {
+            val frames = (spec.canonicalFrameCount.takeIf { it > 1 }
+                ?: NativeTimeline.totalFrameCount(project, spec).coerceAtLeast(2))
+            (frame.toLong() * 1000L / (frames - 1).coerceAtLeast(1)).toInt().coerceIn(0, 1000)
+        }
+        else -> frame
+    }
+
     private fun sampleLaterBadgeY(localFrame: Int, spec: RendererSpec): Float {
         if (localFrame < spec.laterBadgeFallStartFrame) return -430f * spec.badgeScale
         if (localFrame >= spec.laterBadgeFallEndFrame) return 0f
@@ -454,7 +463,6 @@ object NativeTimeline {
             return max(minimum, requested)
         }
         if (count <= 4) return spec.openingEnds.getOrElse(count - 1) { spec.continuousStartFrame }
-        if (count == 57 && spec.continuousStartFrame == 528 && spec.continuousStepFrames == 214) return 11_858
         return spec.continuousStartFrame + (count - 4) * spec.continuousStepFrames
     }
 

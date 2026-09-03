@@ -71,7 +71,7 @@ class RendererImportActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent { MaterialTheme { ImportDialog() } }
         incomingUri(intent)?.let(::inspect) ?: if (savedInstanceState == null) {
-            picker.launch(arrayOf(RENDERER_MIME, "application/octet-stream", "*/*"))
+            picker.launch(arrayOf(RENDERER_MIME, RENDERER_V3_MIME, "application/zip", "application/octet-stream", "*/*"))
         } else Unit
     }
 
@@ -190,7 +190,7 @@ class RendererImportActivity : ComponentActivity() {
                         ) { Text("Install & use") }
                         ImportUiState.ERROR -> Button(onClick = {
                             error = null
-                            picker.launch(arrayOf(RENDERER_MIME, "application/octet-stream", "*/*"))
+                            picker.launch(arrayOf(RENDERER_MIME, RENDERER_V3_MIME, "application/zip", "application/octet-stream", "*/*"))
                         }) { Text("Choose another") }
                         ImportUiState.INSPECTING -> Box(Modifier.size(1.dp))
                     }
@@ -205,22 +205,23 @@ class RendererImportActivity : ComponentActivity() {
         val spec = pending.spec
         sourceName?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
         Text(spec.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        Text("${spec.id} • by ${spec.author}", style = MaterialTheme.typography.bodySmall)
-        Text("${spec.engine} • ${spec.precisionMode}")
-        Text("API ${spec.rendererApi} • ${spec.referenceWidth}×${spec.referenceHeight} @ ${spec.referenceFps} FPS")
-        if (spec.canonicalFrameCount > 0) Text("${spec.canonicalFrameCount} canonical frames", style = MaterialTheme.typography.bodySmall)
-        if (spec.canonicalCardCount > 0) Text("${spec.canonicalCardCount} canonical cards", style = MaterialTheme.typography.bodySmall)
-        Text("SHA-256 ${pending.sha256}", style = MaterialTheme.typography.bodySmall)
-        HorizontalDivider()
+        val installedVersion = BuildConfig.VERSION_NAME
         Text(
-            pending.report.summary(),
+            if (pending.report.compatible) {
+                "Ready for Cubical Compare $installedVersion"
+            } else {
+                "Can't use this renderer on $installedVersion • requires ${spec.minAppVersion}+"
+            },
             fontWeight = FontWeight.SemiBold,
             color = if (pending.report.compatible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
         )
+        Text("By ${spec.author} • ${spec.engine} • ${spec.precisionMode}", style = MaterialTheme.typography.bodySmall)
+        Text("${spec.referenceWidth}×${spec.referenceHeight} @ ${spec.referenceFps} FPS • renderer API ${spec.rendererApi}", style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
         pending.report.errors.forEach { Text("Error: $it", color = MaterialTheme.colorScheme.error) }
         pending.report.warnings.forEach { Text("Warning: $it", color = MaterialTheme.colorScheme.tertiary) }
         if (pending.report.compatible) {
-            Text("Pre-activation preview", fontWeight = FontWeight.SemiBold)
+            Text("Preview", fontWeight = FontWeight.SemiBold)
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -320,5 +321,6 @@ class RendererImportActivity : ComponentActivity() {
 
     companion object {
         const val RENDERER_MIME = "application/vnd.cubicalcompare.renderer"
+        const val RENDERER_V3_MIME = "application/vnd.cubicalcompare.renderer3"
     }
 }

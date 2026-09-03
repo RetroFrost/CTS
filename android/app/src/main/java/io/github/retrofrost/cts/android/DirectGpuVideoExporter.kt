@@ -103,6 +103,10 @@ class DirectGpuVideoExporter(
             setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
+            // We re-stamp direct-Canvas access units to the exact project cadence.
+            // B-frame reordering would make output order differ from display order,
+            // producing visible backwards/forwards motion on fast badge animation.
+            if (Build.VERSION.SDK_INT >= 29) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
             selected.bitrateMode?.let { setInteger(MediaFormat.KEY_BITRATE_MODE, it) }
         }
 
@@ -428,9 +432,11 @@ class DirectGpuVideoExporter(
 private class DirectCanvasFrameRenderer {
     private val bridgeClass = RendererBridge::class.java
     private val nativeRenderer = bridgeField("nativeRenderer")
+    private val infiniteRenderer = bridgeField("infiniteRenderer")
     private val ribbonRenderer = bridgeField("ribbonRenderer")
     private val relationshipsRenderer = bridgeField("relationshipsRenderer")
     private val relationshipsPrecisionRenderer = bridgeField("relationshipsPrecisionRenderer")
+    private val rendererV3 = bridgeField("rendererV3") as RendererV3FrameRenderer
 
     private val fourArgDrawMethods = mutableMapOf<Class<*>, Method>()
     private var precisionDrawMethod: Method? = null
@@ -443,10 +449,7 @@ private class DirectCanvasFrameRenderer {
         frame: Int,
         outputWidth: Int,
         outputHeight: Int,
-    ) = synchronized(RendererBridge) {
-        val previous = RendererRuntime.active
-        try {
-            RendererRuntime.active = spec
+    ) = RendererBridge.withRenderLock {
             val safeFrame = frame.coerceAtLeast(0)
             val engineFrame = when (project.introMode) {
                 IntroMode.RENDERER -> safeFrame
@@ -456,22 +459,47 @@ private class DirectCanvasFrameRenderer {
 
             canvas.save()
             canvas.scale(
-                outputWidth.coerceAtLeast(2) / 1920f,
-                outputHeight.coerceAtLeast(2) / 1080f,
+                outputWidth.coerceAtLeast(2) / spec.referenceWidth.coerceAtLeast(1).toFloat(),
+                outputHeight.coerceAtLeast(2) / spec.referenceHeight.coerceAtLeast(1).toFloat(),
             )
-            when {
-                RelationshipsTimeline.isRelationships(spec) && RelationshipsPrecisionFrameRenderer.enabled(spec) ->
+            when (RendererBridge.engineKind(spec)) {
+                "infinite-timeline-exact" ->
+                    drawFourArg(infiniteRenderer, canvas, project, engineFrame, spec)
+                "relationships-exact" -> if (RelationshipsPrecisionFrameRenderer.enabled(spec)) {
                     drawPrecision(canvas, project, engineFrame, spec)
-                RelationshipsTimeline.isRelationships(spec) ->
+                } else {
                     drawFourArg(relationshipsRenderer, canvas, project, engineFrame, spec)
-                RibbonTimeline.isRibbon(spec) ->
+                }
+                "ribbon-exact" ->
                     drawFourArg(ribbonRenderer, canvas, project, engineFrame, spec)
+                "scene-v3" ->
+                    drawRendererV3(canvas, project, engineFrame, spec)
                 else ->
                     drawFourArg(nativeRenderer, canvas, project, engineFrame, spec)
             }
             canvas.restore()
+    }
+
+    private fun drawRendererV3(
+        canvas: Canvas,
+        project: StudioProject,
+        frame: Int,
+        spec: RendererSpec,
+    ) {
+        // RendererV3FrameRenderer is the single scene evaluator. The direct Surface
+        // path composites its exact reference raster into the already-scaled encoder
+        // Canvas, avoiding a second implementation with different selector semantics.
+        val bitmap = rendererV3.render(
+            project = project,
+            spec = spec,
+            frame = frame,
+            width = spec.referenceWidth.coerceAtLeast(2),
+            height = spec.referenceHeight.coerceAtLeast(2),
+        )
+        try {
+            canvas.drawBitmap(bitmap, 0f, 0f, null)
         } finally {
-            RendererRuntime.active = previous
+            bitmap.recycle()
         }
     }
 

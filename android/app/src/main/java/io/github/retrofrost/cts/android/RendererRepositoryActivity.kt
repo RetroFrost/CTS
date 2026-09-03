@@ -46,8 +46,8 @@ class RendererRepositoryActivity : ComponentActivity() {
     private var entries by mutableStateOf<List<OfficialRendererEntry>>(emptyList())
     private var loading by mutableStateOf(true)
     private var downloadingId by mutableStateOf<String?>(null)
-    private var installedIds by mutableStateOf<Set<String>>(emptySet())
-    private var activeId by mutableStateOf(RendererRuntime.active.id)
+    private var installedShaById by mutableStateOf<Map<String, String>>(emptyMap())
+    private var activeSha256 by mutableStateOf("")
     private var message by mutableStateOf(
         "Published by RetroFrost. Downloads come only from the official Cubical Compare renderer repository.",
     )
@@ -82,6 +82,8 @@ class RendererRepositoryActivity : ComponentActivity() {
                         item { Text("No official renderers are available right now.") }
                     } else {
                         items(entries, key = { it.id }) { entry ->
+                            val exactActive = entry.sha256.equals(activeSha256, ignoreCase = true)
+                            val exactInstalled = entry.sha256.equals(installedShaById[entry.id], ignoreCase = true)
                             OutlinedCard(Modifier.fillMaxWidth()) {
                                 Column(
                                     Modifier.padding(16.dp),
@@ -92,7 +94,7 @@ class RendererRepositoryActivity : ComponentActivity() {
                                             Text(entry.name, fontWeight = FontWeight.SemiBold)
                                             Text("by ${entry.author}", style = MaterialTheme.typography.bodySmall)
                                         }
-                                        if (entry.id == activeId) {
+                                        if (exactActive) {
                                             Text(
                                                 "ACTIVE",
                                                 color = MaterialTheme.colorScheme.primary,
@@ -106,18 +108,18 @@ class RendererRepositoryActivity : ComponentActivity() {
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                     Button(
-                                        enabled = downloadingId == null && entry.id != activeId,
+                                        enabled = downloadingId == null && !exactActive,
                                         onClick = {
-                                            if (entry.id in installedIds) activateInstalled(entry)
+                                            if (exactInstalled) activateInstalled(entry)
                                             else downloadAndUse(entry)
                                         },
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
                                         Text(
                                             when {
-                                                entry.id == activeId -> "Active"
+                                                exactActive -> "Active"
                                                 downloadingId == entry.id -> "Downloading…"
-                                                entry.id in installedIds -> "Use"
+                                                exactInstalled -> "Use"
                                                 else -> "Download & use"
                                             },
                                         )
@@ -140,9 +142,11 @@ class RendererRepositoryActivity : ComponentActivity() {
     }
 
     private fun refreshLocal() {
-        val active = store.active().also(RendererBridge::setRuntimeActive)
-        activeId = active.id
-        installedIds = store.listInstalled().map { it.spec.id }.toSet()
+        store.active().also(RendererBridge::setRuntimeActive)
+        activeSha256 = store.activeSha256().orEmpty()
+        installedShaById = store.listInstalled().associate { item ->
+            item.spec.id to store.installedSha256(item.spec.id).orEmpty()
+        }
     }
 
     private fun loadCatalog() {

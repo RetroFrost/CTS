@@ -19,6 +19,7 @@ import java.util.zip.CRC32
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
+// runtime-integrity-fixes-v1
 /** Declarative renderer package. It never loads executable code. */
 data class RendererKeyframe(
     val timeMs: Int,
@@ -146,24 +147,23 @@ data class RendererSpec(
 ) {
     private val tracksByTarget by lazy { tracks.associateBy { it.target } }
 
-    fun track(target: String, timeMs: Int): Float? {
-        tracksByTarget[target]?.valueAt(timeMs)?.let { return it }
+    private fun trackObject(target: String): RendererTrack? {
+        tracksByTarget[target]?.let { return it }
         val pieces = target.split('.')
         if (pieces.size >= 3 && pieces[0] == "card") {
-            tracksByTarget["card.*.${pieces.drop(2).joinToString(".")}"]?.valueAt(timeMs)?.let { return it }
+            tracksByTarget["card.*.${pieces.drop(2).joinToString(".")}"]?.let { return it }
         }
         return null
     }
 
+    fun track(target: String, timeMs: Int): Float? = trackObject(target)?.valueAt(timeMs)
+
     /** Like [track], but an override disappears outside its declared keyframe window. */
-    fun trackWindowed(target: String, timeMs: Int): Float? {
-        tracksByTarget[target]?.valueAtWindowed(timeMs)?.let { return it }
-        val pieces = target.split('.')
-        if (pieces.size >= 3 && pieces[0] == "card") {
-            tracksByTarget["card.*.${pieces.drop(2).joinToString(".")}"]?.valueAtWindowed(timeMs)?.let { return it }
-        }
-        return null
-    }
+    fun trackWindowed(target: String, timeMs: Int): Float? = trackObject(target)?.valueAtWindowed(timeMs)
+
+    fun hasTrack(target: String): Boolean = trackObject(target) != null
+    fun trackStart(target: String): Int? = trackObject(target)?.keyframes?.firstOrNull()?.timeMs
+    fun trackEnd(target: String): Int? = trackObject(target)?.keyframes?.lastOrNull()?.timeMs
 
     val outroFrames: Int
         get() = endWipeFrames + endRiseFrames + endHoldFrames + fadeFrames + blackTailFrames
@@ -202,14 +202,16 @@ data class InstalledRenderer(
 )
 
 object RendererCapabilities {
-    const val APP_VERSION = "2.0.8"
-    const val RENDERER_API = 2
+    val APP_VERSION: String get() = BuildConfig.VERSION_NAME.substringBefore('-')
+    const val RENDERER_API = 3
 
     val engines = setOf(
         "native-standard",
+        "infinite-timeline-exact",
         "ribbon-exact",
         "relationships-exact",
-    )
+            "scene-v3",
+)
 
     val features = setOf(
         "exact-scroll-track",
@@ -217,6 +219,7 @@ object RendererCapabilities {
         "affine-badge-transform",
         "layered-artwork",
         "artwork-transform",
+        "ribbon-artwork-region-v1",
         "custom-outro",
         "custom-intro",
         "per-frame-keyframes",
@@ -230,7 +233,50 @@ object RendererCapabilities {
         "relationships-single-owner-pass-v1",
         "relationships-windowed-card-tracks-v1",
         "preview-frames",
-    )
+        "infinite-timeline-source-v1",
+        "infinite-timeline-source-v2",
+        "source-30fps",
+        "direct-gpu-canvas",
+            "per-frame-polygon-vertices",
+        "full-2d-transforms",
+        "shine-geometry-tracks",
+        "arbitrary-masks",
+        "animated-rect-clip",
+        "track-interpolation-modes",
+        "per-item-animation",
+        "exact-text-tracks",
+        "source-baked-text-raster",
+        "explicit-layer-order",
+        "independent-shadow-resources",
+        "independent-shadow-resource",
+        "dense-frame-data",
+        "raw-frame-tracks",
+        "frame-addressed-objects",
+        "frame-addressed-selectors",
+        "property-level-selector-inheritance",
+        "deterministic-selector-precedence",
+        "zero-implicit-animation",
+        "generic-renderer-resources",
+        "group-transforms",
+        "resource-lifespans",
+        "selector-shared-behaviour",
+        "renderer-owned-geometry",
+        "renderer-owned-materials",
+        "blend-compositing-modes",
+        "per-frame-filter-tracks",
+        "exact-artwork-transforms",
+        "absolute-integer-frame-clock",
+        "single-scene-preview-export-contract",
+        "preview-export-identical-path",
+        "reference-resolution-fps-lock",
+        "frame-checkpoints",
+        "pixel-diff-audit-contract",
+        "selector-cascade-inspection",
+        "exact-outro-overlay",
+        "renderer-api-v3-scene-ir",
+        "renderer-v3-sidecar-resources",
+        "renderer-v3-zip-package",
+)
 
     fun report(spec: RendererSpec): RendererValidationReport {
         val errors = mutableListOf<String>()
@@ -239,6 +285,27 @@ object RendererCapabilities {
         if (spec.engine !in engines) errors += "Renderer engine '${spec.engine}' is not available in this build."
         val missing = spec.requiredFeatures.filterNot { it in features }
         if (missing.isNotEmpty()) errors += "Unsupported renderer features: ${missing.joinToString()}"
+        fun requireDeclaredForTag(tag: String) {
+            if (spec.tags.contains(tag) && tag !in spec.requiredFeatures) {
+                errors += "Renderer tag '$tag' changes runtime behaviour but is not declared in requiredFeatures."
+            }
+        }
+        requireDeclaredForTag("puberty-badge-source-lock-v3")
+        requireDeclaredForTag("puberty-outro-source-lock-v1")
+        if (spec.engine == "ribbon-exact" && "exact-scroll-track" in spec.requiredFeatures &&
+            spec.tracks.none { it.target.startsWith("ribbon.scroll.") }) {
+            errors += "Ribbon renderer requires exact-scroll-track but contains no ribbon.scroll.* track."
+        }
+        if (spec.engine == "ribbon-exact" && "affine-badge-transform" in spec.requiredFeatures) {
+            val missingOpeningAffine = (0..3).filter { index ->
+                listOf("m00", "m01", "m10", "m11", "tx", "ty").any { component ->
+                    !spec.hasTrack("ribbon.open.$index.$component") && !spec.hasTrack("ribbon.open.$component")
+                }
+            }
+            if (missingOpeningAffine.isNotEmpty()) {
+                errors += "Ribbon affine badge transform is incomplete for opening cards ${missingOpeningAffine.joinToString()}."
+            }
+        }
         if (compareVersions(APP_VERSION, spec.minAppVersion) < 0) errors += "Requires Cubical Compare ${spec.minAppVersion} or newer."
         if (spec.referenceWidth != 1920 || spec.referenceHeight != 1080) warnings += "Reference canvas is ${spec.referenceWidth}×${spec.referenceHeight}; exports may be scaled."
         if (spec.referenceFps != 60) warnings += "Reference frame rate is ${spec.referenceFps} fps."
@@ -260,8 +327,10 @@ object RendererCapabilities {
     }
 }
 
-class RendererStore(private val context: Context) {
-    private val dir = File(context.filesDir, "renderers")
+class RendererStore(private val rootDir: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val dir = File(rootDir, "renderers")
     private val libraryDir = File(dir, "library")
     private val activeFile = File(dir, "active.renderer")
     private val previousFile = File(dir, "previous.renderer")
@@ -290,7 +359,12 @@ class RendererStore(private val context: Context) {
         libraryDir.mkdirs()
         val destination = File(libraryDir, "${candidate.spec.id}.renderer")
         atomicWrite(destination, candidate.bytes)
-        return InstalledRenderer(candidate.spec, destination, active().id == candidate.spec.id)
+        val activeBytes = activeFile.takeIf(File::isFile)?.readBytes()
+        return InstalledRenderer(
+            candidate.spec,
+            destination,
+            activeBytes?.contentEquals(candidate.bytes) == true,
+        )
     }
 
     fun activate(id: String): RendererSpec {
@@ -305,8 +379,11 @@ class RendererStore(private val context: Context) {
         // on a new, empty or differently-sized project. Exact-v2 still forces its
         // reference output size/FPS in the render/export path.
         dir.mkdirs()
-        if (activeFile.isFile) atomicWrite(previousFile, activeFile.readBytes())
-        atomicWrite(activeFile, bytes)
+        val current = activeFile.takeIf(File::isFile)?.readBytes()
+        if (current == null || !current.contentEquals(bytes)) {
+            if (current != null) atomicWrite(previousFile, current)
+            atomicWrite(activeFile, bytes)
+        }
         RendererBridge.setRuntimeActive(spec)
         return spec
     }
@@ -322,23 +399,37 @@ class RendererStore(private val context: Context) {
         return spec
     }
 
+    fun activeSha256(): String? = activeFile.takeIf(File::isFile)?.readBytes()?.let(::sha256)
+
+    fun installedSha256(id: String): String? = File(libraryDir, "$id.renderer")
+        .takeIf(File::isFile)
+        ?.readBytes()
+        ?.let(::sha256)
+
     fun listInstalled(): List<InstalledRenderer> {
-        val activeId = active().id
+        val activeBytes = activeFile.takeIf(File::isFile)?.readBytes()
         if (!libraryDir.isDirectory) return emptyList()
         return libraryDir.listFiles { file -> file.isFile && file.extension.equals("renderer", true) }
             .orEmpty()
             .mapNotNull { file ->
                 runCatching {
-                    val spec = file.inputStream().use(RendererBundle::read)
-                    InstalledRenderer(spec, file, spec.id == activeId)
+                    val bytes = file.readBytes()
+                    val spec = RendererBundle.read(ByteArrayInputStream(bytes))
+                    InstalledRenderer(spec, file, activeBytes?.contentEquals(bytes) == true)
                 }.getOrNull()
             }
             .sortedBy { it.spec.name.lowercase() }
     }
 
     fun uninstall(id: String) {
-        require(id != active().id) { "Activate another renderer before deleting the active renderer." }
-        File(libraryDir, "$id.renderer").delete()
+        val target = File(libraryDir, "$id.renderer")
+        require(target.isFile) { "Renderer '$id' is not installed." }
+        val activeBytes = activeFile.takeIf(File::isFile)?.readBytes()
+        val targetBytes = target.readBytes()
+        require(activeBytes == null || !activeBytes.contentEquals(targetBytes)) {
+            "Activate another renderer before deleting the active renderer."
+        }
+        require(target.delete()) { "Renderer '$id' could not be deleted." }
     }
 
     /** Backwards-compatible one-call import used by legacy entry points. */
@@ -392,10 +483,17 @@ class RendererStore(private val context: Context) {
 object RendererBundle {
     private const val MAGIC = "CCRNDR01"
     private const val CONTAINER_VERSION = 1
-    const val MAX_FILE_BYTES = 16 * 1024 * 1024
-    private const val MAX_MANIFEST_BYTES = 4 * 1024 * 1024
+    const val MAX_FILE_BYTES = 128 * 1024 * 1024
+    private const val MAX_MANIFEST_BYTES = 64 * 1024 * 1024
 
     fun write(spec: RendererSpec, output: OutputStream) {
+        if (spec.rendererApi >= 3 || spec.engine == "scene-v3") {
+            val scene = requireNotNull(RendererV3Runtime.scene(spec)) {
+                "Renderer v3 scene '${spec.id}' is not loaded. Re-import the renderer before exporting it."
+            }
+            RendererV3Bundle.write(scene, output)
+            return
+        }
         val report = validateDetailed(spec)
         require(report.compatible) { report.errors.joinToString("\n") }
         val manifest = toJson(spec).toString().toByteArray(Charsets.UTF_8)
@@ -416,6 +514,13 @@ object RendererBundle {
     }
 
     fun read(input: InputStream): RendererSpec {
+        val bytes = input.readBytes()
+        require(bytes.size <= RendererV3Bundle.MAX_FILE_BYTES) { "Renderer file is too large." }
+        if (RendererV3Bundle.accepts(bytes)) return RendererV3Bundle.read(bytes).spec
+        return readLegacy(ByteArrayInputStream(bytes))
+    }
+
+    private fun readLegacy(input: InputStream): RendererSpec {
         val data = DataInputStream(input)
         val magic = ByteArray(8)
         data.readFully(magic)
@@ -455,7 +560,7 @@ object RendererBundle {
         errorIf(!spec.id.matches(Regex("[A-Za-z0-9._-]{1,96}")), "Invalid renderer id.")
         errorIf(spec.name.isBlank() || spec.name.length > 120, "Invalid renderer name.")
         errorIf(spec.author.length > 120, "Invalid renderer author.")
-        errorIf(spec.formatVersion !in 1..2, "Unsupported renderer schema ${spec.formatVersion}.")
+        errorIf(spec.formatVersion !in 1..3, "Unsupported renderer schema ${spec.formatVersion}.")
         errorIf(spec.rendererApi !in 1..32, "Invalid renderer API.")
         errorIf(!spec.engine.matches(Regex("[A-Za-z0-9._-]{1,64}")), "Invalid renderer engine.")
         errorIf(spec.precisionMode !in setOf("interpolated", "frame-exact"), "Invalid precision mode.")

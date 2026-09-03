@@ -109,14 +109,9 @@ object NativeImporters {
                     val subject = bytes(subjectRef)
                     var imagePath = ""
                     if (background != null || subject != null) {
-                        val descriptionHeight = if (description.isBlank()) 0 else 115
-                        val titleHeight = if (title.isBlank()) 0 else 93
-                        val imageHeight = (1080 - titleHeight - descriptionHeight).coerceAtLeast(1)
                         val artwork = composeArtwork(
                             background,
                             subject,
-                            471,
-                            imageHeight,
                             finite(item.opt("crop_focus_x"), 0.5).coerceIn(0.0, 1.0),
                             finite(item.opt("crop_focus_y"), 0.5).coerceIn(0.0, 1.0),
                             finite(item.opt("crop_zoom"), 1.0).coerceIn(1.0, 3.0),
@@ -393,35 +388,45 @@ object NativeImporters {
         return output.toByteArray()
     }
 
-    private fun composeArtwork(backgroundBytes: ByteArray?, subjectBytes: ByteArray?, width: Int, height: Int, focusX: Double, focusY: Double, zoom: Double): Bitmap {
-        val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(output)
+    private fun composeArtwork(
+        backgroundBytes: ByteArray?,
+        subjectBytes: ByteArray?,
+        focusX: Double,
+        focusY: Double,
+        zoom: Double,
+    ): Bitmap {
+        val background = backgroundBytes?.let(::decodeImage)
         val subject = subjectBytes?.let(::decodeImage)
+        require(background != null || subject != null) { "MegaPack card has no artwork." }
+        val base = background ?: requireNotNull(subject)
+        val output = Bitmap.createBitmap(base.width, base.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
         try {
-            val transparentSubject = subject?.let(::hasTransparentPixels) == true
-            if (backgroundBytes != null) {
-                val background = decodeImage(backgroundBytes)
-                try {
-                    drawCentreCrop(canvas, background, width, height, 0.5, 0.5, 1.0)
-                } finally {
-                    background.recycle()
-                }
-            } else if (transparentSubject) {
-                drawBeachBackground(canvas, width, height)
-            } else {
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    shader = LinearGradient(0f, 0f, 0f, height.toFloat(), Color.rgb(19, 141, 219), Color.rgb(11, 116, 190), Shader.TileMode.CLAMP)
-                }
-                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            if (background != null) {
+                canvas.drawBitmap(
+                    background,
+                    Rect(0, 0, background.width, background.height),
+                    Rect(0, 0, output.width, output.height),
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+                )
             }
             if (subject != null) {
-                if (transparentSubject) {
-                    drawContainedSubject(canvas, subject, width, height, focusX, focusY, zoom)
+                if (background == null) {
+                    // Preserve a single image exactly. Cropping belongs to the renderer.
+                    canvas.drawBitmap(
+                        subject,
+                        Rect(0, 0, subject.width, subject.height),
+                        Rect(0, 0, output.width, output.height),
+                        Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+                    )
+                } else if (hasTransparentPixels(subject)) {
+                    drawContainedSubject(canvas, subject, output.width, output.height, focusX, focusY, zoom)
                 } else {
-                    drawCentreCrop(canvas, subject, width, height, focusX, focusY, zoom)
+                    drawCentreCrop(canvas, subject, output.width, output.height, focusX, focusY, zoom)
                 }
             }
         } finally {
+            background?.recycle()
             subject?.recycle()
         }
         return output

@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
@@ -97,15 +98,26 @@ class ExportService : Service() {
                 val project = StudioProject.fromJson(projectFile.readText())
                 val spec = rendererFile.inputStream().use(RendererBundle::read)
                 val exportProject = RendererBridge.resolveOutputProject(project, spec)
-                DirectGpuVideoExporter(
-                    context = applicationContext,
-                    sourceProject = exportProject,
-                    rendererSpec = spec,
-                    shouldCancel = ::cancelled,
-                    onProgress = { percent, stage, detail ->
-                        publish(ExportProgress(true, percent.coerceIn(0, 100), stage, detail))
-                    },
-                ).export(Uri.parse(destinationText))
+                val progress: (Int, String, String) -> Unit = { percent, stage, detail ->
+                    publish(ExportProgress(true, percent.coerceIn(0, 100), stage, detail))
+                }
+                if (spec.precisionMode == "frame-exact" && Build.VERSION.SDK_INT < 29) {
+                    HardwareVideoExporter(
+                        context = applicationContext,
+                        sourceProject = exportProject,
+                        rendererSpec = spec,
+                        shouldCancel = ::cancelled,
+                        onProgress = progress,
+                    ).export(Uri.parse(destinationText))
+                } else {
+                    DirectGpuVideoExporter(
+                        context = applicationContext,
+                        sourceProject = exportProject,
+                        rendererSpec = spec,
+                        shouldCancel = ::cancelled,
+                        onProgress = progress,
+                    ).export(Uri.parse(destinationText))
+                }
                 publish(ExportProgress(false, 100, "Finished", "The MP4 is ready"))
             } catch (_: CancellationException) {
                 publish(ExportProgress(false, 0, "Cancelled", "Export cancelled"))
