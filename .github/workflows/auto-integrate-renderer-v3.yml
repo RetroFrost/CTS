@@ -39,11 +39,19 @@ jobs:
           python tools/apply_runtime_integrity_fixes_v1.py
           python tools/apply_runtime_integrity_fixes_v2.py
           python tools/apply_runtime_integrity_fixes_v3.py
-          python tools/apply_puberty_badge_source_lock_v3.py
-          python tools/apply_puberty_outro_source_lock_v1.py
-          python tools/apply_runtime_integrity_fixes_v4_fixed.py
+          python - <<'PY'
+          from pathlib import Path
+          source_path = Path('tools/apply_runtime_integrity_fixes_v4.py')
+          source = source_path.read_text()
+          start = source.index('# A tag that changes interpreter behaviour')
+          end = source.index('# Semantic validation:')
+          source = source[:start] + '# Legacy source-specific capabilities are not advertised by the generic v3 runtime.\n' + source[end:]
+          wrong = 'path = ANDROID / "../androidTest/java/io/github/retrofrost/cts/android/RuntimeIntegrityInstrumentedTest.kt"\npath = path.resolve()'
+          right = 'path = ROOT / "android/app/src/androidTest/java/io/github/retrofrost/cts/android/RuntimeIntegrityInstrumentedTest.kt"'
+          source = source.replace(wrong, right, 1)
+          exec(compile(source, str(source_path), 'exec'), {'__name__': '__main__', '__file__': str(source_path)})
+          PY
           python tools/apply_runtime_integrity_fixes_v5_fixed.py
-          python tools/apply_puberty_text_glass_v1.py
 
       - name: Integrate Renderer API v3
         shell: bash
