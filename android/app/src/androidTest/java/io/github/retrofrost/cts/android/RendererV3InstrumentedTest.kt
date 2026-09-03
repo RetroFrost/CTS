@@ -5,7 +5,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,7 +28,7 @@ class RendererV3InstrumentedTest {
         assertEquals("v3-smoke", read.scene.id)
 
         val first = requireNotNull(read.scene.objectById("badge@0"))
-        val firstProperties = RendererV3Evaluator.properties(read.scene, first, 10)
+        val firstProperties = RendererV3Evaluator.properties(read.scene, first, 0)
         // Object property wins over badge[*] on only the property it declares.
         assertEquals(9.0, (firstProperties["movement.x"] as Number).toDouble(), 0.0001)
         assertEquals(-100.0, (firstProperties["movement.y"] as Number).toDouble(), 0.0001)
