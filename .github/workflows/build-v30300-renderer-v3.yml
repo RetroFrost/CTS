@@ -1,4 +1,5 @@
 name: Build Cubical Compare 3.0.300 Renderer v3
+# Recovery build: compile the user-verified baseline directly, without replaying broad runtime migrations.
 
 on:
   push:
