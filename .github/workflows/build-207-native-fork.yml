@@ -1,4 +1,5 @@
 name: Build 3.0.300
+# Recovery baseline: last user-verified 3.0.300 app behavior; low-memory migration intentionally excluded.
 
 on:
   push:
