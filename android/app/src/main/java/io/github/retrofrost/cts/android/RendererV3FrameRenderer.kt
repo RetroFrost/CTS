@@ -163,8 +163,8 @@ class RendererV3FrameRenderer {
             canvas.drawBitmap(bitmap, matrix, paint)
             return
         }
-        val x = number(props["x"] ?: props["position.x"], resource.optDouble("x", 0.0)).toFloat()
-        val y = number(props["y"] ?: props["position.y"], resource.optDouble("y", 0.0)).toFloat()
+        val x = number(props["x"], resource.optDouble("x", 0.0)).toFloat()
+        val y = number(props["y"], resource.optDouble("y", 0.0)).toFloat()
         val width = number(props["width"], resource.optDouble("width", bitmap.width.toDouble())).toFloat()
         val height = number(props["height"], resource.optDouble("height", bitmap.height.toDouble())).toFloat()
         canvas.drawBitmap(bitmap, null, RectF(x, y, x + width, y + height), paint)
@@ -369,8 +369,8 @@ class RendererV3FrameRenderer {
                 ?: resource.opt("source") ?: resource.opt("asset") ?: resource.opt("relativeAsset"),
         )
         val bitmap = decodeBitmap(scene, source, resource) ?: return
-        val x = number(props["x"] ?: props["position.x"], resource.optDouble("x", 0.0)).toFloat()
-        val y = number(props["y"] ?: props["position.y"], resource.optDouble("y", 0.0)).toFloat()
+        val x = number(props["x"], resource.optDouble("x", 0.0)).toFloat()
+        val y = number(props["y"], resource.optDouble("y", 0.0)).toFloat()
         val w = number(props["width"], resource.optDouble("width", bitmap.width.toDouble())).toFloat()
         val h = number(props["height"], resource.optDouble("height", bitmap.height.toDouble())).toFloat()
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
@@ -381,8 +381,8 @@ class RendererV3FrameRenderer {
 
     private fun drawText(resource: JSONObject, props: Map<String, Any?>, opacity: Float, canvas: Canvas) {
         val text = stringValue(props["text.value"] ?: props["value"] ?: resource.opt("text") ?: resource.opt("value")) ?: return
-        val x = number(props["x"] ?: props["position.x"], resource.optDouble("x", 0.0)).toFloat()
-        val y = number(props["y"] ?: props["position.y"], resource.optDouble("y", 0.0)).toFloat()
+        val x = number(props["x"], resource.optDouble("x", 0.0)).toFloat()
+        val y = number(props["y"], resource.optDouble("y", 0.0)).toFloat()
         val size = number(props["text.size"] ?: props["fontSize"] ?: props["size"], resource.optDouble("fontSize", 40.0)).toFloat()
         val paint = materialPaint(resource, props, opacity, Paint.Style.FILL).apply {
             textSize = size
