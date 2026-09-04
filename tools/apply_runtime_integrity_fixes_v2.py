@@ -20,11 +20,12 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 # ---------------------------------------------------------------------------
 path = ANDROID / "RendererBundle.kt"
 text = path.read_text()
-text = replace_once(
-    text,
-    '''    fun listInstalled(): List<InstalledRenderer> {
+if "fun activeSha256(): String?" not in text:
+    text = replace_once(
+        text,
+        '''    fun listInstalled(): List<InstalledRenderer> {
 ''',
-    '''    fun activeSha256(): String? = activeFile.takeIf(File::isFile)?.readBytes()?.let(::sha256)
+        '''    fun activeSha256(): String? = activeFile.takeIf(File::isFile)?.readBytes()?.let(::sha256)
 
     fun installedSha256(id: String): String? = File(libraryDir, "$id.renderer")
         .takeIf(File::isFile)
@@ -33,8 +34,8 @@ text = replace_once(
 
     fun listInstalled(): List<InstalledRenderer> {
 ''',
-    "renderer sha accessors",
-)
+        "renderer sha accessors",
+    )
 path.write_text(text)
 
 

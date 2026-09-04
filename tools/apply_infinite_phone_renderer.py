@@ -17,66 +17,81 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 bundle = BUNDLE.read_text()
-bundle = replace_once(
-    bundle,
-    '        "native-standard",\n        "ribbon-exact",',
-    '        "native-standard",\n        "infinite-timeline-exact",\n        "ribbon-exact",',
-    "renderer engine capability",
-)
-bundle = replace_once(
-    bundle,
-    '        "preview-frames",\n',
-    '        "preview-frames",\n        "infinite-timeline-source-v1",\n        "infinite-timeline-source-v2",\n        "source-30fps",\n        "direct-gpu-canvas",\n',
-    "renderer feature capability",
-)
+if '"infinite-timeline-exact"' not in bundle:
+    bundle = replace_once(
+        bundle,
+        '        "native-standard",\n        "ribbon-exact",',
+        '        "native-standard",\n        "infinite-timeline-exact",\n        "ribbon-exact",',
+        "renderer engine capability",
+    )
+if '"infinite-timeline-source-v1"' not in bundle:
+    bundle = replace_once(
+        bundle,
+        '        "preview-frames",\n',
+        '        "preview-frames",\n        "infinite-timeline-source-v1",\n        "infinite-timeline-source-v2",\n        "source-30fps",\n        "direct-gpu-canvas",\n',
+        "renderer feature capability",
+    )
 BUNDLE.write_text(bundle)
 
 bridge = BRIDGE.read_text()
-bridge = replace_once(
-    bridge,
-    '    private val nativeRenderer = NativeFrameRenderer()\n    private val ribbonRenderer = RibbonFrameRenderer()',
-    '    private val nativeRenderer = NativeFrameRenderer()\n    private val infiniteRenderer = InfiniteTimelineFrameRenderer()\n    private val ribbonRenderer = RibbonFrameRenderer()',
-    "infinite renderer field",
-)
-bridge = replace_once(
-    bridge,
-    '    private fun engine(spec: RendererSpec = RendererRuntime.active): String = when {\n        RelationshipsTimeline.isRelationships(spec) -> "relationships-exact"',
-    '    private fun engine(spec: RendererSpec = RendererRuntime.active): String = when {\n        InfiniteTimeline.isInfinite(spec) -> "infinite-timeline-exact"\n        RelationshipsTimeline.isRelationships(spec) -> "relationships-exact"',
-    "engine dispatch",
-)
-bridge = replace_once(
-    bridge,
-    '    private fun baseFrameCount(project: StudioProject, spec: RendererSpec): Int = when (engine(spec)) {\n        "relationships-exact" -> RelationshipsTimeline.totalFrameCount(project, spec)',
-    '    private fun baseFrameCount(project: StudioProject, spec: RendererSpec): Int = when (engine(spec)) {\n        "infinite-timeline-exact" -> InfiniteTimeline.totalFrameCount(project, spec)\n        "relationships-exact" -> RelationshipsTimeline.totalFrameCount(project, spec)',
-    "timeline frame-count dispatch",
-)
-bridge = replace_once(
-    bridge,
-    '    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap =\n        when (engine(spec)) {\n            "relationships-exact" ->',
-    '    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap =\n        when (engine(spec)) {\n            "infinite-timeline-exact" -> infiniteRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))\n            "relationships-exact" ->',
-    "bitmap render dispatch",
-)
-bridge = replace_once(
-    bridge,
-    '    private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray =\n        when (engine(spec)) {\n            "relationships-exact" ->',
-    '    private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray =\n        when (engine(spec)) {\n            "infinite-timeline-exact" -> infiniteRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))\n            "relationships-exact" ->',
-    "rgba render dispatch",
-)
+if 'private val infiniteRenderer = InfiniteTimelineFrameRenderer()' not in bridge:
+    bridge = replace_once(
+        bridge,
+        '    private val nativeRenderer = NativeFrameRenderer()\n    private val ribbonRenderer = RibbonFrameRenderer()',
+        '    private val nativeRenderer = NativeFrameRenderer()\n    private val infiniteRenderer = InfiniteTimelineFrameRenderer()\n    private val ribbonRenderer = RibbonFrameRenderer()',
+        "infinite renderer field",
+    )
+
+# Old branches selected engines heuristically. New v3 branches have a manifest-owned
+# engineKind dispatcher already containing infinite-timeline-exact; do not regress it.
+if 'internal fun engineKind' not in bridge:
+    bridge = replace_once(
+        bridge,
+        '    private fun engine(spec: RendererSpec = RendererRuntime.active): String = when {\n        RelationshipsTimeline.isRelationships(spec) -> "relationships-exact"',
+        '    private fun engine(spec: RendererSpec = RendererRuntime.active): String = when {\n        InfiniteTimeline.isInfinite(spec) -> "infinite-timeline-exact"\n        RelationshipsTimeline.isRelationships(spec) -> "relationships-exact"',
+        "engine dispatch",
+    )
+
+if 'when (engineKind(spec))' not in bridge and 'when (engine(spec))' in bridge:
+    if '"infinite-timeline-exact" -> InfiniteTimeline.totalFrameCount' not in bridge:
+        bridge = replace_once(
+            bridge,
+            '    private fun baseFrameCount(project: StudioProject, spec: RendererSpec): Int = when (engine(spec)) {\n        "relationships-exact" -> RelationshipsTimeline.totalFrameCount(project, spec)',
+            '    private fun baseFrameCount(project: StudioProject, spec: RendererSpec): Int = when (engine(spec)) {\n        "infinite-timeline-exact" -> InfiniteTimeline.totalFrameCount(project, spec)\n        "relationships-exact" -> RelationshipsTimeline.totalFrameCount(project, spec)',
+            "timeline frame-count dispatch",
+        )
+    if '"infinite-timeline-exact" -> infiniteRenderer.render(' not in bridge:
+        bridge = replace_once(
+            bridge,
+            '    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap =\n        when (engine(spec)) {\n            "relationships-exact" ->',
+            '    private fun renderEngine(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap =\n        when (engine(spec)) {\n            "infinite-timeline-exact" -> infiniteRenderer.render(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))\n            "relationships-exact" ->',
+            "bitmap render dispatch",
+        )
+    if '"infinite-timeline-exact" -> infiniteRenderer.renderRgba(' not in bridge:
+        bridge = replace_once(
+            bridge,
+            '    private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray =\n        when (engine(spec)) {\n            "relationships-exact" ->',
+            '    private fun renderEngineRgba(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): ByteArray =\n        when (engine(spec)) {\n            "infinite-timeline-exact" -> infiniteRenderer.renderRgba(project, frame, width.coerceAtLeast(2), height.coerceAtLeast(2))\n            "relationships-exact" ->',
+            "rgba render dispatch",
+        )
 BRIDGE.write_text(bridge)
 
 gpu = GPU.read_text()
-gpu = replace_once(
-    gpu,
-    '    private val nativeRenderer = bridgeField("nativeRenderer")\n    private val ribbonRenderer = bridgeField("ribbonRenderer")',
-    '    private val nativeRenderer = bridgeField("nativeRenderer")\n    private val infiniteRenderer = bridgeField("infiniteRenderer")\n    private val ribbonRenderer = bridgeField("ribbonRenderer")',
-    "direct GPU infinite field",
-)
-gpu = replace_once(
-    gpu,
-    '            when {\n                RelationshipsTimeline.isRelationships(spec) && RelationshipsPrecisionFrameRenderer.enabled(spec) ->',
-    '            when {\n                InfiniteTimeline.isInfinite(spec) ->\n                    drawFourArg(infiniteRenderer, canvas, project, engineFrame, spec)\n                RelationshipsTimeline.isRelationships(spec) && RelationshipsPrecisionFrameRenderer.enabled(spec) ->',
-    "direct GPU engine dispatch",
-)
+if 'private val infiniteRenderer = bridgeField("infiniteRenderer")' not in gpu:
+    gpu = replace_once(
+        gpu,
+        '    private val nativeRenderer = bridgeField("nativeRenderer")\n    private val ribbonRenderer = bridgeField("ribbonRenderer")',
+        '    private val nativeRenderer = bridgeField("nativeRenderer")\n    private val infiniteRenderer = bridgeField("infiniteRenderer")\n    private val ribbonRenderer = bridgeField("ribbonRenderer")',
+        "direct GPU infinite field",
+    )
+
+if 'when (RendererBridge.engineKind(spec))' not in gpu and 'InfiniteTimeline.isInfinite(spec)' not in gpu:
+    gpu = replace_once(
+        gpu,
+        '            when {\n                RelationshipsTimeline.isRelationships(spec) && RelationshipsPrecisionFrameRenderer.enabled(spec) ->',
+        '            when {\n                InfiniteTimeline.isInfinite(spec) ->\n                    drawFourArg(infiniteRenderer, canvas, project, engineFrame, spec)\n                RelationshipsTimeline.isRelationships(spec) && RelationshipsPrecisionFrameRenderer.enabled(spec) ->',
+        "direct GPU engine dispatch",
+    )
 GPU.write_text(gpu)
 
-print("Registered Infinite Timeline source-exact v2 engine in capabilities, bridge and direct GPU export")
+print("Infinite Timeline renderer capability/dispatch is present and migration is v3-idempotent")

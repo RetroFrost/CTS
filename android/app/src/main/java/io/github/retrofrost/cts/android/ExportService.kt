@@ -96,7 +96,10 @@ class ExportService : Service() {
                 val rendererFile = File(snapshotDir, RENDERER_FILE)
                 require(projectFile.isFile && rendererFile.isFile) { "The export snapshot is incomplete." }
                 val project = StudioProject.fromJson(projectFile.readText())
-                val spec = rendererFile.inputStream().use(RendererBundle::read)
+                // Keep Renderer v3 packages disk-backed during export. The stream
+                // overload materializes its input for legacy callers, while the
+                // file overload lazily opens v3 sidecars from the snapshot ZIP.
+                val spec = RendererBundle.read(rendererFile)
                 val exportProject = RendererBridge.resolveOutputProject(project, spec)
                 val progress: (Int, String, String) -> Unit = { percent, stage, detail ->
                     publish(ExportProgress(true, percent.coerceIn(0, 100), stage, detail))
@@ -132,6 +135,9 @@ class ExportService : Service() {
                 )
             } finally {
                 if (localWakeLock.isHeld) localWakeLock.release()
+                // Renderer v3 scene lookup is process-global. Re-register the real
+                // active file before deleting the export snapshot it temporarily used.
+                runCatching { RendererStore(applicationContext).active() }
                 snapshotDir.deleteRecursively()
                 if (activeToken == token) {
                     activeToken = null

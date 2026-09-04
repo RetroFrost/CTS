@@ -5,10 +5,11 @@ from pathlib import Path
 
 MAGIC=b"CCRNDR03"; API=3; CV=1
 TIMELINES={"absolute","relative"}; INTERP={"raw","hold","linear","smoothstep","cubic-in","cubic-out","cubic-in-out"}; EXTRA={"none","hold"}
-RESOURCE_TYPES={"polygon","rect","ellipse","path","image","video","text","group","shadow","shine","mask","material","filter","custom"}
+RESOURCE_TYPES={"polygon","rect","ellipse","path","image","video","text","text-raster","source-text-raster","group","shadow","independent-shadow","shine","mask","material","filter","custom","outro-overlay","exact-outro-overlay"}
 BLENDS={"normal","src-over","multiply","screen","add","overlay","darken","lighten","difference"}
 FEATURES=[
 "per-frame-polygon-vertices","full-2d-transforms","shine-geometry-tracks","arbitrary-masks","track-interpolation-modes","per-item-animation","exact-text-tracks","explicit-layer-order","independent-shadow-resources","dense-frame-data","frame-addressed-objects","property-level-selector-inheritance","deterministic-selector-precedence","zero-implicit-animation","generic-renderer-resources","group-transforms","resource-lifespans","selector-shared-behaviour","renderer-owned-geometry","renderer-owned-materials","blend-compositing-modes","per-frame-filter-tracks","exact-artwork-transforms","absolute-integer-frame-clock","single-scene-preview-export-contract","reference-resolution-fps-lock","frame-checkpoints","pixel-diff-audit-contract","selector-cascade-inspection","renderer-api-v3-scene-ir","video-frame-resources"]
+FEATURE_FOR_TYPE={"text-raster":"source-baked-text-raster","source-text-raster":"source-baked-text-raster","independent-shadow":"independent-shadow-resource","outro-overlay":"exact-outro-overlay","exact-outro-overlay":"exact-outro-overlay"}
 SEL=re.compile(r"^(?P<kind>[A-Za-z_][\w.-]*)\[(?P<body>.*)\]$"); COND=re.compile(r"^(?P<key>[A-Za-z_][\w.-]*)(?P<op>>=|<=|!=|=|>|<)(?P<val>.+)$")
 UNSET=object()
 class E(ValueError): pass
@@ -111,6 +112,12 @@ def compile_source(s):
     tl=s.get("timeline",{}); frames=integer(tl.get("frames",0),"timeline.frames")
     if frames<=0: die("timeline.frames","must be > 0")
     if tl.get("clock","absolute")!="absolute" or tl.get("implicitAnimation",False) is not False: die("timeline","v3 requires absolute clock and implicitAnimation=false")
+    declared=[]
+    for key in ("features","requiredFeatures"):
+        values=s.get(key,[])
+        if not isinstance(values,list) or not all(isinstance(x,str) and x.strip() for x in values): die(key,"expected non-empty string array")
+        declared.extend(x.strip() for x in values)
+    features=list(dict.fromkeys(FEATURES+declared))
     rin=s.get("resources",{})
     if not isinstance(rin,dict): die("resources","expected object")
     rs={}
@@ -118,6 +125,8 @@ def compile_source(s):
         if not isinstance(r,dict): die(f"resources.{n}","expected object")
         t=text(r.get("type"),f"resources.{n}.type")
         if t not in RESOURCE_TYPES: die(f"resources.{n}.type",f"unsupported {t}")
+        required=FEATURE_FOR_TYPE.get(t)
+        if required and required not in features: die(f"resources.{n}.type",f"{t} requires feature {required}")
         rr=dict(r)
         if t=="polygon":
             pts=r.get("points")
@@ -155,7 +164,7 @@ def compile_source(s):
         sels.append({"select":p["raw"],"parsed":p,"timeline":d,"properties":props(x.get("properties",{}),f"selectors[{i}].properties",d),"sourceOrder":i})
     layers=s.get("layers",[]); checkpoints=s.get("checkpoints",[])
     if not isinstance(layers,list) or not isinstance(checkpoints,list): die("layers/checkpoints","must be arrays")
-    out={"format":"CTS Renderer API v3 Scene IR","api":3,"id":rid,"name":name,"author":s.get("author",""),"canvas":{"width":w,"height":h,"fps":fps,"lock":bool(ca.get("lock",True))},"timeline":{"frames":frames,"clock":"absolute","implicitAnimation":False},"features":FEATURES,"resources":rs,"objects":objs,"selectors":sels,"layers":layers,"checkpoints":checkpoints,"audit":s.get("audit",{}),"runtimeContract":{"integerFrameClock":True,"noImplicitAnimation":True,"selectorMerge":"property-level","selectorTieBreak":"specificity-then-source-order","previewExportSceneEvaluator":"same","undeclaredTrackBehavior":"static/no-op"}}
+    out={"format":"CTS Renderer API v3 Scene IR","api":3,"id":rid,"name":name,"author":s.get("author",""),"canvas":{"width":w,"height":h,"fps":fps,"lock":bool(ca.get("lock",True))},"timeline":{"frames":frames,"clock":"absolute","implicitAnimation":False},"features":features,"resources":rs,"objects":objs,"selectors":sels,"layers":layers,"checkpoints":checkpoints,"audit":s.get("audit",{}),"runtimeContract":{"integerFrameClock":True,"noImplicitAnimation":True,"selectorMerge":"property-level","selectorTieBreak":"specificity-then-source-order","previewExportSceneEvaluator":"same","undeclaredTrackBehavior":"static/no-op"}}
     return out
 
 def psel(s): return {"raw":s["parsed"]["raw"],"kind":s["parsed"]["kind"],"conditions":s["parsed"]["conditions"],"specificity":s["parsed"]["specificity"]}
@@ -205,6 +214,11 @@ def summary(s): print(f"{s['id']} | API {s['api']} | {s['canvas']['width']}x{s['
 def selftest():
     s={"api":3,"id":"selftest","name":"selftest","canvas":{"width":100,"height":100,"fps":60},"timeline":{"frames":1000,"clock":"absolute","implicitAnimation":False},"resources":{"badge":{"type":"polygon","points":[[0,0],[1,0],[1,1]]}},"objects":[{"id":"b0","kind":"badge","frame":0,"resource":"badge","properties":{"x":{"value":9}}},{"id":"b120","kind":"badge","frame":120,"resource":"badge"}],"selectors":[{"select":"badge[*]","properties":{"x":{"value":1}}},{"select":"badge[frame>=120]","properties":{"y":{"dense":{"start":0,"values":[-2,-1,0]},"extrapolate":"hold"}}}]}
     c=compile_source(s); assert evalv(resolve(c,c["objects"][0])["x"],0,0)==9; assert evalv(resolve(c,c["objects"][1])["y"],121,120)==-1
+    d={"api":3,"id":"dedicated","name":"dedicated","canvas":{"width":100,"height":100,"fps":60},"timeline":{"frames":1,"clock":"absolute","implicitAnimation":False},"features":["source-baked-text-raster"],"resources":{"label":{"type":"source-text-raster","source":"assets/label.png"}},"objects":[{"id":"label","kind":"text-raster","frame":0,"resource":"label"}]}
+    dc=compile_source(d); assert dc["resources"]["label"]["type"]=="source-text-raster"; assert "source-baked-text-raster" in dc["features"]
+    d["features"]=[]
+    try: compile_source(d); raise AssertionError("dedicated feature declaration was not enforced")
+    except E: pass
     print("renderer_v3_compiler selftest: PASS")
 
 def main():

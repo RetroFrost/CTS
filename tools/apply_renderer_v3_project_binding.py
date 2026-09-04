@@ -17,6 +17,20 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 text = PATH.read_text()
 
+# Modern 3.0.300 source already carries this migration. Detect the semantic
+# implementation rather than an exact historical helper string, because later v3
+# feature work legitimately extends these functions. Replaying the old insertion
+# would otherwise create duplicate Kotlin declarations.
+if all(marker in text for marker in (
+    "private fun bindProjectValue(",
+    "private fun projectBinding(",
+    "private fun drawResourceGroup(",
+    'props["transform.homography"]',
+    "val local = File(source)",
+)):
+    print("Renderer API v3 project/card binding migration already present")
+    raise SystemExit(0)
+
 # File-path project images are common after Cubical Compare materializes imports.
 if 'import java.io.File\n' not in text:
     text = text.replace('import java.io.ByteArrayInputStream\n', 'import java.io.ByteArrayInputStream\nimport java.io.File\n', 1)
@@ -66,8 +80,6 @@ new = '''        val resource = scene.resource(obj.resource) ?: JSONObject().put
 '''
 text = replace_once(text, old, new, "v3 project property binding")
 
-# Add a usable resource-group implementation. Children inherit the parent's
-# cardIndex/dataIndex, so `$card.*` bindings work inside reusable group resources.
 helper_anchor = '''    private fun drawPolygonLike(resource: JSONObject, props: Map<String, Any?>, opacity: Float, canvas: Canvas) {
 '''
 helper = '''    private fun drawResourceGroup(
@@ -107,7 +119,6 @@ if helper not in text:
         raise SystemExit("v3 resource-group insertion anchor changed")
     text = text.replace(helper_anchor, helper + helper_anchor, 1)
 
-# Perspective/homography is part of the v3 compiler contract, in addition to affine.
 old_transform = '''    private fun applyObjectTransform(props: Map<String, Any?>, canvas: Canvas) {
         val affine = numberList(props["transform.affine"])
         if (affine != null && affine.size == 6) {
@@ -122,7 +133,6 @@ new_transform = '''    private fun applyObjectTransform(props: Map<String, Any?>
 '''
 text = replace_once(text, old_transform, new_transform, "v3 homography transform")
 
-# Decode project card images that resolve to materialized local file paths.
 old_decode = '''        val bytes = when {
             inline != null -> runCatching { Base64.getDecoder().decode(inline) }.getOrNull()
             source != null -> scene.asset(source)
@@ -147,14 +157,7 @@ text = replace_once(text, old_decode, new_decode, "v3 project image file binding
 
 binding_anchor = '''    private fun points(value: Any?): List<Pair<Float, Float>>? {
 '''
-binding_helpers = '''    /**
-     * Bind renderer values to the current Cubical Compare project. Objects opt into a
-     * card with `cardIndex` (or `dataIndex`) and can then use values such as
-     * `$card.title`, `$card.value`, `$card.badgeHeader`, `$card.description`,
-     * `$card.image`, `$card.imageX`, `$card.imageY`, `$card.imageScale`,
-     * `$card.imageRotation`, and `$card.index`. Project values use `$project.*`.
-     */
-    private fun bindProjectValue(value: Any?, project: StudioProject, obj: RendererV3Object): Any? = when (value) {
+binding_helpers = '''    private fun bindProjectValue(value: Any?, project: StudioProject, obj: RendererV3Object): Any? = when (value) {
         is List<*> -> value.map { bindProjectValue(it, project, obj) }
         is String -> projectBinding(value, project, obj) ?: value
         else -> value
@@ -210,7 +213,6 @@ if binding_helpers not in text:
         raise SystemExit("v3 project-binding helper anchor changed")
     text = text.replace(binding_anchor, binding_helpers + binding_anchor, 1)
 
-# Kotlin string templates require a backslash for literal renderer binding tokens.
 text = text.replace('token.startsWith("$")', r'token.startsWith("\$")')
 text = text.replace('token.startsWith("$project.")', r'token.startsWith("\$project.")')
 text = text.replace('token.removePrefix("$project.")', r'token.removePrefix("\$project.")')

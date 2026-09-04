@@ -15,6 +15,49 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def make_integrity_migrations_idempotent() -> None:
+    """Build-time migrations must not abort when their result is already in source.
+
+    The branch now carries several integrity and Renderer v3 fixes permanently. CI
+    still replays historical migration scripts so clean/older checkouts converge on
+    the same state. A superseded source anchor is therefore normal, not a build
+    error; structural greps, Gradle tests and emulator tests remain the authority.
+
+    The new low-memory Renderer v3 patch is intentionally NOT listed here. It stays
+    strict so the 45 MB renderer OOM fix can never be silently skipped.
+    """
+    old = '''    count = text.count(old)\n    if count != 1:\n        raise SystemExit(f"{label}: expected exactly one source match, found {count}")\n    return text.replace(old, new, 1)\n'''
+    new = '''    count = text.count(old)\n    if count == 0:\n        print(f"{label}: already migrated or superseded; skipping")\n        return text\n    if count != 1:\n        raise SystemExit(f"{label}: expected exactly one source match, found {count}")\n    return text.replace(old, new, 1)\n'''
+    for name in (
+        "apply_runtime_integrity_fixes_v1.py",
+        "apply_runtime_integrity_fixes_v2.py",
+        "apply_runtime_integrity_fixes_v3.py",
+        "apply_runtime_integrity_fixes_v4.py",
+        "apply_runtime_integrity_fixes_v4_fixed.py",
+        "apply_runtime_integrity_fixes_v5.py",
+        "apply_runtime_integrity_fixes_v5_fixed.py",
+        "apply_renderer_v3_runtime.py",
+        "apply_renderer_v3_project_binding.py",
+        "apply_renderer_v3_manager_files.py",
+        "apply_renderer_v3_direct_export.py",
+        "apply_renderer_v3_feature_contracts.py",
+        "apply_renderer_v3_feature_compat.py",
+        "apply_renderer_v3_feature_tests.py",
+    ):
+        path = ROOT / "tools" / name
+        if not path.is_file():
+            continue
+        text = path.read_text()
+        if new in text:
+            continue
+        if old in text:
+            path.write_text(text.replace(old, new, 1))
+            print(f"Made {name} idempotent for staged 3.0.300 builds")
+
+
+# This must run even when the Puberty outro itself is already baked into source.
+make_integrity_migrations_idempotent()
+
 ribbon = RIBBON.read_text()
 if MARKER in ribbon:
     print("Puberty source-locked outro already applied")
