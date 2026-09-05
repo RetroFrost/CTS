@@ -124,12 +124,13 @@ jobs:
           Copy-Item $archive (Join-Path $artifactDir 'Cubical-Compare-Windows-x64.zip') -Force
           "$hash  Cubical-Compare-3.0.300-Windows-x64.zip" | Set-Content (Join-Path $artifactDir 'SHA256.txt')
           "CTS 3.0.300 / native C++ Windows x64 / Renderer v3 project contract" | Set-Content (Join-Path $artifactDir 'VERSION.txt')
-          if (-not (Test-Path (Join-Path $artifactDir 'Cubical-Compare-Windows-x64.zip'))) { throw 'Staged archive missing.' }
-          if (-not (Test-Path (Join-Path $artifactDir 'SHA256.txt'))) { throw 'Staged checksum missing.' }
+          $staged = Get-ChildItem $artifactDir -File
+          if ($staged.Count -lt 3) { throw "Expected 3 staged files; found $($staged.Count)." }
+          $staged | ForEach-Object { Write-Host "STAGED $($_.FullName) $($_.Length) bytes" }
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v4
         with:
           name: Cubical-Compare-3.0.300-Windows-Cpp-x64
-          path: artifact-out
+          path: ${{ github.workspace }}/artifact-out/*
           if-no-files-found: error
           retention-days: 14
