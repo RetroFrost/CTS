@@ -85,6 +85,7 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add \
             android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt \
+            android/app/src/main/java/io/github/retrofrost/cts/android/RendererImportActivity.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/RendererProjectGuard.kt \
@@ -93,5 +94,5 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'Fix Renderer v3 project-data rendering'
+          git commit -m 'Fix Renderer v3 project-data rendering and compatibility UI'
           git push origin HEAD:fork/2.0.7-renderer-bundles
