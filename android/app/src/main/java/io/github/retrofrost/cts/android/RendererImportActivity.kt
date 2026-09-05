@@ -206,11 +206,12 @@ class RendererImportActivity : ComponentActivity() {
         sourceName?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
         Text(spec.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         val installedVersion = BuildConfig.VERSION_NAME
+        val versionBlocked = pending.report.errors.any { it.startsWith("Requires Cubical Compare ") }
         Text(
-            if (pending.report.compatible) {
-                "Ready for Cubical Compare $installedVersion"
-            } else {
-                "Can't use this renderer on $installedVersion • requires ${spec.minAppVersion}+"
+            when {
+                pending.report.compatible -> "Ready for Cubical Compare $installedVersion"
+                versionBlocked -> "Requires Cubical Compare ${spec.minAppVersion}+ • installed $installedVersion"
+                else -> "Renderer isn't compatible with Cubical Compare $installedVersion"
             },
             fontWeight = FontWeight.SemiBold,
             color = if (pending.report.compatible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,

@@ -225,6 +225,7 @@ object RendererCapabilities {
         "per-frame-keyframes",
         "per-badge-affine-transform",
         "frame-addressed-shine",
+        "ribbon-glass-shine-v1",
         "relationships-exact-v2",
         "relationships-footer-waveform",
         "relationships-rich-typography",
