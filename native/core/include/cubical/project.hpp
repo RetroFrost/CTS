@@ -14,6 +14,7 @@ struct Card {
     std::string description;
     std::string image;
     std::string id{new_card_id()};
+    std::string badge_header;
     double image_x{0.0};
     double image_y{0.0};
     double image_scale{1.0};
@@ -32,7 +33,7 @@ struct Settings {
     std::uint32_t height{1080};
     std::uint32_t fps{60};
     bool auto_length{true};
-    double custom_length_seconds{60.0};
+    double custom_length_seconds{90.0};
 
     bool credits_enabled{true};
     bool show_badges{true};
@@ -50,14 +51,21 @@ struct Settings {
     std::string end_credit_label{"Video Made By"};
     std::string end_credit_value{"Cubical Compare"};
 
+    std::string intro_mode{"renderer"};
+    std::string intro_video;
+
     std::string soundtrack;
     double soundtrack_volume{0.75};
     bool soundtrack_loop{true};
     double soundtrack_offset_seconds{0.0};
     double soundtrack_fade_out_seconds{0.75};
 
+    std::string encoder_preference{"auto"};
     std::string encoder_preset{"faster"};
     std::uint32_t encoder_crf{18};
+
+    std::string font_family;
+    std::string font_file;
     std::string font_title;
     std::string font_description;
     std::string font_badge;
@@ -66,7 +74,7 @@ struct Settings {
 };
 
 struct Project {
-    std::string name;
+    std::string name{"Untitled"};
     std::vector<Card> cards{{"Card 1", "1", "", ""}};
     Settings settings;
     std::filesystem::path project_path;
@@ -78,7 +86,14 @@ int erase_card_by_id(Project& project, const std::string& id);
 double timeline_duration(const Project& project);
 std::string base64_encode(const std::string& input);
 std::string base64_decode(const std::string& input);
+
+// Engine interchange. This remains CCX1 because the bundled exact renderer consumes it.
 bool save_ccx(const Project& project, const std::filesystem::path& path, std::string* error = nullptr);
 bool load_ccx(Project& project, const std::filesystem::path& path, std::string* error = nullptr);
+
+// CTS 3.0.300 Android-compatible project schema (JSON version 6).
+bool save_project_json(const Project& project, const std::filesystem::path& path, std::string* error = nullptr);
+bool load_project_json(Project& project, const std::filesystem::path& path, std::string* error = nullptr);
+bool load_project_auto(Project& project, const std::filesystem::path& path, std::string* error = nullptr);
 
 } // namespace cubical
