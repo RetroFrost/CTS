@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(CubicalCompare VERSION 2.0.6 LANGUAGES CXX)
+project(CubicalCompare VERSION 3.0.300 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
@@ -10,7 +10,7 @@ set(CUBICAL_COMPARE_ENGINE_PATH "" CACHE FILEPATH "Absolute path to the private 
 
 if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-  add_compile_options(/utf-8)
+  add_compile_options(/utf-8 /permissive- /Zc:__cplusplus)
 endif()
 
 add_library(cubical_core STATIC
@@ -19,6 +19,10 @@ add_library(cubical_core STATIC
 )
 target_include_directories(cubical_core PUBLIC native/core/include)
 target_compile_features(cubical_core PUBLIC cxx_std_20)
+target_compile_definitions(cubical_core PUBLIC
+  CUBICAL_COMPARE_VERSION="3.0.300"
+  CUBICAL_COMPARE_VERSION_CODE=300300
+)
 if(CUBICAL_COMPARE_ENGINE_PATH)
   target_compile_definitions(cubical_core PRIVATE
     CUBICAL_COMPARE_ENGINE_PATH="${CUBICAL_COMPARE_ENGINE_PATH}"
@@ -47,24 +51,12 @@ else()
   )
 endif()
 
-install(TARGETS cubical_compare_app
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+install(TARGETS cubical_compare_app RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(UNIX AND NOT APPLE)
-  install(FILES packaging/flatpak/io.github.retrofrost.CTS.desktop
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
-  )
-  install(FILES packaging/flatpak/io.github.retrofrost.CTS.metainfo.xml
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
-  )
-  install(FILES packaging/flatpak/io.github.retrofrost.CTS.svg
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
-  )
-  install(FILES packaging/flatpak/io.github.retrofrost.CTS-symbolic.svg
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/symbolic/apps
-  )
-  install(FILES LICENSE
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/io.github.retrofrost.CTS
-  )
+  install(FILES packaging/flatpak/io.github.retrofrost.CTS.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(FILES packaging/flatpak/io.github.retrofrost.CTS.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+  install(FILES packaging/flatpak/io.github.retrofrost.CTS.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+  install(FILES packaging/flatpak/io.github.retrofrost.CTS-symbolic.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/symbolic/apps)
+  install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/io.github.retrofrost.CTS)
 endif()
