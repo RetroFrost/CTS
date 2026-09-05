@@ -81,17 +81,16 @@ jobs:
       - name: Configure and build C++ application
         shell: pwsh
         run: |
-          cmake -S . -B build-windows -A x64 -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build-windows -A x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build build-windows --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path '.\build-windows\Release\CubicalCompare.exe')) { throw 'CubicalCompare.exe missing.' }
 
-      - name: Run packaged renderer smoke test
+      - name: Run renderer-integrated native smoke test
         shell: pwsh
         run: |
-          $engine = "$PWD\engine\dist\cubical-compare-engine\cubical-compare-engine.exe"
-          $env:CUBICAL_COMPARE_ENGINE = $engine
+          $env:CUBICAL_COMPARE_ENGINE = "$PWD\engine\dist\cubical-compare-engine\cubical-compare-engine.exe"
           $env:CUBICAL_COMPARE_FFMPEG = "$PWD\engine\dist\cubical-compare-engine\ffmpeg.exe"
           & .\build-windows\Release\CubicalCompare.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -103,10 +102,12 @@ jobs:
           $version = $env:VERSION
           $root = "dist\Cubical-Compare-${version}-Windows-x64"
           $archive = "dist\Cubical-Compare-${version}-Windows-x64.zip"
-          $checksum = "dist\Cubical-Compare-${version}-Windows-x64.zip.sha256"
+          $artifactDir = Join-Path $env:GITHUB_WORKSPACE 'artifact-out'
           Remove-Item dist -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $artifactDir -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path "$root\libexec\engine" | Out-Null
           New-Item -ItemType Directory -Force -Path "$root\renderers" | Out-Null
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
           Copy-Item '.\build-windows\Release\CubicalCompare.exe' "$root\CubicalCompare.exe"
           Copy-Item '.\engine\dist\cubical-compare-engine\*' "$root\libexec\engine" -Recurse -Force
           Copy-Item README.md "$root\README.md"
@@ -120,15 +121,15 @@ jobs:
           Compress-Archive -Path $root -DestinationPath $archive -Force
           if (-not (Test-Path $archive)) { throw "Portable archive missing: $archive" }
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
-          "$hash  Cubical-Compare-${version}-Windows-x64.zip" | Set-Content $checksum
-          if (-not (Test-Path $checksum)) { throw "Checksum missing: $checksum" }
-          Get-ChildItem dist | Format-Table Name,Length
+          Copy-Item $archive (Join-Path $artifactDir 'Cubical-Compare-Windows-x64.zip') -Force
+          "$hash  Cubical-Compare-3.0.300-Windows-x64.zip" | Set-Content (Join-Path $artifactDir 'SHA256.txt')
+          "CTS 3.0.300 / native C++ Windows x64 / Renderer v3 project contract" | Set-Content (Join-Path $artifactDir 'VERSION.txt')
+          if (-not (Test-Path (Join-Path $artifactDir 'Cubical-Compare-Windows-x64.zip'))) { throw 'Staged archive missing.' }
+          if (-not (Test-Path (Join-Path $artifactDir 'SHA256.txt'))) { throw 'Staged checksum missing.' }
 
       - uses: actions/upload-artifact@v7
         with:
           name: Cubical-Compare-3.0.300-Windows-Cpp-x64
-          path: |
-            dist/Cubical-Compare-3.0.300-Windows-x64.zip
-            dist/Cubical-Compare-3.0.300-Windows-x64.zip.sha256
+          path: artifact-out
           if-no-files-found: error
           retention-days: 14
