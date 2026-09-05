@@ -1,5 +1,5 @@
 name: Build Cubical Compare 3.0.300 Renderer v3
-# Recovery build: compile the user-verified baseline directly, without replaying broad runtime migrations.
+# Recovery build: compile the verified baseline and apply only scoped Renderer v3 fixes.
 
 on:
   push:
@@ -10,7 +10,10 @@ on:
       - tools/fix_v30300_renderer_v3_identity.py
       - tools/fix_v30300_export_reader_compat.py
       - tools/fix_renderer_v3_coordinate_space.py
+      - tools/fix_renderer_v3_project_data.py
+      - android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3ProjectData.kt
       - android/app/src/test/java/io/github/retrofrost/cts/android/RendererV3CompatibilityTest.kt
+      - android/app/src/test/java/io/github/retrofrost/cts/android/RendererV3ProjectDataContractTest.kt
   workflow_dispatch:
 
 permissions:
@@ -47,6 +50,9 @@ jobs:
       - name: Fix Renderer v3 coordinate-space composition
         run: python tools/fix_renderer_v3_coordinate_space.py
 
+      - name: Wire Renderer v3 to live project data
+        run: python tools/fix_renderer_v3_project_data.py
+
       - name: Unit test compatibility and build APKs
         working-directory: android
         shell: bash
@@ -60,14 +66,14 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Cubical-Compare-3.0.300-Renderer-v3-debug.apk
-          cp android/app/build/outputs/apk/release/app-release.apk dist/Cubical-Compare-3.0.300-Renderer-v3-release.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Cubical-Compare-3.0.300-Renderer-v3-DATA-DRIVEN-debug.apk
+          cp android/app/build/outputs/apk/release/app-release.apk dist/Cubical-Compare-3.0.300-Renderer-v3-DATA-DRIVEN-release.apk
           (cd dist && sha256sum *.apk > SHA256SUMS.txt)
 
       - name: Upload APK bundle
         uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-3.0.300-Renderer-v3
+          name: Cubical-Compare-3.0.300-Renderer-v3-DATA-DRIVEN
           path: dist/*
           if-no-files-found: error
 
@@ -80,9 +86,12 @@ jobs:
           git add \
             android/app/src/main/java/io/github/retrofrost/cts/android/RendererBundle.kt \
             android/app/src/main/java/io/github/retrofrost/cts/android/RendererV3FrameRenderer.kt \
-            android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt
+            android/app/src/main/java/io/github/retrofrost/cts/android/RendererBridge.kt \
+            android/app/src/main/java/io/github/retrofrost/cts/android/RendererProjectGuard.kt \
+            android/app/src/main/java/io/github/retrofrost/cts/android/ExportService.kt \
+            android/app/src/test/java/io/github/retrofrost/cts/android/RendererV3CompatibilityTest.kt
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'Fix Renderer v3 coordinate-space rendering'
+          git commit -m 'Fix Renderer v3 project-data rendering'
           git push origin HEAD:fork/2.0.7-renderer-bundles
