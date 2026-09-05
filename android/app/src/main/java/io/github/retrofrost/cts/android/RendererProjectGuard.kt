@@ -7,7 +7,7 @@ data class RendererProjectCompatibility(
     fun message(rendererName: String): String = if (compatible) {
         "$rendererName is compatible with this project."
     } else {
-        "$rendererName is source-locked and cannot be applied to this project: ${issues.joinToString()}."
+        "$rendererName cannot be applied to this project: ${issues.joinToString()}."
     }
 }
 
@@ -16,6 +16,13 @@ object RendererProjectGuard {
         RelationshipsPrecisionFrameRenderer.enabled(spec) && spec.precisionMode == "frame-exact"
 
     fun check(project: StudioProject, spec: RendererSpec): RendererProjectCompatibility {
+        if (RendererV3ProjectData.enabled(spec)) {
+            val issues = mutableListOf<String>()
+            if (spec.canonicalCardCount > 0 && project.cards.size > spec.canonicalCardCount) {
+                issues += "card count is ${project.cards.size}; this measured motion model supports at most ${spec.canonicalCardCount}"
+            }
+            return RendererProjectCompatibility(issues.isEmpty(), issues)
+        }
         if (!isSourceLocked(spec)) return RendererProjectCompatibility(true, emptyList())
 
         val issues = mutableListOf<String>()

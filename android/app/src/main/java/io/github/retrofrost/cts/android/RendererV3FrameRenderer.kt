@@ -54,10 +54,12 @@ class RendererV3FrameRenderer {
         val objects = orderedObjects(scene)
         objects.forEach { obj ->
             if (frame !in obj.lifespanStart..obj.lifespanEnd) return@forEach
+            if (!RendererV3ProjectData.shouldRender(scene, project, obj)) return@forEach
             val props = RendererV3Evaluator.properties(scene, obj, frame)
             if (!truthy(props["visible"], true)) return@forEach
             drawObject(scene, project, obj, props, frame, canvas)
         }
+        RendererV3ProjectData.drawEndFade(scene, project, frame, canvas)
         return out
     }
 
@@ -75,6 +77,11 @@ class RendererV3FrameRenderer {
         }
         bitmap.recycle()
         return bytes
+    }
+
+    fun timelineFrameCount(project: StudioProject, spec: RendererSpec): Int {
+        val scene = RendererV3Runtime.scene(spec) ?: return spec.canonicalFrameCount.coerceAtLeast(1)
+        return RendererV3ProjectData.timelineFrameCount(scene, project)
     }
 
     private fun orderedObjects(scene: RendererV3Scene): List<RendererV3Object> {
@@ -104,21 +111,29 @@ class RendererV3FrameRenderer {
         try {
             clipMask(scene, boundProps, canvas)
             applyObjectTransform(boundProps, canvas)
-            when (type) {
-                "polygon", "path", "shadow", "shine", "material", "filter", "custom" ->
-                    drawPolygonLike(resource, boundProps, opacity, canvas)
-                "rect" -> drawRect(resource, boundProps, opacity, canvas)
-                "ellipse" -> drawEllipse(resource, boundProps, opacity, canvas)
-                "image" -> drawImage(scene, project, resource, boundProps, opacity, canvas)
-                "text" -> drawText(resource, boundProps, opacity, canvas)
-                "text-raster", "source-text-raster" ->
-                    drawSourceBakedTextRaster(scene, resource, boundProps, opacity, canvas)
-                "independent-shadow" ->
-                    drawIndependentShadow(scene, project, resource, boundProps, opacity, frame, canvas)
-                "outro-overlay", "exact-outro-overlay" ->
-                    drawExactOutroOverlay(scene, resource, boundProps, opacity, frame, canvas)
-                "group" -> drawResourceGroup(scene, project, obj, resource, boundProps, opacity, frame, canvas)
-                else -> drawPolygonLike(resource, boundProps, opacity, canvas)
+            when {
+                type == "project-card" ||
+                    (RendererV3ProjectData.enabled(scene) && RendererV3ProjectData.isCardBody(obj)) ->
+                    RendererV3ProjectData.drawCard(project, obj, resource, opacity, canvas)
+                type == "project-badge-text" ||
+                    (RendererV3ProjectData.enabled(scene) && RendererV3ProjectData.isBadgeText(obj)) ->
+                    RendererV3ProjectData.drawBadgeText(project, obj, resource, boundProps, opacity, canvas)
+                else -> when (type) {
+                    "polygon", "path", "shadow", "shine", "material", "filter", "custom" ->
+                        drawPolygonLike(resource, boundProps, opacity, canvas)
+                    "rect" -> drawRect(resource, boundProps, opacity, canvas)
+                    "ellipse" -> drawEllipse(resource, boundProps, opacity, canvas)
+                    "image" -> drawImage(scene, project, resource, boundProps, opacity, canvas)
+                    "text" -> drawText(resource, boundProps, opacity, canvas)
+                    "text-raster", "source-text-raster" ->
+                        drawSourceBakedTextRaster(scene, resource, boundProps, opacity, canvas)
+                    "independent-shadow" ->
+                        drawIndependentShadow(scene, project, resource, boundProps, opacity, frame, canvas)
+                    "outro-overlay", "exact-outro-overlay" ->
+                        drawExactOutroOverlay(scene, resource, boundProps, opacity, frame, canvas)
+                    "group" -> drawResourceGroup(scene, project, obj, resource, boundProps, opacity, frame, canvas)
+                    else -> drawPolygonLike(resource, boundProps, opacity, canvas)
+                }
             }
         } finally {
             canvas.restore()
@@ -562,11 +577,7 @@ class RendererV3FrameRenderer {
             }
         }
         if (!token.startsWith("\$card.")) return null
-        val explicitIndex = when {
-            obj.raw.has("cardIndex") -> obj.raw.optInt("cardIndex", -1)
-            obj.raw.has("dataIndex") -> obj.raw.optInt("dataIndex", -1)
-            else -> -1
-        }
+        val explicitIndex = RendererV3ProjectData.cardIndex(obj) ?: -1
         if (explicitIndex !in project.cards.indices) return null
         val card = project.cards[explicitIndex]
         return when (token.removePrefix("\$card.")) {

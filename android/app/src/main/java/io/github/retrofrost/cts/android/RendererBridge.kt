@@ -52,7 +52,7 @@ object RendererBridge {
             "infinite-timeline-exact" -> InfiniteTimeline.totalFrameCount(project, spec)
             "relationships-exact" -> RelationshipsTimeline.totalFrameCount(project, spec)
             "ribbon-exact" -> RibbonTimeline.totalFrameCount(project, spec)
-            "scene-v3" -> RendererV3Runtime.scene(spec)?.timeline?.frames ?: spec.canonicalFrameCount
+            "scene-v3" -> rendererV3.timelineFrameCount(project, spec)
             else -> NativeTimeline.totalFrameCount(project, spec)
         }.coerceAtLeast(1)
     }

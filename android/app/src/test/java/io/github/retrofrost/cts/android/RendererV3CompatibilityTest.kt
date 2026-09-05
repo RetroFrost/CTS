@@ -27,6 +27,7 @@ class RendererV3CompatibilityTest {
                 "frame-addressed-selectors",
                 "exact-outro-overlay",
                 "preview-export-identical-path",
+                "project-card-data",
             ),
         )
 

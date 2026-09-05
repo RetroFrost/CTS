@@ -276,6 +276,7 @@ object RendererCapabilities {
         "renderer-api-v3-scene-ir",
         "renderer-v3-sidecar-resources",
         "renderer-v3-zip-package",
+        "project-card-data",
 )
 
     fun report(spec: RendererSpec): RendererValidationReport {
