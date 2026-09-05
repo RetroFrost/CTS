@@ -22,6 +22,9 @@ public static class Program
             catch { }
             e.Handled = true;
         };
-        app.Run(new MainWindow());
+
+        var mainWindow = new MainWindow();
+        AdaptiveLayout.Attach(mainWindow);
+        app.Run(mainWindow);
     }
 }
