@@ -176,7 +176,13 @@ public sealed class MainWindow : Window
         timelinePane.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         timelinePane.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Grid.SetRow(timelinePane, 2); pane.Children.Add(timelinePane);
-        var play = ActionButton("▶", () => { _playing = !_playing; play.Content = _playing ? "❚❚" : "▶"; if (_playing) _playTimer.Start(); else _playTimer.Stop(); });
+        var play = new Button { Content = "▶", Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(11, 5, 11, 5), MinWidth = 58 };
+        play.Click += (_, _) =>
+        {
+            _playing = !_playing;
+            play.Content = _playing ? "❚❚" : "▶";
+            if (_playing) _playTimer.Start(); else _playTimer.Stop();
+        };
         Grid.SetColumn(play, 0); timelinePane.Children.Add(play);
         _timeline.Margin = new Thickness(8, 0, 8, 0); Grid.SetColumn(_timeline, 1); timelinePane.Children.Add(_timeline);
         _frameLabel.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(_frameLabel, 2); timelinePane.Children.Add(_frameLabel);
@@ -209,7 +215,7 @@ public sealed class MainWindow : Window
         _badges.Margin = new Thickness(0, 6, 0, 0); pane.Children.Add(_badges);
         _credits.Margin = new Thickness(0, 6, 0, 0); pane.Children.Add(_credits);
         _autoLength.Margin = new Thickness(0, 6, 0, 0); pane.Children.Add(_autoLength);
-        var lengthRow = AddField(pane, "Length (seconds)", _length);
+        AddField(pane, "Length (seconds)", _length);
 
         foreach (var box in new[] { _title, _value, _badgeHeader, _description, _image, _soundtrack, _length }) box.TextChanged += (_, _) => { if (!_loading) { CommitFields(); SchedulePreview(); } };
         foreach (var check in new[] { _badges, _credits, _autoLength })
@@ -282,7 +288,7 @@ public sealed class MainWindow : Window
         {
             var candidate = RendererBundleReader.Inspect(dlg.FileName);
             var dialog = new RendererImportDialog(candidate, dlg.FileName, _rendererStore) { Owner = this };
-            if (dialog.ShowDialog() == true && dialog.Activated)
+            if (dialog.ShowDialog() == true && dialog.RendererActivated)
             {
                 _renderer = _rendererStore.Active();
                 RefreshRendererLabel(); RefreshTimeline(); RefreshPreview();
@@ -412,7 +418,7 @@ public sealed class RendererImportDialog : Window
 {
     private readonly RendererCandidate _candidate;
     private readonly RendererStore _store;
-    public bool Activated { get; private set; }
+    public bool RendererActivated { get; private set; }
 
     public RendererImportDialog(RendererCandidate candidate, string sourcePath, RendererStore store)
     {
@@ -477,7 +483,7 @@ public sealed class RendererImportDialog : Window
     }
     private void InstallAndUse()
     {
-        try { _store.Activate(_candidate); Activated = true; DialogResult = true; Close(); }
+        try { _store.Activate(_candidate); RendererActivated = true; DialogResult = true; Close(); }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Install renderer", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
     private static Button MakeButton(string text, Action action)
