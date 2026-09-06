@@ -62,8 +62,13 @@ jobs:
         run: |
           $report = Join-Path $env:TEMP 'CubicalCompare-selftest-failure.txt'
           Remove-Item $report -Force -ErrorAction SilentlyContinue
-          & dist/Cubical-Compare-3.0.300-Windows-dotnet/CubicalCompare.exe --self-test
-          $code = $LASTEXITCODE
+          $process = Start-Process `
+            -FilePath 'dist/Cubical-Compare-3.0.300-Windows-dotnet/CubicalCompare.exe' `
+            -ArgumentList '--self-test' `
+            -Wait `
+            -PassThru `
+            -NoNewWindow
+          $code = $process.ExitCode
           if ($code -ne 0) {
             if (Test-Path $report) {
               Write-Host '----- Cubical Compare self-test report -----'
