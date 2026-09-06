@@ -16,14 +16,9 @@ public static class AppSelfTest
             MegaPackImport(root);
             RendererAndRaster();
             if (RendererCapabilities.CompareVersions("3.0.300", "2.0.8") < 0) throw new InvalidOperationException("Semantic version comparison regressed.");
-            File.WriteAllText(Path.Combine(root, "PASS.txt"), "Cubical Compare Windows self-test passed.");
             return 0;
         }
-        catch (Exception error)
-        {
-            try { File.WriteAllText(Path.Combine(root, "FAIL.txt"), error.ToString()); } catch { }
-            return 1;
-        }
+        catch { return 1; }
         finally { try { Directory.Delete(root, true); } catch { } }
     }
 
@@ -71,6 +66,6 @@ public static class AppSelfTest
         var spec = RendererSpec.BuiltIn();
         using var engine = new RendererEngine();
         using var bitmap = engine.Render(project, spec, 0, 320, 180);
-        if (bitmap.Width != 320 || bitmap.Height != 180 || bitmap.Bytes == 0) throw new InvalidOperationException("Renderer raster self-test failed.");
+        if (bitmap.Width != 320 || bitmap.Height != 180 || bitmap.ByteCount <= 0) throw new InvalidOperationException("Renderer raster self-test failed.");
     }
 }
