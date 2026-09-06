@@ -1,4 +1,4 @@
-name: Build Cubical Compare 3.0.300 Windows .NET
+name: Build Cubical Compare 3.0.301 Windows .NET
 
 on:
   push:
@@ -54,7 +54,7 @@ jobs:
             -r win-x64 `
             --self-contained true `
             --no-restore `
-            -o dist/Cubical-Compare-3.0.300-Windows-dotnet
+            -o dist/Cubical-Compare-3.0.301-Windows-dotnet
 
       - name: Bundle FFmpeg
         shell: pwsh
@@ -62,8 +62,8 @@ jobs:
           python -m pip install --disable-pip-version-check imageio-ffmpeg
           $ffmpeg = python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
           if (-not (Test-Path $ffmpeg)) { throw "imageio-ffmpeg did not provide an ffmpeg executable" }
-          Copy-Item $ffmpeg dist/Cubical-Compare-3.0.300-Windows-dotnet/ffmpeg.exe -Force
-          & dist/Cubical-Compare-3.0.300-Windows-dotnet/ffmpeg.exe -version | Select-Object -First 1
+          Copy-Item $ffmpeg dist/Cubical-Compare-3.0.301-Windows-dotnet/ffmpeg.exe -Force
+          & dist/Cubical-Compare-3.0.301-Windows-dotnet/ffmpeg.exe -version | Select-Object -First 1
 
       - name: Self-test production app
         shell: pwsh
@@ -71,7 +71,7 @@ jobs:
           $report = Join-Path $env:TEMP 'CubicalCompare-selftest-failure.txt'
           Remove-Item $report -Force -ErrorAction SilentlyContinue
           $process = Start-Process `
-            -FilePath 'dist/Cubical-Compare-3.0.300-Windows-dotnet/CubicalCompare.exe' `
+            -FilePath 'dist/Cubical-Compare-3.0.301-Windows-dotnet/CubicalCompare.exe' `
             -ArgumentList '--self-test' `
             -Wait `
             -PassThru `
@@ -108,16 +108,16 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $out = 'dist/Cubical-Compare-3.0.300-Windows-dotnet.zip'
+          $out = 'dist/Cubical-Compare-3.0.301-Windows-dotnet.zip'
           if (Test-Path $out) { Remove-Item $out -Force }
-          Compress-Archive -Path dist/Cubical-Compare-3.0.300-Windows-dotnet/* -DestinationPath $out -CompressionLevel Optimal
-          Get-FileHash $out -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  Cubical-Compare-3.0.300-Windows-dotnet.zip" } | Set-Content dist/SHA256SUMS-Windows-dotnet.txt
+          Compress-Archive -Path dist/Cubical-Compare-3.0.301-Windows-dotnet/* -DestinationPath $out -CompressionLevel Optimal
+          Get-FileHash $out -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  Cubical-Compare-3.0.301-Windows-dotnet.zip" } | Set-Content dist/SHA256SUMS-Windows-dotnet.txt
 
       - name: Upload Windows .NET build
         uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-3.0.300-Windows-dotnet
+          name: Cubical-Compare-3.0.301-Windows-dotnet
           path: |
-            dist/Cubical-Compare-3.0.300-Windows-dotnet.zip
+            dist/Cubical-Compare-3.0.301-Windows-dotnet.zip
             dist/SHA256SUMS-Windows-dotnet.txt
           if-no-files-found: error

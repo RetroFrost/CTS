@@ -80,7 +80,7 @@ public sealed class MainWindow : Window
     {
         _renderer = _rendererStore.Active();
         _project = ProjectAutosave.Load() ?? new StudioProject();
-        Title = "Cubical Compare 3.0.300 — Windows (.NET)";
+        Title = "Cubical Compare 3.0.301 — Windows (.NET)";
         Width = 1440; Height = 900; MinWidth = 760; MinHeight = 500;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = new SolidColorBrush(Color.FromRgb(24,24,25)); Foreground = Brushes.White;
@@ -366,7 +366,7 @@ public sealed class MainWindow : Window
         if(_project.Cards.Count==0)return;try{var width=Math.Clamp((int)Math.Round(Math.Max(640,_preview.ActualWidth*1.4)),640,1280);var height=Math.Max(2,(int)Math.Round(width*_renderer.ReferenceHeight/(double)Math.Max(1,_renderer.ReferenceWidth)));var engineFrame=TimelineToEngineFrame(frame);using var bitmap=engineFrame==null?_introSource.Render(_project.IntroVideo,frame,OutputFps(),width,height):_engine.Render(_project,_renderer,engineFrame.Value,width,height);_preview.Source=ToBitmapSource(bitmap);UpdateFrameLabel();}catch(Exception ex){_status.Text="Preview: "+ex.Message;}
     }
     private void UpdateFrameLabel(){var fps=OutputFps();var frame=(int)Math.Round(_timeline.Value);_frameLabel.Text=$"Frame {frame+1:N0} / {(int)_timeline.Maximum+1:N0}";_timeLabel.Text=$"{FormatDuration(frame/(double)fps)} / {FormatDuration(((int)_timeline.Maximum+1)/(double)fps)} · {fps} FPS";}
-    private void UpdateTitle()=>Title=$"{_project.Name} — Cubical Compare 3.0.300 Windows (.NET)";
+    private void UpdateTitle()=>Title=$"{_project.Name} — Cubical Compare 3.0.301 Windows (.NET)";
     private void UpdateProjectInfo(){var outW=_renderer.PrecisionMode=="frame-exact"?_renderer.ReferenceWidth:_project.Width;var outH=_renderer.PrecisionMode=="frame-exact"?_renderer.ReferenceHeight:_project.Height;var fps=_renderer.PrecisionMode=="frame-exact"?_renderer.ReferenceFps:_project.Fps;_outputLabel.Text=$"Output: {outW}×{outH} · {fps} FPS · {FrameCount():N0} frames";var issues=new List<string>();if(_renderer.PrecisionMode=="frame-exact"){if(_project.Width!=_renderer.ReferenceWidth||_project.Height!=_renderer.ReferenceHeight)issues.Add("resolution");if(_project.Fps!=_renderer.ReferenceFps)issues.Add("frame rate");if(_renderer.CanonicalCardCount>0&&_project.Cards.Count!=_renderer.CanonicalCardCount)issues.Add("card count");if(!_project.AutoLength)issues.Add("duration");if(_project.FontFamily.Length>0||_project.FontFile.Length>0)issues.Add("font");}_accuracyLabel.Text=_renderer.PrecisionMode!="frame-exact"?"Adaptive":issues.Count==0?(_project.IntroMode==IntroMode.Renderer?"Pixel exact":"Comparison exact"):"Modified: "+string.Join(", ",issues);}
     private async Task UpdateEncoderLabelAsync(){var preference=_codec.SelectedIndex switch{1=>EncoderPreference.H264,2=>EncoderPreference.H265,_=>EncoderPreference.Auto};try{var description=await Task.Run(()=>HardwareEncoderSelector.Describe(preference));if(!Dispatcher.HasShutdownStarted)_encoderLabel.Text="Encoder: "+description;}catch(Exception ex){_encoderLabel.Text="Encoder: "+ex.Message;}}
 

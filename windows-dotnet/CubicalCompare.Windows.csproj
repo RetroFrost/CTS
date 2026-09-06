@@ -7,9 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>CubicalCompare</AssemblyName>
     <RootNamespace>CubicalCompare.Windows</RootNamespace>
-    <Version>3.0.300</Version>
-    <FileVersion>3.0.300.0</FileVersion>
-    <AssemblyVersion>3.0.300.0</AssemblyVersion>
+    <Version>3.0.301</Version>
+    <FileVersion>3.0.301.0</FileVersion>
+    <AssemblyVersion>3.0.301.0</AssemblyVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>

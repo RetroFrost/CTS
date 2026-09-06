@@ -388,7 +388,7 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    public const string AppVersion = "3.0.300";
+    public const string AppVersion = "3.0.301";
     public const int RendererApi = 3;
 
     private static readonly HashSet<string> Engines = new(StringComparer.Ordinal)
@@ -416,7 +416,7 @@ public static class RendererCapabilities
         "renderer-v3-zip-package", "project-card-data", "relationships-exact-v2", "relationships-footer-waveform",
         "relationships-rich-typography", "relationships-shadow-mask-v1", "relationships-shadow-outside-v2",
         "relationships-single-owner-pass-v1", "relationships-windowed-card-tracks-v1", "infinite-timeline-source-v1",
-        "infinite-timeline-source-v2",
+        "infinite-timeline-source-v2", "illustrated-project-layout-v1", "renderer-font-asset-v1",
     };
 
     public static RendererValidationReport Report(RendererSpec spec)

@@ -1,4 +1,4 @@
-name: Build Cubical Compare 3.0.300 Renderer v3
+name: Build Cubical Compare 3.0.301 Renderer v3
 # Recovery build: compile the verified baseline and apply only scoped Renderer v3 fixes.
 
 on:
@@ -41,10 +41,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Verify 3.0.300 Renderer v3 contract
+      - name: Verify 3.0.301 Renderer v3 contract
         run: python tools/fix_v30300_renderer_v3_identity.py
 
-      - name: Restore 3.0.300 export-reader compatibility
+      - name: Restore 3.0.301 export-reader compatibility
         run: python tools/fix_v30300_export_reader_compat.py
 
       - name: Fix Renderer v3 coordinate-space composition
@@ -66,14 +66,14 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Cubical-Compare-3.0.300-Renderer-v3-DATA-DRIVEN-debug.apk
-          cp android/app/build/outputs/apk/release/app-release.apk dist/Cubical-Compare-3.0.300-Renderer-v3-DATA-DRIVEN-release.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Cubical-Compare-3.0.301-Renderer-v3-DATA-DRIVEN-debug.apk
+          cp android/app/build/outputs/apk/release/app-release.apk dist/Cubical-Compare-3.0.301-Renderer-v3-DATA-DRIVEN-release.apk
           (cd dist && sha256sum *.apk > SHA256SUMS.txt)
 
       - name: Upload APK bundle
         uses: actions/upload-artifact@v4
         with:
-          name: Cubical-Compare-3.0.300-Renderer-v3-DATA-DRIVEN
+          name: Cubical-Compare-3.0.301-Renderer-v3-DATA-DRIVEN
           path: dist/*
           if-no-files-found: error
 

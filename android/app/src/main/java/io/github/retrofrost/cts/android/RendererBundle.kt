@@ -278,6 +278,8 @@ object RendererCapabilities {
         "renderer-v3-sidecar-resources",
         "renderer-v3-zip-package",
         "project-card-data",
+        "illustrated-project-layout-v1",
+        "renderer-font-asset-v1",
 )
 
     fun report(spec: RendererSpec): RendererValidationReport {

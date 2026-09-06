@@ -20,8 +20,8 @@ android {
         applicationId = "io.github.retrofrost.cts.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 300300
-        versionName = "3.0.300"
+        versionCode = 300301
+        versionName = "3.0.301"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -43,7 +43,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".v30300preview"
+            applicationIdSuffix = ".v30301preview"
             versionNameSuffix = "-preview"
         }
         release {
