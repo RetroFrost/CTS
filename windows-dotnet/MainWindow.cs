@@ -16,6 +16,7 @@ public sealed class MainWindow : Window
 {
     private readonly RendererStore _rendererStore = new();
     private readonly RendererEngine _engine = new();
+    private readonly IntroVideoSource _introSource = new();
     private StudioProject _project;
     private RendererSpec _renderer;
     private string? _projectPath;
@@ -196,8 +197,8 @@ public sealed class MainWindow : Window
         foreach (var check in new[] { _badges,_credits,_autoLength,_soundtrackLoop }) { check.Checked += (_,_)=>Changed(true); check.Unchecked += (_,_)=>Changed(true); }
         foreach (var combo in new[] { _introMode,_fontFamily,_codec,_imageLayer }) combo.SelectionChanged += (_,_) => Changed(true);
         foreach (var slider in new[] { _soundtrackVolume,_imageScale,_imageX,_imageY,_imageRotation,_cropLeft,_cropTop,_cropRight,_cropBottom }) slider.ValueChanged += (_,_) => Changed(false);
-        _preview.MouseLeftButtonDown += PreviewMouseDown; _preview.MouseMove += PreviewMouseMove; _preview.MouseLeftButtonUp += PreviewMouseUp; _preview.MouseWheel += PreviewMouseWheel;
-        Closing += (_,_) => { try { CommitFields(); ProjectAutosave.Save(_project); } catch { } _exportCts?.Cancel(); _engine.Dispose(); };
+        _preview.MouseLeftButtonDown += OnPreviewMouseDown; _preview.MouseMove += OnPreviewMouseMove; _preview.MouseLeftButtonUp += OnPreviewMouseUp; _preview.MouseWheel += OnPreviewMouseWheel;
+        Closing += (_,_) => { try { CommitFields(); ProjectAutosave.Save(_project); } catch { } _exportCts?.Cancel(); _introSource.Dispose(); _engine.Dispose(); };
     }
 
     private void Changed(bool refreshTimeline = false)
@@ -271,17 +272,17 @@ public sealed class MainWindow : Window
         if(_selectedIndex<0||_selectedIndex>=_project.Cards.Count)return;CommitFields();var source=_project.Cards[_selectedIndex];for(var i=_selectedIndex+1;i<_project.Cards.Count;i++){var target=_project.Cards[i];target.ImageX=source.ImageX;target.ImageY=source.ImageY;target.ImageScale=source.ImageScale;target.ImageRotation=source.ImageRotation;target.ImageCropLeft=source.ImageCropLeft;target.ImageCropTop=source.ImageCropTop;target.ImageCropRight=source.ImageCropRight;target.ImageCropBottom=source.ImageCropBottom;target.ImageLayer=source.ImageLayer;}ScheduleAutosave();SchedulePreview();_status.Text=$"Transform applied from card {_selectedIndex+1} onward";
     }
 
-    private void PreviewMouseDown(object sender,MouseButtonEventArgs e)
+    private void OnPreviewMouseDown(object sender,MouseButtonEventArgs e)
     {
         if(_directTransform.IsChecked!=true||e.ChangedButton!=MouseButton.Left)return;var point=ReferencePoint(e.GetPosition(_preview));if(point==null)return;var hit=HitTestCard((int)_timeline.Value,point.Value.X,point.Value.Y);if(hit>=0&&hit<_project.Cards.Count&&!string.IsNullOrWhiteSpace(_project.Cards[hit].Image)){CommitFields();_selectedIndex=hit;_cards.SelectedIndex=hit;LoadFields();}
         if(_selectedIndex<0||_selectedIndex>=_project.Cards.Count||string.IsNullOrWhiteSpace(_project.Cards[_selectedIndex].Image))return;_dragStart=e.GetPosition(_preview);_dragOrigin=CloneCard(_project.Cards[_selectedIndex],false);_preview.CaptureMouse();e.Handled=true;
     }
-    private void PreviewMouseMove(object sender,MouseEventArgs e)
+    private void OnPreviewMouseMove(object sender,MouseEventArgs e)
     {
-        if(_dragStart==null||_dragOrigin==null||e.LeftButton!=MouseButtonState.Pressed)return;var current=e.GetPosition(_preview);var dx=(current.X-_dragStart.Value.X)/Math.Max(1,_preview.ActualWidth)*_renderer.ReferenceWidth;var dy=(current.Y-_dragStart.Value.Y)/Math.Max(1,_preview.ActualHeight)*_renderer.ReferenceHeight;var card=_project.Cards[_selectedIndex];var x=Math.Clamp(_dragOrigin.ImageX+dx,-2400,2400);var y=Math.Clamp(_dragOrigin.ImageY+dy,-2400,2400);var snap=14.0;_verticalGuide.Visibility=Math.Abs(x)<=snap?Visibility.Visible:Visibility.Collapsed;_horizontalGuide.Visibility=Math.Abs(y)<=snap?Visibility.Visible:Visibility.Collapsed;if(Math.Abs(x)<=snap)x=0;if(Math.Abs(y)<=snap)y=0;card.ImageX=x;card.ImageY=y;SyncTransformControlsFromCard(card);RenderPreview((int)_timeline.Value);_saveState.Text="Saving";
+        if(_dragStart==null||_dragOrigin==null||e.LeftButton!=MouseButtonState.Pressed)return;var current=e.GetPosition(_preview);var rw=Math.Max(1,_renderer.ReferenceWidth);var rh=Math.Max(1,_renderer.ReferenceHeight);var displayScale=Math.Max(.000001,Math.Min(_preview.ActualWidth/rw,_preview.ActualHeight/rh));var dx=(current.X-_dragStart.Value.X)/displayScale;var dy=(current.Y-_dragStart.Value.Y)/displayScale;var card=_project.Cards[_selectedIndex];var x=Math.Clamp(_dragOrigin.ImageX+dx,-2400,2400);var y=Math.Clamp(_dragOrigin.ImageY+dy,-2400,2400);var snap=14.0;_verticalGuide.Visibility=Math.Abs(x)<=snap?Visibility.Visible:Visibility.Collapsed;_horizontalGuide.Visibility=Math.Abs(y)<=snap?Visibility.Visible:Visibility.Collapsed;if(Math.Abs(x)<=snap)x=0;if(Math.Abs(y)<=snap)y=0;card.ImageX=x;card.ImageY=y;SyncTransformControlsFromCard(card);RenderPreview((int)_timeline.Value);_saveState.Text="Saving";
     }
-    private void PreviewMouseUp(object sender,MouseButtonEventArgs e){if(_dragStart==null)return;_dragStart=null;_dragOrigin=null;_preview.ReleaseMouseCapture();_verticalGuide.Visibility=Visibility.Collapsed;_horizontalGuide.Visibility=Visibility.Collapsed;ScheduleAutosave();e.Handled=true;}
-    private void PreviewMouseWheel(object sender,MouseWheelEventArgs e)
+    private void OnPreviewMouseUp(object sender,MouseButtonEventArgs e){if(_dragStart==null)return;_dragStart=null;_dragOrigin=null;_preview.ReleaseMouseCapture();_verticalGuide.Visibility=Visibility.Collapsed;_horizontalGuide.Visibility=Visibility.Collapsed;ScheduleAutosave();e.Handled=true;}
+    private void OnPreviewMouseWheel(object sender,MouseWheelEventArgs e)
     {
         if(_directTransform.IsChecked!=true||_selectedIndex<0||_selectedIndex>=_project.Cards.Count)return;var card=_project.Cards[_selectedIndex];if(string.IsNullOrWhiteSpace(card.Image))return;if((Keyboard.Modifiers&ModifierKeys.Alt)!=0){card.ImageRotation=Math.Clamp(card.ImageRotation+(e.Delta>0?2:-2),-180,180);}else{var factor=e.Delta>0?1.06:1/1.06;card.ImageScale=Math.Clamp(card.ImageScale*factor,.05,12);}SyncTransformControlsFromCard(card);RenderPreview((int)_timeline.Value);ScheduleAutosave();e.Handled=true;
     }
@@ -293,7 +294,7 @@ public sealed class MainWindow : Window
 
     private int HitTestCard(int frame,double x,double y)
     {
-        if(_project.Cards.Count==0)return -1;
+        if(_project.Cards.Count==0)return -1;var mapped=TimelineToEngineFrame(frame);if(mapped==null)return -1;frame=mapped.Value;
         if(_renderer.Engine=="scene-v3"&&_renderer.SceneV3!=null)
         {
             foreach(var obj in _renderer.SceneV3.Objects.AsEnumerable().Reverse())
@@ -305,13 +306,25 @@ public sealed class MainWindow : Window
     }
     private Dictionary<int,double> LegacyPositions(int frame)
     {
-        var result=new Dictionary<int,double>();if(_renderer.Engine=="ribbon-exact")
+        var result=new Dictionary<int,double>();
+        if(_renderer.Engine=="ribbon-exact")
         {
             if(frame>=_renderer.ContinuousStartFrame&&_project.Cards.Count>4){var segment=(frame-_renderer.ContinuousStartFrame)/512;var scroll=_renderer.Track($"ribbon.scroll.{segment}",frame)??((frame-_renderer.ContinuousStartFrame)/(double)Math.Max(1,_renderer.ContinuousStepFrames)*_renderer.SlotPitch);for(var i=0;i<_project.Cards.Count;i++){var px=i*_renderer.SlotPitch-scroll;if(px>-_renderer.SlotPitch&&px<_renderer.ReferenceWidth+_renderer.SlotPitch)result[i]=px;}return result;}
             var active=-1;for(var i=0;i<Math.Min(4,_project.Cards.Count);i++)if(frame>=_renderer.OpeningStarts.ElementAtOrDefault(i))active=i;if(active<0)return result;for(var i=0;i<=active;i++)result[i]=i*_renderer.SlotPitch;return result;
         }
+        if(_renderer.Engine=="relationships-exact")
+        {
+            if(frame<_renderer.ContinuousStartFrame){for(var i=0;i<Math.Min(4,_project.Cards.Count);i++){var start=i<_renderer.OpeningStarts.Count?_renderer.OpeningStarts[i]:384+i*140;if(frame>=start)result[i]=i*_renderer.SlotPitch;}return result;}
+            var segment=(frame-_renderer.ContinuousStartFrame)/4096;var scroll=_renderer.Track($"relationships.scroll.{segment}",frame)??((frame-_renderer.ContinuousStartFrame)*2.0);for(var i=0;i<_project.Cards.Count;i++){var px=i*_renderer.SlotPitch-scroll;if(px>-_renderer.SlotPitch*2&&px<_renderer.ReferenceWidth+_renderer.SlotPitch*2)result[i]=px;}return result;
+        }
+        if(_renderer.Engine=="infinite-timeline-exact")
+        {
+            if(frame<_renderer.ContinuousStartFrame){for(var i=0;i<Math.Min(4,_project.Cards.Count);i++){var start=i<_renderer.OpeningStarts.Count?_renderer.OpeningStarts[i]:new[]{187,261,329,398}[i];if(frame>=start)result[i]=i*480.0;}return result;}
+            var scroll=_renderer.Track("infinite.scroll",frame)??InfinitePreviewScroll(frame,_renderer.ContinuousStartFrame);for(var i=0;i<_project.Cards.Count;i++){var px=i*483.0-scroll;if(px>-483&&px<_renderer.ReferenceWidth+483)result[i]=px;}return result;
+        }
         var step=Math.Max(1,_renderer.ContinuousStepFrames);var standard=frame/(double)step*_renderer.SlotPitch;for(var i=0;i<_project.Cards.Count;i++){var px=i*_renderer.SlotPitch-standard;if(px>-_renderer.SlotPitch&&px<_renderer.ReferenceWidth+_renderer.SlotPitch)result[i]=px;}return result;
     }
+    private static double InfinitePreviewScroll(int frame,int start){const double speed=3.2065854,fast=24;const int fastStart=5265;if(frame<=fastStart)return Math.Max(0,frame-start)*speed;var atFast=Math.Max(0,fastStart-start)*speed;return atFast+(frame-fastStart)*fast;}
     private static int V3CardIndex(RendererObjectV3 obj){if(obj.Raw.ValueKind==JsonValueKind.Object){if(obj.Raw.TryGetProperty("cardIndex",out var c)&&c.TryGetInt32(out var ci))return ci;if(obj.Raw.TryGetProperty("dataIndex",out var d)&&d.TryGetInt32(out var di))return di;}var at=obj.Id.LastIndexOf('@');return at>=0&&int.TryParse(obj.Id[(at+1)..],out var parsed)?parsed:-1;}
     private static double JsonNumber(Dictionary<string,object?> props,string key,double fallback){if(!props.TryGetValue(key,out var value)||value==null)return fallback;return value is IConvertible c?Convert.ToDouble(c,CultureInfo.InvariantCulture):fallback;}
 
@@ -340,16 +353,19 @@ public sealed class MainWindow : Window
     private void RefreshCardNames(){if(_cards.Items.Count==_project.Cards.Count)_cards.Items.Refresh();}
     private void RefreshRendererLabel()=>_rendererLabel.Text=$"{_renderer.Name} • API {_renderer.RendererApi} • {_renderer.ReferenceWidth}×{_renderer.ReferenceHeight}@{_renderer.ReferenceFps}";
     private void RefreshTimeline(){if(!_loading)CommitFields();var count=Math.Max(1,FrameCount());_timeline.Maximum=count-1;if(_timeline.Value>_timeline.Maximum)_timeline.Value=_timeline.Maximum;UpdateFrameLabel();}
-    private int FrameCount(){var baseFrames=Math.Max(1,_engine.FrameCount(_project,_renderer));var intro=RendererIntroFrames();return _project.IntroMode switch{IntroMode.Renderer=>baseFrames,IntroMode.Disabled=>Math.Max(1,baseFrames-intro),IntroMode.Custom=>Math.Max(1,baseFrames-intro),_=>baseFrames};}
+    private int FrameCount(){var baseFrames=Math.Max(1,_engine.FrameCount(_project,_renderer));var intro=Math.Min(RendererIntroFrames(),Math.Max(0,baseFrames-1));var fps=OutputFps();return _project.IntroMode switch{IntroMode.Renderer=>baseFrames,IntroMode.Disabled=>Math.Max(1,baseFrames-intro),IntroMode.Custom=>Math.Max(1,CustomIntroFrames(fps)+baseFrames-intro),_=>baseFrames};}
     private int RendererIntroFrames()=>_renderer.RendererApi>=3||_renderer.Engine=="scene-v3"?0:Math.Max(0,_renderer.OpeningStarts.FirstOrDefault());
+    private int OutputFps()=>Math.Max(1,_renderer.PrecisionMode=="frame-exact"?_renderer.ReferenceFps:_project.Fps);
+    private int CustomIntroFrames(int fps)=>_project.IntroMode==IntroMode.Custom&&!string.IsNullOrWhiteSpace(_project.IntroVideo)?_introSource.FrameCount(_project.IntroVideo,fps):0;
+    private int? TimelineToEngineFrame(int frame){var intro=RendererIntroFrames();if(_project.IntroMode==IntroMode.Renderer)return Math.Max(0,frame);if(_project.IntroMode==IntroMode.Disabled)return Math.Max(0,frame+intro);var custom=CustomIntroFrames(OutputFps());if(frame<custom)return null;return Math.Max(0,frame-custom+intro);}
     private void SchedulePreview(){_previewDebounce.Stop();_previewDebounce.Start();}
     private void ScheduleAutosave(){_saveState.Text="Saving";_autosaveDebounce.Stop();_autosaveDebounce.Start();}
     private void RefreshPreview()=>RenderPreview((int)Math.Round(_timeline.Value));
     private void RenderPreview(int frame)
     {
-        if(_project.Cards.Count==0)return;try{var engineFrame=frame+(_project.IntroMode==IntroMode.Renderer?0:RendererIntroFrames());var width=Math.Clamp((int)Math.Round(Math.Max(640,_preview.ActualWidth*1.4)),640,1280);var height=Math.Max(2,(int)Math.Round(width*_renderer.ReferenceHeight/(double)Math.Max(1,_renderer.ReferenceWidth)));using var bitmap=_engine.Render(_project,_renderer,engineFrame,width,height);_preview.Source=ToBitmapSource(bitmap);UpdateFrameLabel();}catch(Exception ex){_status.Text="Preview: "+ex.Message;}
+        if(_project.Cards.Count==0)return;try{var width=Math.Clamp((int)Math.Round(Math.Max(640,_preview.ActualWidth*1.4)),640,1280);var height=Math.Max(2,(int)Math.Round(width*_renderer.ReferenceHeight/(double)Math.Max(1,_renderer.ReferenceWidth)));var engineFrame=TimelineToEngineFrame(frame);using var bitmap=engineFrame==null?_introSource.Render(_project.IntroVideo,frame,OutputFps(),width,height):_engine.Render(_project,_renderer,engineFrame.Value,width,height);_preview.Source=ToBitmapSource(bitmap);UpdateFrameLabel();}catch(Exception ex){_status.Text="Preview: "+ex.Message;}
     }
-    private void UpdateFrameLabel(){var fps=Math.Max(1,_renderer.PrecisionMode=="frame-exact"?_renderer.ReferenceFps:_project.Fps);var frame=(int)Math.Round(_timeline.Value);_frameLabel.Text=$"Frame {frame+1:N0} / {(int)_timeline.Maximum+1:N0}";_timeLabel.Text=$"{FormatDuration(frame/(double)fps)} / {FormatDuration(((int)_timeline.Maximum+1)/(double)fps)} · {fps} FPS";}
+    private void UpdateFrameLabel(){var fps=OutputFps();var frame=(int)Math.Round(_timeline.Value);_frameLabel.Text=$"Frame {frame+1:N0} / {(int)_timeline.Maximum+1:N0}";_timeLabel.Text=$"{FormatDuration(frame/(double)fps)} / {FormatDuration(((int)_timeline.Maximum+1)/(double)fps)} · {fps} FPS";}
     private void UpdateTitle()=>Title=$"{_project.Name} — Cubical Compare 3.0.300 Windows (.NET)";
     private void UpdateProjectInfo(){var outW=_renderer.PrecisionMode=="frame-exact"?_renderer.ReferenceWidth:_project.Width;var outH=_renderer.PrecisionMode=="frame-exact"?_renderer.ReferenceHeight:_project.Height;var fps=_renderer.PrecisionMode=="frame-exact"?_renderer.ReferenceFps:_project.Fps;_outputLabel.Text=$"Output: {outW}×{outH} · {fps} FPS · {FrameCount():N0} frames";var issues=new List<string>();if(_renderer.PrecisionMode=="frame-exact"){if(_project.Width!=_renderer.ReferenceWidth||_project.Height!=_renderer.ReferenceHeight)issues.Add("resolution");if(_project.Fps!=_renderer.ReferenceFps)issues.Add("frame rate");if(_renderer.CanonicalCardCount>0&&_project.Cards.Count!=_renderer.CanonicalCardCount)issues.Add("card count");if(!_project.AutoLength)issues.Add("duration");if(_project.FontFamily.Length>0||_project.FontFile.Length>0)issues.Add("font");}_accuracyLabel.Text=_renderer.PrecisionMode!="frame-exact"?"Adaptive":issues.Count==0?(_project.IntroMode==IntroMode.Renderer?"Pixel exact":"Comparison exact"):"Modified: "+string.Join(", ",issues);}
     private async Task UpdateEncoderLabelAsync(){var preference=_codec.SelectedIndex switch{1=>EncoderPreference.H264,2=>EncoderPreference.H265,_=>EncoderPreference.Auto};try{var description=await Task.Run(()=>HardwareEncoderSelector.Describe(preference));if(!Dispatcher.HasShutdownStarted)_encoderLabel.Text="Encoder: "+description;}catch(Exception ex){_encoderLabel.Text="Encoder: "+ex.Message;}}

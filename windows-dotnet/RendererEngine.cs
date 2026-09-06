@@ -8,11 +8,15 @@ namespace CubicalCompare.Windows;
 public sealed class RendererEngine : IDisposable
 {
     private readonly Dictionary<string, SKBitmap> _imageCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly InfiniteTimelineRenderer _infinite = new();
+    private readonly RelationshipsRenderer _relationships = new();
 
     public SKBitmap Render(StudioProject project, RendererSpec spec, int frame, int width, int height)
     {
         width = Math.Max(2, width);
         height = Math.Max(2, height);
+        if (spec.Engine == "infinite-timeline-exact") return _infinite.Render(project, spec, Math.Max(0, frame), width, height);
+        if (spec.Engine == "relationships-exact") return _relationships.Render(project, spec, Math.Max(0, frame), width, height);
         var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Black);
@@ -29,6 +33,14 @@ public sealed class RendererEngine : IDisposable
     public int FrameCount(StudioProject project, RendererSpec spec)
     {
         if (!project.AutoLength) return Math.Max(1, (int)Math.Round(project.CustomLengthSeconds * spec.ReferenceFps));
+        if (spec.Engine == "infinite-timeline-exact") return _infinite.FrameCount(project, spec);
+        if (spec.Engine == "relationships-exact") return _relationships.FrameCount(project, spec);
+        if (spec.Engine == "scene-v3" && spec.SceneV3 != null && spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal))
+        {
+            var lastIndex = Math.Max(0, project.Cards.Count - 1);
+            var lastCard = spec.SceneV3.Objects.FirstOrDefault(obj => obj.Kind == "card" && CardIndex(obj) == lastIndex);
+            if (lastCard != null) return Math.Clamp(lastCard.LifespanEnd + 1, 1, spec.SceneV3.Frames);
+        }
         if (spec.CanonicalFrameCount > 0) return spec.CanonicalFrameCount;
         if (spec.Engine == "ribbon-exact")
         {
@@ -574,7 +586,7 @@ public sealed class RendererEngine : IDisposable
     }
     private static JsonElement EmptyJson() { using var d = JsonDocument.Parse("{}"); return d.RootElement.Clone(); }
 
-    public void Dispose() { foreach (var bitmap in _imageCache.Values.Distinct()) bitmap.Dispose(); _imageCache.Clear(); }
+    public void Dispose() { _infinite.Dispose(); _relationships.Dispose(); foreach (var bitmap in _imageCache.Values.Distinct()) bitmap.Dispose(); _imageCache.Clear(); }
 }
 
 internal static class V3Evaluator
