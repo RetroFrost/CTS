@@ -57,6 +57,12 @@ jobs:
           Copy-Item $ffmpeg dist/Cubical-Compare-3.0.300-Windows-dotnet/ffmpeg.exe -Force
           & dist/Cubical-Compare-3.0.300-Windows-dotnet/ffmpeg.exe -version | Select-Object -First 1
 
+      - name: Self-test production app
+        shell: pwsh
+        run: |
+          & dist/Cubical-Compare-3.0.300-Windows-dotnet/CubicalCompare.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Cubical Compare Windows self-test failed with exit code $LASTEXITCODE" }
+
       - name: Package
         shell: pwsh
         run: |
