@@ -334,6 +334,8 @@ public sealed class RendererEngine : IDisposable
         ApplyTransform(canvas, bound);
         try
         {
+            if (resource.String("layout", "") == "illustrated-full") { DrawIllustratedCard(canvas, project, scene, obj, resource, bound, (float)opacity); return; }
+            if (type == "project-badge-text" && resource.TryGetProperty("headerCenterY", out _)) { DrawIllustratedBadge(canvas, project, scene, obj, resource, bound, (float)opacity); return; }
             if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) && obj.Kind is "openingCard" or "card") { DrawV3ProjectCard(canvas, project, obj, resource, (float)opacity); return; }
             if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) && obj.Kind is "openingText" or "badgeText" or "laterText") { DrawV3ProjectBadgeText(canvas, project, obj, resource, bound, (float)opacity); return; }
             switch (type)
@@ -350,6 +352,81 @@ public sealed class RendererEngine : IDisposable
             }
         }
         finally { canvas.Restore(); }
+    }
+
+
+    private SKTypeface IllustratedFont(RendererSceneV3 scene, StudioProject project)
+    {
+        var asset = scene.Root.String("fontAsset", "");
+        if (scene.Assets.TryGetValue(asset, out var bytes)) {
+            using var data = SKData.CreateCopy(bytes);
+            return SKTypeface.FromData(data) ?? SKTypeface.Default;
+        }
+        return SKTypeface.FromFamilyName(project.FontFamily) ?? SKTypeface.Default;
+    }
+    private void IllustratedText(SKCanvas canvas, string text, SKRect box, float size, SKColor color, SKTypeface font, int maxLines)
+    {
+        if(string.IsNullOrWhiteSpace(text) || box.Width<=0 || box.Height<=0)return;
+        using var paint=new SKPaint {IsAntialias=true,SubpixelText=true,Typeface=font,TextSize=size,Color=color,TextAlign=SKTextAlign.Center};
+        List<string> lines;
+        while(true){
+            lines=[];
+            foreach(var paragraph in text.Split('\n')) {
+                var line="";
+                foreach(var word in Regex.Split(paragraph.Trim(),@"\s+")) {
+                    var candidate=line.Length==0?word:line+" "+word;
+                    if(line.Length>0 && paint.MeasureText(candidate)>box.Width){lines.Add(line);line=word;}else line=candidate;
+                }
+                lines.Add(line);
+            }
+            if((lines.Count<=maxLines && lines.Count*paint.TextSize*1.08f<=box.Height && lines.All(l=>paint.MeasureText(l)<=box.Width)) || paint.TextSize<=1)break;
+            paint.TextSize=Math.Max(1,paint.TextSize-.25f);
+        }
+        var step=paint.TextSize*1.08f;var fm=paint.FontMetrics;
+        var baseline=box.MidY-(lines.Count-1)*step/2-(fm.Ascent+fm.Descent)/2;
+        canvas.Save();canvas.ClipRect(box);
+        foreach(var line in lines){canvas.DrawText(line,box.MidX,baseline,paint);baseline+=step;}
+        canvas.Restore();
+    }
+    private void DrawIllustratedCard(SKCanvas canvas,StudioProject project,RendererSceneV3 scene,RendererObjectV3 obj,JsonElement r,Dictionary<string,object?> p,float opacity)
+    {
+        var index=CardIndex(obj);if(index is not int i || i<0 || i>=project.Cards.Count)return;
+        var card=project.Cards[i];var w=(float)r.Double("width",158);var h=(float)r.Double("height",360);
+        var titleH=string.IsNullOrWhiteSpace(card.Title)?0:(float)r.Double("titleHeight",41);
+        var descH=string.IsNullOrWhiteSpace(card.Description)?0:(float)r.Double("descriptionHeight",56);
+        var imageH=Math.Max(0,h-titleH-descH);
+        using var font=IllustratedFont(scene,project);
+        using var paint=new SKPaint {IsAntialias=true};
+        canvas.Save();canvas.ClipRect(new SKRect(0,0,w,h));
+        using var alpha=new SKPaint {Color=WithAlpha(SKColors.White,opacity)};
+        canvas.SaveLayer(alpha);
+        paint.Color=ParseColor(r.String("topBackground","#232323"),SKColors.DarkGray);canvas.DrawRect(0,0,w,imageH,paint);
+        canvas.Save();canvas.ClipRect(new SKRect(0,0,w,Math.Clamp((float)Number(Get(p,"artwork.reveal"),imageH),0,imageH)));
+        DrawImageCover(canvas,card,new SKRect(0,0,w,imageH));canvas.Restore();
+        var offset=(float)Number(Get(p,"title.offsetY"),0);var top=imageH;
+        canvas.Save();canvas.ClipRect(new SKRect(0,top,w,top+titleH));
+        paint.Color=ParseColor(r.String("titleBackground","#eeeeea"),SKColors.White);canvas.DrawRect(0,top,w,titleH,paint);
+        IllustratedText(canvas,card.Title,new SKRect(2,top+1+offset,w-2,top+titleH-2+offset),(float)r.Double("titleTextSize",20),WithAlpha(ParseColor(r.String("titleText","#111111"),SKColors.Black),(float)Number(Get(p,"title.reveal"),1)),font,2);
+        paint.Color=ParseColor(r.String("ruleColor","#ec9c25"),SKColors.Orange);canvas.DrawRect(0,top+titleH-2,w,2,paint);canvas.Restore();
+        var descTop=imageH+titleH;paint.Color=ParseColor(r.String("descriptionBackground","#1b1b1b"),SKColors.DarkGray);canvas.DrawRect(0,descTop,w,h-descTop,paint);
+        IllustratedText(canvas,card.Description,new SKRect(3,descTop+4,w-3,h-5),(float)r.Double("descriptionTextSize",11),WithAlpha(ParseColor(r.String("descriptionText","#c9c9c9"),SKColors.LightGray),(float)Number(Get(p,"description.opacity"),1)),font,5);
+        canvas.Restore();canvas.Restore();
+    }
+    private void DrawIllustratedBadge(SKCanvas canvas,StudioProject project,RendererSceneV3 scene,RendererObjectV3 obj,JsonElement r,Dictionary<string,object?> p,float opacity)
+    {
+        var index=CardIndex(obj);if(index is not int i || i<0 || i>=project.Cards.Count)return;
+        var card=project.Cards[i];var parts=Regex.Split(card.Value.Trim(),@"\s+",RegexOptions.None).ToList();
+        using var font=IllustratedFont(scene,project);
+        using var paint=new SKPaint{IsAntialias=true,SubpixelText=true,Typeface=font,TextAlign=SKTextAlign.Center,Color=WithAlpha(ParseColor(r.String("color","#ffffff"),SKColors.White),opacity)};
+        var maxW=(float)r.Double("maxTextWidth",112);var cx=(float)r.Double("width",158)/2;
+        void Line(string text,string yKey,string sizeKey,double y,double size){
+            if(string.IsNullOrWhiteSpace(text))return;paint.TextSize=(float)r.Double(sizeKey,size);
+            while(paint.MeasureText(text)>maxW && paint.TextSize>1)paint.TextSize-=.25f;
+            var fm=paint.FontMetrics;canvas.DrawText(text,cx,(float)r.Double(yKey,y)-(fm.Ascent+fm.Descent)/2,paint);
+        }
+        Line(card.BadgeHeader,"headerCenterY","headerSize",37,18);
+        Line(parts.FirstOrDefault()??"","valueCenterY","valueSize",69,44);
+        Line(string.Join(" ",parts.Skip(1)),"unitCenterY","unitSize",98,20);
     }
 
     private void DrawV3ProjectCard(SKCanvas canvas, StudioProject project, RendererObjectV3 obj, JsonElement resource, float opacity)
@@ -498,12 +575,16 @@ public sealed class RendererEngine : IDisposable
             var m = new SKMatrix { ScaleX = (float)Number(Get(props, "matrix.m00", "m00"), 1), SkewX = (float)Number(Get(props, "matrix.m01", "m01"), 0), TransX = (float)Number(Get(props, "matrix.tx", "tx"), 0), SkewY = (float)Number(Get(props, "matrix.m10", "m10"), 0), ScaleY = (float)Number(Get(props, "matrix.m11", "m11"), 1), TransY = (float)Number(Get(props, "matrix.ty", "ty"), 0), Persp2 = 1 };
             canvas.Concat(ref m); return;
         }
-        var x = (float)Number(Get(props, "x", "transform.x", "translateX"), 0); var y = (float)Number(Get(props, "y", "transform.y", "translateY"), 0);
+        var x = (float)(Number(Get(props, "position.x", "transform.x", "translateX"), 0) + Number(Get(props, "movement.x"), 0)); var y = (float)(Number(Get(props, "position.y", "transform.y", "translateY"), 0) + Number(Get(props, "movement.y"), 0));
         var sx = (float)Number(Get(props, "scaleX", "transform.scaleX", "scale"), 1); var sy = (float)Number(Get(props, "scaleY", "transform.scaleY", "scale"), 1); var rotation = (float)Number(Get(props, "rotation", "transform.rotation"), 0);
         canvas.Translate(x, y); if (rotation != 0) canvas.RotateDegrees(rotation); if (sx != 1 || sy != 1) canvas.Scale(sx, sy);
     }
     private void ApplyClip(SKCanvas canvas, Dictionary<string, object?> props)
     {
+        if (Get(props, "clip.width", "clip.height") is not null) {
+            var x = (float)Number(Get(props,"clip.x"),0); var y = (float)Number(Get(props,"clip.y"),0);
+            canvas.ClipRect(new SKRect(x,y,x+Math.Max(0,(float)Number(Get(props,"clip.width"),16384)),y+Math.Max(0,(float)Number(Get(props,"clip.height"),16384))),SKClipOperation.Intersect,false);
+        }
         var points = Points(Get(props, "clip.points", "mask.points")); if (points != null && points.Count >= 3) { using var path = new SKPath(); path.MoveTo(points[0]); foreach (var p in points.Skip(1)) path.LineTo(p); path.Close(); canvas.ClipPath(path, SKClipOperation.Intersect, true); return; }
         if (Get(props, "clip.left") is not null || Get(props, "clip.right") is not null)
         {

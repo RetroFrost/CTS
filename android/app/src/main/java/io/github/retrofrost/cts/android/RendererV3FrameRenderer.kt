@@ -28,7 +28,9 @@ import kotlin.math.max
  * tracks are evaluated identically in both paths.
  */
 class RendererV3FrameRenderer {
-    private val bitmapCache = ConcurrentHashMap<String, Bitmap>()
+    private val bitmapCache = object : android.util.LruCache<String, Bitmap>(24 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
+    }
 
     fun render(project: StudioProject, spec: RendererSpec, frame: Int, width: Int, height: Int): Bitmap {
         val scene = requireNotNull(RendererV3Runtime.scene(spec)) {
@@ -114,10 +116,10 @@ class RendererV3FrameRenderer {
             when {
                 type == "project-card" ||
                     (RendererV3ProjectData.enabled(scene) && RendererV3ProjectData.isCardBody(obj)) ->
-                    RendererV3ProjectData.drawCard(project, obj, resource, opacity, canvas)
+                    RendererV3ProjectData.drawCard(project, obj, resource, opacity, canvas, scene, boundProps)
                 type == "project-badge-text" ||
                     (RendererV3ProjectData.enabled(scene) && RendererV3ProjectData.isBadgeText(obj)) ->
-                    RendererV3ProjectData.drawBadgeText(project, obj, resource, boundProps, opacity, canvas)
+                    RendererV3ProjectData.drawBadgeText(project, obj, resource, boundProps, opacity, canvas, scene)
                 else -> when (type) {
                     "polygon", "path", "shadow", "shine", "material", "filter", "custom" ->
                         drawPolygonLike(resource, boundProps, opacity, canvas)
@@ -516,7 +518,7 @@ class RendererV3FrameRenderer {
         if (source != null) {
             val local = File(source)
             if (local.isFile) {
-                return BitmapFactory.decodeFile(local.absolutePath)?.also { bitmapCache[cacheKey] = it }
+                return BitmapFactory.decodeFile(local.absolutePath)?.also { bitmapCache.put(cacheKey, it) }
             }
         }
         val bytes = when {
@@ -524,7 +526,7 @@ class RendererV3FrameRenderer {
             source != null -> scene.asset(source)
             else -> null
         } ?: return null
-        return BitmapFactory.decodeStream(ByteArrayInputStream(bytes))?.also { bitmapCache[cacheKey] = it }
+        return BitmapFactory.decodeStream(ByteArrayInputStream(bytes))?.also { bitmapCache.put(cacheKey, it) }
     }
 
     /**

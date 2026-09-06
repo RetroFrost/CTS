@@ -9,6 +9,8 @@ public static class Program
     {
         if (args.Any(arg => arg.Equals("--self-test", StringComparison.OrdinalIgnoreCase))) return AppSelfTest.Run();
 
+        if (args.FirstOrDefault() == "--render-frames") return RendererFrameCommand.Run(args);
+
         var app = new Application
         {
             ShutdownMode = ShutdownMode.OnMainWindowClose,

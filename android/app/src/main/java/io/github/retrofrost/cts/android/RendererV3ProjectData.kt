@@ -92,7 +92,13 @@ object RendererV3ProjectData {
         resource: JSONObject,
         opacity: Float,
         canvas: Canvas,
+        scene: RendererV3Scene? = null,
+        props: Map<String, Any?> = emptyMap(),
     ) {
+        if (resource.optString("layout") == "illustrated-full" && scene != null) {
+            drawIllustratedCard(project, obj, resource, opacity, canvas, scene, props)
+            return
+        }
         val index = cardIndex(obj) ?: return
         val card = project.cards.getOrNull(index) ?: return
         val width = resource.optDouble("width", 470.0).toFloat().coerceAtLeast(1f)
@@ -190,11 +196,16 @@ object RendererV3ProjectData {
         props: Map<String, Any?>,
         opacity: Float,
         canvas: Canvas,
+        scene: RendererV3Scene? = null,
     ) {
         val index = cardIndex(obj) ?: return
         val card = project.cards.getOrNull(index) ?: return
         if (card.value.isBlank() && card.badgeHeader.isBlank()) return
 
+        if (resource.has("headerCenterY") && scene != null) {
+            drawIllustratedBadge(project, card, resource, props, opacity, canvas, scene)
+            return
+        }
         val width = number(props["width"], resource.optDouble("width", 477.0)).toFloat().coerceAtLeast(1f)
         val height = number(props["height"], resource.optDouble("height", 420.0)).toFloat().coerceAtLeast(1f)
         val quad = points(props["geometry.quad"] ?: props["quad"])
@@ -355,6 +366,108 @@ object RendererV3ProjectData {
         }
         val baseline = centerY - (paint.ascent() + paint.descent()) / 2f
         canvas.drawText(text, x, baseline, paint)
+    }
+
+
+    private val sceneFonts = ConcurrentHashMap<String, Typeface>()
+    private fun sceneFont(scene: RendererV3Scene, project: StudioProject): Typeface {
+        val asset = scene.raw.optString("fontAsset")
+        val key = scene.id + ":" + asset
+        return sceneFonts[key] ?: run {
+            val bytes = scene.asset(asset)
+            val face = if (bytes == null) ProjectFontResolver.resolve(project, Typeface.DEFAULT, Typeface.NORMAL)
+            else {
+                val file = File.createTempFile("cts-font-", ".ttf")
+                try { file.writeBytes(bytes); Typeface.createFromFile(file) } finally { file.delete() }
+            }
+            sceneFonts[key] = face
+            face
+        }
+    }
+
+    private fun illustratedText(canvas: Canvas, text: String, box: RectF, size: Float,
+                                color: Int, opacity: Float, font: Typeface, maxLines: Int) {
+        if (text.isBlank() || box.width() <= 0 || box.height() <= 0) return
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = font; this.color = color; alpha = (opacity * 255).toInt()
+            textAlign = Paint.Align.CENTER; isSubpixelText = true
+        }
+        var fitted = size
+        var lines: List<String>
+        while (true) {
+            paint.textSize = fitted
+            val result = mutableListOf<String>()
+            for (paragraph in text.split('\n')) {
+                var line = ""
+                for (word in paragraph.split(Regex("\\s+")).filter { it.isNotEmpty() }) {
+                    val candidate = if (line.isEmpty()) word else "$line $word"
+                    if (line.isNotEmpty() && paint.measureText(candidate) > box.width()) {
+                        result.add(line); line = word
+                    } else line = candidate
+                }
+                result.add(line)
+            }
+            lines = result
+            if ((lines.size <= maxLines && lines.size * fitted * 1.08f <= box.height()
+                && lines.all { paint.measureText(it) <= box.width() }) || fitted <= 1f) break
+            fitted = (fitted - 0.25f).coerceAtLeast(1f)
+        }
+        val lineHeight = fitted * 1.08f
+        var baseline = box.centerY() - (lines.size - 1) * lineHeight / 2 - (paint.ascent() + paint.descent()) / 2
+        canvas.save(); canvas.clipRect(box)
+        for (line in lines) { canvas.drawText(line, box.centerX(), baseline, paint); baseline += lineHeight }
+        canvas.restore()
+    }
+
+    private fun drawIllustratedCard(project: StudioProject, obj: RendererV3Object, r: JSONObject,
+                                    opacity: Float, canvas: Canvas, scene: RendererV3Scene, p: Map<String, Any?>) {
+        val card = project.cards.getOrNull(cardIndex(obj) ?: return) ?: return
+        val w = r.optDouble("width", 158.0).toFloat()
+        val h = r.optDouble("height", 360.0).toFloat()
+        val titleH = if (card.title.isBlank()) 0f else r.optDouble("titleHeight", 41.0).toFloat()
+        val descH = if (card.description.isBlank()) 0f else r.optDouble("descriptionHeight", 56.0).toFloat()
+        val imageH = (h - titleH - descH).coerceAtLeast(0f)
+        val font = sceneFont(scene, project)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        canvas.save(); canvas.clipRect(0f, 0f, w, h)
+        if (opacity < 1f) canvas.saveLayerAlpha(null, (opacity * 255).toInt())
+        paint.color = color(r, "topBackground", Color.DKGRAY); canvas.drawRect(0f, 0f, w, imageH, paint)
+        canvas.save(); canvas.clipRect(0f, 0f, w, number(p["artwork.reveal"], imageH.toDouble()).toFloat().coerceIn(0f, imageH))
+        drawArtwork(canvas, card, RectF(0f, 0f, w, imageH)); canvas.restore()
+        val offset = number(p["title.offsetY"], 0.0).toFloat()
+        val top = imageH
+        canvas.save()
+        canvas.clipRect(0f, top, w, top + titleH)
+        paint.color = color(r,"titleBackground",Color.WHITE); canvas.drawRect(0f,top,w,top+titleH,paint)
+        illustratedText(canvas,card.title,RectF(2f,top+1f+offset,w-2f,top+titleH-2f+offset),r.optDouble("titleTextSize",20.0).toFloat(),color(r,"titleText",Color.BLACK),number(p["title.reveal"],1.0).toFloat(),font,2)
+        paint.color = color(r,"ruleColor",Color.rgb(236,156,37)); canvas.drawRect(0f,top+titleH-2f,w,top+titleH,paint)
+        canvas.restore()
+        val descTop = imageH + titleH
+        paint.color = color(r,"descriptionBackground",Color.rgb(27,27,27)); canvas.drawRect(0f,descTop,w,h,paint)
+        illustratedText(canvas,card.description,RectF(3f,descTop+4f,w-3f,h-5f),r.optDouble("descriptionTextSize",11.0).toFloat(),color(r,"descriptionText",Color.LTGRAY),number(p["description.opacity"],1.0).toFloat(),font,5)
+        if (opacity < 1f) canvas.restore()
+        canvas.restore()
+    }
+
+    private fun drawIllustratedBadge(project: StudioProject, card: StudioCard, r: JSONObject,
+                                     p: Map<String, Any?>, opacity: Float, canvas: Canvas, scene: RendererV3Scene) {
+        val w = r.optDouble("width",158.0).toFloat()
+        val parts = card.value.trim().split(Regex("\\s+"), limit=2)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface=sceneFont(scene,project); color=color(r,"color",Color.WHITE)
+            alpha=(opacity*255).toInt(); textAlign=Paint.Align.CENTER; isSubpixelText=true
+        }
+        val maxW=r.optDouble("maxTextWidth",112.0).toFloat()
+        fun line(text:String,key:String,sizeKey:String,y:Double,size:Double) {
+            if(text.isBlank())return
+            paint.textSize=r.optDouble(sizeKey,size).toFloat()
+            while(paint.measureText(text)>maxW && paint.textSize>1)paint.textSize-=0.25f
+            val cy=r.optDouble(key,y).toFloat()
+            canvas.drawText(text,w/2,cy-(paint.ascent()+paint.descent())/2,paint)
+        }
+        line(card.badgeHeader,"headerCenterY","headerSize",37.0,18.0)
+        line(parts.firstOrNull().orEmpty(),"valueCenterY","valueSize",69.0,44.0)
+        line(parts.getOrNull(1).orEmpty(),"unitCenterY","unitSize",98.0,20.0)
     }
 
     private fun drawWrappedText(

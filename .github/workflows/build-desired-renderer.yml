@@ -1,0 +1,47 @@
+name: Build measured illustrated renderer
+on:
+  push:
+    branches: [work/desired-reference-renderer]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build Android
+        working-directory: android
+        run: bash gradlew :app:assembleDebug :app:assembleRelease --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Desired-Renderer-Android
+          path: android/app/build/outputs/apk/**/*.apk
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Windows
+        run: dotnet publish windows-dotnet/CubicalCompare.Windows.csproj -c Release -r win-x64 --self-contained true -o dist/windows
+      - name: Test illustrated layout and live project binding
+        shell: pwsh
+        run: |
+          python -m pip install pillow
+          python tools/test_illustrated_runtime.py dist/windows/CubicalCompare.exe
+      - name: Bundle encoder
+        shell: pwsh
+        run: |
+          python -m pip install imageio-ffmpeg
+          $encoder = python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
+          Copy-Item $encoder dist/windows/ffmpeg.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Desired-Renderer-Windows
+          path: dist/windows
