@@ -1,0 +1,41 @@
+name: Build Cubical Compare 4 Windows
+
+on:
+  push:
+    branches:
+      - windows/main
+    paths:
+      - 'windows/CubicalCompare/**'
+      - '.github/workflows/build-cubical-compare-4-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-win-x64:
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
+
+      - name: Publish self-contained WinUI 3 build
+        run: dotnet publish windows/CubicalCompare/CubicalCompare.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -o artifacts/CubicalCompare-4-win-x64
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: CubicalCompare-4-win-x64
+          path: artifacts/CubicalCompare-4-win-x64/**
+          if-no-files-found: error
+          retention-days: 14
