@@ -18,6 +18,10 @@ namespace CubicalCompare;
 public sealed partial class MainWindow : Window
 {
     private LegacyRendererAdapter? _legacyRenderer;
+    private Zipack2ImportResult? _pendingZipack2;
+    private bool _projectShowBadges = true;
+    private bool _projectCreditsEnabled = true;
+    private double _projectDurationSeconds;
     private long _renderRevision;
 
     public ObservableCollection<ProjectCardViewModel> Cards { get; } = [];
@@ -64,9 +68,14 @@ public sealed partial class MainWindow : Window
     private void NewProject_Click(object sender, RoutedEventArgs e)
     {
         ClearProjectCards();
+        _pendingZipack2 = null;
+        _projectShowBadges = true;
+        _projectCreditsEnabled = true;
+        _projectDurationSeconds = 0;
         AddProjectCard(new ProjectCardViewModel { Title = "Card 1", Value = "1" });
         CardsList.SelectedIndex = 0;
         RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
+        RefreshTimelineRange();
         _ = RenderCurrentFrameAsync();
     }
 
@@ -107,17 +116,21 @@ public sealed partial class MainWindow : Window
             RootNavigation.SelectedItem = RootNavigation.MenuItems[1];
 
             var result = await Zipack2Importer.ImportAsync(file.Path);
+            _pendingZipack2 = result;
             DetectedCards.Clear();
             var sequence = 1;
             foreach (var card in result.Cards)
                 DetectedCards.Add(new DetectedCardViewModel(card, sequence++));
 
             RefreshDetectedOrder();
-            DetectedSummaryText.Text = $"{result.Name} · {result.Sheets.Count} contact sheet(s) · {DetectedCards.Count} detected card(s)";
+            var metadataCount = result.Cards.Count(card => card.Data is not null);
+            var metadataText = metadataCount > 0 ? $" · {metadataCount} data row(s) mapped" : "";
+            DetectedSummaryText.Text = $"{result.Name} · {result.Sheets.Count} contact sheet(s) · {DetectedCards.Count} detected card(s){metadataText}";
             if (DetectedCards.Count > 0) DetectedCardsList.SelectedIndex = 0;
         }
         catch (Exception ex)
         {
+            _pendingZipack2 = null;
             DetectedSummaryText.Text = "Import failed.";
             await ShowErrorAsync("Could not import Zipack2", ex.Message);
         }
@@ -153,15 +166,35 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (_pendingZipack2 is { } pack)
+        {
+            _projectShowBadges = pack.ShowBadges;
+            _projectCreditsEnabled = pack.CreditsEnabled;
+            _projectDurationSeconds = pack.DurationSeconds;
+        }
+
         ClearProjectCards();
         for (var index = 0; index < approved.Length; index++)
         {
             var detected = approved[index];
+            var data = detected.Card.Data;
             AddProjectCard(new ProjectCardViewModel
             {
-                Title = $"Card {index + 1}",
-                Value = (index + 1).ToString(),
+                Id = data?.Id ?? Guid.NewGuid().ToString("N"),
+                Title = !string.IsNullOrWhiteSpace(data?.Title) ? data!.Title : $"Card {index + 1}",
+                Value = data?.Value ?? "",
+                BadgeHeader = data?.BadgeHeader ?? "",
+                Description = data?.Description ?? "",
                 ImagePath = detected.ExtractedPath,
+                ImageX = data?.ImageX ?? 0,
+                ImageY = data?.ImageY ?? 0,
+                ImageScale = data?.ImageScale ?? 1,
+                ImageRotation = data?.ImageRotation ?? 0,
+                ImageCropLeft = data?.ImageCropLeft ?? 0,
+                ImageCropTop = data?.ImageCropTop ?? 0,
+                ImageCropRight = data?.ImageCropRight ?? 0,
+                ImageCropBottom = data?.ImageCropBottom ?? 0,
+                ImageLayer = data?.ImageLayer ?? "behind",
             });
         }
 
@@ -271,6 +304,10 @@ public sealed partial class MainWindow : Window
             Width = 1920,
             Height = 1080,
             Fps = 60,
+            ShowBadges = _projectShowBadges,
+            CreditsEnabled = _projectCreditsEnabled,
+            AutoLength = _projectDurationSeconds <= 0,
+            CustomLengthSeconds = _projectDurationSeconds > 0 ? _projectDurationSeconds : 90,
             RenderFontFamily = "Nexa",
         };
         foreach (var card in Cards)
@@ -283,6 +320,15 @@ public sealed partial class MainWindow : Window
                 BadgeHeader = card.BadgeHeader,
                 Description = card.Description,
                 ImagePath = card.ImagePath,
+                ImageX = card.ImageX,
+                ImageY = card.ImageY,
+                ImageScale = card.ImageScale,
+                ImageRotation = card.ImageRotation,
+                ImageCropLeft = card.ImageCropLeft,
+                ImageCropTop = card.ImageCropTop,
+                ImageCropRight = card.ImageCropRight,
+                ImageCropBottom = card.ImageCropBottom,
+                ImageLayer = card.ImageLayer,
             });
         }
         return project;
@@ -295,7 +341,7 @@ public sealed partial class MainWindow : Window
         {
             writer.WriteBytes(png);
             await writer.StoreAsync();
-            await writer.FlushAsync();
+            writer.DetachStream();
         }
         stream.Seek(0);
         var bitmap = new BitmapImage();
@@ -359,7 +405,7 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
     private string _imagePath = "";
     private BitmapImage? _preview;
 
-    public string Id { get; } = Guid.NewGuid().ToString("N");
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
 
     public string Title
     {
@@ -394,6 +440,16 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
             Preview = CreatePreview(value);
         }
     }
+
+    public double ImageX { get; init; }
+    public double ImageY { get; init; }
+    public double ImageScale { get; init; } = 1;
+    public double ImageRotation { get; init; }
+    public double ImageCropLeft { get; init; }
+    public double ImageCropTop { get; init; }
+    public double ImageCropRight { get; init; }
+    public double ImageCropBottom { get; init; }
+    public string ImageLayer { get; init; } = "behind";
 
     public BitmapImage? Preview
     {
@@ -433,8 +489,15 @@ public sealed class DetectedCardViewModel : INotifyPropertyChanged
     public DetectedZipack2Card Card { get; }
     public string ExtractedPath => Card.ExtractedPath;
     public BitmapImage Preview { get; }
-    public string Label => $"Card {_sequence}";
-    public string Details => $"Sheet {Card.SheetOrder + 1} · {Card.Bounds.Width}×{Card.Bounds.Height} · {Card.Confidence:P0} confidence";
+    public string Label => !string.IsNullOrWhiteSpace(Card.Data?.Title) ? Card.Data!.Title : $"Card {_sequence}";
+    public string Details
+    {
+        get
+        {
+            var value = !string.IsNullOrWhiteSpace(Card.Data?.Value) ? $" · {Card.Data!.Value}" : "";
+            return $"Sheet {Card.SheetOrder + 1} · {Card.Bounds.Width}×{Card.Bounds.Height}{value} · {Card.Confidence:P0} confidence";
+        }
+    }
 
     public bool Included
     {
