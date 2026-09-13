@@ -28,7 +28,7 @@
                     </Border>
                 </StackPanel>
 
-                <TextBlock Grid.Column="1" Text="{x:Bind ProjectName, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.72" />
+                <TextBlock Grid.Column="1" Text="{x:Bind ProjectName, Mode=OneTime}" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.72" />
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Content="New" Click="NewProject_Click" />
@@ -60,7 +60,6 @@
             </NavigationView.MenuItems>
 
             <Grid Padding="16">
-                <!-- Project workspace -->
                 <Grid x:Name="ProjectPage">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
@@ -107,17 +106,20 @@
                         <Grid>
                             <Viewbox Stretch="Uniform">
                                 <Border Width="960" Height="540" Background="#101010" CornerRadius="4">
-                                    <Grid DataContext="{Binding SelectedItem, ElementName=CardsList}">
-                                        <Image Source="{Binding Preview}" Stretch="UniformToFill" Opacity="0.72" />
-                                        <Border VerticalAlignment="Bottom" Background="#CC111111" Padding="24,18">
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Title}" FontSize="30" FontFamily="{StaticResource BrandFontFamily}" />
-                                                <TextBlock Text="{Binding Description}" FontSize="16" Opacity="0.72" Margin="0,4,0,0" />
-                                            </StackPanel>
-                                        </Border>
-                                        <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Padding="18,8" CornerRadius="20" Background="{ThemeResource SystemAccentColor}">
-                                            <TextBlock Text="{Binding Value}" FontSize="20" />
-                                        </Border>
+                                    <Grid>
+                                        <Image x:Name="RenderedFrameImage" Stretch="Uniform" Visibility="Collapsed" />
+                                        <Grid x:Name="CardMockPreview" DataContext="{Binding SelectedItem, ElementName=CardsList}">
+                                            <Image Source="{Binding Preview}" Stretch="UniformToFill" Opacity="0.72" />
+                                            <Border VerticalAlignment="Bottom" Background="#CC111111" Padding="24,18">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}" FontSize="30" FontFamily="{StaticResource BrandFontFamily}" />
+                                                    <TextBlock Text="{Binding Description}" FontSize="16" Opacity="0.72" Margin="0,4,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Padding="18,8" CornerRadius="20" Background="{ThemeResource SystemAccentColor}">
+                                                <TextBlock Text="{Binding Value}" FontSize="20" />
+                                            </Border>
+                                        </Grid>
                                     </Grid>
                                 </Border>
                             </Viewbox>
@@ -145,14 +147,13 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="60 FPS" VerticalAlignment="Center" Opacity="0.65" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="0" IsEnabled="False" />
-                            <TextBlock Grid.Column="2" Text="Renderer timeline connects next" VerticalAlignment="Center" Opacity="0.45" />
+                            <TextBlock x:Name="FrameCounterText" Text="Frame —" VerticalAlignment="Center" Opacity="0.65" MinWidth="90" />
+                            <Slider x:Name="ProjectFrameSlider" Grid.Column="1" Minimum="0" Maximum="0" Value="0" IsEnabled="False" StepFrequency="1" ValueChanged="ProjectFrameSlider_ValueChanged" />
+                            <TextBlock x:Name="TimelineStatusText" Grid.Column="2" Text="Load a renderer to enable timeline" VerticalAlignment="Center" Opacity="0.55" />
                         </Grid>
                     </Border>
                 </Grid>
 
-                <!-- Zipack2 assets/import review -->
                 <Grid x:Name="AssetsPage" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -206,8 +207,7 @@
                     </Grid>
                 </Grid>
 
-                <!-- Renderer compatibility page -->
-                <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="820" HorizontalAlignment="Left">
+                <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="920" HorizontalAlignment="Left">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -215,17 +215,27 @@
                     </Grid.RowDefinitions>
                     <StackPanel>
                         <TextBlock Text="Renderer" FontSize="28" />
-                        <TextBlock Text="Cubical Compare 4 keeps Renderer v2 and v3 compatibility while Renderer v4 becomes the native path." TextWrapping="Wrap" Opacity="0.62" Margin="0,4,0,0" />
+                        <TextBlock Text="Renderer v2 and v3 use the preserved compatibility evaluator. Renderer v4 is the native Cubical Compare 4 path." TextWrapping="Wrap" Opacity="0.62" Margin="0,4,0,0" />
                     </StackPanel>
-                    <Button Grid.Row="1" Content="Inspect renderer package" Click="InspectRenderer_Click" HorizontalAlignment="Left" Margin="0,18,0,0" />
+                    <Button Grid.Row="1" Content="Load renderer package" Click="InspectRenderer_Click" HorizontalAlignment="Left" Margin="0,18,0,0" />
                     <Border Grid.Row="2" Margin="0,18,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
-                        <StackPanel Spacing="8">
-                            <TextBlock x:Name="RendererNameText" Text="No renderer selected" FontSize="20" />
-                            <TextBlock x:Name="RendererGenerationText" Text="Generation —" Opacity="0.7" />
-                            <TextBlock x:Name="RendererEngineText" Text="Engine —" Opacity="0.7" />
-                            <TextBlock x:Name="RendererCanvasText" Text="Reference —" Opacity="0.7" />
-                            <TextBlock x:Name="RendererSourceText" Text="" TextWrapping="Wrap" Opacity="0.45" />
-                        </StackPanel>
+                        <Grid ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="300" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="8">
+                                <TextBlock x:Name="RendererNameText" Text="No renderer selected" FontSize="20" />
+                                <TextBlock x:Name="RendererGenerationText" Text="Generation —" Opacity="0.7" />
+                                <TextBlock x:Name="RendererEngineText" Text="Engine —" Opacity="0.7" />
+                                <TextBlock x:Name="RendererCanvasText" Text="Reference —" Opacity="0.7" />
+                                <TextBlock x:Name="RendererSourceText" Text="" TextWrapping="Wrap" Opacity="0.45" />
+                                <TextBlock x:Name="RendererCompatibilityText" Text="" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="Black" CornerRadius="10" MinWidth="420" MinHeight="236">
+                                <Image x:Name="RendererPagePreviewImage" Stretch="Uniform" />
+                            </Border>
+                        </Grid>
                     </Border>
                 </Grid>
             </Grid>
