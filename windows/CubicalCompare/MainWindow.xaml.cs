@@ -35,7 +35,7 @@ public sealed partial class MainWindow : Window
             Description = "Start editing here, or import a MegaPack Zipack2 contact sheet.",
         });
 
-        Loaded += (_, _) =>
+        RootNavigation.Loaded += (_, _) =>
         {
             RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
             CardsList.SelectedIndex = 0;
