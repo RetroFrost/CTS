@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using CubicalCompare.Core.MegaPack;
+using CubicalCompare.Core.Project;
 using CubicalCompare.Core.Renderer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -9,12 +10,16 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using Windows.Storage.Streams;
 using WinRT.Interop;
 
 namespace CubicalCompare;
 
 public sealed partial class MainWindow : Window
 {
+    private LegacyRendererAdapter? _legacyRenderer;
+    private long _renderRevision;
+
     public ObservableCollection<ProjectCardViewModel> Cards { get; } = [];
     public ObservableCollection<DetectedCardViewModel> DetectedCards { get; } = [];
 
@@ -28,7 +33,7 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1440, 900));
 
-        Cards.Add(new ProjectCardViewModel
+        AddProjectCard(new ProjectCardViewModel
         {
             Title = "Card 1",
             Value = "1",
@@ -40,6 +45,7 @@ public sealed partial class MainWindow : Window
             RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
             CardsList.SelectedIndex = 0;
         };
+        Closed += (_, _) => _legacyRenderer?.Dispose();
     }
 
     private void RootNavigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -57,10 +63,11 @@ public sealed partial class MainWindow : Window
 
     private void NewProject_Click(object sender, RoutedEventArgs e)
     {
-        Cards.Clear();
-        Cards.Add(new ProjectCardViewModel { Title = "Card 1", Value = "1" });
+        ClearProjectCards();
+        AddProjectCard(new ProjectCardViewModel { Title = "Card 1", Value = "1" });
         CardsList.SelectedIndex = 0;
         RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
+        _ = RenderCurrentFrameAsync();
     }
 
     private void AddCard_Click(object sender, RoutedEventArgs e)
@@ -70,18 +77,23 @@ public sealed partial class MainWindow : Window
             Title = $"Card {Cards.Count + 1}",
             Value = (Cards.Count + 1).ToString(),
         };
-        Cards.Add(card);
+        AddProjectCard(card);
         CardsList.SelectedItem = card;
         CardsList.ScrollIntoView(card);
+        RefreshTimelineRange();
+        _ = RenderCurrentFrameAsync();
     }
 
     private void RemoveCard_Click(object sender, RoutedEventArgs e)
     {
         if (CardsList.SelectedItem is not ProjectCardViewModel card) return;
         var index = Cards.IndexOf(card);
+        card.PropertyChanged -= ProjectCard_PropertyChanged;
         Cards.Remove(card);
-        if (Cards.Count == 0) Cards.Add(new ProjectCardViewModel { Title = "Card 1", Value = "1" });
+        if (Cards.Count == 0) AddProjectCard(new ProjectCardViewModel { Title = "Card 1", Value = "1" });
         CardsList.SelectedIndex = Math.Clamp(index, 0, Cards.Count - 1);
+        RefreshTimelineRange();
+        _ = RenderCurrentFrameAsync();
     }
 
     private async void ImportMegaPack_Click(object sender, RoutedEventArgs e)
@@ -141,11 +153,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        Cards.Clear();
+        ClearProjectCards();
         for (var index = 0; index < approved.Length; index++)
         {
             var detected = approved[index];
-            Cards.Add(new ProjectCardViewModel
+            AddProjectCard(new ProjectCardViewModel
             {
                 Title = $"Card {index + 1}",
                 Value = (index + 1).ToString(),
@@ -155,6 +167,8 @@ public sealed partial class MainWindow : Window
 
         CardsList.SelectedIndex = 0;
         RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
+        RefreshTimelineRange();
+        await RenderCurrentFrameAsync();
     }
 
     private async void InspectRenderer_Click(object sender, RoutedEventArgs e)
@@ -170,11 +184,142 @@ public sealed partial class MainWindow : Window
             RendererEngineText.Text = $"Engine {renderer.Engine}";
             RendererCanvasText.Text = $"Reference {renderer.ReferenceWidth}×{renderer.ReferenceHeight} · {renderer.ReferenceFps} FPS";
             RendererSourceText.Text = renderer.SourcePath;
+
+            if (renderer.Generation is RendererGeneration.V2 or RendererGeneration.V3)
+            {
+                var replacement = LegacyRendererAdapter.Load(file.Path);
+                _legacyRenderer?.Dispose();
+                _legacyRenderer = replacement;
+                RendererCompatibilityText.Text = $"Renderer v{replacement.Api} compatibility evaluator active.";
+                TimelineStatusText.Text = $"Renderer v{replacement.Api} · {replacement.Name}";
+                RefreshTimelineRange();
+                ProjectFrameSlider.Value = 0;
+                await RenderCurrentFrameAsync();
+            }
+            else
+            {
+                RendererCompatibilityText.Text = renderer.Generation == RendererGeneration.V4
+                    ? "Renderer v4 package recognised. Native v4 evaluation is the next engine path."
+                    : "This renderer is not handled by the v2/v3 compatibility evaluator.";
+            }
         }
         catch (Exception ex)
         {
-            await ShowErrorAsync("Could not inspect renderer", ex.Message);
+            await ShowErrorAsync("Could not load renderer", ex.Message);
         }
+    }
+
+    private async void ProjectFrameSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_legacyRenderer is null) return;
+        FrameCounterText.Text = $"Frame {(int)Math.Round(e.NewValue)} / {(int)ProjectFrameSlider.Maximum}";
+        await RenderCurrentFrameAsync();
+    }
+
+    private void RefreshTimelineRange()
+    {
+        if (_legacyRenderer is null)
+        {
+            ProjectFrameSlider.IsEnabled = false;
+            ProjectFrameSlider.Maximum = 0;
+            FrameCounterText.Text = "Frame —";
+            return;
+        }
+
+        var count = Math.Max(1, _legacyRenderer.FrameCount(BuildProject()));
+        ProjectFrameSlider.Maximum = Math.Max(0, count - 1);
+        ProjectFrameSlider.IsEnabled = count > 1;
+        if (ProjectFrameSlider.Value > ProjectFrameSlider.Maximum)
+            ProjectFrameSlider.Value = ProjectFrameSlider.Maximum;
+        FrameCounterText.Text = $"Frame {(int)Math.Round(ProjectFrameSlider.Value)} / {count - 1}";
+    }
+
+    private async Task RenderCurrentFrameAsync()
+    {
+        var renderer = _legacyRenderer;
+        if (renderer is null) return;
+
+        var revision = Interlocked.Increment(ref _renderRevision);
+        var frame = (int)Math.Round(ProjectFrameSlider.Value);
+        var project = BuildProject();
+
+        try
+        {
+            var png = await Task.Run(() => renderer.RenderPng(project, frame, 960, 540));
+            if (revision != Interlocked.Read(ref _renderRevision) || renderer != _legacyRenderer) return;
+
+            var bitmap = await BitmapFromPngAsync(png);
+            if (revision != Interlocked.Read(ref _renderRevision)) return;
+
+            RenderedFrameImage.Source = bitmap;
+            RendererPagePreviewImage.Source = bitmap;
+            RenderedFrameImage.Visibility = Visibility.Visible;
+            CardMockPreview.Visibility = Visibility.Collapsed;
+            FrameCounterText.Text = $"Frame {frame} / {(int)ProjectFrameSlider.Maximum}";
+        }
+        catch (Exception ex)
+        {
+            TimelineStatusText.Text = $"Renderer error: {ex.Message}";
+        }
+    }
+
+    private ComparisonProject BuildProject()
+    {
+        var project = new ComparisonProject
+        {
+            Name = ProjectName,
+            Width = 1920,
+            Height = 1080,
+            Fps = 60,
+            RenderFontFamily = "Nexa",
+        };
+        foreach (var card in Cards)
+        {
+            project.Cards.Add(new ComparisonCard
+            {
+                Id = card.Id,
+                Title = card.Title,
+                Value = card.Value,
+                BadgeHeader = card.BadgeHeader,
+                Description = card.Description,
+                ImagePath = card.ImagePath,
+            });
+        }
+        return project;
+    }
+
+    private static async Task<BitmapImage> BitmapFromPngAsync(byte[] png)
+    {
+        using var stream = new InMemoryRandomAccessStream();
+        using (var writer = new DataWriter(stream))
+        {
+            writer.WriteBytes(png);
+            await writer.StoreAsync();
+            await writer.FlushAsync();
+        }
+        stream.Seek(0);
+        var bitmap = new BitmapImage();
+        await bitmap.SetSourceAsync(stream);
+        return bitmap;
+    }
+
+    private void AddProjectCard(ProjectCardViewModel card)
+    {
+        card.PropertyChanged += ProjectCard_PropertyChanged;
+        Cards.Add(card);
+    }
+
+    private void ClearProjectCards()
+    {
+        foreach (var card in Cards) card.PropertyChanged -= ProjectCard_PropertyChanged;
+        Cards.Clear();
+    }
+
+    private async void ProjectCard_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_legacyRenderer is null) return;
+        RefreshTimelineRange();
+        await RenderCurrentFrameAsync();
     }
 
     private async Task<StorageFile?> PickFileAsync(IReadOnlyList<string> extensions)
@@ -209,9 +354,12 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
 {
     private string _title = "Untitled";
     private string _value = "";
+    private string _badgeHeader = "";
     private string _description = "";
     private string _imagePath = "";
     private BitmapImage? _preview;
+
+    public string Id { get; } = Guid.NewGuid().ToString("N");
 
     public string Title
     {
@@ -223,6 +371,12 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
     {
         get => _value;
         set => Set(ref _value, value);
+    }
+
+    public string BadgeHeader
+    {
+        get => _badgeHeader;
+        set => Set(ref _badgeHeader, value);
     }
 
     public string Description
