@@ -1,9 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace CubicalCompare.Core.MegaPack;
 
@@ -61,11 +58,12 @@ public static class Zipack2Importer
 
             await using var entryStream = entry.Open();
             await using var bounded = await ReadEntryAsync(entryStream, entry.Length, cancellationToken);
-            using var image = await Image.LoadAsync<Rgba32>(bounded, cancellationToken);
+            using var bitmap = SKBitmap.Decode(bounded)
+                ?? throw new InvalidDataException($"Contact sheet '{definition.Path}' is not a supported image.");
 
             var regions = definition.Regions.Count > 0
-                ? ContactSheetDetector.ValidatePredefinedRegions(image, definition.Regions, definition.Separator)
-                : ContactSheetDetector.Detect(image, definition.Separator);
+                ? ContactSheetDetector.ValidatePredefinedRegions(bitmap, definition.Regions, definition.Separator)
+                : ContactSheetDetector.Detect(bitmap, definition.Separator);
 
             if (regions.Count == 0)
                 throw new InvalidDataException($"No cards were detected on contact sheet '{definition.Path}'. Check its yellow outlines or predefined regions.");
@@ -79,15 +77,7 @@ public static class Zipack2Importer
                 cancellationToken.ThrowIfCancellationRequested();
                 var region = regions[localIndex];
                 var extractedPath = Path.Combine(sheetDirectory, $"card-{localIndex + 1:D4}.png");
-
-                using (var card = image.Clone(ctx => ctx.Crop(new Rectangle(region.X, region.Y, region.Width, region.Height))))
-                {
-                    await card.SaveAsync(extractedPath, new PngEncoder
-                    {
-                        ColorType = PngColorType.RgbWithAlpha,
-                        CompressionLevel = PngCompressionLevel.BestSpeed,
-                    }, cancellationToken);
-                }
+                ExtractCard(bitmap, region, extractedPath);
 
                 var confidence = ComputeConfidence(region, definition);
                 var detected = new DetectedZipack2Card
@@ -108,8 +98,8 @@ public static class Zipack2Importer
             {
                 Path = definition.Path,
                 Order = definition.Order,
-                Width = image.Width,
-                Height = image.Height,
+                Width = bitmap.Width,
+                Height = bitmap.Height,
                 Cards = sheetCards,
             });
         }
@@ -122,6 +112,20 @@ public static class Zipack2Importer
             Sheets = sheetResults,
             Cards = allCards,
         };
+    }
+
+    private static void ExtractCard(SKBitmap source, PixelRect region, string destinationPath)
+    {
+        using var card = new SKBitmap(region.Width, region.Height, source.ColorType, source.AlphaType);
+        var subset = new SKRectI(region.X, region.Y, region.Right, region.Bottom);
+        if (!source.ExtractSubset(card, subset))
+            throw new InvalidDataException($"Could not extract contact-sheet region {region.X},{region.Y} {region.Width}×{region.Height}.");
+
+        using var image = SKImage.FromBitmap(card);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100)
+            ?? throw new InvalidDataException("Could not encode a detected card as PNG.");
+        using var output = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        data.SaveTo(output);
     }
 
     private static void ValidateArchive(ZipArchive archive)
@@ -194,7 +198,7 @@ public static class Zipack2Importer
     private static bool IsContactSheetEntry(ZipArchiveEntry entry)
     {
         if (string.IsNullOrWhiteSpace(entry.Name)) return false;
-        var extension = Path.GetExtension(entry.Name);
+        var extension = Path.GetExtension(entry.Name).ToLowerInvariant();
         if (extension is not (".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp")) return false;
         var normalized = NormalizeEntryName(entry.FullName);
         return normalized.StartsWith("artwork/", StringComparison.OrdinalIgnoreCase)
