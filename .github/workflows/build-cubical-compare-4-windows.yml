@@ -9,6 +9,10 @@ on:
       - '.github/workflows/build-cubical-compare-4-windows.yml'
   workflow_dispatch:
 
+concurrency:
+  group: cubical-compare-4-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
