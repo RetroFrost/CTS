@@ -10,6 +10,7 @@ public static class Zipack2Importer
     private const long MaxEntryBytes = 256L * 1024 * 1024;
     private const long MaxExpandedBytes = 2L * 1024 * 1024 * 1024;
     private const int MaxSheets = 128;
+    private const int MaxCards = 10_000;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -32,6 +33,8 @@ public static class Zipack2Importer
             throw new InvalidDataException($"Unsupported Zipack2 format '{manifest.Format}'.");
         if (manifest.Version != 2)
             throw new InvalidDataException($"Unsupported Zipack2 version {manifest.Version}.");
+        if (manifest.Cards.Count > MaxCards)
+            throw new InvalidDataException($"Zipack2 contains more than {MaxCards:N0} card data rows.");
 
         var definitions = ResolveSheetDefinitions(archive, manifest);
         if (definitions.Count == 0)
@@ -75,6 +78,9 @@ public static class Zipack2Importer
             for (var localIndex = 0; localIndex < regions.Count; localIndex++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (allCards.Count >= MaxCards)
+                    throw new InvalidDataException($"Zipack2 detection produced more than {MaxCards:N0} cards.");
+
                 var region = regions[localIndex];
                 var extractedPath = Path.Combine(sheetDirectory, $"card-{localIndex + 1:D4}.png");
                 ExtractCard(bitmap, region, extractedPath);
@@ -104,6 +110,9 @@ public static class Zipack2Importer
             });
         }
 
+        for (var index = 0; index < Math.Min(allCards.Count, manifest.Cards.Count); index++)
+            allCards[index].Data = manifest.Cards[index].Normalize(index);
+
         return new Zipack2ImportResult
         {
             Name = string.IsNullOrWhiteSpace(manifest.Name) ? Path.GetFileNameWithoutExtension(path) : manifest.Name,
@@ -111,6 +120,9 @@ public static class Zipack2Importer
             ExtractionDirectory = extractionRoot,
             Sheets = sheetResults,
             Cards = allCards,
+            ShowBadges = manifest.ShowBadges,
+            CreditsEnabled = manifest.CreditsEnabled,
+            DurationSeconds = double.IsFinite(manifest.DurationSeconds) && manifest.DurationSeconds > 0 ? manifest.DurationSeconds : 0,
         };
     }
 
