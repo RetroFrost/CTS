@@ -45,20 +45,27 @@ public sealed partial class MainWindow
         _videoExportCancellation?.Dispose();
         _videoExportCancellation = new CancellationTokenSource();
         var cancellationToken = _videoExportCancellation.Token;
+        StorageFile? temporaryVideo = null;
 
         try
         {
-            // Keep export isolated from the interactive preview. More importantly, frame rendering
-            // happens on worker threads below; MediaStreamSource callbacks must never synchronously
-            // render a 1920x1080 Skia frame on the WinUI thread.
             using var renderer = LegacyRendererAdapter.Load(_legacyRenderer.SourcePath);
             var project = BuildProject();
             var width = Math.Clamp(project.Width, 320, 3840);
             var height = Math.Clamp(project.Height, 240, 2160);
             var fps = Math.Clamp(project.Fps, 1, 120);
             var frameCount = Math.Max(1, renderer.FrameCount(project));
+            var hasSoundtrack = !string.IsNullOrWhiteSpace(_soundtrackPath) && File.Exists(_soundtrackPath);
 
-            using var output = await file.OpenAsync(FileAccessMode.ReadWrite);
+            if (hasSoundtrack)
+            {
+                temporaryVideo = await ApplicationData.Current.TemporaryFolder.CreateFileAsync(
+                    $"cc-silent-{Guid.NewGuid():N}.mp4",
+                    CreationCollisionOption.ReplaceExisting);
+            }
+
+            var renderTarget = temporaryVideo ?? file;
+            using var output = await renderTarget.OpenAsync(FileAccessMode.ReadWrite);
             output.Size = 0;
 
             var inputProperties = VideoEncodingProperties.CreateUncompressed(MediaEncodingSubtypes.Bgra8, (uint)width, (uint)height);
@@ -87,8 +94,6 @@ public sealed partial class MainWindow
 
             mediaSource.SampleRequested += (_, args) =>
             {
-                // Media Foundation may request its next sample from a thread that is also servicing
-                // WinUI/COM work. Do no heavy work here. Take a deferral and render on the .NET pool.
                 var request = args.Request;
                 var deferral = request.GetDeferral();
 
@@ -120,9 +125,6 @@ public sealed partial class MainWindow
                         if (rendered.Width != width || rendered.Height != height)
                             throw new InvalidOperationException($"Renderer returned {rendered.Width}x{rendered.Height}; expected {width}x{height}.");
 
-                        // The compatibility renderer normally already outputs BGRA8888. Copy rows
-                        // directly into the Media Foundation buffer instead of allocating and drawing
-                        // a second full-resolution Skia bitmap for every frame.
                         var byteCount = checked(width * height * 4);
                         var bytes = GC.AllocateUninitializedArray<byte>(byteCount);
                         var pixels = rendered.GetPixels();
@@ -160,8 +162,6 @@ public sealed partial class MainWindow
                         sample.Duration = TimeSpan.FromTicks(frameDurationTicks);
                         request.Sample = sample;
 
-                        // MediaTranscoder.Progress can stay at zero while it is consuming source
-                        // samples. Report renderer progress ourselves so the app never looks dead.
                         var now = Environment.TickCount64;
                         if (frameIndex == frameCount - 1 || now - Interlocked.Read(ref lastUiProgressTicks) >= 125)
                         {
@@ -230,6 +230,14 @@ public sealed partial class MainWindow
             if (renderFailure is not null)
                 throw new InvalidOperationException("A renderer frame failed during export.", renderFailure);
 
+            output.Dispose();
+
+            if (temporaryVideo is not null)
+            {
+                ExportProgressBar.Value = 0;
+                await AddSoundtrackAsync(temporaryVideo, file, cancellationToken);
+            }
+
             ExportProgressBar.Value = 100;
             ExportStatusText.Text = $"Exported {Path.GetFileName(file.Path)}";
             TimelineStatusText.Text = "Video export complete";
@@ -256,6 +264,8 @@ public sealed partial class MainWindow
         }
         finally
         {
+            if (temporaryVideo is not null)
+                TryDeleteExport(temporaryVideo.Path);
             _videoExportOperation = null;
             _videoExportCancellation?.Dispose();
             _videoExportCancellation = null;
@@ -284,7 +294,6 @@ public sealed partial class MainWindow
         }
         catch
         {
-            // Best-effort cleanup only; never replace the actual export error with cleanup noise.
         }
     }
 }
