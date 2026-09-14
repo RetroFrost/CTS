@@ -63,9 +63,7 @@ public partial class App : Application
                 return;
             }
 
-            var mainWindow = new MainWindow();
-            MainWindow = mainWindow;
-            mainWindow.InitializeDirectArtworkManipulator();
+            MainWindow = new MainWindow();
             WriteLog("MainWindow constructed.");
             MainWindow.Activate();
             WriteLog("MainWindow activated.");
