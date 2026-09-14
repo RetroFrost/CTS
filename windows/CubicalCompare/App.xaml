@@ -8,7 +8,7 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
-            <FontFamily x:Key="BrandFontFamily">ms-appx:///Assets/nexa-extrabold.ttf#Nexa</FontFamily>
+            <FontFamily x:Key="BrandFontFamily">Nexa</FontFamily>
             <SolidColorBrush x:Key="EditorSurfaceBrush" Color="#141414" />
             <SolidColorBrush x:Key="EditorSurfaceRaisedBrush" Color="#1D1D1D" />
             <SolidColorBrush x:Key="EditorBorderBrush" Color="#2C2C2C" />
