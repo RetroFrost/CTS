@@ -4,6 +4,7 @@ using CubicalCompare.Core.MegaPack;
 using CubicalCompare.Core.Project;
 using CubicalCompare.Core.Thumbnail;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -34,11 +35,46 @@ public sealed partial class MainWindow
         _thumbnailHooksInstalled = true;
 
         Cards.CollectionChanged += Cards_CollectionChangedForThumbnail;
+        CardsList.SelectionChanged += CardsList_SelectionChangedForRendererPreview;
         foreach (var card in Cards) card.PropertyChanged += ThumbnailCard_PropertyChanged;
 
         await RestoreWorkspaceAsync();
         ScheduleThumbnailRefresh();
         ScheduleWorkspaceSave();
+    }
+
+    private async void CardsList_SelectionChangedForRendererPreview(object sender, SelectionChangedEventArgs e)
+    {
+        var renderer = _legacyRenderer;
+        if (renderer is null || CardsList.SelectedItem is not ProjectCardViewModel selected) return;
+
+        var cardIndex = Cards.IndexOf(selected);
+        if (cardIndex < 0) return;
+
+        try
+        {
+            var project = BuildProject();
+            var frame = renderer.PreviewFrameForCard(project, cardIndex);
+            frame = Math.Clamp(frame, 0, (int)Math.Round(ProjectFrameSlider.Maximum));
+
+            TimelineStatusText.Text = $"Previewing card {cardIndex + 1} · {selected.Title}";
+            if (Math.Abs(ProjectFrameSlider.Value - frame) > 0.5)
+            {
+                // ValueChanged owns the render when the timeline actually moves.
+                ProjectFrameSlider.Value = frame;
+            }
+            else
+            {
+                // The selected card can map to the current frame (especially one-card projects).
+                // Render explicitly so selection still refreshes the preview.
+                await RenderCurrentFrameAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            TimelineStatusText.Text = $"Could not preview selected card: {ex.Message}";
+            App.WriteLog("Renderer card-selection preview failed", ex);
+        }
     }
 
     private void Cards_CollectionChangedForThumbnail(object? sender, NotifyCollectionChangedEventArgs e)
