@@ -100,10 +100,10 @@ public sealed partial class MainWindow
             Content = panel,
             Margin = new Thickness(0, 4, 0, 0),
         };
-        expander.Expanded += async (_, _) =>
+        expander.Tapped += (_, _) =>
         {
             if (!_renderFontSystemLoaded)
-                await LoadSystemFontsAsync(force: false);
+                _ = LoadSystemFontsAsync(force: false);
         };
         inspectorStack.Children.Add(expander);
 
@@ -165,9 +165,6 @@ public sealed partial class MainWindow
 
     private static List<RenderFontChoice> EnumerateSystemFontsFast()
     {
-        // SKFontManager asks the platform font manager for family names directly. The previous
-        // implementation opened every TTF/OTF/TTC file on disk one by one, which could make launch
-        // and the first ComboBox open look frozen on machines with large font collections.
         var families = SKFontManager.Default.FontFamilies ?? Array.Empty<string>();
         return families
             .Where(x => !string.IsNullOrWhiteSpace(x))
