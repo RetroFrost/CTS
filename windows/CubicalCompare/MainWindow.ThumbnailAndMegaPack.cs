@@ -26,6 +26,7 @@ public sealed partial class MainWindow
     private bool _thumbnailHooksInstalled;
     private long _workspaceRevision;
     private bool _restoringWorkspace;
+    private readonly SemaphoreSlim _workspaceIoGate = new(1, 1);
 
     private async void RootNavigation_Loaded(object sender, RoutedEventArgs e)
     {
@@ -84,6 +85,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             ThumbnailStatusText.Text = $"Thumbnail generation failed: {ex.Message}";
+            App.WriteLog("Automatic thumbnail generation failed", ex);
         }
     }
 
@@ -121,6 +123,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             ThumbnailStatusText.Text = "Could not save thumbnail.";
+            App.WriteLog("Thumbnail save failed", ex);
             await ShowErrorAsync("Could not save thumbnail", ex.Message);
         }
     }
@@ -142,6 +145,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             MegaPackExportStatusText.Text = "MegaPack export failed.";
+            App.WriteLog("MegaPack export failed", ex);
             await ShowErrorAsync("Could not export MegaPack", ex.Message);
         }
     }
@@ -156,26 +160,37 @@ public sealed partial class MainWindow
 
     private async Task SaveWorkspaceAsync(ComparisonProject snapshot, long revision)
     {
+        string? temporaryPath = null;
         try
         {
             // Debounce rapid typing and slider/property edits. Only the newest snapshot reaches disk.
             await Task.Delay(650);
             if (revision != Interlocked.Read(ref _workspaceRevision) || _restoringWorkspace) return;
 
-            var folder = ApplicationData.Current.LocalFolder.Path;
-            Directory.CreateDirectory(folder);
-            var path = Path.Combine(folder, WorkspaceRecoveryFileName);
-            var temporaryPath = path + ".tmp";
-            var json = JsonSerializer.Serialize(snapshot, WorkspaceJsonOptions);
-
-            await File.WriteAllTextAsync(temporaryPath, json);
-            if (revision != Interlocked.Read(ref _workspaceRevision))
+            await _workspaceIoGate.WaitAsync();
+            try
             {
-                TryDelete(temporaryPath);
-                return;
-            }
+                // Re-check after acquiring the gate: another edit may have happened while this save
+                // was waiting behind an older write.
+                if (revision != Interlocked.Read(ref _workspaceRevision) || _restoringWorkspace) return;
 
-            File.Move(temporaryPath, path, overwrite: true);
+                ProjectFileService.ValidateAndNormalize(snapshot);
+                var folder = ApplicationData.Current.LocalFolder.Path;
+                Directory.CreateDirectory(folder);
+                var path = Path.Combine(folder, WorkspaceRecoveryFileName);
+                temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
+                var json = JsonSerializer.Serialize(snapshot, WorkspaceJsonOptions);
+
+                await File.WriteAllTextAsync(temporaryPath, json);
+                if (revision != Interlocked.Read(ref _workspaceRevision)) return;
+
+                File.Move(temporaryPath, path, overwrite: true);
+                temporaryPath = null;
+            }
+            finally
+            {
+                _workspaceIoGate.Release();
+            }
         }
         catch (Exception ex)
         {
@@ -183,30 +198,47 @@ public sealed partial class MainWindow
             TimelineStatusText.Text = $"Autosave unavailable: {ex.Message}";
             App.WriteLog("Workspace autosave failed", ex);
         }
+        finally
+        {
+            if (temporaryPath is not null) TryDelete(temporaryPath);
+        }
     }
 
     private void FlushWorkspaceOnClose()
     {
         if (_restoringWorkspace) return;
 
+        string? temporaryPath = null;
+        var gateHeld = false;
         try
         {
-            // Closing can happen inside the debounce window. Persist a final snapshot synchronously so
-            // the last keystrokes are not lost simply because the user closed the window quickly.
+            // Closing can happen while an async autosave is already writing. Bump the revision first,
+            // then wait for that write to leave the critical section before persisting the final state.
+            // This prevents an older snapshot from winning a shutdown race and overwriting last edits.
             Interlocked.Increment(ref _workspaceRevision);
+            _workspaceIoGate.Wait();
+            gateHeld = true;
+
             var snapshot = BuildProject();
+            ProjectFileService.ValidateAndNormalize(snapshot);
             var folder = ApplicationData.Current.LocalFolder.Path;
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, WorkspaceRecoveryFileName);
-            var temporaryPath = path + ".closing.tmp";
+            temporaryPath = path + ".closing-" + Guid.NewGuid().ToString("N") + ".tmp";
             var json = JsonSerializer.Serialize(snapshot, WorkspaceJsonOptions);
             File.WriteAllText(temporaryPath, json);
             File.Move(temporaryPath, path, overwrite: true);
+            temporaryPath = null;
         }
         catch (Exception ex)
         {
             // Window shutdown should never be blocked by recovery persistence.
             App.WriteLog("Final workspace flush failed", ex);
+        }
+        finally
+        {
+            if (temporaryPath is not null) TryDelete(temporaryPath);
+            if (gateHeld) _workspaceIoGate.Release();
         }
     }
 
@@ -227,8 +259,10 @@ public sealed partial class MainWindow
             var project = JsonSerializer.Deserialize<ComparisonProject>(json, WorkspaceJsonOptions);
             if (project is null)
                 throw new InvalidDataException("The recovery file does not contain a project.");
-            if (project.Cards is null || project.Cards.Count == 0)
-                throw new InvalidDataException("The recovery file does not contain any cards.");
+
+            // Apply the same bounds and normalization used for explicit project files so malformed
+            // recovery data cannot inject NaN transforms, duplicate IDs, absurd dimensions or card counts.
+            ProjectFileService.ValidateAndNormalize(project);
 
             _restoringWorkspace = true;
             ClearProjectCards();
@@ -240,21 +274,21 @@ public sealed partial class MainWindow
             {
                 AddProjectCard(new ProjectCardViewModel
                 {
-                    Id = string.IsNullOrWhiteSpace(card.Id) ? Guid.NewGuid().ToString("N") : card.Id,
-                    Title = card.Title ?? "Untitled",
-                    Value = card.Value ?? "",
-                    BadgeHeader = card.BadgeHeader ?? "",
-                    Description = card.Description ?? "",
-                    ImagePath = card.ImagePath ?? "",
+                    Id = card.Id,
+                    Title = card.Title,
+                    Value = card.Value,
+                    BadgeHeader = card.BadgeHeader,
+                    Description = card.Description,
+                    ImagePath = card.ImagePath,
                     ImageX = card.ImageX,
                     ImageY = card.ImageY,
-                    ImageScale = card.ImageScale > 0 ? card.ImageScale : 1,
+                    ImageScale = card.ImageScale,
                     ImageRotation = card.ImageRotation,
-                    ImageCropLeft = Math.Max(0, card.ImageCropLeft),
-                    ImageCropTop = Math.Max(0, card.ImageCropTop),
-                    ImageCropRight = Math.Max(0, card.ImageCropRight),
-                    ImageCropBottom = Math.Max(0, card.ImageCropBottom),
-                    ImageLayer = string.IsNullOrWhiteSpace(card.ImageLayer) ? "behind" : card.ImageLayer,
+                    ImageCropLeft = card.ImageCropLeft,
+                    ImageCropTop = card.ImageCropTop,
+                    ImageCropRight = card.ImageCropRight,
+                    ImageCropBottom = card.ImageCropBottom,
+                    ImageLayer = card.ImageLayer,
                 });
             }
 
@@ -295,7 +329,8 @@ public sealed partial class MainWindow
     {
         var stem = string.IsNullOrWhiteSpace(value) ? "Cubical-Compare" : value.Trim();
         foreach (var invalid in Path.GetInvalidFileNameChars()) stem = stem.Replace(invalid, '-');
-        return stem.Trim().TrimEnd('.');
+        stem = stem.Trim().TrimEnd('.');
+        return string.IsNullOrWhiteSpace(stem) ? "Cubical-Compare" : stem;
     }
 
     private static void TryDelete(string path)
