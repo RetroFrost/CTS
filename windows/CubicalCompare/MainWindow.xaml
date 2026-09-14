@@ -36,6 +36,7 @@
                     <Button Content="Save" Click="SaveProject_Click" />
                     <Button Content="Save as" Click="SaveProjectAs_Click" />
                     <Button Content="Import Zipack2" Click="ImportMegaPack_Click" />
+                    <Button x:Name="ExportVideoButton" Content="Export video" Click="ExportVideo_Click" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -218,6 +219,7 @@
                                             <Button Grid.Column="2" Content="Center" HorizontalAlignment="Stretch" Click="ArtworkTransform_Center_Click" />
                                             <Button Grid.Column="3" Content="Reset" HorizontalAlignment="Stretch" Click="ArtworkTransform_Reset_Click" />
                                         </Grid>
+                                        <Button Content="Apply current transform to all cards" HorizontalAlignment="Stretch" Click="ArtworkTransform_ApplyAll_Click" />
                                     </StackPanel>
                                 </Expander>
                             </StackPanel>
@@ -225,15 +227,31 @@
                     </Border>
 
                     <Border Grid.Row="1" Grid.ColumnSpan="5" Margin="0,12,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="12,8">
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="FrameCounterText" Text="Frame —" VerticalAlignment="Center" Opacity="0.65" MinWidth="90" />
-                            <Slider x:Name="ProjectFrameSlider" Grid.Column="1" Minimum="0" Maximum="0" Value="0" IsEnabled="False" StepFrequency="1" ValueChanged="ProjectFrameSlider_ValueChanged" />
-                            <TextBlock x:Name="TimelineStatusText" Grid.Column="2" Text="Load a renderer to enable timeline" VerticalAlignment="Center" Opacity="0.55" />
+                        <Grid RowSpacing="6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="FrameCounterText" Text="Frame —" VerticalAlignment="Center" Opacity="0.65" MinWidth="90" />
+                                <Slider x:Name="ProjectFrameSlider" Grid.Column="1" Minimum="0" Maximum="0" Value="0" IsEnabled="False" StepFrequency="1" ValueChanged="ProjectFrameSlider_ValueChanged" />
+                                <TextBlock x:Name="TimelineStatusText" Grid.Column="2" Text="Load a renderer to enable timeline" VerticalAlignment="Center" Opacity="0.55" />
+                            </Grid>
+                            <Grid Grid.Row="1" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="160" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="ExportStatusText" Text="" VerticalAlignment="Center" Opacity="0.6" TextTrimming="CharacterEllipsis" />
+                                <ProgressBar x:Name="ExportProgressBar" Grid.Column="1" Minimum="0" Maximum="100" Value="0" Visibility="Collapsed" VerticalAlignment="Center" />
+                                <Button x:Name="ExportCancelButton" Grid.Column="2" Content="Cancel export" Click="CancelVideoExport_Click" Visibility="Collapsed" />
+                            </Grid>
                         </Grid>
                     </Border>
                 </Grid>
