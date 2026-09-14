@@ -1,3 +1,4 @@
+using CubicalCompare.Core.MegaPack;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -13,6 +14,7 @@ public sealed partial class MainWindow
     private Slider? _soundtrackVolumeSlider;
     private CheckBox? _soundtrackLoopCheckBox;
     private bool _soundtrackUiUpdating;
+    private Zipack2ImportResult? _appliedMegaPackSoundtrack;
 
     internal void InitializeSoundtrackEditor()
     {
@@ -86,6 +88,8 @@ public sealed partial class MainWindow
         };
 
         inspectorStack.Children.Add(expander);
+        Cards.CollectionChanged += (_, _) => ApplyPendingMegaPackSoundtrackIfProjectMatches();
+        ApplyPendingMegaPackSoundtrackIfProjectMatches();
         RefreshSoundtrackUi();
     }
 
@@ -114,6 +118,42 @@ public sealed partial class MainWindow
         if (_soundtrackUiUpdating) return;
         _soundtrackLoop = value;
         ScheduleWorkspaceSave();
+    }
+
+    private void ApplyPendingMegaPackSoundtrackIfProjectMatches()
+    {
+        var pack = _pendingZipack2;
+        if (pack is null || ReferenceEquals(pack, _appliedMegaPackSoundtrack) || Cards.Count == 0)
+            return;
+
+        if (!Cards.Any(card => IsInsideDirectory(card.ImagePath, pack.ExtractionDirectory)))
+            return;
+
+        _appliedMegaPackSoundtrack = pack;
+        _soundtrackPath = pack.SoundtrackPath;
+        _soundtrackLoop = pack.SoundtrackLoop;
+        _soundtrackVolume = double.IsFinite(pack.SoundtrackVolume) ? Math.Clamp(pack.SoundtrackVolume, 0, 1) : 1.0;
+        RefreshSoundtrackUi();
+        ScheduleWorkspaceSave();
+
+        if (!string.IsNullOrWhiteSpace(_soundtrackPath))
+            TimelineStatusText.Text = $"MegaPack soundtrack loaded · {Path.GetFileName(_soundtrackPath)}";
+    }
+
+    private static bool IsInsideDirectory(string filePath, string directoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || string.IsNullOrWhiteSpace(directoryPath)) return false;
+        try
+        {
+            var directory = Path.GetFullPath(directoryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var file = Path.GetFullPath(filePath);
+            return file.StartsWith(directory, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void RefreshSoundtrackUi()
