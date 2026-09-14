@@ -46,6 +46,7 @@
     <Content Include="Assets\Square150x150Logo.png" />
     <Content Include="Assets\Wide310x150Logo.png" />
     <Content Include="Assets\SplashScreen.png" />
+    <Content Include="Assets\nexa-extrabold.ttf" />
   </ItemGroup>
 
   <Target Name="GenerateCubicalComparePackageAssets" BeforeTargets="PrepareForBuild">
