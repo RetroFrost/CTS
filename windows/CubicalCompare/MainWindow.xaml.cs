@@ -62,6 +62,7 @@ public sealed partial class MainWindow : Window
     {
         ProjectPage.Visibility = tag == "project" ? Visibility.Visible : Visibility.Collapsed;
         AssetsPage.Visibility = tag == "assets" ? Visibility.Visible : Visibility.Collapsed;
+        ThumbnailPage.Visibility = tag == "thumbnail" ? Visibility.Visible : Visibility.Collapsed;
         RendererPage.Visibility = tag == "renderer" ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -405,7 +406,7 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
     private string _imagePath = "";
     private BitmapImage? _preview;
 
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
     public string Title
     {
@@ -441,15 +442,15 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
         }
     }
 
-    public double ImageX { get; init; }
-    public double ImageY { get; init; }
-    public double ImageScale { get; init; } = 1;
-    public double ImageRotation { get; init; }
-    public double ImageCropLeft { get; init; }
-    public double ImageCropTop { get; init; }
-    public double ImageCropRight { get; init; }
-    public double ImageCropBottom { get; init; }
-    public string ImageLayer { get; init; } = "behind";
+    public double ImageX { get; set; }
+    public double ImageY { get; set; }
+    public double ImageScale { get; set; } = 1;
+    public double ImageRotation { get; set; }
+    public double ImageCropLeft { get; set; }
+    public double ImageCropTop { get; set; }
+    public double ImageCropRight { get; set; }
+    public double ImageCropBottom { get; set; }
+    public string ImageLayer { get; set; } = "behind";
 
     public BitmapImage? Preview
     {
