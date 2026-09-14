@@ -12,7 +12,10 @@ public sealed class ComparisonProject
     public double CustomLengthSeconds { get; set; } = 90.0;
     public string RenderFontFamily { get; set; } = "Nexa";
     public string RenderFontFile { get; set; } = "";
-    public List<ComparisonCard> Cards { get; } = [];
+
+    // Keep this settable so projects can be safely round-tripped by System.Text.Json
+    // for workspace recovery, file persistence and future interchange formats.
+    public List<ComparisonCard> Cards { get; set; } = [];
 }
 
 public sealed class ComparisonCard
