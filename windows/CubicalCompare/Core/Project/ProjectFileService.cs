@@ -61,16 +61,10 @@ public static class ProjectFileService
             if (stagedLength > MaxProjectBytes)
                 throw new InvalidDataException("The project is too large to save safely.");
 
-            // Never destroy the last known-good project while replacing it. File.Replace performs a
-            // same-volume transactional replacement on Windows and leaves the previous version at .bak.
             if (File.Exists(fullPath))
-            {
                 File.Replace(temporaryPath, fullPath, backupPath, ignoreMetadataErrors: true);
-            }
             else
-            {
                 File.Move(temporaryPath, fullPath);
-            }
         }
         finally
         {
@@ -119,6 +113,10 @@ public static class ProjectFileService
 
         project.RenderFontFamily = NormalizeText(project.RenderFontFamily, "Nexa", 256);
         project.RenderFontFile = NormalizeText(project.RenderFontFile, string.Empty, MaxPathLength);
+        project.SoundtrackPath = NormalizeText(project.SoundtrackPath, string.Empty, MaxPathLength);
+        if (!double.IsFinite(project.SoundtrackVolume)) project.SoundtrackVolume = 1.0;
+        project.SoundtrackVolume = Math.Clamp(project.SoundtrackVolume, 0, 1);
+
         project.Cards ??= [];
         if (project.Cards.Count == 0) throw new InvalidDataException("A project must contain at least one card.");
         if (project.Cards.Count > MaxCards) throw new InvalidDataException($"Projects are limited to {MaxCards:N0} cards.");
@@ -143,8 +141,6 @@ public static class ProjectFileService
                 !double.IsFinite(card.ImageCropRight) || !double.IsFinite(card.ImageCropBottom))
                 throw new InvalidDataException($"Card '{card.Title}' contains an invalid image transform.");
 
-            // Keep transforms bounded before they reach Skia/native code. Extreme but finite values can
-            // otherwise create enormous intermediate geometry and turn a malformed project into an OOM.
             card.ImageX = Math.Clamp(card.ImageX, -100_000, 100_000);
             card.ImageY = Math.Clamp(card.ImageY, -100_000, 100_000);
             card.ImageRotation = Math.Clamp(card.ImageRotation, -360_000, 360_000);
@@ -154,8 +150,6 @@ public static class ProjectFileService
             card.ImageCropRight = Math.Clamp(card.ImageCropRight, 0, 1);
             card.ImageCropBottom = Math.Clamp(card.ImageCropBottom, 0, 1);
 
-            // A crop that removes the whole image is not meaningful and can lead to zero-size source
-            // rectangles in renderers. Repair only the invalid axis while preserving the user's other crop.
             if (card.ImageCropLeft + card.ImageCropRight >= 0.999)
             {
                 card.ImageCropLeft = 0;
@@ -226,7 +220,6 @@ public static class ProjectFileService
         }
         catch
         {
-            // Best-effort cleanup for an interrupted save.
         }
     }
 
