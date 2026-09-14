@@ -122,19 +122,19 @@ jobs:
 
           $aumid = "$env:CC_PFN!App"
           Write-Host "Activating $aumid"
-          $pid = [PackagedAppLauncher]::Activate($aumid)
-          if (-not $pid) { throw 'Package activation returned no process ID.' }
-          Write-Host "Activation returned PID $pid."
+          $launchedProcessId = [PackagedAppLauncher]::Activate($aumid)
+          if (-not $launchedProcessId) { throw 'Package activation returned no process ID.' }
+          Write-Host "Activation returned PID $launchedProcessId."
           Start-Sleep -Seconds 10
 
-          $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+          $process = Get-Process -Id $launchedProcessId -ErrorAction SilentlyContinue
           if (-not $process) {
             Write-Host 'Cubical Compare exited during startup. Relevant Application events:'
             Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=(Get-Date).AddMinutes(-3) } -ErrorAction SilentlyContinue |
               Where-Object { $_.Message -match 'CubicalCompare|RetroFrost.CubicalCompare|Microsoft.UI.Xaml|WindowsAppSDK' } |
               Select-Object -First 30 TimeCreated, ProviderName, Id, LevelDisplayName, Message |
               Format-List | Out-String | Write-Host
-            throw "Installed Cubical Compare package exited during startup (PID $pid)."
+            throw "Installed Cubical Compare package exited during startup (PID $launchedProcessId)."
           }
 
           $logs = @(
