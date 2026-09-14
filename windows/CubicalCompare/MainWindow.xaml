@@ -33,6 +33,7 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Content="New" Click="NewProject_Click" />
                     <Button Content="Import Zipack2" Click="ImportMegaPack_Click" />
+                    <Button Content="Export MegaPack" Click="ExportMegaPack_Click" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -45,6 +46,7 @@
             PaneDisplayMode="LeftCompact"
             CompactPaneLength="52"
             OpenPaneLength="186"
+            Loaded="RootNavigation_Loaded"
             SelectionChanged="RootNavigation_SelectionChanged">
 
             <NavigationView.MenuItems>
@@ -52,6 +54,9 @@
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Edit" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Assets" Tag="assets">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Pictures" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Thumbnail" Tag="thumbnail">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Pictures" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Renderer" Tag="renderer">
@@ -168,8 +173,12 @@
                         <StackPanel>
                             <TextBlock Text="MegaPack Zipack2" FontSize="28" />
                             <TextBlock x:Name="DetectedSummaryText" Text="Import a .megapack.zipack2 to detect contact-sheet cards." Opacity="0.62" Margin="0,4,0,0" />
+                            <TextBlock x:Name="MegaPackExportStatusText" Text="Export keeps full-resolution card artwork in yellow-separated contact sheets." Opacity="0.5" Margin="0,3,0,0" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Import Zipack2" Click="ImportMegaPack_Click" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Content="Import Zipack2" Click="ImportMegaPack_Click" />
+                            <Button Content="Export MegaPack" Click="ExportMegaPack_Click" />
+                        </StackPanel>
                     </Grid>
 
                     <ListView x:Name="DetectedCardsList" Grid.Row="1" Margin="0,16,0,0" ItemsSource="{x:Bind DetectedCards, Mode=OneWay}" SelectionMode="Single">
@@ -204,6 +213,35 @@
                         <Button Content="Move earlier" Click="MoveDetectedEarlier_Click" />
                         <Button Grid.Column="1" Content="Move later" Click="MoveDetectedLater_Click" />
                         <Button Grid.Column="3" Content="Use detected cards" Click="ApproveDetectedCards_Click" />
+                    </Grid>
+                </Grid>
+
+                <Grid x:Name="ThumbnailPage" Visibility="Collapsed" MaxWidth="1100" HorizontalAlignment="Left">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Automatic thumbnail" FontSize="28" />
+                        <TextBlock Text="Cubical Compare picks three representative cards and continuously rebuilds a 1280×720 comparison thumbnail." TextWrapping="Wrap" Opacity="0.62" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <Border Grid.Row="1" Margin="0,18,0,0" Background="Black" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="12">
+                        <Viewbox Stretch="Uniform">
+                            <Border Width="1280" Height="720" Background="#101010">
+                                <Image x:Name="ThumbnailPreviewImage" Stretch="Uniform" />
+                            </Border>
+                        </Viewbox>
+                    </Border>
+                    <Grid Grid.Row="2" Margin="0,14,0,0" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Content="Regenerate" Click="RegenerateThumbnail_Click" />
+                        <Button Grid.Column="1" Content="Save PNG" Click="SaveThumbnail_Click" />
+                        <TextBlock x:Name="ThumbnailStatusText" Grid.Column="2" Text="Waiting for project data…" VerticalAlignment="Center" Opacity="0.6" TextTrimming="CharacterEllipsis" />
                     </Grid>
                 </Grid>
 
