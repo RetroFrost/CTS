@@ -113,6 +113,7 @@ public static class ProjectFileService
 
         project.RenderFontFamily = NormalizeText(project.RenderFontFamily, "Nexa", 256);
         project.RenderFontFile = NormalizeText(project.RenderFontFile, string.Empty, MaxPathLength);
+        RenderFontSelection.ApplyProjectFont(project.RenderFontFamily, project.RenderFontFile);
         project.SoundtrackPath = NormalizeText(project.SoundtrackPath, string.Empty, MaxPathLength);
         if (!double.IsFinite(project.SoundtrackVolume)) project.SoundtrackVolume = 1.0;
         project.SoundtrackVolume = Math.Clamp(project.SoundtrackVolume, 0, 1);
