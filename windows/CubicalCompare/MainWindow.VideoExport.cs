@@ -92,7 +92,7 @@ public sealed partial class MainWindow
                     args.Request.SetActualStartPosition(TimeSpan.Zero);
             };
 
-            mediaSource.SampleRequested += (_, args) =>
+            mediaSource.SampleRequested += (source, args) =>
             {
                 var request = args.Request;
                 var deferral = request.GetDeferral();
