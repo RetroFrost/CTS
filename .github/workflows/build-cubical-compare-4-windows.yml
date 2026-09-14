@@ -30,54 +30,22 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Create development signing identity
-        shell: pwsh
+      - name: Create trusted CI signing identity
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $passwordText = [Guid]::NewGuid().ToString('N')
-          $password = ConvertTo-SecureString $passwordText -AsPlainText -Force
-          $pfx = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.pfx'
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject 'CN=RetroFrost Development' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -NotAfter (Get-Date).AddDays(7)
           $cer = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.cer'
-
-          $rsa = [System.Security.Cryptography.RSA]::Create(2048)
-          try {
-            $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
-              'CN=RetroFrost Development',
-              $rsa,
-              [System.Security.Cryptography.HashAlgorithmName]::SHA256,
-              [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
-            $request.CertificateExtensions.Add(
-              [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false, $false, 0, $true))
-            $request.CertificateExtensions.Add(
-              [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
-                [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature,
-                $true))
-            $oids = [System.Security.Cryptography.OidCollection]::new()
-            [void]$oids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
-            $request.CertificateExtensions.Add(
-              [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($oids, $true))
-
-            $cert = $request.CreateSelfSigned((Get-Date).AddMinutes(-5), (Get-Date).AddDays(7))
-            try {
-              [IO.File]::WriteAllBytes($pfx, $cert.Export(
-                [System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
-                $passwordText))
-              [IO.File]::WriteAllBytes($cer, $cert.Export(
-                [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-              Write-Host "Created CI code-signing certificate $($cert.Thumbprint)."
-            }
-            finally { $cert.Dispose() }
-          }
-          finally { $rsa.Dispose() }
-
-          # Put the signing identity into the stores used by MSBuild and package deployment.
-          Import-PfxCertificate -FilePath $pfx -CertStoreLocation 'Cert:\CurrentUser\My' -Password $password | Out-Null
+          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
-
-          "CC_PFX=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "CC_PFX_PASSWORD=$passwordText" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_CER=$cer" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Created CI signing identity $($cert.Thumbprint)."
 
       - name: Restore
         run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
@@ -93,8 +61,7 @@ jobs:
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxBundle=Never `
             -p:AppxPackageSigningEnabled=true `
-            -p:PackageCertificateKeyFile="$env:CC_PFX" `
-            -p:PackageCertificatePassword="$env:CC_PFX_PASSWORD"
+            -p:PackageCertificateThumbprint="$env:CC_CERT_THUMBPRINT"
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
 
           $package = Get-ChildItem windows/CubicalCompare/AppPackages -Recurse -File | Where-Object { $_.Extension -in '.msix', '.appx' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
@@ -102,8 +69,8 @@ jobs:
 
           $signature = Get-AuthenticodeSignature -FilePath $package.FullName
           Write-Host "MSIX signature status: $($signature.Status); signer: $($signature.SignerCertificate.Subject)"
-          if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -ne 'CN=RetroFrost Development') {
-            throw 'The generated MSIX is not signed by the expected Cubical Compare development identity.'
+          if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -ne 'CN=RetroFrost Development') {
+            throw 'The generated MSIX is not validly signed by the expected Cubical Compare development identity.'
           }
 
           "CC_PACKAGE=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -120,24 +87,63 @@ jobs:
           "CC_PFN=$($package.PackageFamilyName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Smoke test installed WinUI startup
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $log = Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'
-          if (Test-Path $log) { Remove-Item $log -Force }
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-          Start-Process explorer.exe -ArgumentList "shell:AppsFolder\$env:CC_PFN!App"
-          Start-Sleep -Seconds 10
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
 
-          $process = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $process) {
-            if (Test-Path $log) { Get-Content $log -Raw | Write-Host }
-            throw 'Installed Cubical Compare package did not remain running after activation.'
+          [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d")]
+          internal class ApplicationActivationManager {}
+
+          [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+          internal interface IApplicationActivationManager
+          {
+              int ActivateApplication(string appUserModelId, string arguments, uint options, out uint processId);
+              int ActivateForFile(IntPtr appUserModelId, IntPtr itemArray, IntPtr verb, out uint processId);
+              int ActivateForProtocol(IntPtr appUserModelId, IntPtr itemArray, out uint processId);
           }
 
-          if (Test-Path $log) {
+          public static class PackagedAppLauncher
+          {
+              public static uint Activate(string appUserModelId)
+              {
+                  var manager = (IApplicationActivationManager)new ApplicationActivationManager();
+                  uint processId;
+                  int hr = manager.ActivateApplication(appUserModelId, null, 0, out processId);
+                  if (hr < 0) Marshal.ThrowExceptionForHR(hr);
+                  return processId;
+              }
+          }
+          '@
+
+          $aumid = "$env:CC_PFN!App"
+          Write-Host "Activating $aumid"
+          $pid = [PackagedAppLauncher]::Activate($aumid)
+          if (-not $pid) { throw 'Package activation returned no process ID.' }
+          Write-Host "Activation returned PID $pid."
+          Start-Sleep -Seconds 10
+
+          $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+          if (-not $process) {
+            Write-Host 'Cubical Compare exited during startup. Relevant Application events:'
+            Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=(Get-Date).AddMinutes(-3) } -ErrorAction SilentlyContinue |
+              Where-Object { $_.Message -match 'CubicalCompare|RetroFrost.CubicalCompare|Microsoft.UI.Xaml|WindowsAppSDK' } |
+              Select-Object -First 30 TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+              Format-List | Out-String | Write-Host
+            throw "Installed Cubical Compare package exited during startup (PID $pid)."
+          }
+
+          $logs = @(
+            (Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'),
+            (Join-Path $env:LOCALAPPDATA "Packages/$env:CC_PFN/LocalState/CubicalCompare/startup.log")
+          ) | Where-Object { Test-Path $_ }
+          foreach ($log in $logs) {
             $startup = Get-Content $log -Raw
+            Write-Host "--- $log ---"
             $startup | Write-Host
             if ($startup -match 'startup failed|unhandled exception|Recovery window also failed') {
               Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
