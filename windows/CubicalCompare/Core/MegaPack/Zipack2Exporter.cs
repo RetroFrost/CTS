@@ -12,7 +12,6 @@ public static class Zipack2Exporter
 {
     private const int SeparatorSize = 8;
     private const int MaxSheetDimension = 8192;
-    private const int MaxCardsPerSheet = 24;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -123,11 +122,11 @@ public static class Zipack2Exporter
                 bitmap.Dispose();
                 throw new InvalidDataException($"Card {index + 1} artwork has invalid dimensions.");
             }
-            if (bitmap.Width > MaxSheetDimension || bitmap.Height > MaxSheetDimension)
+            if (bitmap.Width + (SeparatorSize * 2) > MaxSheetDimension || bitmap.Height + (SeparatorSize * 2) > MaxSheetDimension)
             {
                 bitmap.Dispose();
                 throw new InvalidDataException(
-                    $"Card {index + 1} artwork is {bitmap.Width}×{bitmap.Height}. Zipack2 preserves full resolution and currently supports up to {MaxSheetDimension} px per dimension.");
+                    $"Card {index + 1} artwork is {bitmap.Width}×{bitmap.Height}. Zipack2 preserves full resolution and requires room for its yellow outline inside a {MaxSheetDimension} px contact-sheet dimension.");
             }
 
             result.Add(new ArtworkItem(index, bitmap));
@@ -139,60 +138,96 @@ public static class Zipack2Exporter
     {
         var plans = new List<SheetPlan>();
         var cursor = 0;
+
         while (cursor < items.Count)
         {
+            // Keep full-resolution artwork. Consecutive cards with matching native dimensions can all
+            // share the same contact sheet; there is deliberately no arbitrary cards-per-sheet cap.
+            // A second sheet is created only when the raster dimension safety limit is reached or the
+            // next artwork has different native dimensions.
             var width = items[cursor].Bitmap.Width;
             var height = items[cursor].Bitmap.Height;
             var run = new List<ArtworkItem>();
 
             while (cursor < items.Count
                    && items[cursor].Bitmap.Width == width
-                   && items[cursor].Bitmap.Height == height
-                   && run.Count < MaxCardsPerSheet)
+                   && items[cursor].Bitmap.Height == height)
             {
                 run.Add(items[cursor]);
                 cursor++;
             }
 
-            var maxColumns = Math.Max(1, (MaxSheetDimension + SeparatorSize) / (width + SeparatorSize));
-            var maxRows = Math.Max(1, (MaxSheetDimension + SeparatorSize) / (height + SeparatorSize));
-            var maxCapacity = Math.Max(1, Math.Min(MaxCardsPerSheet, maxColumns * maxRows));
+            var maxColumns = Math.Max(1, (MaxSheetDimension - SeparatorSize) / (width + SeparatorSize));
+            var maxRows = Math.Max(1, (MaxSheetDimension - SeparatorSize) / (height + SeparatorSize));
+            var maxCapacity = checked(maxColumns * maxRows);
 
             for (var offset = 0; offset < run.Count; offset += maxCapacity)
             {
                 var chunk = run.Skip(offset).Take(maxCapacity).ToList();
-                var idealColumns = Math.Max(1, (int)Math.Ceiling(Math.Sqrt(chunk.Count * (double)height / Math.Max(1, width))));
-                var columns = Math.Min(maxColumns, idealColumns);
-                var rows = (int)Math.Ceiling(chunk.Count / (double)columns);
-                while (rows > maxRows && columns < maxColumns)
-                {
-                    columns++;
-                    rows = (int)Math.Ceiling(chunk.Count / (double)columns);
-                }
+                var (columns, rows) = ChooseGrid(chunk.Count, width, height, maxColumns, maxRows);
                 plans.Add(new SheetPlan(width, height, columns, rows, chunk));
             }
         }
+
         return plans;
+    }
+
+    private static (int Columns, int Rows) ChooseGrid(int count, int cardWidth, int cardHeight, int maxColumns, int maxRows)
+    {
+        if (count <= 0) return (1, 1);
+
+        var bestColumns = 1;
+        var bestRows = count;
+        var bestScore = double.PositiveInfinity;
+
+        for (var columns = 1; columns <= Math.Min(maxColumns, count); columns++)
+        {
+            var rows = (int)Math.Ceiling(count / (double)columns);
+            if (rows > maxRows) continue;
+
+            var sheetWidth = columns * (double)cardWidth + (columns + 1) * SeparatorSize;
+            var sheetHeight = rows * (double)cardHeight + (rows + 1) * SeparatorSize;
+
+            // Prefer compact, roughly square sheets while lightly penalising unused cells.
+            var aspectPenalty = Math.Abs(Math.Log(sheetWidth / Math.Max(1.0, sheetHeight)));
+            var wastePenalty = (columns * rows - count) / (double)Math.Max(1, count) * 0.20;
+            var score = aspectPenalty + wastePenalty;
+            if (score >= bestScore) continue;
+
+            bestScore = score;
+            bestColumns = columns;
+            bestRows = rows;
+        }
+
+        if (double.IsPositiveInfinity(bestScore))
+            throw new InvalidOperationException("Could not fit contact-sheet artwork inside the configured raster limit.");
+
+        return (bestColumns, bestRows);
     }
 
     private static Zipack2ContactSheetDefinition RenderSheet(ZipArchive archive, SheetPlan plan, string path)
     {
-        var sheetWidth = checked(plan.Columns * plan.CardWidth + Math.Max(0, plan.Columns - 1) * SeparatorSize);
-        var sheetHeight = checked(plan.Rows * plan.CardHeight + Math.Max(0, plan.Rows - 1) * SeparatorSize);
+        // Yellow exists around the entire sheet and between every slot. This means every card has a
+        // real yellow outline on all four sides, including cards on the outer edge of the sheet.
+        var sheetWidth = checked(plan.Columns * plan.CardWidth + (plan.Columns + 1) * SeparatorSize);
+        var sheetHeight = checked(plan.Rows * plan.CardHeight + (plan.Rows + 1) * SeparatorSize);
+        if (sheetWidth > MaxSheetDimension || sheetHeight > MaxSheetDimension)
+            throw new InvalidOperationException($"Contact sheet {sheetWidth}×{sheetHeight} exceeds the {MaxSheetDimension}px safety limit.");
 
         using var bitmap = new SKBitmap(new SKImageInfo(sheetWidth, sheetHeight, SKColorType.Bgra8888, SKAlphaType.Premul));
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(new SKColor(255, 255, 0));
 
         var regions = new List<Zipack2RegionDefinition>(plan.Items.Count);
+        using var paint = new SKPaint { IsAntialias = false, FilterQuality = SKFilterQuality.None };
+
         for (var localIndex = 0; localIndex < plan.Items.Count; localIndex++)
         {
             var row = localIndex / plan.Columns;
             var column = localIndex % plan.Columns;
-            var x = column * (plan.CardWidth + SeparatorSize);
-            var y = row * (plan.CardHeight + SeparatorSize);
+            var x = SeparatorSize + column * (plan.CardWidth + SeparatorSize);
+            var y = SeparatorSize + row * (plan.CardHeight + SeparatorSize);
             var target = new SKRect(x, y, x + plan.CardWidth, y + plan.CardHeight);
-            using var paint = new SKPaint { IsAntialias = false, FilterQuality = SKFilterQuality.None };
             canvas.DrawBitmap(plan.Items[localIndex].Bitmap, target, paint);
 
             regions.Add(new Zipack2RegionDefinition
