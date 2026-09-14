@@ -107,6 +107,7 @@ public sealed partial class MainWindow
             _soundtrackPath = project.SoundtrackPath;
             _soundtrackVolume = project.SoundtrackVolume;
             _soundtrackLoop = project.SoundtrackLoop;
+            RenderFontSelection.ApplyProjectFont(project.RenderFontFamily, project.RenderFontFile);
 
             foreach (var card in project.Cards)
             {
@@ -134,6 +135,7 @@ public sealed partial class MainWindow
             RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
             RefreshTimelineRange();
             RefreshSoundtrackUi();
+            RefreshRenderFontUi();
         }
         finally
         {
