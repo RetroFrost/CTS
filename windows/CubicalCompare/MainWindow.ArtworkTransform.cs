@@ -191,6 +191,7 @@ public sealed partial class MainWindow
         // editor controls update those properties through TwoWay bindings; the work here makes the
         // change immediately visible and durable even though the legacy view-model transform fields
         // predate INotifyPropertyChanged-backed setters.
+        RefreshArtworkManipulator();
         ScheduleThumbnailRefresh();
         ScheduleWorkspaceSave();
 
