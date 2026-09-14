@@ -10,8 +10,8 @@ public sealed class ComparisonProject
     public bool CreditsEnabled { get; set; } = true;
     public bool AutoLength { get; set; } = true;
     public double CustomLengthSeconds { get; set; } = 90.0;
-    public string RenderFontFamily { get; set; } = "Nexa";
-    public string RenderFontFile { get; set; } = Path.Combine(AppContext.BaseDirectory, "Assets", "nexa-extrabold.ttf");
+    public string RenderFontFamily { get; set; } = RenderFontSelection.CurrentFamily;
+    public string RenderFontFile { get; set; } = RenderFontSelection.CurrentFile;
     public string SoundtrackPath { get; set; } = "";
     public double SoundtrackVolume { get; set; } = 1.0;
     public bool SoundtrackLoop { get; set; } = true;
