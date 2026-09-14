@@ -1,0 +1,1 @@
+Cubical Compare selects render fonts from fonts installed on Windows or from a user-selected local font file at runtime. Font binaries are intentionally not embedded in the source tree or packaged build.
