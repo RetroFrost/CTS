@@ -32,10 +32,11 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
-        SystemBackdrop = new MicaBackdrop();
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(1440, 900));
+
+        // Keep initial HWND creation on the stock WinUI path. Custom non-client area,
+        // Mica and immediate AppWindow mutations previously caused USER32 fail-fast
+        // crashes on clean packaged systems before managed exception handling could run.
+        // Cosmetic window effects can be applied later only after activation succeeds.
 
         AddProjectCard(new ProjectCardViewModel
         {
