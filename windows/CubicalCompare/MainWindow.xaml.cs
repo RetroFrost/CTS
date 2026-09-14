@@ -33,11 +33,6 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // Keep initial HWND creation on the stock WinUI path. Custom non-client area,
-        // Mica and immediate AppWindow mutations previously caused USER32 fail-fast
-        // crashes on clean packaged systems before managed exception handling could run.
-        // Cosmetic window effects can be applied later only after activation succeeds.
-
         AddProjectCard(new ProjectCardViewModel
         {
             Title = "Card 1",
@@ -52,8 +47,6 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
-            // The debounce-based autosave can still be waiting when Windows closes the window.
-            // Flush the latest in-memory snapshot first so the user's final keystrokes survive.
             FlushWorkspaceOnClose();
             _legacyRenderer?.Dispose();
         };
@@ -111,6 +104,32 @@ public sealed partial class MainWindow : Window
         CardsList.SelectedIndex = Math.Clamp(index, 0, Cards.Count - 1);
         RefreshTimelineRange();
         _ = RenderCurrentFrameAsync();
+    }
+
+    private async void ChooseArtwork_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardsList.SelectedItem is not ProjectCardViewModel card) return;
+
+        var file = await PickFileAsync([".png", ".jpg", ".jpeg", ".webp", ".bmp"]);
+        if (file is null) return;
+
+        try
+        {
+            card.ImagePath = file.Path;
+            TimelineStatusText.Text = $"Artwork set · {file.Name}";
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("Could not set card artwork", ex);
+            await ShowErrorAsync("Could not use artwork", ex.Message);
+        }
+    }
+
+    private void ClearArtwork_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardsList.SelectedItem is not ProjectCardViewModel card) return;
+        card.ImagePath = string.Empty;
+        TimelineStatusText.Text = "Artwork cleared";
     }
 
     private async void ImportMegaPack_Click(object sender, RoutedEventArgs e)
