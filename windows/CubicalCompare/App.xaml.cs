@@ -63,10 +63,17 @@ public partial class App : Application
                 return;
             }
 
-            MainWindow = new MainWindow();
+            var mainWindow = new MainWindow();
+            MainWindow = mainWindow;
             WriteLog("MainWindow constructed.");
-            MainWindow.Activate();
+            mainWindow.Activate();
             WriteLog("MainWindow activated.");
+
+            mainWindow.DispatcherQueue.TryEnqueue(() =>
+            {
+                mainWindow.InitializeDirectArtworkManipulator();
+                mainWindow.InitializeSoundtrackControls();
+            });
         }
         catch (Exception ex)
         {
