@@ -7,7 +7,7 @@
 
   <Identity
     Name="RetroFrost.CubicalCompare"
-    Publisher="CN=Unsigned"
+    Publisher="CN=RetroFrost Development, OID.2.25.279886192484447033650314467722452413219=1"
     Version="4.0.0.0" />
 
   <Properties>
