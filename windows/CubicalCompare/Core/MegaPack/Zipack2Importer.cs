@@ -11,6 +11,10 @@ public static class Zipack2Importer
     private const long MaxExpandedBytes = 2L * 1024 * 1024 * 1024;
     private const int MaxSheets = 128;
     private const int MaxCards = 10_000;
+    private static readonly HashSet<string> SoundtrackExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".wav", ".m4a", ".aac", ".wma",
+    };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -79,9 +83,6 @@ public static class Zipack2Importer
                 if (allCards.Count + regions.Count > MaxCards)
                     throw new InvalidDataException($"Zipack2 detection would produce more than {MaxCards:N0} cards.");
 
-                // The manifest's Order is presentation metadata, not a safe filesystem key. Two sheets
-                // are allowed to share an order value, so use the actual processing index to keep every
-                // extracted card in its own directory and prevent silent image overwrites.
                 var sheetDirectory = Path.Combine(extractionRoot, $"sheet-{processedSheetIndex++:D3}");
                 Directory.CreateDirectory(sheetDirectory);
                 var sheetCards = new List<DetectedZipack2Card>(regions.Count);
@@ -122,6 +123,8 @@ public static class Zipack2Importer
             for (var index = 0; index < Math.Min(allCards.Count, manifest.Cards.Count); index++)
                 allCards[index].Data = manifest.Cards[index].Normalize(index);
 
+            var soundtrackPath = await ExtractSoundtrackAsync(archive, manifest, extractionRoot, cancellationToken);
+
             return new Zipack2ImportResult
             {
                 Name = string.IsNullOrWhiteSpace(manifest.Name) ? Path.GetFileNameWithoutExtension(path) : manifest.Name,
@@ -132,14 +135,41 @@ public static class Zipack2Importer
                 ShowBadges = manifest.ShowBadges,
                 CreditsEnabled = manifest.CreditsEnabled,
                 DurationSeconds = double.IsFinite(manifest.DurationSeconds) && manifest.DurationSeconds > 0 ? manifest.DurationSeconds : 0,
+                SoundtrackPath = soundtrackPath,
+                SoundtrackLoop = manifest.SoundtrackLoop,
+                SoundtrackVolume = double.IsFinite(manifest.SoundtrackVolume) ? Math.Clamp(manifest.SoundtrackVolume, 0, 1) : 1.0,
             };
         }
         catch
         {
-            // A failed or cancelled import must not leave hundreds of extracted PNGs behind in %TEMP%.
             TryDeleteDirectory(extractionRoot);
             throw;
         }
+    }
+
+    private static async Task<string> ExtractSoundtrackAsync(
+        ZipArchive archive,
+        Zipack2Manifest manifest,
+        string extractionRoot,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(manifest.Soundtrack)) return string.Empty;
+
+        var normalized = NormalizeEntryName(manifest.Soundtrack);
+        ValidateEntryName(normalized);
+        var extension = Path.GetExtension(normalized);
+        if (!SoundtrackExtensions.Contains(extension))
+            throw new InvalidDataException($"Zipack2 soundtrack format '{extension}' is not supported.");
+
+        var entry = FindEntry(archive, normalized)
+            ?? throw new InvalidDataException($"Zipack2 soundtrack '{normalized}' was not found in the pack.");
+
+        await using var source = entry.Open();
+        await using var bounded = await ReadEntryAsync(source, entry.Length, cancellationToken);
+        var destination = Path.Combine(extractionRoot, "soundtrack" + extension.ToLowerInvariant());
+        await using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 128 * 1024, useAsync: true);
+        await bounded.CopyToAsync(output, 128 * 1024, cancellationToken);
+        return destination;
     }
 
     private static void ExtractCard(SKBitmap source, PixelRect region, string destinationPath)
@@ -311,7 +341,6 @@ public static class Zipack2Importer
         }
         catch
         {
-            // Best-effort cleanup only. The original import exception is more important.
         }
     }
 }
