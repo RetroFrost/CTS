@@ -9,16 +9,18 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <UseWinUI>true</UseWinUI>
 
-    <!-- Cubical Compare is a packaged WinUI 3 desktop app. Package identity avoids
-         the fragile unpackaged bootstrap path that was fail-fasting before App ran. -->
+    <!-- Packaged + self-contained is deliberate: the MSIX carries the Windows App SDK
+         and .NET runtime, so the app does not depend on a preinstalled framework package.
+         Unlike the old unpackaged build, package identity means UndockedRegFreeWinRT
+         bootstrap is not used at process startup. -->
     <WindowsPackageType>MSIX</WindowsPackageType>
     <EnableMsixTooling>true</EnableMsixTooling>
     <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
     <AppxBundle>Never</AppxBundle>
     <AppxPackageSigningEnabled>true</AppxPackageSigningEnabled>
     <AppxPackageDir>$(MSBuildProjectDirectory)\AppPackages\</AppxPackageDir>
-    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
-    <SelfContained>false</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
