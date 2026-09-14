@@ -109,50 +109,71 @@ jobs:
 
           public static class PackagedAppLauncher
           {
-              public static uint Activate(string appUserModelId)
+              public static uint Activate(string appUserModelId, string arguments)
               {
                   var manager = (IApplicationActivationManager)new ApplicationActivationManager();
                   uint processId;
-                  int hr = manager.ActivateApplication(appUserModelId, null, 0, out processId);
+                  int hr = manager.ActivateApplication(appUserModelId, arguments, 0, out processId);
                   if (hr < 0) Marshal.ThrowExceptionForHR(hr);
                   return processId;
               }
           }
           '@
 
-          $aumid = "$env:CC_PFN!App"
-          Write-Host "Activating $aumid"
-          $launchedProcessId = [PackagedAppLauncher]::Activate($aumid)
-          if (-not $launchedProcessId) { throw 'Package activation returned no process ID.' }
-          Write-Host "Activation returned PID $launchedProcessId."
-          Start-Sleep -Seconds 10
-
-          $process = Get-Process -Id $launchedProcessId -ErrorAction SilentlyContinue
-          if (-not $process) {
-            Write-Host 'Cubical Compare exited during startup. Relevant Application events:'
+          function Show-CubicalCompareDiagnostics {
+            Write-Host '--- relevant Application events ---'
             Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=(Get-Date).AddMinutes(-3) } -ErrorAction SilentlyContinue |
-              Where-Object { $_.Message -match 'CubicalCompare|RetroFrost.CubicalCompare|Microsoft.UI.Xaml|WindowsAppSDK' } |
+              Where-Object { $_.Message -match 'CubicalCompare|RetroFrost.CubicalCompare|Microsoft.UI.Xaml|WindowsAppSDK|USER32' } |
               Select-Object -First 30 TimeCreated, ProviderName, Id, LevelDisplayName, Message |
               Format-List | Out-String | Write-Host
-            throw "Installed Cubical Compare package exited during startup (PID $launchedProcessId)."
-          }
 
-          $logs = @(
-            (Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'),
-            (Join-Path $env:LOCALAPPDATA "Packages/$env:CC_PFN/LocalState/CubicalCompare/startup.log")
-          ) | Where-Object { Test-Path $_ }
-          foreach ($log in $logs) {
-            $startup = Get-Content $log -Raw
-            Write-Host "--- $log ---"
-            $startup | Write-Host
-            if ($startup -match 'startup failed|unhandled exception|Recovery window also failed') {
-              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-              throw 'Cubical Compare reached the recovery/crash path during packaged startup.'
+            $logs = @(
+              (Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'),
+              (Join-Path $env:LOCALAPPDATA "Packages/$env:CC_PFN/LocalState/CubicalCompare/startup.log")
+            ) | Where-Object { Test-Path $_ }
+            foreach ($log in $logs) {
+              Write-Host "--- startup log: $log ---"
+              Get-Content $log -Raw | Write-Host
             }
           }
 
-          Write-Host "Packaged WinUI startup survived. PID $($process.Id)."
-          Stop-Process -Id $process.Id -Force
+          function Assert-ActivationSurvives([string]$arguments, [string]$label) {
+            $aumid = "$env:CC_PFN!App"
+            Write-Host "Activating $label ($aumid $arguments)"
+            $launchedProcessId = [PackagedAppLauncher]::Activate($aumid, $arguments)
+            if (-not $launchedProcessId) { throw "$label activation returned no process ID." }
+            Write-Host "$label activation returned PID $launchedProcessId."
+            Start-Sleep -Seconds 8
+
+            $process = Get-Process -Id $launchedProcessId -ErrorAction SilentlyContinue
+            if (-not $process) {
+              Show-CubicalCompareDiagnostics
+              throw "$label exited during startup (PID $launchedProcessId)."
+            }
+
+            Write-Host "$label survived startup. PID $($process.Id)."
+            Stop-Process -Id $process.Id -Force
+            Start-Sleep -Seconds 2
+          }
+
+          # First prove the package can enter managed WinUI and create a bare Window.
+          # If this fails, the hosted runner/runtime path is broken before MainWindow.
+          Assert-ActivationSurvives '--ci-shell-smoke' 'WinUI shell smoke'
+
+          # Then prove the real editor window survives the same packaged activation path.
+          Assert-ActivationSurvives '' 'Cubical Compare editor'
+
+          $startupLogs = @(
+            (Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'),
+            (Join-Path $env:LOCALAPPDATA "Packages/$env:CC_PFN/LocalState/CubicalCompare/startup.log")
+          ) | Where-Object { Test-Path $_ }
+          foreach ($log in $startupLogs) {
+            $startup = Get-Content $log -Raw
+            if ($startup -match 'startup failed|unhandled exception|Recovery window also failed') {
+              $startup | Write-Host
+              throw 'Cubical Compare reached a managed recovery/crash path during packaged startup.'
+            }
+          }
 
       - name: Stage verified MSIX
         if: success()
@@ -165,6 +186,7 @@ jobs:
           Cubical Compare 4 - verified development MSIX
 
           GitHub Actions built, signed, installed and launch-tested this exact packaged WinUI 3 application.
+          CI validates both a bare WinUI shell and the actual Cubical Compare editor window.
           The included short-lived certificate exists only so the isolated CI runner can validate package deployment.
           Public release builds must use RetroFrost's stable production signing identity.
           '@ | Set-Content artifacts/CubicalCompare-4-MSIX/README.txt
