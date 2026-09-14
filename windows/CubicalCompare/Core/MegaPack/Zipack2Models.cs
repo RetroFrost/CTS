@@ -30,6 +30,16 @@ public sealed class Zipack2Manifest
 
     [JsonPropertyName("duration_seconds")]
     public double DurationSeconds { get; set; }
+
+    // Optional v2 extension. Older packs simply deserialize these defaults and remain compatible.
+    [JsonPropertyName("soundtrack")]
+    public string Soundtrack { get; set; } = "";
+
+    [JsonPropertyName("soundtrack_loop")]
+    public bool SoundtrackLoop { get; set; } = true;
+
+    [JsonPropertyName("soundtrack_volume")]
+    public double SoundtrackVolume { get; set; } = 1.0;
 }
 
 public sealed class Zipack2CardDefinition
@@ -236,4 +246,7 @@ public sealed class Zipack2ImportResult
     public bool ShowBadges { get; set; } = true;
     public bool CreditsEnabled { get; set; } = true;
     public double DurationSeconds { get; set; }
+    public string SoundtrackPath { get; set; } = "";
+    public bool SoundtrackLoop { get; set; } = true;
+    public double SoundtrackVolume { get; set; } = 1.0;
 }
