@@ -335,7 +335,8 @@ public sealed partial class MainWindow : Window
             CreditsEnabled = _projectCreditsEnabled,
             AutoLength = _projectDurationSeconds <= 0,
             CustomLengthSeconds = _projectDurationSeconds > 0 ? _projectDurationSeconds : 90,
-            RenderFontFamily = "Nexa",
+            RenderFontFamily = RenderFontSelection.CurrentFamily,
+            RenderFontFile = RenderFontSelection.CurrentFile,
         };
         foreach (var card in Cards)
         {
