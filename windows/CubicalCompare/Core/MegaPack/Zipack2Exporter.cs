@@ -12,6 +12,10 @@ public static class Zipack2Exporter
 {
     private const int SeparatorSize = 8;
     private const int MaxSheetDimension = 8192;
+    private static readonly HashSet<string> SoundtrackExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".wav", ".m4a", ".aac", ".wma",
+    };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -34,6 +38,10 @@ public static class Zipack2Exporter
         var work = BuildArtworkItems(project);
         var sheets = BuildSheetPlans(work);
         var thumbnail = AutoThumbnailGenerator.Generate(project);
+        var soundtrackSource = ResolveSoundtrack(project.SoundtrackPath);
+        var soundtrackArchivePath = soundtrackSource is null
+            ? string.Empty
+            : "audio/soundtrack" + Path.GetExtension(soundtrackSource).ToLowerInvariant();
 
         var manifest = new Zipack2Manifest
         {
@@ -43,6 +51,9 @@ public static class Zipack2Exporter
             CreditsEnabled = project.CreditsEnabled,
             DurationSeconds = project.AutoLength ? 0 : Math.Max(0, project.CustomLengthSeconds),
             Cards = project.Cards.Select(ToManifestCard).ToList(),
+            Soundtrack = soundtrackArchivePath,
+            SoundtrackLoop = project.SoundtrackLoop,
+            SoundtrackVolume = double.IsFinite(project.SoundtrackVolume) ? Math.Clamp(project.SoundtrackVolume, 0, 1) : 1.0,
         };
 
         var tempPath = destinationPath + ".partial-" + Guid.NewGuid().ToString("N");
@@ -64,6 +75,9 @@ public static class Zipack2Exporter
 
                 await WriteBytesAsync(archive, "thumbnail.png", thumbnail.Png, CompressionLevel.NoCompression, cancellationToken);
 
+                if (soundtrackSource is not null)
+                    await WriteFileAsync(archive, soundtrackArchivePath, soundtrackSource, cancellationToken);
+
                 var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, JsonOptions);
                 await WriteBytesAsync(archive, "manifest.json", manifestBytes, CompressionLevel.Optimal, cancellationToken);
             }
@@ -80,6 +94,15 @@ public static class Zipack2Exporter
         {
             foreach (var item in work) item.Dispose();
         }
+    }
+
+    private static string? ResolveSoundtrack(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+        var extension = Path.GetExtension(path);
+        if (!SoundtrackExtensions.Contains(extension))
+            throw new InvalidDataException($"Soundtrack format '{extension}' cannot be bundled in a MegaPack.");
+        return Path.GetFullPath(path);
     }
 
     private static Zipack2CardDefinition ToManifestCard(ComparisonCard card) => new()
@@ -141,10 +164,6 @@ public static class Zipack2Exporter
 
         while (cursor < items.Count)
         {
-            // Keep full-resolution artwork. Consecutive cards with matching native dimensions can all
-            // share the same contact sheet; there is deliberately no arbitrary cards-per-sheet cap.
-            // A second sheet is created only when the raster dimension safety limit is reached or the
-            // next artwork has different native dimensions.
             var width = items[cursor].Bitmap.Width;
             var height = items[cursor].Bitmap.Height;
             var run = new List<ArtworkItem>();
@@ -187,8 +206,6 @@ public static class Zipack2Exporter
 
             var sheetWidth = columns * (double)cardWidth + (columns + 1) * SeparatorSize;
             var sheetHeight = rows * (double)cardHeight + (rows + 1) * SeparatorSize;
-
-            // Prefer compact, roughly square sheets while lightly penalising unused cells.
             var aspectPenalty = Math.Abs(Math.Log(sheetWidth / Math.Max(1.0, sheetHeight)));
             var wastePenalty = (columns * rows - count) / (double)Math.Max(1, count) * 0.20;
             var score = aspectPenalty + wastePenalty;
@@ -207,8 +224,6 @@ public static class Zipack2Exporter
 
     private static Zipack2ContactSheetDefinition RenderSheet(ZipArchive archive, SheetPlan plan, string path)
     {
-        // Yellow exists around the entire sheet and between every slot. This means every card has a
-        // real yellow outline on all four sides, including cards on the outer edge of the sheet.
         var sheetWidth = checked(plan.Columns * plan.CardWidth + (plan.Columns + 1) * SeparatorSize);
         var sheetHeight = checked(plan.Rows * plan.CardHeight + (plan.Rows + 1) * SeparatorSize);
         if (sheetWidth > MaxSheetDimension || sheetHeight > MaxSheetDimension)
@@ -300,6 +315,18 @@ public static class Zipack2Exporter
         var entry = archive.CreateEntry(path, compression);
         await using var stream = entry.Open();
         await stream.WriteAsync(bytes.AsMemory(), cancellationToken);
+    }
+
+    private static async Task WriteFileAsync(
+        ZipArchive archive,
+        string archivePath,
+        string sourcePath,
+        CancellationToken cancellationToken)
+    {
+        var entry = archive.CreateEntry(archivePath, CompressionLevel.NoCompression);
+        await using var source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, useAsync: true);
+        await using var destination = entry.Open();
+        await source.CopyToAsync(destination, 128 * 1024, cancellationToken);
     }
 
     private sealed class ArtworkItem : IDisposable
