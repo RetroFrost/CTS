@@ -36,6 +36,33 @@ jobs:
       - name: Publish self-contained WinUI 3 build
         run: dotnet publish windows/CubicalCompare/CubicalCompare.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -o artifacts/CubicalCompare-4-win-x64
 
+      - name: Smoke test actual WinUI startup
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'artifacts/CubicalCompare-4-win-x64/CubicalCompare.exe'
+          $log = Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'
+          if (Test-Path $log) { Remove-Item $log -Force }
+
+          $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          Start-Sleep -Seconds 8
+          $process.Refresh()
+
+          if ($process.HasExited) {
+            if (Test-Path $log) { Get-Content $log -Raw | Write-Host }
+            throw "Cubical Compare exited during startup with code $($process.ExitCode)."
+          }
+
+          if (Test-Path $log) {
+            $startup = Get-Content $log -Raw
+            $startup | Write-Host
+            if ($startup -match 'startup failed|unhandled exception|Recovery window also failed') {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              throw 'Cubical Compare reached the recovery/crash path during startup.'
+            }
+          }
+
+          Stop-Process -Id $process.Id -Force
+
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
