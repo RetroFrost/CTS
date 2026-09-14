@@ -30,58 +30,10 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Create CI signing certificate
-        shell: pwsh
-        run: |
-          $passwordText = [Guid]::NewGuid().ToString('N')
-          $pfx = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.pfx'
-          $cer = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.cer'
-
-          $rsa = [System.Security.Cryptography.RSA]::Create(2048)
-          try {
-            $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
-              'CN=RetroFrost Development',
-              $rsa,
-              [System.Security.Cryptography.HashAlgorithmName]::SHA256,
-              [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
-            $request.CertificateExtensions.Add(
-              [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false, $false, 0, $true))
-            $request.CertificateExtensions.Add(
-              [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
-                [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature,
-                $true))
-            $oids = [System.Security.Cryptography.OidCollection]::new()
-            [void]$oids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
-            $request.CertificateExtensions.Add(
-              [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($oids, $true))
-
-            $cert = $request.CreateSelfSigned((Get-Date).AddMinutes(-5), (Get-Date).AddDays(30))
-            try {
-              [IO.File]::WriteAllBytes($pfx, $cert.Export(
-                [System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
-                $passwordText))
-              [IO.File]::WriteAllBytes($cer, $cert.Export(
-                [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-            }
-            finally {
-              $cert.Dispose()
-            }
-          }
-          finally {
-            $rsa.Dispose()
-          }
-
-          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
-          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
-
-          "CC_PFX=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "CC_PFX_PASSWORD=$passwordText" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "CC_CER=$cer" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       - name: Restore
         run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
 
-      - name: Build signed single-project MSIX
+      - name: Build single-project MSIX
         shell: pwsh
         run: |
           dotnet publish windows/CubicalCompare/CubicalCompare.csproj `
@@ -90,19 +42,17 @@ jobs:
             -p:Platform=x64 `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxBundle=Never `
-            -p:AppxPackageSigningEnabled=true `
-            -p:PackageCertificateKeyFile="$env:CC_PFX" `
-            -p:PackageCertificatePassword="$env:CC_PFX_PASSWORD"
+            -p:AppxPackageSigningEnabled=false
 
           $package = Get-ChildItem windows/CubicalCompare/AppPackages -Recurse -File | Where-Object { $_.Extension -in '.msix', '.appx' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
           if (-not $package) { throw 'MSIX packaging completed without producing an installable package.' }
           "CC_PACKAGE=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Package: $($package.FullName)"
 
-      - name: Install packaged app
+      - name: Install packaged app for CI
         shell: pwsh
         run: |
-          Add-AppxPackage -Path "$env:CC_PACKAGE" -ForceApplicationShutdown
+          Add-AppxPackage -Path "$env:CC_PACKAGE" -AllowUnsigned -ForceApplicationShutdown
           $package = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
           if (-not $package) { throw 'Cubical Compare package was not registered after Add-AppxPackage.' }
           Write-Host "Installed $($package.Name) $($package.Version) ($($package.PackageFullName))"
@@ -136,18 +86,17 @@ jobs:
           Write-Host "Packaged WinUI startup survived. PID $($process.Id)."
           Stop-Process -Id $process.Id -Force
 
-      - name: Stage distributable MSIX
+      - name: Stage verified MSIX
         if: success()
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path artifacts/CubicalCompare-4-MSIX -Force | Out-Null
           Copy-Item "$env:CC_PACKAGE" artifacts/CubicalCompare-4-MSIX/CubicalCompare-4-x64.msix
-          Copy-Item "$env:CC_CER" artifacts/CubicalCompare-4-MSIX/CubicalCompare-Development.cer
           @'
-          Cubical Compare 4 - development MSIX
+          Cubical Compare 4 - verified CI MSIX
 
-          This CI build is signed with a short-lived development certificate so GitHub Actions can install and launch-test the real package.
-          For public distribution, replace the development certificate with a stable trusted signing certificate.
+          GitHub Actions built, registered and launch-tested this exact package as a packaged WinUI 3 application.
+          The CI artifact is intentionally unsigned. Public release builds must be signed with RetroFrost's stable trusted signing certificate.
           '@ | Set-Content artifacts/CubicalCompare-4-MSIX/README.txt
 
       - name: Upload verified Windows MSIX
