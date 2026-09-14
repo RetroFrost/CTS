@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <ResourceDictionary>
-            <FontFamily x:Key="BrandFontFamily">Nexa, Segoe UI Variable Display</FontFamily>
+            <FontFamily x:Key="BrandFontFamily">Nexa</FontFamily>
             <SolidColorBrush x:Key="EditorSurfaceBrush" Color="#141414" />
             <SolidColorBrush x:Key="EditorSurfaceRaisedBrush" Color="#1D1D1D" />
             <SolidColorBrush x:Key="EditorBorderBrush" Color="#2C2C2C" />
