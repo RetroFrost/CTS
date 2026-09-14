@@ -141,7 +141,15 @@
                             <TextBlock Text="Description" FontSize="12" Opacity="0.7" Margin="0,6,0,-5" />
                             <TextBox Text="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="110" TextWrapping="Wrap" />
                             <TextBlock Text="Artwork" FontSize="12" Opacity="0.7" Margin="0,6,0,-5" />
-                            <TextBlock Text="{Binding ImagePath}" TextWrapping="Wrap" Opacity="0.55" />
+                            <TextBlock Text="{Binding ImagePath}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="42" Opacity="0.55" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Content="Choose artwork…" HorizontalAlignment="Stretch" Click="ChooseArtwork_Click" />
+                                <Button Grid.Column="1" Content="Clear" Click="ClearArtwork_Click" />
+                            </Grid>
                         </StackPanel>
                     </Border>
 
@@ -172,7 +180,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="MegaPack Zipack2" FontSize="28" />
-                            <TextBlock x:Name="DetectedSummaryText" Text="Import a .megapack.zipack2 to detect contact-sheet cards." Opacity="0.62" Margin="0,4,0,0" />
+                            <TextBlock x:Name="DetectedSummaryText" Text="Import a .zipack2 package to detect contact-sheet cards." Opacity="0.62" Margin="0,4,0,0" />
                             <TextBlock x:Name="MegaPackExportStatusText" Text="Export keeps full-resolution card artwork in yellow-separated contact sheets." Opacity="0.5" Margin="0,3,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
