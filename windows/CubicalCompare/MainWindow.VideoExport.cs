@@ -8,13 +8,13 @@ using Windows.Media.MediaProperties;
 using Windows.Media.Transcoding;
 using Windows.Security.Cryptography;
 using Windows.Storage;
-using Windows.Storage.Streams;
 
 namespace CubicalCompare;
 
 public sealed partial class MainWindow
 {
     private IAsyncActionWithProgress<double>? _videoExportOperation;
+    private CancellationTokenSource? _videoExportCancellation;
     private bool _videoExportInProgress;
 
     private async void ExportVideo_Click(object sender, RoutedEventArgs e)
@@ -42,10 +42,15 @@ public sealed partial class MainWindow
         ExportProgressBar.Value = 0;
         ExportStatusText.Text = "Preparing video export…";
 
+        _videoExportCancellation?.Dispose();
+        _videoExportCancellation = new CancellationTokenSource();
+        var cancellationToken = _videoExportCancellation.Token;
+
         try
         {
-            // Use an independent evaluator so scrubbing/edit preview cannot share mutable Skia state
-            // or image caches with the Media Foundation worker thread during a long export.
+            // Keep export isolated from the interactive preview. More importantly, frame rendering
+            // happens on worker threads below; MediaStreamSource callbacks must never synchronously
+            // render a 1920x1080 Skia frame on the WinUI thread.
             using var renderer = LegacyRendererAdapter.Load(_legacyRenderer.SourcePath);
             var project = BuildProject();
             var width = Math.Clamp(project.Width, 320, 3840);
@@ -68,9 +73,11 @@ public sealed partial class MainWindow
                 BufferTime = TimeSpan.Zero,
             };
 
-            var nextFrame = 0;
+            var nextFrame = -1;
             var frameDurationTicks = Math.Max(1L, TimeSpan.TicksPerSecond / fps);
             Exception? renderFailure = null;
+            var sampleGate = new SemaphoreSlim(1, 1);
+            var lastUiProgressTicks = 0L;
 
             mediaSource.Starting += (_, args) =>
             {
@@ -80,46 +87,110 @@ public sealed partial class MainWindow
 
             mediaSource.SampleRequested += (_, args) =>
             {
-                var deferral = args.Request.GetDeferral();
-                try
+                // Media Foundation may request its next sample from a thread that is also servicing
+                // WinUI/COM work. Do no heavy work here. Take a deferral and render on the .NET pool.
+                var request = args.Request;
+                var deferral = request.GetDeferral();
+
+                _ = Task.Run(async () =>
                 {
-                    if (renderFailure is not null || nextFrame >= frameCount)
+                    var gateHeld = false;
+                    try
                     {
-                        args.Request.Sample = null;
-                        return;
-                    }
+                        await sampleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        gateHeld = true;
+                        cancellationToken.ThrowIfCancellationRequested();
 
-                    var frameIndex = nextFrame++;
-                    using var rendered = renderer.Render(project, frameIndex, width, height);
-                    using var bgra = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
-                    using (var canvas = new SKCanvas(bgra))
+                        if (Volatile.Read(ref renderFailure) is not null)
+                        {
+                            request.Sample = null;
+                            return;
+                        }
+
+                        var frameIndex = Interlocked.Increment(ref nextFrame);
+                        if (frameIndex >= frameCount)
+                        {
+                            request.Sample = null;
+                            return;
+                        }
+
+                        using var rendered = renderer.Render(project, frameIndex, width, height);
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        if (rendered.Width != width || rendered.Height != height)
+                            throw new InvalidOperationException($"Renderer returned {rendered.Width}x{rendered.Height}; expected {width}x{height}.");
+
+                        // The compatibility renderer normally already outputs BGRA8888. Copy rows
+                        // directly into the Media Foundation buffer instead of allocating and drawing
+                        // a second full-resolution Skia bitmap for every frame.
+                        var byteCount = checked(width * height * 4);
+                        var bytes = GC.AllocateUninitializedArray<byte>(byteCount);
+                        var pixels = rendered.GetPixels();
+                        if (pixels == IntPtr.Zero)
+                            throw new InvalidOperationException("Renderer returned a frame with no pixel buffer.");
+
+                        if (rendered.ColorType == SKColorType.Bgra8888)
+                        {
+                            var packedStride = width * 4;
+                            if (rendered.RowBytes == packedStride)
+                            {
+                                Marshal.Copy(pixels, bytes, 0, byteCount);
+                            }
+                            else
+                            {
+                                for (var y = 0; y < height; y++)
+                                    Marshal.Copy(IntPtr.Add(pixels, y * rendered.RowBytes), bytes, y * packedStride, packedStride);
+                            }
+                        }
+                        else
+                        {
+                            using var bgra = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
+                            using (var canvas = new SKCanvas(bgra))
+                            {
+                                canvas.Clear(SKColors.Black);
+                                canvas.DrawBitmap(rendered, new SKRect(0, 0, width, height));
+                                canvas.Flush();
+                            }
+                            Marshal.Copy(bgra.GetPixels(), bytes, 0, byteCount);
+                        }
+
+                        var buffer = CryptographicBuffer.CreateFromByteArray(bytes);
+                        var timestamp = TimeSpan.FromTicks(frameIndex * frameDurationTicks);
+                        var sample = MediaStreamSample.CreateFromBuffer(buffer, timestamp);
+                        sample.Duration = TimeSpan.FromTicks(frameDurationTicks);
+                        request.Sample = sample;
+
+                        // MediaTranscoder.Progress can stay at zero while it is consuming source
+                        // samples. Report renderer progress ourselves so the app never looks dead.
+                        var now = Environment.TickCount64;
+                        if (frameIndex == frameCount - 1 || now - Interlocked.Read(ref lastUiProgressTicks) >= 125)
+                        {
+                            Interlocked.Exchange(ref lastUiProgressTicks, now);
+                            var renderedCount = frameIndex + 1;
+                            var progress = renderedCount * 100.0 / frameCount;
+                            DispatcherQueue.TryEnqueue(() =>
+                            {
+                                ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
+                                ExportStatusText.Text = $"Rendering video… {renderedCount:N0} / {frameCount:N0} frames · {progress:0.0}%";
+                            });
+                        }
+                    }
+                    catch (OperationCanceledException)
                     {
-                        canvas.Clear(SKColors.Black);
-                        canvas.DrawBitmap(rendered, new SKRect(0, 0, width, height));
-                        canvas.Flush();
+                        request.Sample = null;
                     }
-
-                    if (bgra.RowBytes != width * 4)
-                        throw new InvalidOperationException($"Unexpected video frame stride {bgra.RowBytes}; expected {width * 4}.");
-
-                    var byteCount = checked(width * height * 4);
-                    var bytes = new byte[byteCount];
-                    Marshal.Copy(bgra.GetPixels(), bytes, 0, byteCount);
-                    var buffer = CryptographicBuffer.CreateFromByteArray(bytes);
-                    var timestamp = TimeSpan.FromTicks(frameIndex * frameDurationTicks);
-                    var sample = MediaStreamSample.CreateFromBuffer(buffer, timestamp);
-                    sample.Duration = TimeSpan.FromTicks(frameDurationTicks);
-                    args.Request.Sample = sample;
-                }
-                catch (Exception ex)
-                {
-                    renderFailure = ex;
-                    args.Request.Sample = null;
-                }
-                finally
-                {
-                    deferral.Complete();
-                }
+                    catch (Exception ex)
+                    {
+                        Interlocked.CompareExchange(ref renderFailure, ex, null);
+                        request.Sample = null;
+                    }
+                    finally
+                    {
+                        if (gateHeld)
+                            sampleGate.Release();
+                        deferral.Complete();
+                    }
+                }, CancellationToken.None);
             };
 
             var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.HD1080p);
@@ -141,20 +212,20 @@ public sealed partial class MainWindow
             if (!prepared.CanTranscode)
                 throw new InvalidOperationException($"Windows could not prepare the MP4 encoder ({prepared.FailureReason}).");
 
-            ExportStatusText.Text = $"Rendering {frameCount:N0} frames · {width}×{height} · {fps} FPS";
+            ExportStatusText.Text = $"Starting {frameCount:N0}-frame export · {width}×{height} · {fps} FPS";
             var operation = prepared.TranscodeAsync();
             _videoExportOperation = operation;
             operation.Progress += (_, progress) =>
             {
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    ExportProgressBar.Value = Math.Clamp(progress, 0, 100);
-                    ExportStatusText.Text = $"Exporting video… {progress:0}%";
+                    ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
                 });
             };
 
             await operation;
             _videoExportOperation = null;
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (renderFailure is not null)
                 throw new InvalidOperationException("A renderer frame failed during export.", renderFailure);
@@ -186,6 +257,8 @@ public sealed partial class MainWindow
         finally
         {
             _videoExportOperation = null;
+            _videoExportCancellation?.Dispose();
+            _videoExportCancellation = null;
             _videoExportInProgress = false;
             ExportVideoButton.IsEnabled = true;
             ExportCancelButton.Visibility = Visibility.Collapsed;
@@ -194,11 +267,12 @@ public sealed partial class MainWindow
 
     private void CancelVideoExport_Click(object sender, RoutedEventArgs e)
     {
-        if (_videoExportOperation is null)
+        if (!_videoExportInProgress)
             return;
 
         ExportStatusText.Text = "Cancelling export…";
-        _videoExportOperation.Cancel();
+        _videoExportCancellation?.Cancel();
+        _videoExportOperation?.Cancel();
     }
 
     private static void TryDeleteExport(string path)
