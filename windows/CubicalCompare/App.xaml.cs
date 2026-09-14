@@ -17,18 +17,9 @@ public partial class App : Application
         EnsureLogDirectory();
         WriteLog("Process entered App constructor.");
 
-        UnhandledException += (_, args) =>
-        {
-            WriteLog("WinUI unhandled exception", args.Exception);
-        };
-        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
-        {
-            WriteLog("AppDomain unhandled exception", args.ExceptionObject as Exception);
-        };
-        TaskScheduler.UnobservedTaskException += (_, args) =>
-        {
-            WriteLog("Unobserved task exception", args.Exception);
-        };
+        UnhandledException += (_, args) => WriteLog("WinUI unhandled exception", args.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, args) => WriteLog("AppDomain unhandled exception", args.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, args) => WriteLog("Unobserved task exception", args.Exception);
 
         InitializeComponent();
         WriteLog("App XAML initialised.");
@@ -69,10 +60,21 @@ public partial class App : Application
             mainWindow.Activate();
             WriteLog("MainWindow activated.");
 
+            // Controls that need to inspect or extend the realised visual tree are deliberately
+            // installed after activation. Doing this in the constructor made their ancestors
+            // unreliable and was the reason direct transform occasionally appeared but did nothing.
             mainWindow.DispatcherQueue.TryEnqueue(() =>
             {
-                mainWindow.InitializeDirectArtworkManipulator();
-                mainWindow.InitializeSoundtrackControls();
+                try
+                {
+                    mainWindow.InitializeDirectArtworkManipulator();
+                    mainWindow.InitializeSoundtrackEditor();
+                    WriteLog("Post-activation editor controls initialised.");
+                }
+                catch (Exception ex)
+                {
+                    WriteLog("Post-activation editor control initialisation failed", ex);
+                }
             });
         }
         catch (Exception ex)
@@ -142,7 +144,7 @@ public partial class App : Application
         }
         catch
         {
-            // Startup diagnostics must never become a second startup failure.
+            // Diagnostics must never become a second application failure.
         }
     }
 }
