@@ -1,1 +1,2 @@
 Render fonts are selected from Windows-installed fonts or user-picked local font files at runtime. Font binaries are not source or package assets.
+The Windows build must stay font-payload-free; Nexa ExtraBold is selected only when it is installed on the user's system or chosen locally.
