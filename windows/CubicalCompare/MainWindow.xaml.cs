@@ -50,7 +50,13 @@ public sealed partial class MainWindow : Window
             RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
             CardsList.SelectedIndex = 0;
         };
-        Closed += (_, _) => _legacyRenderer?.Dispose();
+        Closed += (_, _) =>
+        {
+            // The debounce-based autosave can still be waiting when Windows closes the window.
+            // Flush the latest in-memory snapshot first so the user's final keystrokes survive.
+            FlushWorkspaceOnClose();
+            _legacyRenderer?.Dispose();
+        };
     }
 
     private void RootNavigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -519,5 +525,6 @@ public sealed class DetectedCardViewModel : INotifyPropertyChanged
         if (_sequence == sequence) return;
         _sequence = sequence;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Details)));
     }
 }
