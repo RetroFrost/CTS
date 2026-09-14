@@ -42,6 +42,8 @@ public static class Zipack2Importer
         if (definitions.Count > MaxSheets)
             throw new InvalidDataException($"Zipack2 pack contains too many contact sheets ({definitions.Count}).");
 
+        ValidateSheetDefinitions(definitions);
+
         var extractionRoot = Path.Combine(
             Path.GetTempPath(),
             "CubicalCompare",
@@ -49,81 +51,95 @@ public static class Zipack2Importer
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(extractionRoot);
 
-        var allCards = new List<DetectedZipack2Card>();
-        var sheetResults = new List<Zipack2SheetResult>();
-        var globalIndex = 0;
-
-        foreach (var definition in definitions.OrderBy(x => x.Order).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var entry = FindEntry(archive, definition.Path)
-                ?? throw new InvalidDataException($"Contact sheet '{definition.Path}' was not found in the Zipack2 pack.");
+            var allCards = new List<DetectedZipack2Card>();
+            var sheetResults = new List<Zipack2SheetResult>();
+            var globalIndex = 0;
+            var processedSheetIndex = 0;
 
-            await using var entryStream = entry.Open();
-            await using var bounded = await ReadEntryAsync(entryStream, entry.Length, cancellationToken);
-            using var bitmap = SKBitmap.Decode(bounded)
-                ?? throw new InvalidDataException($"Contact sheet '{definition.Path}' is not a supported image.");
-
-            var regions = definition.Regions.Count > 0
-                ? ContactSheetDetector.ValidatePredefinedRegions(bitmap, definition.Regions, definition.Separator)
-                : ContactSheetDetector.Detect(bitmap, definition.Separator);
-
-            if (regions.Count == 0)
-                throw new InvalidDataException($"No cards were detected on contact sheet '{definition.Path}'. Check its yellow outlines or predefined regions.");
-
-            var sheetDirectory = Path.Combine(extractionRoot, $"sheet-{definition.Order:D3}");
-            Directory.CreateDirectory(sheetDirectory);
-            var sheetCards = new List<DetectedZipack2Card>(regions.Count);
-
-            for (var localIndex = 0; localIndex < regions.Count; localIndex++)
+            foreach (var definition in definitions.OrderBy(x => x.Order).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (allCards.Count >= MaxCards)
-                    throw new InvalidDataException($"Zipack2 detection produced more than {MaxCards:N0} cards.");
+                var entry = FindEntry(archive, definition.Path)
+                    ?? throw new InvalidDataException($"Contact sheet '{definition.Path}' was not found in the Zipack2 pack.");
 
-                var region = regions[localIndex];
-                var extractedPath = Path.Combine(sheetDirectory, $"card-{localIndex + 1:D4}.png");
-                ExtractCard(bitmap, region, extractedPath);
+                await using var entryStream = entry.Open();
+                await using var bounded = await ReadEntryAsync(entryStream, entry.Length, cancellationToken);
+                using var bitmap = SKBitmap.Decode(bounded)
+                    ?? throw new InvalidDataException($"Contact sheet '{definition.Path}' is not a supported image.");
 
-                var confidence = ComputeConfidence(region, definition);
-                var detected = new DetectedZipack2Card
+                var regions = definition.Regions.Count > 0
+                    ? ContactSheetDetector.ValidatePredefinedRegions(bitmap, definition.Regions, definition.Separator)
+                    : ContactSheetDetector.Detect(bitmap, definition.Separator);
+
+                if (regions.Count == 0)
+                    throw new InvalidDataException($"No cards were detected on contact sheet '{definition.Path}'. Check its yellow outlines or predefined regions.");
+
+                if (allCards.Count + regions.Count > MaxCards)
+                    throw new InvalidDataException($"Zipack2 detection would produce more than {MaxCards:N0} cards.");
+
+                // The manifest's Order is presentation metadata, not a safe filesystem key. Two sheets
+                // are allowed to share an order value, so use the actual processing index to keep every
+                // extracted card in its own directory and prevent silent image overwrites.
+                var sheetDirectory = Path.Combine(extractionRoot, $"sheet-{processedSheetIndex++:D3}");
+                Directory.CreateDirectory(sheetDirectory);
+                var sheetCards = new List<DetectedZipack2Card>(regions.Count);
+
+                for (var localIndex = 0; localIndex < regions.Count; localIndex++)
                 {
-                    SheetPath = definition.Path,
-                    SheetOrder = definition.Order,
-                    LocalIndex = localIndex,
-                    GlobalIndex = globalIndex++,
-                    Bounds = region,
-                    ExtractedPath = extractedPath,
-                    Confidence = confidence,
-                };
-                sheetCards.Add(detected);
-                allCards.Add(detected);
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var region = regions[localIndex];
+                    var extractedPath = Path.Combine(sheetDirectory, $"card-{localIndex + 1:D4}.png");
+                    ExtractCard(bitmap, region, extractedPath);
+
+                    var confidence = ComputeConfidence(region, definition);
+                    var detected = new DetectedZipack2Card
+                    {
+                        SheetPath = definition.Path,
+                        SheetOrder = definition.Order,
+                        LocalIndex = localIndex,
+                        GlobalIndex = globalIndex++,
+                        Bounds = region,
+                        ExtractedPath = extractedPath,
+                        Confidence = confidence,
+                    };
+                    sheetCards.Add(detected);
+                    allCards.Add(detected);
+                }
+
+                sheetResults.Add(new Zipack2SheetResult
+                {
+                    Path = definition.Path,
+                    Order = definition.Order,
+                    Width = bitmap.Width,
+                    Height = bitmap.Height,
+                    Cards = sheetCards,
+                });
             }
 
-            sheetResults.Add(new Zipack2SheetResult
+            for (var index = 0; index < Math.Min(allCards.Count, manifest.Cards.Count); index++)
+                allCards[index].Data = manifest.Cards[index].Normalize(index);
+
+            return new Zipack2ImportResult
             {
-                Path = definition.Path,
-                Order = definition.Order,
-                Width = bitmap.Width,
-                Height = bitmap.Height,
-                Cards = sheetCards,
-            });
+                Name = string.IsNullOrWhiteSpace(manifest.Name) ? Path.GetFileNameWithoutExtension(path) : manifest.Name,
+                SourcePath = path,
+                ExtractionDirectory = extractionRoot,
+                Sheets = sheetResults,
+                Cards = allCards,
+                ShowBadges = manifest.ShowBadges,
+                CreditsEnabled = manifest.CreditsEnabled,
+                DurationSeconds = double.IsFinite(manifest.DurationSeconds) && manifest.DurationSeconds > 0 ? manifest.DurationSeconds : 0,
+            };
         }
-
-        for (var index = 0; index < Math.Min(allCards.Count, manifest.Cards.Count); index++)
-            allCards[index].Data = manifest.Cards[index].Normalize(index);
-
-        return new Zipack2ImportResult
+        catch
         {
-            Name = string.IsNullOrWhiteSpace(manifest.Name) ? Path.GetFileNameWithoutExtension(path) : manifest.Name,
-            SourcePath = path,
-            ExtractionDirectory = extractionRoot,
-            Sheets = sheetResults,
-            Cards = allCards,
-            ShowBadges = manifest.ShowBadges,
-            CreditsEnabled = manifest.CreditsEnabled,
-            DurationSeconds = double.IsFinite(manifest.DurationSeconds) && manifest.DurationSeconds > 0 ? manifest.DurationSeconds : 0,
-        };
+            // A failed or cancelled import must not leave hundreds of extracted PNGs behind in %TEMP%.
+            TryDeleteDirectory(extractionRoot);
+            throw;
+        }
     }
 
     private static void ExtractCard(SKBitmap source, PixelRect region, string destinationPath)
@@ -207,6 +223,21 @@ public static class Zipack2Importer
             .ToList();
     }
 
+    private static void ValidateSheetDefinitions(IReadOnlyList<Zipack2ContactSheetDefinition> definitions)
+    {
+        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var definition in definitions)
+        {
+            if (string.IsNullOrWhiteSpace(definition.Path))
+                throw new InvalidDataException("A Zipack2 contact-sheet definition has an empty path.");
+
+            ValidateEntryName(definition.Path);
+            var normalized = NormalizeEntryName(definition.Path);
+            if (!seenPaths.Add(normalized))
+                throw new InvalidDataException($"Zipack2 manifest references contact sheet '{normalized}' more than once.");
+        }
+    }
+
     private static bool IsContactSheetEntry(ZipArchiveEntry entry)
     {
         if (string.IsNullOrWhiteSpace(entry.Name)) return false;
@@ -270,5 +301,17 @@ public static class Zipack2Importer
         var widthError = Math.Abs(region.Width - definition.ExpectedCardWidth.Value) / (double)Math.Max(1, definition.ExpectedCardWidth.Value);
         var heightError = Math.Abs(region.Height - definition.ExpectedCardHeight.Value) / (double)Math.Max(1, definition.ExpectedCardHeight.Value);
         return Math.Clamp(1.0 - ((widthError + heightError) * 0.5), 0.0, 1.0);
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+            // Best-effort cleanup only. The original import exception is more important.
+        }
     }
 }
