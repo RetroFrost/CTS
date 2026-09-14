@@ -1,0 +1,1 @@
+System fonts and user-selected local font files are used at runtime. Do not embed font binaries or encoded font payloads in this repository.
