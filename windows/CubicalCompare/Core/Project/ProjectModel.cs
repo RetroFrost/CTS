@@ -12,6 +12,9 @@ public sealed class ComparisonProject
     public double CustomLengthSeconds { get; set; } = 90.0;
     public string RenderFontFamily { get; set; } = "Nexa";
     public string RenderFontFile { get; set; } = "";
+    public string SoundtrackPath { get; set; } = "";
+    public double SoundtrackVolume { get; set; } = 1.0;
+    public bool SoundtrackLoop { get; set; } = true;
 
     // Keep this settable so projects can be safely round-tripped by System.Text.Json
     // for workspace recovery, file persistence and future interchange formats.
