@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Security.Cryptography;
 using CubicalCompare.Core.Project;
 using Microsoft.UI.Xaml;
@@ -12,11 +11,11 @@ namespace CubicalCompare;
 public sealed partial class MainWindow
 {
     private readonly List<RenderFontChoice> _renderFontChoices = [];
-    private readonly ObservableCollection<string> _renderFontLabels = [];
     private ComboBox? _renderFontComboBox;
     private TextBlock? _renderFontStatusText;
     private bool _renderFontUiUpdating;
     private bool _renderFontSelectorInitialized;
+    private bool _renderFontSystemLoaded;
     private long _renderFontScanRevision;
 
     internal void InitializeFontSelector()
@@ -36,14 +35,14 @@ public sealed partial class MainWindow
         _renderFontComboBox = new ComboBox
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            PlaceholderText = "Select a font installed on Windows",
-            ItemsSource = _renderFontLabels,
+            PlaceholderText = "Select an installed Windows font",
             MaxDropDownHeight = 520,
         };
         _renderFontComboBox.SelectionChanged += RenderFontComboBox_SelectionChanged;
 
         _renderFontStatusText = new TextBlock
         {
+            Text = "Open this section to load installed fonts.",
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.62,
             FontSize = 11,
@@ -72,7 +71,7 @@ public sealed partial class MainWindow
 
         var useDefault = new Button
         {
-            Content = "Use default Nexa / system fallback",
+            Content = "Use Nexa / system fallback",
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         useDefault.Click += (_, _) => RenderFontSelection.Apply("Nexa", string.Empty);
@@ -84,7 +83,7 @@ public sealed partial class MainWindow
         };
         panel.Children.Add(new TextBlock
         {
-            Text = "The renderer and automatic thumbnail use the exact selected font file. Nexa ExtraBold is picked automatically when it is installed.",
+            Text = "Installed font families load only when this panel is opened, so app startup stays fast. Choose a font file when you need an exact face such as a specific ExtraBold weight.",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
             Opacity = 0.58,
@@ -101,123 +100,81 @@ public sealed partial class MainWindow
             Content = panel,
             Margin = new Thickness(0, 4, 0, 0),
         };
+        expander.Expanded += async (_, _) =>
+        {
+            if (!_renderFontSystemLoaded)
+                await LoadSystemFontsAsync(force: false);
+        };
         inspectorStack.Children.Add(expander);
 
         RenderFontSelection.Changed += RenderFontSelection_Changed;
         Closed += (_, _) => RenderFontSelection.Changed -= RenderFontSelection_Changed;
 
         RefreshRenderFontUi();
-        _ = LoadSystemFontsAsync(force: false);
     }
 
     private async Task LoadSystemFontsAsync(bool force)
     {
         if (!_renderFontSelectorInitialized)
             return;
+        if (_renderFontSystemLoaded && !force)
+            return;
 
         var revision = Interlocked.Increment(ref _renderFontScanRevision);
         if (_renderFontStatusText is not null)
-            _renderFontStatusText.Text = force ? "Refreshing installed fonts…" : "Scanning installed fonts…";
+            _renderFontStatusText.Text = force ? "Refreshing installed fonts…" : "Loading installed fonts…";
 
         List<RenderFontChoice> choices;
         try
         {
-            choices = await Task.Run(EnumerateSystemFonts);
+            choices = await Task.Run(EnumerateSystemFontsFast);
         }
         catch (Exception ex)
         {
             App.WriteLog("System font scan failed", ex);
             if (_renderFontStatusText is not null)
-                _renderFontStatusText.Text = $"Could not scan Windows fonts: {ex.Message}";
+                _renderFontStatusText.Text = $"Could not read Windows fonts: {ex.Message}";
             return;
         }
 
         if (revision != Interlocked.Read(ref _renderFontScanRevision))
             return;
 
-        _renderFontUiUpdating = true;
-        try
+        _renderFontChoices.Clear();
+        _renderFontChoices.AddRange(choices);
+        _renderFontSystemLoaded = true;
+
+        var currentFile = RenderFontSelection.CurrentFile;
+        if (!string.IsNullOrWhiteSpace(currentFile) && File.Exists(currentFile))
         {
-            _renderFontChoices.Clear();
-            _renderFontLabels.Clear();
-            foreach (var choice in choices)
-            {
-                _renderFontChoices.Add(choice);
-                _renderFontLabels.Add(choice.DisplayName);
-            }
-        }
-        finally
-        {
-            _renderFontUiUpdating = false;
+            var custom = CreateFontChoice(currentFile);
+            if (custom is not null)
+                EnsureFontChoiceVisible(custom, rebind: false);
         }
 
-        // Prefer the exact ExtraBold face when Nexa is installed, matching Cubical Compare's
-        // established typography without requiring any font payload to be shipped with the app.
-        if (string.IsNullOrWhiteSpace(RenderFontSelection.CurrentFile))
-        {
-            var preferred = _renderFontChoices
-                .Where(x => x.FamilyName.Equals("Nexa", StringComparison.OrdinalIgnoreCase) && x.Weight >= 750)
-                .OrderByDescending(x => x.Weight)
-                .FirstOrDefault();
-            if (preferred is not null)
-                RenderFontSelection.Apply(preferred.FamilyName, preferred.FilePath);
-        }
-
+        RebindFontChoices();
         RefreshRenderFontUi();
-        if (_renderFontStatusText is not null
-            && string.IsNullOrWhiteSpace(RenderFontSelection.CurrentFile))
+
+        if (_renderFontStatusText is not null && string.IsNullOrWhiteSpace(RenderFontSelection.CurrentFile))
         {
-            _renderFontStatusText.Text = "Nexa ExtraBold is not installed. Select any Windows font above, or choose a .ttf/.otf file.";
+            _renderFontStatusText.Text = _renderFontChoices.Count == 0
+                ? "Windows did not report any installed font families. You can still choose a .ttf/.otf/.ttc file."
+                : $"{_renderFontChoices.Count} installed font families ready · current: {RenderFontSelection.CurrentFamily}";
         }
     }
 
-    private static List<RenderFontChoice> EnumerateSystemFonts()
+    private static List<RenderFontChoice> EnumerateSystemFontsFast()
     {
-        var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var systemFonts = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
-        if (!string.IsNullOrWhiteSpace(systemFonts) && Directory.Exists(systemFonts))
-            directories.Add(systemFonts);
-
-        var userFonts = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Microsoft",
-            "Windows",
-            "Fonts");
-        if (Directory.Exists(userFonts))
-            directories.Add(userFonts);
-
-        var choices = new Dictionary<string, RenderFontChoice>(StringComparer.OrdinalIgnoreCase);
-        foreach (var directory in directories)
-        {
-            IEnumerable<string> files;
-            try
-            {
-                files = Directory.EnumerateFiles(directory, "*.*", SearchOption.TopDirectoryOnly).ToArray();
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (var path in files)
-            {
-                var extension = Path.GetExtension(path).ToLowerInvariant();
-                if (extension is not (".ttf" or ".otf" or ".ttc"))
-                    continue;
-
-                var choice = CreateFontChoice(path);
-                if (choice is null)
-                    continue;
-
-                var key = $"{choice.FamilyName}\u001f{choice.Weight}\u001f{choice.Slant}";
-                choices.TryAdd(key, choice);
-            }
-        }
-
-        return choices.Values
-            .OrderBy(x => x.FamilyName, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(x => x.Weight)
-            .ThenBy(x => x.Slant)
+        // SKFontManager asks the platform font manager for family names directly. The previous
+        // implementation opened every TTF/OTF/TTC file on disk one by one, which could make launch
+        // and the first ComboBox open look frozen on machines with large font collections.
+        var families = SKFontManager.Default.FontFamilies ?? Array.Empty<string>();
+        return families
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+            .Select(x => new RenderFontChoice(x, string.Empty, 400, SKFontStyleSlant.Upright, "System"))
             .ToList();
     }
 
@@ -304,9 +261,14 @@ public sealed partial class MainWindow
         _renderFontUiUpdating = true;
         try
         {
-            var selectedIndex = string.IsNullOrWhiteSpace(currentFile)
-                ? -1
-                : _renderFontChoices.FindIndex(x => x.FilePath.Equals(currentFile, StringComparison.OrdinalIgnoreCase));
+            var selectedIndex = !string.IsNullOrWhiteSpace(currentFile)
+                ? _renderFontChoices.FindIndex(x =>
+                    !string.IsNullOrWhiteSpace(x.FilePath)
+                    && x.FilePath.Equals(currentFile, StringComparison.OrdinalIgnoreCase))
+                : _renderFontChoices.FindIndex(x =>
+                    string.IsNullOrWhiteSpace(x.FilePath)
+                    && x.FamilyName.Equals(currentFamily, StringComparison.CurrentCultureIgnoreCase));
+
             _renderFontComboBox.SelectedIndex = selectedIndex;
 
             if (selectedIndex >= 0)
@@ -320,6 +282,10 @@ public sealed partial class MainWindow
                     ? $"Current font file: {currentFile}"
                     : $"Selected font is missing: {currentFile}";
             }
+            else if (!_renderFontSystemLoaded)
+            {
+                _renderFontStatusText.Text = $"Current: {currentFamily} · open this section to load installed fonts.";
+            }
             else
             {
                 _renderFontStatusText.Text = $"Current: {currentFamily} family fallback";
@@ -331,15 +297,36 @@ public sealed partial class MainWindow
         }
     }
 
-    private void EnsureFontChoiceVisible(RenderFontChoice choice)
+    private void RebindFontChoices()
+    {
+        if (_renderFontComboBox is null)
+            return;
+
+        _renderFontUiUpdating = true;
+        try
+        {
+            _renderFontComboBox.ItemsSource = null;
+            _renderFontComboBox.ItemsSource = _renderFontChoices.Select(x => x.DisplayName).ToArray();
+        }
+        finally
+        {
+            _renderFontUiUpdating = false;
+        }
+    }
+
+    private void EnsureFontChoiceVisible(RenderFontChoice choice, bool rebind = true)
     {
         var existing = _renderFontChoices.FindIndex(x =>
-            x.FilePath.Equals(choice.FilePath, StringComparison.OrdinalIgnoreCase));
+            !string.IsNullOrWhiteSpace(choice.FilePath)
+                ? x.FilePath.Equals(choice.FilePath, StringComparison.OrdinalIgnoreCase)
+                : string.IsNullOrWhiteSpace(x.FilePath)
+                  && x.FamilyName.Equals(choice.FamilyName, StringComparison.CurrentCultureIgnoreCase));
         if (existing >= 0)
             return;
 
         _renderFontChoices.Insert(0, choice);
-        _renderFontLabels.Insert(0, choice.DisplayName);
+        if (rebind)
+            RebindFontChoices();
     }
 
     private static RenderFontChoice? CreateFontChoice(string path)
@@ -403,8 +390,16 @@ public sealed partial class MainWindow
         SKFontStyleSlant Slant,
         string StyleName)
     {
-        public string DisplayName => StyleName.Equals("Regular", StringComparison.OrdinalIgnoreCase)
-            ? FamilyName
-            : $"{FamilyName} — {StyleName}";
+        public string DisplayName
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(FilePath))
+                    return FamilyName;
+                return StyleName.Equals("Regular", StringComparison.OrdinalIgnoreCase)
+                    ? $"{FamilyName} — custom file"
+                    : $"{FamilyName} — {StyleName} · custom file";
+            }
+        }
     }
 }
