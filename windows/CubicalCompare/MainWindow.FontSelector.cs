@@ -16,6 +16,7 @@ public sealed partial class MainWindow
     private bool _renderFontUiUpdating;
     private bool _renderFontSelectorInitialized;
     private bool _renderFontSystemLoaded;
+    private bool _renderFontRetryHooked;
     private long _renderFontScanRevision;
 
     internal void InitializeFontSelector()
@@ -26,10 +27,19 @@ public sealed partial class MainWindow
         var transformExpander = FindFontAncestor<Expander>(ImageScaleBox);
         if (transformExpander?.Parent is not StackPanel inspectorStack)
         {
-            DispatcherQueue.TryEnqueue(InitializeFontSelector);
+            // Never requeue ourselves immediately. Before the visual tree is realised that creates
+            // an endless dispatcher loop which can starve WinUI before the first frame is painted.
+            // Wait for the NavigationView to finish loading, then try exactly once more.
+            if (!_renderFontRetryHooked)
+            {
+                _renderFontRetryHooked = true;
+                RootNavigation.Loaded += FontSelector_RootNavigationLoaded;
+            }
             return;
         }
 
+        _renderFontRetryHooked = false;
+        RootNavigation.Loaded -= FontSelector_RootNavigationLoaded;
         _renderFontSelectorInitialized = true;
 
         _renderFontComboBox = new ComboBox
@@ -111,6 +121,13 @@ public sealed partial class MainWindow
         Closed += (_, _) => RenderFontSelection.Changed -= RenderFontSelection_Changed;
 
         RefreshRenderFontUi();
+    }
+
+    private void FontSelector_RootNavigationLoaded(object sender, RoutedEventArgs e)
+    {
+        RootNavigation.Loaded -= FontSelector_RootNavigationLoaded;
+        _renderFontRetryHooked = false;
+        InitializeFontSelector();
     }
 
     private async Task LoadSystemFontsAsync(bool force)
