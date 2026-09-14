@@ -138,6 +138,37 @@ public sealed partial class MainWindow
         await ApplyArtworkTransformAsync();
     }
 
+    private async void ArtworkTransform_ApplyAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardsList.SelectedItem is not ProjectCardViewModel source)
+            return;
+
+        if (Cards.Count <= 1)
+        {
+            TimelineStatusText.Text = "There are no other cards to update.";
+            return;
+        }
+
+        foreach (var card in Cards)
+        {
+            if (ReferenceEquals(card, source))
+                continue;
+
+            card.ImageX = source.ImageX;
+            card.ImageY = source.ImageY;
+            card.ImageScale = source.ImageScale;
+            card.ImageRotation = source.ImageRotation;
+            card.ImageCropLeft = source.ImageCropLeft;
+            card.ImageCropTop = source.ImageCropTop;
+            card.ImageCropRight = source.ImageCropRight;
+            card.ImageCropBottom = source.ImageCropBottom;
+            card.ImageLayer = source.ImageLayer;
+        }
+
+        TimelineStatusText.Text = $"Applied artwork transform to all {Cards.Count} cards.";
+        await ApplyArtworkTransformAsync();
+    }
+
     private void BeginArtworkTransformBatch() => _artworkTransformBatchDepth++;
 
     private void EndArtworkTransformBatch()
