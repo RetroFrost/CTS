@@ -46,6 +46,57 @@ public sealed class LegacyRendererAdapter : IDisposable
         return _engine.FrameCount(ToLegacyProject(project), _spec);
     }
 
+    /// <summary>
+    /// Returns a representative timeline frame for a project card. The editor uses this when the
+    /// user changes card selection so a loaded renderer does not leave the preview parked on the
+    /// previous card's artwork and make distinct imported images appear duplicated.
+    /// </summary>
+    public int PreviewFrameForCard(ComparisonProject project, int cardIndex)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        if (project.Cards.Count == 0) return 0;
+
+        cardIndex = Math.Clamp(cardIndex, 0, project.Cards.Count - 1);
+        var frameCount = Math.Max(1, FrameCount(project));
+        var lastFrame = frameCount - 1;
+        int frame;
+
+        if (_spec.Engine == "ribbon-exact")
+        {
+            if (cardIndex < 4 && cardIndex < _spec.OpeningStarts.Count)
+            {
+                var start = Math.Max(0, _spec.OpeningStarts[cardIndex]);
+                var end = cardIndex < _spec.OpeningEnds.Count
+                    ? Math.Max(start, _spec.OpeningEnds[cardIndex] - 1)
+                    : start + Math.Max(1, _spec.BodySlideFrames);
+                // Pick a settled opening frame rather than the first animation frame.
+                frame = Math.Min(end, start + Math.Max(1, _spec.BodySlideFrames));
+            }
+            else
+            {
+                var step = Math.Max(1, _spec.ContinuousStepFrames);
+                var segment = Math.Max(0, cardIndex - 4);
+                frame = _spec.ContinuousStartFrame + segment * step + Math.Max(1, step / 2);
+            }
+        }
+        else if (_spec.Engine == "native-standard")
+        {
+            var step = Math.Max(1, _spec.ContinuousStepFrames);
+            frame = cardIndex * step + Math.Max(1, step / 2);
+        }
+        else
+        {
+            // Scene-v3 and specialized legacy renderers may not expose a simple one-card timing
+            // equation. A proportional frame is deterministic and is much more useful than keeping
+            // the preview fixed on the previously selected card.
+            frame = project.Cards.Count <= 1
+                ? 0
+                : (int)Math.Round(cardIndex * (double)lastFrame / (project.Cards.Count - 1));
+        }
+
+        return Math.Clamp(frame, 0, lastFrame);
+    }
+
     public SKBitmap Render(ComparisonProject project, int frame, int? width = null, int? height = null)
     {
         ArgumentNullException.ThrowIfNull(project);
