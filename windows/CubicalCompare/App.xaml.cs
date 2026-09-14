@@ -36,9 +36,33 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        WriteLog("OnLaunched entered.");
+        WriteLog($"OnLaunched entered. Arguments: '{args.Arguments}'.");
         try
         {
+            if (string.Equals(args.Arguments, "--ci-shell-smoke", StringComparison.Ordinal))
+            {
+                MainWindow = new Window
+                {
+                    Title = "Cubical Compare — WinUI shell smoke",
+                    Content = new Grid
+                    {
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = "Cubical Compare WinUI shell is alive.",
+                                HorizontalAlignment = HorizontalAlignment.Center,
+                                VerticalAlignment = VerticalAlignment.Center,
+                            },
+                        },
+                    },
+                };
+                WriteLog("CI shell smoke window constructed.");
+                MainWindow.Activate();
+                WriteLog("CI shell smoke window activated.");
+                return;
+            }
+
             MainWindow = new MainWindow();
             WriteLog("MainWindow constructed.");
             MainWindow.Activate();
