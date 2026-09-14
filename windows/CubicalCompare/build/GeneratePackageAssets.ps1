@@ -71,48 +71,10 @@ function New-CubicalCompareAsset {
     }
 }
 
-function Expand-BundledFont {
-    param(
-        [Parameter(Mandatory = $true)][string]$ArchiveName,
-        [Parameter(Mandatory = $true)][string]$OutputName
-    )
-
-    $archivePath = Join-Path $PSScriptRoot $ArchiveName
-    if (-not (Test-Path -LiteralPath $archivePath)) {
-        throw "Bundled font archive is missing: $archivePath"
-    }
-
-    $fontPath = Join-Path $OutputDirectory $OutputName
-    $input = [System.IO.File]::OpenRead($archivePath)
-    try {
-        $gzip = [System.IO.Compression.GZipStream]::new($input, [System.IO.Compression.CompressionMode]::Decompress)
-        try {
-            $output = [System.IO.File]::Create($fontPath)
-            try {
-                $gzip.CopyTo($output)
-            }
-            finally {
-                $output.Dispose()
-            }
-        }
-        finally {
-            $gzip.Dispose()
-        }
-    }
-    finally {
-        $input.Dispose()
-    }
-
-    if ((Get-Item -LiteralPath $fontPath).Length -lt 1024) {
-        throw "Generated bundled font looks invalid: $fontPath"
-    }
-}
-
 New-CubicalCompareAsset -Name 'StoreLogo.png' -Width 50 -Height 50
 New-CubicalCompareAsset -Name 'Square44x44Logo.png' -Width 44 -Height 44
 New-CubicalCompareAsset -Name 'Square150x150Logo.png' -Width 150 -Height 150
 New-CubicalCompareAsset -Name 'Wide310x150Logo.png' -Width 310 -Height 150
 New-CubicalCompareAsset -Name 'SplashScreen.png' -Width 620 -Height 300
-Expand-BundledFont -ArchiveName 'nexa-extrabold.ttf.gz' -OutputName 'nexa-extrabold.ttf'
 
-Write-Host "Generated package assets and Nexa ExtraBold in $OutputDirectory"
+Write-Host "Generated package assets in $OutputDirectory"
