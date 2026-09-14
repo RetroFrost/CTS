@@ -78,6 +78,9 @@ public sealed partial class MainWindow
             TimelineStatusText.Text = $"Saving {Path.GetFileName(path)}…";
             var project = BuildProject();
             project.Name = _projectDisplayName;
+            project.SoundtrackPath = _soundtrackPath;
+            project.SoundtrackVolume = _soundtrackVolume;
+            project.SoundtrackLoop = _soundtrackLoop;
             await ProjectFileService.SaveAsync(project, path);
             TimelineStatusText.Text = $"Saved {Path.GetFileName(path)}";
         }
@@ -101,6 +104,9 @@ public sealed partial class MainWindow
             _projectShowBadges = project.ShowBadges;
             _projectCreditsEnabled = project.CreditsEnabled;
             _projectDurationSeconds = project.AutoLength ? 0 : Math.Max(0, project.CustomLengthSeconds);
+            _soundtrackPath = project.SoundtrackPath;
+            _soundtrackVolume = project.SoundtrackVolume;
+            _soundtrackLoop = project.SoundtrackLoop;
 
             foreach (var card in project.Cards)
             {
@@ -127,6 +133,7 @@ public sealed partial class MainWindow
             CardsList.SelectedIndex = 0;
             RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
             RefreshTimelineRange();
+            RefreshSoundtrackUi();
         }
         finally
         {
@@ -137,8 +144,6 @@ public sealed partial class MainWindow
     private void UpdateProjectIdentityUi()
     {
         ProjectNameText.Text = _projectDisplayName;
-        Title = string.IsNullOrWhiteSpace(_activeProjectPath)
-            ? $"{_projectDisplayName} — Cubical Compare"
-            : $"{_projectDisplayName} — Cubical Compare";
+        Title = $"{_projectDisplayName} — Cubical Compare";
     }
 }
