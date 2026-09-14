@@ -131,18 +131,13 @@ public sealed partial class MainWindow
                         if (pixels == IntPtr.Zero)
                             throw new InvalidOperationException("Renderer returned a frame with no pixel buffer.");
 
+                        // Media Foundation's raw BGRA video path treats positive-stride samples as
+                        // bottom-up DIB data. Skia gives us top-down rows. Feeding Skia's row 0 first
+                        // therefore made every exported frame vertically inverted. Reverse row order
+                        // only; never reverse pixels inside a row, otherwise left/right is mirrored.
                         if (rendered.ColorType == SKColorType.Bgra8888)
                         {
-                            var packedStride = width * 4;
-                            if (rendered.RowBytes == packedStride)
-                            {
-                                Marshal.Copy(pixels, bytes, 0, byteCount);
-                            }
-                            else
-                            {
-                                for (var y = 0; y < height; y++)
-                                    Marshal.Copy(IntPtr.Add(pixels, y * rendered.RowBytes), bytes, y * packedStride, packedStride);
-                            }
+                            CopyBgraRowsBottomUp(pixels, rendered.RowBytes, bytes, width, height);
                         }
                         else
                         {
@@ -153,7 +148,11 @@ public sealed partial class MainWindow
                                 canvas.DrawBitmap(rendered, new SKRect(0, 0, width, height));
                                 canvas.Flush();
                             }
-                            Marshal.Copy(bgra.GetPixels(), bytes, 0, byteCount);
+
+                            var bgraPixels = bgra.GetPixels();
+                            if (bgraPixels == IntPtr.Zero)
+                                throw new InvalidOperationException("Could not access the converted BGRA frame buffer.");
+                            CopyBgraRowsBottomUp(bgraPixels, bgra.RowBytes, bytes, width, height);
                         }
 
                         var buffer = CryptographicBuffer.CreateFromByteArray(bytes);
@@ -272,6 +271,23 @@ public sealed partial class MainWindow
             _videoExportInProgress = false;
             ExportVideoButton.IsEnabled = true;
             ExportCancelButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private static void CopyBgraRowsBottomUp(IntPtr sourcePixels, int sourceRowBytes, byte[] destination, int width, int height)
+    {
+        var packedStride = checked(width * 4);
+        if (sourceRowBytes < packedStride)
+            throw new InvalidOperationException($"Frame stride {sourceRowBytes} is smaller than the packed BGRA stride {packedStride}.");
+
+        for (var destinationRow = 0; destinationRow < height; destinationRow++)
+        {
+            var sourceRow = height - 1 - destinationRow;
+            Marshal.Copy(
+                IntPtr.Add(sourcePixels, sourceRow * sourceRowBytes),
+                destination,
+                destinationRow * packedStride,
+                packedStride);
         }
     }
 
