@@ -28,12 +28,14 @@
                     </Border>
                 </StackPanel>
 
-                <TextBlock Grid.Column="1" Text="{x:Bind ProjectName, Mode=OneTime}" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.72" />
+                <TextBlock x:Name="ProjectNameText" Grid.Column="1" Text="Untitled comparison" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.72" TextTrimming="CharacterEllipsis" />
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button Content="New" Click="NewProject_Click" />
+                    <Button Content="New" Click="NewProjectWithFileState_Click" />
+                    <Button Content="Open" Click="OpenProject_Click" />
+                    <Button Content="Save" Click="SaveProject_Click" />
+                    <Button Content="Save as" Click="SaveProjectAs_Click" />
                     <Button Content="Import Zipack2" Click="ImportMegaPack_Click" />
-                    <Button Content="Export MegaPack" Click="ExportMegaPack_Click" />
                 </StackPanel>
             </Grid>
         </Border>
