@@ -8,15 +8,21 @@
     <ApplicationTitle>Cubical Compare</ApplicationTitle>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <UseWinUI>true</UseWinUI>
-    <WindowsPackageType>None</WindowsPackageType>
+
+    <!-- Cubical Compare is a packaged WinUI 3 desktop app. Package identity avoids
+         the fragile unpackaged bootstrap path that was fail-fasting before App ran. -->
+    <WindowsPackageType>MSIX</WindowsPackageType>
     <EnableMsixTooling>true</EnableMsixTooling>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
-    <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
-    <SelfContained>true</SelfContained>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <AppxBundle>Never</AppxBundle>
+    <AppxPackageSigningEnabled>true</AppxPackageSigningEnabled>
+    <AppxPackageDir>$(MSBuildProjectDirectory)\AppPackages\</AppxPackageDir>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <SelfContained>false</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
+
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
@@ -31,4 +37,16 @@
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\StoreLogo.png" />
+    <Content Include="Assets\Square44x44Logo.png" />
+    <Content Include="Assets\Square150x150Logo.png" />
+    <Content Include="Assets\Wide310x150Logo.png" />
+    <Content Include="Assets\SplashScreen.png" />
+  </ItemGroup>
+
+  <Target Name="GenerateCubicalComparePackageAssets" BeforeTargets="PrepareForBuild">
+    <Exec Command="pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\build\GeneratePackageAssets.ps1&quot; -OutputDirectory &quot;$(MSBuildProjectDirectory)\Assets&quot;" />
+  </Target>
 </Project>

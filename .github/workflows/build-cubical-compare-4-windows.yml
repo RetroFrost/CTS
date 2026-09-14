@@ -19,7 +19,7 @@ permissions:
 jobs:
   build-win-x64:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -30,26 +30,76 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Create CI signing certificate
+        shell: pwsh
+        run: |
+          $passwordText = [Guid]::NewGuid().ToString('N')
+          $password = ConvertTo-SecureString $passwordText -AsPlainText -Force
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject 'CN=RetroFrost Development' `
+            -FriendlyName 'Cubical Compare CI Development Certificate' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyExportPolicy Exportable `
+            -KeyLength 2048 `
+            -HashAlgorithm SHA256 `
+            -NotAfter (Get-Date).AddDays(30)
+
+          $pfx = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.pfx'
+          $cer = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.cer'
+          Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $password | Out-Null
+          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
+
+          "CC_PFX=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_PFX_PASSWORD=$passwordText" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_CER=$cer" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Restore
         run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
 
-      - name: Publish self-contained WinUI 3 build
-        run: dotnet publish windows/CubicalCompare/CubicalCompare.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -o artifacts/CubicalCompare-4-win-x64
-
-      - name: Smoke test actual WinUI startup
+      - name: Build signed single-project MSIX
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD 'artifacts/CubicalCompare-4-win-x64/CubicalCompare.exe'
+          dotnet publish windows/CubicalCompare/CubicalCompare.csproj `
+            -c Release `
+            -r win-x64 `
+            -p:Platform=x64 `
+            -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxBundle=Never `
+            -p:AppxPackageSigningEnabled=true `
+            -p:PackageCertificateKeyFile="$env:CC_PFX" `
+            -p:PackageCertificatePassword="$env:CC_PFX_PASSWORD"
+
+          $package = Get-ChildItem windows/CubicalCompare/AppPackages -Recurse -File | Where-Object { $_.Extension -in '.msix', '.appx' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $package) { throw 'MSIX packaging completed without producing an installable package.' }
+          "CC_PACKAGE=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Package: $($package.FullName)"
+
+      - name: Install packaged app
+        shell: pwsh
+        run: |
+          Add-AppxPackage -Path "$env:CC_PACKAGE" -ForceApplicationShutdown
+          $package = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
+          if (-not $package) { throw 'Cubical Compare package was not registered after Add-AppxPackage.' }
+          Write-Host "Installed $($package.Name) $($package.Version) ($($package.PackageFullName))"
+          "CC_PFN=$($package.PackageFamilyName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Smoke test installed WinUI startup
+        shell: pwsh
+        run: |
           $log = Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'
           if (Test-Path $log) { Remove-Item $log -Force }
+          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-          $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
-          Start-Sleep -Seconds 8
-          $process.Refresh()
+          Start-Process explorer.exe -ArgumentList "shell:AppsFolder\$env:CC_PFN!App"
+          Start-Sleep -Seconds 10
 
-          if ($process.HasExited) {
+          $process = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $process) {
             if (Test-Path $log) { Get-Content $log -Raw | Write-Host }
-            throw "Cubical Compare exited during startup with code $($process.ExitCode)."
+            throw 'Installed Cubical Compare package did not remain running after activation.'
           }
 
           if (Test-Path $log) {
@@ -57,16 +107,32 @@ jobs:
             $startup | Write-Host
             if ($startup -match 'startup failed|unhandled exception|Recovery window also failed') {
               Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-              throw 'Cubical Compare reached the recovery/crash path during startup.'
+              throw 'Cubical Compare reached the recovery/crash path during packaged startup.'
             }
           }
 
+          Write-Host "Packaged WinUI startup survived. PID $($process.Id)."
           Stop-Process -Id $process.Id -Force
 
-      - name: Upload Windows build
+      - name: Stage distributable MSIX
+        if: success()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/CubicalCompare-4-MSIX -Force | Out-Null
+          Copy-Item "$env:CC_PACKAGE" artifacts/CubicalCompare-4-MSIX/CubicalCompare-4-x64.msix
+          Copy-Item "$env:CC_CER" artifacts/CubicalCompare-4-MSIX/CubicalCompare-Development.cer
+          @'
+          Cubical Compare 4 - development MSIX
+
+          This CI build is signed with a short-lived development certificate so GitHub Actions can install and launch-test the real package.
+          For public distribution, replace the development certificate with a stable trusted signing certificate.
+          '@ | Set-Content artifacts/CubicalCompare-4-MSIX/README.txt
+
+      - name: Upload verified Windows MSIX
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: CubicalCompare-4-win-x64
-          path: artifacts/CubicalCompare-4-win-x64/**
+          name: CubicalCompare-4-win-x64-msix
+          path: artifacts/CubicalCompare-4-MSIX/**
           if-no-files-found: error
           retention-days: 14
