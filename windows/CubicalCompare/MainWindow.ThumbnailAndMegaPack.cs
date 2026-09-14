@@ -14,6 +14,7 @@ namespace CubicalCompare;
 public sealed partial class MainWindow
 {
     private const string WorkspaceRecoveryFileName = "workspace-recovery.json";
+    private const long WorkspaceRecoveryMaxBytes = 16L * 1024 * 1024;
     private static readonly JsonSerializerOptions WorkspaceJsonOptions = new()
     {
         WriteIndented = true,
@@ -95,21 +96,33 @@ public sealed partial class MainWindow
 
     private async void SaveThumbnail_Click(object sender, RoutedEventArgs e)
     {
-        if (_latestThumbnail is null)
+        try
         {
-            var revision = Interlocked.Increment(ref _thumbnailRevision);
-            await RefreshThumbnailAsync(BuildProject(), revision, delayed: false);
+            if (_latestThumbnail is null)
+            {
+                var revision = Interlocked.Increment(ref _thumbnailRevision);
+                await RefreshThumbnailAsync(BuildProject(), revision, delayed: false);
+            }
+            if (_latestThumbnail is null)
+            {
+                ThumbnailStatusText.Text = "Thumbnail is not available to save.";
+                return;
+            }
+
+            var file = await PickSaveFileAsync(
+                "PNG image",
+                ".png",
+                SafeFileStem(ProjectName) + "-thumbnail");
+            if (file is null) return;
+
+            await File.WriteAllBytesAsync(file.Path, _latestThumbnail.Png);
+            ThumbnailStatusText.Text = $"Saved {Path.GetFileName(file.Path)}";
         }
-        if (_latestThumbnail is null) return;
-
-        var file = await PickSaveFileAsync(
-            "PNG image",
-            ".png",
-            SafeFileStem(ProjectName) + "-thumbnail");
-        if (file is null) return;
-
-        await File.WriteAllBytesAsync(file.Path, _latestThumbnail.Png);
-        ThumbnailStatusText.Text = $"Saved {Path.GetFileName(file.Path)}";
+        catch (Exception ex)
+        {
+            ThumbnailStatusText.Text = "Could not save thumbnail.";
+            await ShowErrorAsync("Could not save thumbnail", ex.Message);
+        }
     }
 
     private async void ExportMegaPack_Click(object sender, RoutedEventArgs e)
@@ -117,7 +130,7 @@ public sealed partial class MainWindow
         var file = await PickSaveFileAsync(
             "MegaPack Zipack2",
             ".zipack2",
-            SafeFileStem(ProjectName) + ".megapack");
+            SafeFileStem(ProjectName));
         if (file is null) return;
 
         try
@@ -168,6 +181,32 @@ public sealed partial class MainWindow
         {
             // Recovery must never take the editor down. Surface the failure without interrupting work.
             TimelineStatusText.Text = $"Autosave unavailable: {ex.Message}";
+            App.WriteLog("Workspace autosave failed", ex);
+        }
+    }
+
+    private void FlushWorkspaceOnClose()
+    {
+        if (_restoringWorkspace) return;
+
+        try
+        {
+            // Closing can happen inside the debounce window. Persist a final snapshot synchronously so
+            // the last keystrokes are not lost simply because the user closed the window quickly.
+            Interlocked.Increment(ref _workspaceRevision);
+            var snapshot = BuildProject();
+            var folder = ApplicationData.Current.LocalFolder.Path;
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, WorkspaceRecoveryFileName);
+            var temporaryPath = path + ".closing.tmp";
+            var json = JsonSerializer.Serialize(snapshot, WorkspaceJsonOptions);
+            File.WriteAllText(temporaryPath, json);
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            // Window shutdown should never be blocked by recovery persistence.
+            App.WriteLog("Final workspace flush failed", ex);
         }
     }
 
@@ -178,9 +217,18 @@ public sealed partial class MainWindow
 
         try
         {
+            var info = new FileInfo(path);
+            if (info.Length <= 0)
+                throw new InvalidDataException("The recovery file is empty.");
+            if (info.Length > WorkspaceRecoveryMaxBytes)
+                throw new InvalidDataException($"The recovery file is unexpectedly large ({info.Length:N0} bytes).");
+
             var json = await File.ReadAllTextAsync(path);
             var project = JsonSerializer.Deserialize<ComparisonProject>(json, WorkspaceJsonOptions);
-            if (project is null || project.Cards is null || project.Cards.Count == 0) return;
+            if (project is null)
+                throw new InvalidDataException("The recovery file does not contain a project.");
+            if (project.Cards is null || project.Cards.Count == 0)
+                throw new InvalidDataException("The recovery file does not contain any cards.");
 
             _restoringWorkspace = true;
             ClearProjectCards();
@@ -216,10 +264,12 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
-            // Preserve a broken recovery file for diagnosis instead of retrying it every launch.
+            // Preserve a broken recovery file for diagnosis instead of retrying it every launch or
+            // silently replacing it with the starter card.
             var corruptPath = path + $".corrupt-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
             try { File.Move(path, corruptPath, overwrite: true); } catch { }
             TimelineStatusText.Text = $"Recovery file was damaged and quarantined: {ex.Message}";
+            App.WriteLog("Workspace recovery file quarantined", ex);
         }
         finally
         {
