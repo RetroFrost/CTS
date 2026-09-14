@@ -156,11 +156,7 @@ jobs:
             Start-Sleep -Seconds 2
           }
 
-          # First prove the package can enter managed WinUI and create a bare Window.
-          # If this fails, the hosted runner/runtime path is broken before MainWindow.
           Assert-ActivationSurvives '--ci-shell-smoke' 'WinUI shell smoke'
-
-          # Then prove the real editor window survives the same packaged activation path.
           Assert-ActivationSurvives '' 'Cubical Compare editor'
 
           $startupLogs = @(
@@ -179,17 +175,91 @@ jobs:
         if: success()
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path artifacts/CubicalCompare-4-MSIX -Force | Out-Null
-          Copy-Item "$env:CC_PACKAGE" artifacts/CubicalCompare-4-MSIX/CubicalCompare-4-x64.msix
-          Copy-Item "$env:CC_CER" artifacts/CubicalCompare-4-MSIX/CubicalCompare-Development.cer
+          $ErrorActionPreference = 'Stop'
+          $out = 'artifacts/CubicalCompare-4-MSIX'
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          Copy-Item "$env:CC_PACKAGE" "$out/CubicalCompare-4-x64.msix"
+          Copy-Item "$env:CC_CER" "$out/CubicalCompare-Development.cer"
+
+          @'
+          param()
+          $ErrorActionPreference = 'Stop'
+
+          $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+              Write-Host 'Administrator access is required once to trust the development signing certificate.'
+              $args = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
+              Start-Process powershell.exe -Verb RunAs -ArgumentList $args
+              exit
+          }
+
+          $root = Split-Path -Parent $PSCommandPath
+          $cer = Join-Path $root 'CubicalCompare-Development.cer'
+          $msix = Join-Path $root 'CubicalCompare-4-x64.msix'
+          if (-not (Test-Path $cer)) { throw 'CubicalCompare-Development.cer is missing.' }
+          if (-not (Test-Path $msix)) { throw 'CubicalCompare-4-x64.msix is missing.' }
+
+          $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cer)
+          if ($cert.Subject -ne 'CN=RetroFrost Development') {
+              throw "Unexpected certificate subject: $($cert.Subject)"
+          }
+          if ((Get-Date) -gt $cert.NotAfter) {
+              throw "The development certificate expired on $($cert.NotAfter). Download a newer Cubical Compare artifact."
+          }
+
+          Write-Host 'Trusting the Cubical Compare development signing certificate...'
+          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
+
+          $signature = Get-AuthenticodeSignature -FilePath $msix
+          if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
+              throw 'The MSIX signer does not match the certificate shipped with this artifact.'
+          }
+          if ($signature.Status -ne 'Valid') {
+              throw "MSIX signature verification failed: $($signature.Status) $($signature.StatusMessage)"
+          }
+
+          Write-Host 'Installing Cubical Compare 4...'
+          Add-AppxPackage -Path $msix -ForceApplicationShutdown
+          $installed = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
+          if (-not $installed) { throw 'Windows did not register Cubical Compare after installation.' }
+
+          Write-Host "Installed $($installed.Name) $($installed.Version)."
+          Write-Host 'Cubical Compare 4 is ready in the Start menu.'
+          '@ | Set-Content "$out/Install-CubicalCompare.ps1" -Encoding UTF8
+
+          @'
+          @echo off
+          setlocal
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Install-CubicalCompare.ps1"
+          if errorlevel 1 (
+            echo.
+            echo Cubical Compare installation failed. See the message above.
+            pause
+            exit /b 1
+          )
+          echo.
+          echo Cubical Compare installation completed.
+          pause
+          '@ | Set-Content "$out/Install-CubicalCompare.cmd" -Encoding ASCII
+
           @'
           Cubical Compare 4 - verified development MSIX
 
-          GitHub Actions built, signed, installed and launch-tested this exact packaged WinUI 3 application.
-          CI validates both a bare WinUI shell and the actual Cubical Compare editor window.
-          The included short-lived certificate exists only so the isolated CI runner can validate package deployment.
-          Public release builds must use RetroFrost's stable production signing identity.
-          '@ | Set-Content artifacts/CubicalCompare-4-MSIX/README.txt
+          QUICK INSTALL
+          1. Double-click Install-CubicalCompare.cmd.
+          2. Accept the Windows administrator prompt.
+          3. The installer validates the bundled certificate and MSIX signature, trusts the certificate in Local Machine > Trusted People, and installs the app.
+
+          WHY WINDOWS SHOWS "CERTIFICATE IS NOT TRUSTED"
+          This CI build is signed with a temporary self-signed development certificate. Windows cannot trust that signer on another PC until the included certificate is explicitly trusted. The certificate is intentionally NOT a public production certificate and should not be installed as a Trusted Root CA.
+
+          The installer only trusts the exact bundled development certificate in the Trusted People store and verifies that the MSIX is signed by that same certificate before installing it.
+
+          GitHub Actions built, signed, installed and launch-tested this exact packaged WinUI 3 application. CI validates both a bare WinUI shell and the actual Cubical Compare editor window.
+
+          IMPORTANT
+          The CI certificate is short-lived. If it has expired, download a newer artifact. Public release builds should use RetroFrost's stable production code-signing identity so end users do not need this development trust step.
+          '@ | Set-Content "$out/README.txt" -Encoding UTF8
 
       - name: Upload verified Windows MSIX
         if: success()
