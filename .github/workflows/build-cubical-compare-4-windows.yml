@@ -35,6 +35,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $passwordText = [Guid]::NewGuid().ToString('N')
+          $password = ConvertTo-SecureString $passwordText -AsPlainText -Force
           $pfx = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.pfx'
           $cer = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.cer'
 
@@ -69,9 +70,10 @@ jobs:
           }
           finally { $rsa.Dispose() }
 
-          # Trust only this leaf certificate for the current ephemeral runner account.
-          # Do not place a self-signed leaf into Trusted Root.
+          # Put the signing identity into the stores used by MSBuild and package deployment.
+          Import-PfxCertificate -FilePath $pfx -CertStoreLocation 'Cert:\CurrentUser\My' -Password $password | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
 
           "CC_PFX=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_PFX_PASSWORD=$passwordText" | Out-File -FilePath $env:GITHUB_ENV -Append
