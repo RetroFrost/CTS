@@ -169,13 +169,14 @@ public sealed partial class MainWindow
         var file = await PickSaveFileAsync(
             "MegaPack Zipack2",
             ".zipack2",
-            SafeFileStem(ProjectName));
+            SafeFileStem(_projectDisplayName));
         if (file is null) return;
 
         try
         {
             MegaPackExportStatusText.Text = "Building full-resolution contact sheets…";
-            var result = await Zipack2Exporter.ExportAsync(BuildProject(), file.Path);
+            var project = BuildProjectSnapshot();
+            var result = await Zipack2Exporter.ExportAsync(project, file.Path);
             MegaPackExportStatusText.Text = $"Exported {result.Cards} cards across {result.ContactSheets} contact sheet(s) · {Path.GetFileName(result.Path)}";
         }
         catch (Exception ex)
@@ -186,11 +187,21 @@ public sealed partial class MainWindow
         }
     }
 
+    private ComparisonProject BuildProjectSnapshot()
+    {
+        var snapshot = BuildProject();
+        snapshot.Name = _projectDisplayName;
+        snapshot.SoundtrackPath = _soundtrackPath;
+        snapshot.SoundtrackVolume = _soundtrackVolume;
+        snapshot.SoundtrackLoop = _soundtrackLoop;
+        return snapshot;
+    }
+
     private void ScheduleWorkspaceSave()
     {
         if (_restoringWorkspace) return;
         var revision = Interlocked.Increment(ref _workspaceRevision);
-        var snapshot = BuildProject();
+        var snapshot = BuildProjectSnapshot();
         _ = SaveWorkspaceAsync(snapshot, revision);
     }
 
@@ -255,7 +266,7 @@ public sealed partial class MainWindow
             _workspaceIoGate.Wait();
             gateHeld = true;
 
-            var snapshot = BuildProject();
+            var snapshot = BuildProjectSnapshot();
             ProjectFileService.ValidateAndNormalize(snapshot);
             var folder = ApplicationData.Current.LocalFolder.Path;
             Directory.CreateDirectory(folder);
@@ -302,9 +313,13 @@ public sealed partial class MainWindow
 
             _restoringWorkspace = true;
             ClearProjectCards();
+            _projectDisplayName = project.Name;
             _projectShowBadges = project.ShowBadges;
             _projectCreditsEnabled = project.CreditsEnabled;
             _projectDurationSeconds = project.AutoLength ? 0 : Math.Max(0, project.CustomLengthSeconds);
+            _soundtrackPath = project.SoundtrackPath;
+            _soundtrackVolume = project.SoundtrackVolume;
+            _soundtrackLoop = project.SoundtrackLoop;
 
             foreach (var card in project.Cards)
             {
@@ -329,6 +344,8 @@ public sealed partial class MainWindow
             }
 
             CardsList.SelectedIndex = 0;
+            UpdateProjectIdentityUi();
+            RefreshSoundtrackUi();
             RefreshTimelineRange();
             TimelineStatusText.Text = $"Recovered {Cards.Count} autosaved card{(Cards.Count == 1 ? "" : "s")}";
         }
