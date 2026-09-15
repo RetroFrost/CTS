@@ -6,10 +6,12 @@ namespace CubicalCompare.Core.MegaPack;
 
 public static class Zipack2Importer
 {
-    private const int MaxEntries = 4096;
+    // Contact sheets no longer have their own arbitrary count limit. Keep a generous archive-entry
+    // guard only for pathological ZIP directory bombs; the real import bounds are expanded bytes
+    // and the project's overall card limit, so packs can contain as many sheets as their cards need.
+    private const int MaxEntries = 100_000;
     private const long MaxEntryBytes = 256L * 1024 * 1024;
     private const long MaxExpandedBytes = 2L * 1024 * 1024 * 1024;
-    private const int MaxSheets = 128;
     private const int MaxCards = 10_000;
     private static readonly HashSet<string> SoundtrackExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -43,8 +45,6 @@ public static class Zipack2Importer
         var definitions = ResolveSheetDefinitions(archive, manifest);
         if (definitions.Count == 0)
             throw new InvalidDataException("This Zipack2 pack does not contain any contact sheets.");
-        if (definitions.Count > MaxSheets)
-            throw new InvalidDataException($"Zipack2 pack contains too many contact sheets ({definitions.Count}).");
 
         ValidateSheetDefinitions(definitions);
 
@@ -83,7 +83,7 @@ public static class Zipack2Importer
                 if (allCards.Count + regions.Count > MaxCards)
                     throw new InvalidDataException($"Zipack2 detection would produce more than {MaxCards:N0} cards.");
 
-                var sheetDirectory = Path.Combine(extractionRoot, $"sheet-{processedSheetIndex++:D3}");
+                var sheetDirectory = Path.Combine(extractionRoot, $"sheet-{processedSheetIndex++:D5}");
                 Directory.CreateDirectory(sheetDirectory);
                 var sheetCards = new List<DetectedZipack2Card>(regions.Count);
 
@@ -189,7 +189,7 @@ public static class Zipack2Importer
     private static void ValidateArchive(ZipArchive archive)
     {
         if (archive.Entries.Count > MaxEntries)
-            throw new InvalidDataException($"Zipack2 contains too many entries ({archive.Entries.Count}).");
+            throw new InvalidDataException($"Zipack2 contains an unreasonable number of ZIP entries ({archive.Entries.Count:N0}).");
 
         long expanded = 0;
         foreach (var entry in archive.Entries)
