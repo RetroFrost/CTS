@@ -70,6 +70,7 @@ public partial class App : Application
                     mainWindow.InitializeDirectArtworkManipulator();
                     mainWindow.InitializeSoundtrackEditor();
                     mainWindow.InitializeFontSelector();
+                    mainWindow.InitializePreviewTransformEditor();
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
