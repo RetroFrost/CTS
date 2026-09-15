@@ -6,13 +6,12 @@ namespace CubicalCompare.Core.MegaPack;
 
 public static class Zipack2Importer
 {
-    // Contact sheets no longer have their own arbitrary count limit. Keep a generous archive-entry
-    // guard only for pathological ZIP directory bombs; the real import bounds are expanded bytes
-    // and the project's overall card limit, so packs can contain as many sheets as their cards need.
+    // Contact sheets and detected artwork regions do not have arbitrary count limits. Keep only a
+    // very high ZIP-entry guard for pathological central-directory bombs; real limits are file size,
+    // expanded bytes, available memory, and the image decoder/runtime.
     private const int MaxEntries = 100_000;
     private const long MaxEntryBytes = 256L * 1024 * 1024;
     private const long MaxExpandedBytes = 2L * 1024 * 1024 * 1024;
-    private const int MaxCards = 10_000;
     private static readonly HashSet<string> SoundtrackExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp3", ".wav", ".m4a", ".aac", ".wma",
@@ -39,8 +38,6 @@ public static class Zipack2Importer
             throw new InvalidDataException($"Unsupported Zipack2 format '{manifest.Format}'.");
         if (manifest.Version != 2)
             throw new InvalidDataException($"Unsupported Zipack2 version {manifest.Version}.");
-        if (manifest.Cards.Count > MaxCards)
-            throw new InvalidDataException($"Zipack2 contains more than {MaxCards:N0} card data rows.");
 
         var definitions = ResolveSheetDefinitions(archive, manifest);
         if (definitions.Count == 0)
@@ -79,9 +76,6 @@ public static class Zipack2Importer
 
                 if (regions.Count == 0)
                     throw new InvalidDataException($"No cards were detected on contact sheet '{definition.Path}'. Check its yellow outlines or predefined regions.");
-
-                if (allCards.Count + regions.Count > MaxCards)
-                    throw new InvalidDataException($"Zipack2 detection would produce more than {MaxCards:N0} cards.");
 
                 var sheetDirectory = Path.Combine(extractionRoot, $"sheet-{processedSheetIndex++:D5}");
                 Directory.CreateDirectory(sheetDirectory);
