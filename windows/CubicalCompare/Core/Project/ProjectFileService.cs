@@ -7,7 +7,6 @@ public static class ProjectFileService
     public const string Extension = ".ccproject";
     public const int CurrentFormatVersion = 1;
     private const long MaxProjectBytes = 32L * 1024 * 1024;
-    private const int MaxCards = 10_000;
     private const int MaxNameLength = 200;
     private const int MaxCardTitleLength = 1_000;
     private const int MaxCardValueLength = 1_000;
@@ -120,7 +119,6 @@ public static class ProjectFileService
 
         project.Cards ??= [];
         if (project.Cards.Count == 0) throw new InvalidDataException("A project must contain at least one card.");
-        if (project.Cards.Count > MaxCards) throw new InvalidDataException($"Projects are limited to {MaxCards:N0} cards.");
 
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var card in project.Cards)
