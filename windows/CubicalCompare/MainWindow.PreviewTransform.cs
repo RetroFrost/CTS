@@ -136,7 +136,7 @@ public sealed partial class MainWindow
             BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(120, 255, 255, 255)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(10, 6),
+            Padding = new Thickness(10, 6, 10, 6),
             IsHitTestVisible = false,
             Visibility = Visibility.Collapsed,
         };
@@ -150,7 +150,6 @@ public sealed partial class MainWindow
         Canvas.SetLeft(hintBorder, 12);
         Canvas.SetTop(hintBorder, PreviewCanvasHeight - 42);
         canvas.Children.Add(hintBorder);
-        hintBorder.Loaded += (_, _) => { };
         canvas.Tag = hintBorder;
 
         previewGrid.Children.Add(canvas);
@@ -245,7 +244,7 @@ public sealed partial class MainWindow
         _previewWorkingScale = _previewStartScale;
         _previewWorkingRotation = _previewStartRotation;
 
-        var center = PreviewImageCenter(card, _previewTransformCardIndex, _previewWorkingX, _previewWorkingY);
+        var center = PreviewImageCenter(_previewTransformCardIndex, _previewWorkingX, _previewWorkingY);
         _previewStartDistance = Math.Max(1, DistancePreview(point.Position, center));
         _previewRotationOffset = _previewStartRotation - AnglePreview(point.Position, center);
 
@@ -262,7 +261,7 @@ public sealed partial class MainWindow
         var renderer = _legacyRenderer;
         var sx = renderer is null ? 0.5 : PreviewCanvasWidth / Math.Max(1.0, renderer.ReferenceWidth);
         var sy = renderer is null ? 0.5 : PreviewCanvasHeight / Math.Max(1.0, renderer.ReferenceHeight);
-        var center = PreviewImageCenter(Cards[_previewTransformCardIndex], _previewTransformCardIndex, _previewStartX, _previewStartY);
+        var center = PreviewImageCenter(_previewTransformCardIndex, _previewStartX, _previewStartY);
 
         switch (_previewTransformMode)
         {
@@ -473,7 +472,7 @@ public sealed partial class MainWindow
         }
     }
 
-    private Point PreviewImageCenter(ProjectCardViewModel card, int cardIndex, double imageX, double imageY)
+    private Point PreviewImageCenter(int cardIndex, double imageX, double imageY)
     {
         var renderer = _legacyRenderer;
         var sx = renderer is null ? 0.5 : PreviewCanvasWidth / Math.Max(1.0, renderer.ReferenceWidth);
