@@ -16,6 +16,7 @@ public sealed class LegacyRendererAdapter : IDisposable
 
     private LegacyRendererAdapter(Legacy.RendererSpec spec, string sourcePath)
     {
+        RendererV3PackageCompatibility.Normalize(spec);
         _spec = spec;
         SourcePath = sourcePath;
     }
@@ -32,6 +33,7 @@ public sealed class LegacyRendererAdapter : IDisposable
     public double BodyInset => _spec.BodyInset;
     public double BodyWidth => _spec.BodyWidth;
     public double ImageHeight => _spec.ImageHeight;
+    public RendererEmbeddedAudio? EmbeddedAudio => RendererV3PackageCompatibility.EmbeddedAudio(_spec);
 
     public static LegacyRendererAdapter Load(string path)
     {
