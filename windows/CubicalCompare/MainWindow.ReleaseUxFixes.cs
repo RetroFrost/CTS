@@ -26,7 +26,7 @@ public sealed partial class MainWindow
         RootNavigation.SelectionChanged += FinalReleaseNavigationFix_SelectionChanged;
 
         if (_settingsPage is not null)
-            Panel.SetZIndex(_settingsPage, 100);
+            Canvas.SetZIndex(_settingsPage, 100);
 
         // The release channel currently ships the verified installer bundle as a ZIP.
         // The old updater only exposed its action button for raw MSIX/AppInstaller assets,
@@ -58,7 +58,7 @@ public sealed partial class MainWindow
             return;
 
         inspectorRoot.RowDefinitions[0].Height = new GridLength(0);
-        foreach (var child in inspectorRoot.Children.Where(child => Grid.GetRow(child) == 0))
+        foreach (var child in inspectorRoot.Children.OfType<FrameworkElement>().Where(child => Grid.GetRow(child) == 0))
             child.Visibility = Visibility.Collapsed;
     }
 
@@ -76,7 +76,7 @@ public sealed partial class MainWindow
             if (_settingsPage is not null)
             {
                 _settingsPage.Visibility = Visibility.Visible;
-                Panel.SetZIndex(_settingsPage, 100);
+                Canvas.SetZIndex(_settingsPage, 100);
             }
 
             await WaitForBuiltInUpdateCheckAsync();
