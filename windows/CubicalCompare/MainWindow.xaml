@@ -6,37 +6,45 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid>
+    <Grid RequestedTheme="Light" Background="{StaticResource EditorBackgroundBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="48" />
+            <RowDefinition Height="64" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
-            <Grid Padding="14,0,150,0" ColumnSpacing="8">
+        <Border x:Name="AppTitleBar" Grid.Row="0" Background="#F8FBFF" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Padding="18,0,152,0" ColumnSpacing="14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Border Width="24" Height="24" CornerRadius="7" Background="{ThemeResource SystemAccentColor}" />
-                    <TextBlock Text="Cubical Compare" FontFamily="{StaticResource BrandFontFamily}" FontSize="16" VerticalAlignment="Center" />
-                    <Border Padding="8,3" CornerRadius="8" Background="{StaticResource EditorSurfaceRaisedBrush}">
-                        <TextBlock Text="4.0 · Windows" FontSize="11" Opacity="0.72" />
-                    </Border>
+                <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+                    <Grid Width="34" Height="34">
+                        <Border Width="22" Height="22" CornerRadius="5" Background="#0F6CBD" HorizontalAlignment="Left" VerticalAlignment="Bottom" />
+                        <Border Width="22" Height="22" CornerRadius="5" Background="#FFB900" HorizontalAlignment="Right" VerticalAlignment="Top" Opacity="0.96" />
+                        <Border Width="15" Height="15" CornerRadius="4" Background="#6CCB5F" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <StackPanel Spacing="0" VerticalAlignment="Center">
+                        <TextBlock Text="Cubical Compare" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="Create stunning comparison videos" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                    </StackPanel>
                 </StackPanel>
 
-                <TextBlock x:Name="ProjectNameText" Grid.Column="1" Text="Untitled comparison" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.72" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="ProjectNameText" Grid.Column="1" Text="Untitled comparison" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button Content="New" Click="NewProjectWithFileState_Click" />
-                    <Button Content="Open" Click="OpenProject_Click" />
-                    <Button Content="Save" Click="SaveProject_Click" />
-                    <Button Content="Save as" Click="SaveProjectAs_Click" />
-                    <Button Content="Import Zipack2" Click="ImportMegaPack_Click" />
-                    <Button x:Name="ExportVideoButton" Content="Export video" Click="ExportVideo_Click" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Content="New" Click="NewProjectWithFileState_Click" Padding="12,6" />
+                    <Button Content="Open" Click="OpenProject_Click" Padding="12,6" />
+                    <Button Content="Save" Click="SaveProject_Click" Padding="12,6" />
+                    <ComboBox Width="174" SelectedIndex="0">
+                        <ComboBoxItem Content="1920 × 1080 (Full HD)" />
+                    </ComboBox>
+                    <ComboBox Width="92" SelectedIndex="0">
+                        <ComboBoxItem Content="60 FPS" />
+                    </ComboBox>
+                    <Button x:Name="ExportVideoButton" Content="Export Video" Click="ExportVideo_Click" Padding="18,7" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -44,20 +52,41 @@
         <NavigationView
             x:Name="RootNavigation"
             Grid.Row="1"
+            Background="Transparent"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
-            PaneDisplayMode="LeftCompact"
-            CompactPaneLength="52"
-            OpenPaneLength="186"
+            IsPaneToggleButtonVisible="False"
+            PaneDisplayMode="Left"
+            IsPaneOpen="True"
+            OpenPaneLength="220"
             Loaded="RootNavigation_Loaded"
             SelectionChanged="RootNavigation_SelectionChanged">
 
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="Project" Tag="project">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Edit" /></NavigationViewItem.Icon>
+                <NavigationViewItem Content="Home" Tag="project">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Home" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Assets" Tag="assets">
+                <NavigationViewItem Content="Project" Tag="project">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Document" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Cards" Tag="project">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Pictures" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Style &amp; Model" Tag="renderer">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Soundtrack" Tag="project">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Audio" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Text &amp; Fonts" Tag="project">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Font" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Export" Tag="project">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Save" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItemHeader Content="TOOLS" />
+                <NavigationViewItem Content="Megapacks" Tag="assets">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Library" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Thumbnail" Tag="thumbnail">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Pictures" /></NavigationViewItem.Icon>
@@ -67,191 +96,319 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
-            <Grid Padding="16">
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Settings" Tag="project">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+
+            <Grid Padding="12,12,14,14">
                 <Grid x:Name="ProjectPage">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="250" />
-                        <ColumnDefinition Width="12" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="350" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="12">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="CARDS" FontSize="12" Opacity="0.6" Margin="4,2,0,10" />
-                            <ListView x:Name="CardsList" Grid.Row="1" ItemsSource="{x:Bind Cards, Mode=OneWay}" SelectionMode="Single">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Margin="2,6" Spacing="2">
-                                            <TextBlock Text="{Binding Title}" FontSize="15" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding Value}" FontSize="11" Opacity="0.55" TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                            <Grid Grid.Row="2" Margin="0,10,0,0" ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Button Content="Add card" HorizontalAlignment="Stretch" Click="AddCard_Click" />
-                                <Button Grid.Column="1" Content="Remove" HorizontalAlignment="Stretch" Click="RemoveCard_Click" />
-                            </Grid>
-                        </Grid>
-                    </Border>
+                    <Grid Grid.Column="0" RowSpacing="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="174" />
+                            <RowDefinition Height="54" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-                    <Border Grid.Column="2" Background="Black" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="16">
-                        <Grid>
-                            <Viewbox Stretch="Uniform">
-                                <Border Width="960" Height="540" Background="#101010" CornerRadius="4">
-                                    <Grid>
-                                        <Image x:Name="RenderedFrameImage" Stretch="Uniform" Visibility="Collapsed" />
-                                        <Grid x:Name="CardMockPreview" DataContext="{Binding SelectedItem, ElementName=CardsList}">
-                                            <Image Source="{Binding Preview}" Stretch="UniformToFill" Opacity="0.72" />
-                                            <Border VerticalAlignment="Bottom" Background="#CC111111" Padding="24,18">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Title}" FontSize="30" FontFamily="{StaticResource BrandFontFamily}" />
-                                                    <TextBlock Text="{Binding Description}" FontSize="16" Opacity="0.72" Margin="0,4,0,0" />
+                        <Border Grid.Row="0" Background="#17212B" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="0" MinHeight="360">
+                            <Grid>
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="960" Height="540" Background="#101010" CornerRadius="12">
+                                        <Grid>
+                                            <Image x:Name="RenderedFrameImage" Stretch="Uniform" Visibility="Collapsed" />
+                                            <Grid x:Name="CardMockPreview" DataContext="{Binding SelectedItem, ElementName=CardsList}">
+                                                <Image Source="{Binding Preview}" Stretch="UniformToFill" Opacity="0.82" />
+                                                <Border VerticalAlignment="Bottom" Background="#CC111111" Padding="24,18">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Title}" FontSize="30" Foreground="White" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding Description}" FontSize="16" Foreground="#D8E2EE" Margin="0,4,0,0" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Padding="18,8" CornerRadius="20" Background="{StaticResource EditorAccentBrush}">
+                                                    <TextBlock Text="{Binding Value}" FontSize="20" Foreground="White" />
+                                                </Border>
+                                            </Grid>
+
+                                            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Padding="12,8" CornerRadius="10" Background="#B20E151C" IsHitTestVisible="False">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="1920 × 1080" Foreground="White" FontSize="14" />
+                                                    <TextBlock Text="60 FPS" Foreground="#DCE7F3" FontSize="12" />
                                                 </StackPanel>
                                             </Border>
-                                            <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Padding="18,8" CornerRadius="20" Background="{ThemeResource SystemAccentColor}">
-                                                <TextBlock Text="{Binding Value}" FontSize="20" />
+
+                                            <Border Width="76" Height="76" CornerRadius="38" Background="#B9181F26" BorderBrush="#E8FFFFFF" BorderThickness="2" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <SymbolIcon Symbol="Play" Foreground="White" />
+                                            </Border>
+
+                                            <Border VerticalAlignment="Bottom" Height="34" Background="#A8000000" IsHitTestVisible="False">
+                                                <Grid Padding="14,0" ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Preview" Foreground="White" VerticalAlignment="Center" FontSize="11" />
+                                                    <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="42" Height="4" VerticalAlignment="Center" Foreground="#4AA3FF" />
+                                                    <TextBlock Grid.Column="2" Text="Right-click a card to transform" Foreground="#DCE7F3" VerticalAlignment="Center" FontSize="11" />
+                                                </Grid>
                                             </Border>
                                         </Grid>
-                                    </Grid>
-                                </Border>
-                            </Viewbox>
-                        </Grid>
-                    </Border>
+                                    </Border>
+                                </Viewbox>
+                            </Grid>
+                        </Border>
 
-                    <Border Grid.Column="4" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="16">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel DataContext="{Binding SelectedItem, ElementName=CardsList}" Spacing="10">
-                                <TextBlock Text="INSPECTOR" FontSize="12" Opacity="0.6" />
-                                <TextBlock Text="Title" FontSize="12" Opacity="0.7" Margin="0,6,0,-5" />
-                                <TextBox Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="Value" FontSize="12" Opacity="0.7" Margin="0,6,0,-5" />
-                                <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="Description" FontSize="12" Opacity="0.7" Margin="0,6,0,-5" />
-                                <TextBox Text="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="110" TextWrapping="Wrap" />
-                                <TextBlock Text="Artwork" FontSize="12" Opacity="0.7" Margin="0,6,0,-5" />
-                                <TextBlock Text="{Binding ImagePath}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="42" Opacity="0.55" />
+                        <Border Grid.Row="1" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10,8">
+                            <Grid x:Name="PreviewTimelineGrid" ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="PreviewPlayButton" Width="42" Height="38" Padding="0" Background="{StaticResource EditorAccentSoftBrush}" Foreground="{StaticResource EditorAccentBrush}">
+                                    <SymbolIcon Symbol="Play" />
+                                </Button>
+                                <TextBlock x:Name="FrameCounterText" Grid.Column="1" Text="Frame —" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" MinWidth="88" />
+                                <Slider x:Name="ProjectFrameSlider" Grid.Column="2" Minimum="0" Maximum="0" Value="0" IsEnabled="False" StepFrequency="1" ValueChanged="ProjectFrameSlider_ValueChanged" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TimelineStatusText" Grid.Column="3" Text="Load a renderer to enable timeline" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" MaxWidth="260" TextTrimming="CharacterEllipsis" />
+                                <Button Grid.Column="4" Content="Fit" Padding="12,4" />
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="2" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="10">
+                            <Grid RowSpacing="8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
                                 <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Button Content="Choose artwork…" HorizontalAlignment="Stretch" Click="ChooseArtwork_Click" />
-                                    <Button Grid.Column="1" Content="Clear" Click="ClearArtwork_Click" />
+                                    <TextBlock Text="Timeline" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource EditorAccentBrush}" VerticalAlignment="Center" />
+                                    <Border Grid.Column="1" Width="1" Height="18" Background="{StaticResource EditorBorderBrush}" Margin="4,0" />
+                                    <TextBlock Grid.Column="2" Text="Cards" FontSize="12" Foreground="{StaticResource EditorTextSecondaryBrush}" VerticalAlignment="Center" />
+                                    <Button Grid.Column="3" Content="Add card" Click="AddCard_Click" Padding="10,4" />
+                                    <Button Grid.Column="4" Content="Remove" Click="RemoveCard_Click" Padding="10,4" />
                                 </Grid>
 
-                                <Expander Header="Transform / resize" IsExpanded="True" Margin="0,4,0,0">
-                                    <StackPanel Spacing="8" Margin="0,8,0,0">
-                                        <TextBlock Text="471 × 872 artwork slot · position is in pixels" FontSize="11" Opacity="0.55" TextWrapping="Wrap" />
-                                        <Grid ColumnSpacing="8" RowSpacing="6">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                            </Grid.RowDefinitions>
+                                <ListView x:Name="CardsList" Grid.Row="1" ItemsSource="{x:Bind Cards, Mode=OneWay}" SelectionMode="Single" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                    <ListView.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsStackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ListView.ItemsPanel>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Width="116" Height="112" Margin="3" Padding="5" CornerRadius="10" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" Background="#F9FBFE">
+                                                <Grid RowSpacing="4">
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="72" />
+                                                        <RowDefinition Height="*" />
+                                                    </Grid.RowDefinitions>
+                                                    <Border Background="#18222C" CornerRadius="7">
+                                                        <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                                    </Border>
+                                                    <StackPanel Grid.Row="1" Spacing="0">
+                                                        <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Value}" FontSize="10" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
 
-                                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
-                                                <TextBlock Text="X" FontSize="11" Opacity="0.65" />
-                                                <NumberBox x:Name="ImageXBox" Value="{Binding ImageX, Mode=TwoWay}" Minimum="-4000" Maximum="4000" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="3">
-                                                <TextBlock Text="Y" FontSize="11" Opacity="0.65" />
-                                                <NumberBox x:Name="ImageYBox" Value="{Binding ImageY, Mode=TwoWay}" Minimum="-4000" Maximum="4000" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
-                                            </StackPanel>
+                        <Border Grid.Row="3" Background="#E6F2FF" BorderBrush="#C7E0FA" BorderThickness="1" CornerRadius="12" Padding="12,8">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <SymbolIcon Symbol="Audio" Foreground="{StaticResource EditorAccentBrush}" />
+                                <TextBlock Grid.Column="1" Text="Soundtrack" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" />
+                                <Grid Grid.Column="2" Height="24" Margin="6,0">
+                                    <Rectangle Height="3" RadiusX="1.5" RadiusY="1.5" Fill="#91C8FF" VerticalAlignment="Center" />
+                                    <Rectangle Width="2" Height="18" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="24,0,0,0" />
+                                    <Rectangle Width="2" Height="12" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="58,0,0,0" />
+                                    <Rectangle Width="2" Height="21" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="96,0,0,0" />
+                                    <Rectangle Width="2" Height="10" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="132,0,0,0" />
+                                    <Rectangle Width="2" Height="18" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="176,0,0,0" />
+                                    <Rectangle Width="2" Height="14" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="224,0,0,0" />
+                                    <Rectangle Width="2" Height="22" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="278,0,0,0" />
+                                </Grid>
+                                <TextBlock Grid.Column="3" Text="Audio muxes into export" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                            </Grid>
+                        </Border>
 
-                                            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="3">
-                                                <TextBlock Text="Scale" FontSize="11" Opacity="0.65" />
-                                                <NumberBox x:Name="ImageScaleBox" Value="{Binding ImageScale, Mode=TwoWay}" Minimum="0.05" Maximum="12" SmallChange="0.05" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3">
-                                                <TextBlock Text="Rotation" FontSize="11" Opacity="0.65" />
-                                                <NumberBox x:Name="ImageRotationBox" Value="{Binding ImageRotation, Mode=TwoWay}" Minimum="-360" Maximum="360" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
-                                            </StackPanel>
+                        <Grid Grid.Row="4" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="ExportStatusText" Text="" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                            <ProgressBar x:Name="ExportProgressBar" Grid.Column="1" Minimum="0" Maximum="100" Value="0" Visibility="Collapsed" VerticalAlignment="Center" />
+                            <Button x:Name="ExportCancelButton" Grid.Column="2" Content="Cancel export" Click="CancelVideoExport_Click" Visibility="Collapsed" />
+                        </Grid>
+                    </Grid>
 
-                                            <StackPanel Grid.Row="2" Grid.Column="0" Spacing="3">
-                                                <TextBlock Text="Crop left" FontSize="11" Opacity="0.65" />
-                                                <NumberBox x:Name="ImageCropLeftBox" Value="{Binding ImageCropLeft, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Row="2" Grid.Column="1" Spacing="3">
-                                                <TextBlock Text="Crop right" FontSize="11" Opacity="0.65" />
-                                                <NumberBox x:Name="ImageCropRightBox" Value="{Binding ImageCropRight, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Row="3" Grid.Column="0" Spacing="3">
-                                                <TextBlock Text="Crop top" FontSize="11" Opacity="0.65" />
-                                                <NumberBox x:Name="ImageCropTopBox" Value="{Binding ImageCropTop, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Row="3" Grid.Column="1" Spacing="3">
-                                                <TextBlock Text="Crop bottom" FontSize="11" Opacity="0.65" />
-                                                <NumberBox x:Name="ImageCropBottomBox" Value="{Binding ImageCropBottom, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
-                                            </StackPanel>
-                                        </Grid>
-
-                                        <Grid ColumnSpacing="6">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button Content="Fit" HorizontalAlignment="Stretch" Click="ArtworkTransform_Fit_Click" />
-                                            <Button Grid.Column="1" Content="Fill" HorizontalAlignment="Stretch" Click="ArtworkTransform_Fill_Click" />
-                                            <Button Grid.Column="2" Content="Center" HorizontalAlignment="Stretch" Click="ArtworkTransform_Center_Click" />
-                                            <Button Grid.Column="3" Content="Reset" HorizontalAlignment="Stretch" Click="ArtworkTransform_Reset_Click" />
-                                        </Grid>
-                                        <Button Content="Apply current transform to all cards" HorizontalAlignment="Stretch" Click="ArtworkTransform_ApplyAll_Click" />
-                                    </StackPanel>
-                                </Expander>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Border>
-
-                    <Border Grid.Row="1" Grid.ColumnSpan="5" Margin="0,12,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="12,8">
-                        <Grid RowSpacing="6">
+                    <Border Grid.Column="2" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="0">
+                        <Grid>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="50" />
+                                <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="FrameCounterText" Text="Frame —" VerticalAlignment="Center" Opacity="0.65" MinWidth="90" />
-                                <Slider x:Name="ProjectFrameSlider" Grid.Column="1" Minimum="0" Maximum="0" Value="0" IsEnabled="False" StepFrequency="1" ValueChanged="ProjectFrameSlider_ValueChanged" />
-                                <TextBlock x:Name="TimelineStatusText" Grid.Column="2" Text="Load a renderer to enable timeline" VerticalAlignment="Center" Opacity="0.55" />
-                            </Grid>
-                            <Grid Grid.Row="1" ColumnSpacing="8">
+
+                            <Grid BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="0,0,0,1" ColumnSpacing="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="160" />
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="ExportStatusText" Text="" VerticalAlignment="Center" Opacity="0.6" TextTrimming="CharacterEllipsis" />
-                                <ProgressBar x:Name="ExportProgressBar" Grid.Column="1" Minimum="0" Maximum="100" Value="0" Visibility="Collapsed" VerticalAlignment="Center" />
-                                <Button x:Name="ExportCancelButton" Grid.Column="2" Content="Cancel export" Click="CancelVideoExport_Click" Visibility="Collapsed" />
+                                <Button Content="Card" Background="Transparent" Foreground="{StaticResource EditorAccentBrush}" FontWeight="SemiBold" />
+                                <Button Grid.Column="1" Content="Text" Background="Transparent" />
+                                <Button Grid.Column="2" Content="Style" Background="Transparent" />
+                                <Button Grid.Column="3" Content="Project" Background="Transparent" />
+                                <Rectangle Height="2" Fill="{StaticResource EditorAccentBrush}" VerticalAlignment="Bottom" Grid.Column="0" Margin="12,0" />
                             </Grid>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel DataContext="{Binding SelectedItem, ElementName=CardsList}" Spacing="10" Padding="14,12,14,16">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="44" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="44" Height="44" Background="#EEF5FC" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="8">
+                                            <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                            <TextBlock Text="Selected card" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <TextBlock Text="Transform (Preview &amp; Export)" FontSize="13" FontWeight="SemiBold" Margin="0,4,0,0" />
+                                    <Grid ColumnSpacing="8" RowSpacing="6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                                            <TextBlock Text="Position X" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                            <NumberBox x:Name="ImageXBox" Value="{Binding ImageX, Mode=TwoWay}" Minimum="-4000" Maximum="4000" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="3">
+                                            <TextBlock Text="Position Y" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                            <NumberBox x:Name="ImageYBox" Value="{Binding ImageY, Mode=TwoWay}" Minimum="-4000" Maximum="4000" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="3">
+                                            <TextBlock Text="Scale" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                            <NumberBox x:Name="ImageScaleBox" Value="{Binding ImageScale, Mode=TwoWay}" Minimum="0.05" Maximum="12" SmallChange="0.05" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3">
+                                            <TextBlock Text="Rotation" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                            <NumberBox x:Name="ImageRotationBox" Value="{Binding ImageRotation, Mode=TwoWay}" Minimum="-360" Maximum="360" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Grid ColumnSpacing="6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Content="Center" HorizontalAlignment="Stretch" Click="ArtworkTransform_Center_Click" />
+                                        <Button Grid.Column="1" Content="Fit" HorizontalAlignment="Stretch" Click="ArtworkTransform_Fit_Click" />
+                                        <Button Grid.Column="2" Content="Fill" HorizontalAlignment="Stretch" Click="ArtworkTransform_Fill_Click" />
+                                        <Button Grid.Column="3" Content="Reset" HorizontalAlignment="Stretch" Click="ArtworkTransform_Reset_Click" />
+                                    </Grid>
+
+                                    <TextBlock Text="Artwork" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                    <Border Background="#F4F8FC" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="9">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="72" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="72" Height="82" Background="#EEF5FC" CornerRadius="8">
+                                                <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Spacing="7">
+                                                <TextBlock Text="{Binding ImagePath}" FontSize="10" Foreground="{StaticResource EditorTextSecondaryBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="30" />
+                                                <Button Content="Change Image…" HorizontalAlignment="Stretch" Click="ChooseArtwork_Click" />
+                                                <Button Content="Clear artwork" HorizontalAlignment="Stretch" Click="ClearArtwork_Click" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <TextBlock Text="Text" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                    <TextBlock Text="Title" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Value" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Description" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="92" TextWrapping="Wrap" />
+
+                                    <Expander Header="Advanced crop" IsExpanded="False" Margin="0,6,0,0">
+                                        <StackPanel Spacing="8" Margin="0,8,0,0">
+                                            <Grid ColumnSpacing="8" RowSpacing="6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                                                    <TextBlock Text="Crop left" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageCropLeftBox" Value="{Binding ImageCropLeft, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="3">
+                                                    <TextBlock Text="Crop right" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageCropRightBox" Value="{Binding ImageCropRight, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="3">
+                                                    <TextBlock Text="Crop top" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageCropTopBox" Value="{Binding ImageCropTop, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3">
+                                                    <TextBlock Text="Crop bottom" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageCropBottomBox" Value="{Binding ImageCropBottom, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <Button Content="Apply current transform to all cards" HorizontalAlignment="Stretch" Click="ArtworkTransform_ApplyAll_Click" />
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
+                            </ScrollViewer>
                         </Grid>
                     </Border>
                 </Grid>
@@ -268,9 +425,9 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="MegaPack Zipack2" FontSize="28" />
-                            <TextBlock x:Name="DetectedSummaryText" Text="Import a .zipack2 package to detect contact-sheet cards." Opacity="0.62" Margin="0,4,0,0" />
-                            <TextBlock x:Name="MegaPackExportStatusText" Text="Export keeps full-resolution card artwork in yellow-separated contact sheets." Opacity="0.5" Margin="0,3,0,0" />
+                            <TextBlock Text="MegaPack Zipack2" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock x:Name="DetectedSummaryText" Text="Import a .zipack2 package to detect contact-sheet cards." Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,4,0,0" />
+                            <TextBlock x:Name="MegaPackExportStatusText" Text="Export keeps full-resolution card artwork in yellow-separated contact sheets." Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,3,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <Button Content="Import Zipack2" Click="ImportMegaPack_Click" />
@@ -292,7 +449,7 @@
                                     </Border>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                         <TextBlock Text="{Binding Label}" FontSize="16" />
-                                        <TextBlock Text="{Binding Details}" FontSize="12" Opacity="0.55" />
+                                        <TextBlock Text="{Binding Details}" FontSize="12" Foreground="{StaticResource EditorTextSecondaryBrush}" />
                                     </StackPanel>
                                     <CheckBox Grid.Column="2" IsChecked="{Binding Included, Mode=TwoWay}" Content="Include" VerticalAlignment="Center" />
                                 </Grid>
@@ -309,7 +466,7 @@
                         </Grid.ColumnDefinitions>
                         <Button Content="Move earlier" Click="MoveDetectedEarlier_Click" />
                         <Button Grid.Column="1" Content="Move later" Click="MoveDetectedLater_Click" />
-                        <Button Grid.Column="3" Content="Use detected cards" Click="ApproveDetectedCards_Click" />
+                        <Button Grid.Column="3" Content="Use detected cards" Click="ApproveDetectedCards_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
                     </Grid>
                 </Grid>
 
@@ -320,8 +477,8 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <StackPanel>
-                        <TextBlock Text="Automatic thumbnail" FontSize="28" />
-                        <TextBlock Text="Cubical Compare picks three representative cards and continuously rebuilds a 1280×720 comparison thumbnail." TextWrapping="Wrap" Opacity="0.62" Margin="0,4,0,0" />
+                        <TextBlock Text="Automatic thumbnail" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="Cubical Compare picks three representative cards and continuously rebuilds a 1280×720 comparison thumbnail." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,4,0,0" />
                     </StackPanel>
                     <Border Grid.Row="1" Margin="0,18,0,0" Background="Black" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="12">
                         <Viewbox Stretch="Uniform">
@@ -338,21 +495,21 @@
                         </Grid.ColumnDefinitions>
                         <Button Content="Regenerate" Click="RegenerateThumbnail_Click" />
                         <Button Grid.Column="1" Content="Save PNG" Click="SaveThumbnail_Click" />
-                        <TextBlock x:Name="ThumbnailStatusText" Grid.Column="2" Text="Waiting for project data…" VerticalAlignment="Center" Opacity="0.6" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="ThumbnailStatusText" Grid.Column="2" Text="Waiting for project data…" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                     </Grid>
                 </Grid>
 
-                <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="920" HorizontalAlignment="Left">
+                <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="1000" HorizontalAlignment="Left">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <StackPanel>
-                        <TextBlock Text="Renderer" FontSize="28" />
-                        <TextBlock Text="Renderer v2 and v3 use the preserved compatibility evaluator. Renderer v4 is the native Cubical Compare 4 path." TextWrapping="Wrap" Opacity="0.62" Margin="0,4,0,0" />
+                        <TextBlock Text="Style &amp; Model" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="Load and inspect Renderer v2/v3 packages or prepare the native Cubical Compare 4 renderer path." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,4,0,0" />
                     </StackPanel>
-                    <Button Grid.Row="1" Content="Load renderer package" Click="InspectRenderer_Click" HorizontalAlignment="Left" Margin="0,18,0,0" />
+                    <Button Grid.Row="1" Content="Load renderer package" Click="InspectRenderer_Click" HorizontalAlignment="Left" Margin="0,18,0,0" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
                     <Border Grid.Row="2" Margin="0,18,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
                         <Grid ColumnSpacing="18">
                             <Grid.ColumnDefinitions>
@@ -360,11 +517,11 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="8">
-                                <TextBlock x:Name="RendererNameText" Text="No renderer selected" FontSize="20" />
-                                <TextBlock x:Name="RendererGenerationText" Text="Generation —" Opacity="0.7" />
-                                <TextBlock x:Name="RendererEngineText" Text="Engine —" Opacity="0.7" />
-                                <TextBlock x:Name="RendererCanvasText" Text="Reference —" Opacity="0.7" />
-                                <TextBlock x:Name="RendererSourceText" Text="" TextWrapping="Wrap" Opacity="0.45" />
+                                <TextBlock x:Name="RendererNameText" Text="No renderer selected" FontSize="20" FontWeight="SemiBold" />
+                                <TextBlock x:Name="RendererGenerationText" Text="Generation —" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                <TextBlock x:Name="RendererEngineText" Text="Engine —" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                <TextBlock x:Name="RendererCanvasText" Text="Reference —" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                <TextBlock x:Name="RendererSourceText" Text="" TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
                                 <TextBlock x:Name="RendererCompatibilityText" Text="" TextWrapping="Wrap" Margin="0,8,0,0" />
                             </StackPanel>
                             <Border Grid.Column="1" Background="Black" CornerRadius="10" MinWidth="420" MinHeight="236">
