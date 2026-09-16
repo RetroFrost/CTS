@@ -8,23 +8,41 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
-            <FontFamily x:Key="BrandFontFamily">Nexa</FontFamily>
-            <SolidColorBrush x:Key="EditorSurfaceBrush" Color="#141414" />
-            <SolidColorBrush x:Key="EditorSurfaceRaisedBrush" Color="#1D1D1D" />
-            <SolidColorBrush x:Key="EditorBorderBrush" Color="#2C2C2C" />
+            <FontFamily x:Key="BrandFontFamily">Segoe UI Variable Display</FontFamily>
+            <SolidColorBrush x:Key="EditorBackgroundBrush" Color="#EDF5FF" />
+            <SolidColorBrush x:Key="EditorSurfaceBrush" Color="#F7FAFE" />
+            <SolidColorBrush x:Key="EditorSurfaceRaisedBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="EditorSurfaceSoftBrush" Color="#EAF3FF" />
+            <SolidColorBrush x:Key="EditorBorderBrush" Color="#D7E2F0" />
+            <SolidColorBrush x:Key="EditorBorderStrongBrush" Color="#C5D4E7" />
+            <SolidColorBrush x:Key="EditorTextSecondaryBrush" Color="#66758A" />
+            <SolidColorBrush x:Key="EditorAccentBrush" Color="#0F6CBD" />
+            <SolidColorBrush x:Key="EditorAccentSoftBrush" Color="#DDEEFF" />
             <SolidColorBrush x:Key="AccentYellowBrush" Color="#FFFF00" />
 
             <Style TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}" />
-                <Setter Property="FontWeight" Value="ExtraBold" />
             </Style>
             <Style TargetType="Button">
                 <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}" />
-                <Setter Property="FontWeight" Value="ExtraBold" />
+                <Setter Property="CornerRadius" Value="9" />
+                <Setter Property="MinHeight" Value="34" />
+            </Style>
+            <Style TargetType="TextBox">
+                <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}" />
+                <Setter Property="CornerRadius" Value="8" />
+            </Style>
+            <Style TargetType="ComboBox">
+                <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}" />
+                <Setter Property="CornerRadius" Value="8" />
+            </Style>
+            <Style TargetType="NumberBox">
+                <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}" />
+                <Setter Property="CornerRadius" Value="8" />
             </Style>
             <Style TargetType="NavigationViewItem">
                 <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}" />
-                <Setter Property="FontWeight" Value="ExtraBold" />
+                <Setter Property="MinHeight" Value="44" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>
