@@ -106,7 +106,7 @@ public sealed partial class MainWindow
         {
             Text = $"Cubical Compare {FormatVersion(GetCurrentAppVersion())}",
             FontSize = 16,
-            FontWeight = Windows.UI.Text.FontWeights.SemiBold,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         };
 
         _latestVersionText = new TextBlock
@@ -160,7 +160,7 @@ public sealed partial class MainWindow
         {
             Text = "Updates",
             FontSize = 18,
-            FontWeight = Windows.UI.Text.FontWeights.SemiBold,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         });
         updatesPanel.Children.Add(new TextBlock
         {
@@ -178,7 +178,7 @@ public sealed partial class MainWindow
         {
             Text = "Cubical Compare 4",
             FontSize = 18,
-            FontWeight = Windows.UI.Text.FontWeights.SemiBold,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         });
         aboutPanel.Children.Add(new TextBlock
         {
@@ -203,7 +203,7 @@ public sealed partial class MainWindow
         {
             Text = "Settings",
             FontSize = 30,
-            FontWeight = Windows.UI.Text.FontWeights.SemiBold,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         });
         pageStack.Children.Add(new TextBlock
         {
