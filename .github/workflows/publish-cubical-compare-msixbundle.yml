@@ -1,0 +1,141 @@
+name: Publish Cubical Compare MSIXBundle
+
+on:
+  workflow_run:
+    workflows:
+      - Build Cubical Compare 4 Windows
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  publish-msixbundle:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'windows/main'
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout verified source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Stamp matching release version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $revision = [int]'${{ github.event.workflow_run.run_number }}'
+          if ($revision -gt 65535) { throw "Workflow run number $revision no longer fits in an MSIX version revision." }
+          $version = "4.1.0.$revision"
+          $tag = "v$version-windows"
+          $manifestPath = 'windows/CubicalCompare/Package.appxmanifest'
+          $manifest = Get-Content $manifestPath -Raw
+          $updated = [regex]::Replace($manifest, 'Version="4\.1\.0\.\d+"', "Version=`"$version`"")
+          if ($updated -eq $manifest) { throw 'Could not stamp the MSIX version in Package.appxmanifest.' }
+          Set-Content -Path $manifestPath -Value $updated -Encoding UTF8 -NoNewline
+          "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "MSIXBundle release version: $version ($tag)"
+
+      - name: Create bundle signing identity
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject 'CN=RetroFrost Development' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -NotAfter (Get-Date).AddDays(7)
+          $cer = Join-Path $env:RUNNER_TEMP 'CubicalCompare-Bundle.cer'
+          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
+          "CC_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_CER=$cer" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore
+        run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
+
+      - name: Build signed x64 MSIXBundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish windows/CubicalCompare/CubicalCompare.csproj `
+            -c Release `
+            -r win-x64 `
+            -p:Platform=x64 `
+            -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxBundle=Always `
+            -p:AppxBundlePlatforms=x64 `
+            -p:AppxPackageSigningEnabled=true `
+            -p:PackageCertificateThumbprint="$env:CC_CERT_THUMBPRINT"
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
+
+          $bundle = Get-ChildItem windows/CubicalCompare/AppPackages -Recurse -File -Filter '*.msixbundle' |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if (-not $bundle) { throw 'Packaging completed without producing an .msixbundle.' }
+
+          $signature = Get-AuthenticodeSignature -FilePath $bundle.FullName
+          Write-Host "MSIXBundle signature status: $($signature.Status); signer: $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -ne 'CN=RetroFrost Development') {
+            throw 'The generated MSIXBundle is not validly signed by the expected Cubical Compare development identity.'
+          }
+
+          "CC_BUNDLE=$($bundle.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Verify bundle installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $existing = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
+          if ($existing) { Remove-AppxPackage -Package $existing.PackageFullName -ErrorAction Stop }
+
+          Add-AppxPackage -Path "$env:CC_BUNDLE" -ForceApplicationShutdown -ErrorAction Stop
+          $installed = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
+          if (-not $installed) { throw 'Windows did not register Cubical Compare from the MSIXBundle.' }
+          if ($installed.Version.ToString() -ne $env:CC_VERSION) {
+            throw "Installed bundle version $($installed.Version) does not match $env:CC_VERSION."
+          }
+          Write-Host "Verified MSIXBundle installation: $($installed.PackageFullName)"
+
+      - name: Upload MSIXBundle to matching GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = 'artifacts/msixbundle-release'
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+
+          $bundleAsset = "$out/CubicalCompare-$env:CC_VERSION-Windows-x64.msixbundle"
+          $certAsset = "$out/CubicalCompare-$env:CC_VERSION-Development.cer"
+          $checksum = "$bundleAsset.sha256"
+          Copy-Item "$env:CC_BUNDLE" $bundleAsset
+          Copy-Item "$env:CC_CER" $certAsset
+          $hash = (Get-FileHash -Algorithm SHA256 $bundleAsset).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $bundleAsset -Leaf)" | Set-Content -Path $checksum -Encoding ASCII
+
+          gh release view "$env:CC_TAG" --repo RetroFrost/CTS 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Expected release $env:CC_TAG does not exist." }
+
+          gh release upload "$env:CC_TAG" "$bundleAsset" "$certAsset" "$checksum" --repo RetroFrost/CTS --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload MSIXBundle release assets.' }
+
+          $body = gh release view "$env:CC_TAG" --repo RetroFrost/CTS --json body --jq '.body'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read release notes.' }
+          if ($body -notmatch 'MSIXBundle') {
+            $body += "`n`n### MSIXBundle`nA signed x64 `.msixbundle` is attached for Windows App Installer / deployment tooling. Because this project currently uses a short-lived development signing certificate, the matching `.cer` is attached beside it. The verified ZIP remains the easiest install path because its installer trusts the exact release certificate automatically."
+            gh release edit "$env:CC_TAG" --repo RetroFrost/CTS --notes "$body" --latest
+            if ($LASTEXITCODE -ne 0) { throw 'Could not update release notes for the MSIXBundle.' }
+          }
+
+          Write-Host "Published MSIXBundle asset to $env:CC_TAG"
