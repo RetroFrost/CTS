@@ -3,9 +3,11 @@
 Cubical Compare Windows releases use one pinned self-signed code-signing certificate rather than creating a new certificate in each GitHub Actions run.
 
 - Subject: `CN=RetroFrost Development`
-- SHA-1 thumbprint: `52C53117BB543E6D5FE401F850CA0A9197948263`
-- SHA-256 certificate fingerprint: `115A7C78B7B4C4253B5F1CBC35B47EC452FDFF9DBF5C79E848C29CBB30922B34`
-- Valid through: `2036-09-13 20:39:24 UTC`
+- SHA-1 thumbprint: `548F320EFE4885F54B93F254606BB723DB37FF99`
+- SHA-256 certificate fingerprint: `AD8A676C5791512696CA72791F13D6F1DD05E022F3E5F0762B68FE08B4AF1F36`
+- Valid through: `9999-12-31 20:53:51 UTC`
+
+X.509 certificates require a finite `NotAfter` value, so 31 December 9999 is used as the practical equivalent of a permanently valid signing certificate.
 
 The private key must never be committed to this repository. GitHub Actions expects these repository secrets:
 
