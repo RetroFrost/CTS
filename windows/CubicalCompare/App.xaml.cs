@@ -71,6 +71,7 @@ public partial class App : Application
                     mainWindow.InitializePreviewPlayback();
                     mainWindow.InitializeFinalReleaseUi();
                     mainWindow.InitializeAdaptiveExportUi();
+                    mainWindow.InitializeFinalReleaseFixes();
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
