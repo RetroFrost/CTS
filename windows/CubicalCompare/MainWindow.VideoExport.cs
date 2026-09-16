@@ -51,9 +51,17 @@ public sealed partial class MainWindow
         {
             using var renderer = LegacyRendererAdapter.Load(_legacyRenderer.SourcePath);
             var project = BuildProject();
-            var width = Math.Clamp(project.Width, 320, 3840);
-            var height = Math.Clamp(project.Height, 240, 2160);
-            var fps = Math.Clamp(project.Fps, 1, 120);
+
+            // Output profile is intentionally applied to the renderer project before
+            // FrameCount is calculated. This keeps animation duration/timing correct at
+            // every selectable frame rate rather than merely changing MP4 timestamps.
+            project.Width = Math.Clamp(SelectedExportWidth, 320, 3840);
+            project.Height = Math.Clamp(SelectedExportHeight, 240, 2160);
+            project.Fps = Math.Clamp(SelectedExportFps, 1, 120);
+
+            var width = project.Width;
+            var height = project.Height;
+            var fps = project.Fps;
             var frameCount = Math.Max(1, renderer.FrameCount(project));
             var hasSoundtrack = !string.IsNullOrWhiteSpace(_soundtrackPath) && File.Exists(_soundtrackPath);
 
@@ -200,7 +208,7 @@ public sealed partial class MainWindow
             profile.Video.FrameRate.Denominator = 1;
             profile.Video.PixelAspectRatio.Numerator = 1;
             profile.Video.PixelAspectRatio.Denominator = 1;
-            profile.Video.Bitrate = width >= 1920 ? 12_000_000u : 8_000_000u;
+            profile.Video.Bitrate = CalculateVideoBitrate(width, height, fps);
 
             var transcoder = new MediaTranscoder
             {
@@ -209,7 +217,7 @@ public sealed partial class MainWindow
 
             var prepared = await transcoder.PrepareMediaStreamSourceTranscodeAsync(mediaSource, output, profile);
             if (!prepared.CanTranscode)
-                throw new InvalidOperationException($"Windows could not prepare the MP4 encoder ({prepared.FailureReason}).");
+                throw new InvalidOperationException($"Windows could not prepare the MP4 encoder ({prepared.FailureReason}) for {width}×{height} at {fps} FPS.");
 
             ExportStatusText.Text = $"Starting {frameCount:N0}-frame export · {width}×{height} · {fps} FPS";
             var operation = prepared.TranscodeAsync();
@@ -238,7 +246,7 @@ public sealed partial class MainWindow
             }
 
             ExportProgressBar.Value = 100;
-            ExportStatusText.Text = $"Exported {Path.GetFileName(file.Path)}";
+            ExportStatusText.Text = $"Exported {Path.GetFileName(file.Path)} · {width}×{height} · {fps} FPS";
             TimelineStatusText.Text = "Video export complete";
         }
         catch (TaskCanceledException)
@@ -272,6 +280,21 @@ public sealed partial class MainWindow
             ExportVideoButton.IsEnabled = true;
             ExportCancelButton.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private static uint CalculateVideoBitrate(int width, int height, int fps)
+    {
+        var pixelsPerSecond = (long)width * height * fps;
+        return pixelsPerSecond switch
+        {
+            >= 700_000_000 => 80_000_000u,
+            >= 400_000_000 => 48_000_000u,
+            >= 220_000_000 => 28_000_000u,
+            >= 110_000_000 => 16_000_000u,
+            >= 55_000_000 => 10_000_000u,
+            >= 25_000_000 => 7_000_000u,
+            _ => 4_000_000u,
+        };
     }
 
     private static void CopyBgraRowsBottomUp(IntPtr sourcePixels, int sourceRowBytes, byte[] destination, int width, int height)
