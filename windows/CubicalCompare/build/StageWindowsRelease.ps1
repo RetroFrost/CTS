@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedThumbprint = '52C53117BB543E6D5FE401F850CA0A9197948263'
+$expectedThumbprint = '548F320EFE4885F54B93F254606BB723DB37FF99'
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $msix = Join-Path $OutputDirectory 'CubicalCompare-4-x64.msix'
@@ -21,7 +21,7 @@ if ($publicCert.Subject -ne 'CN=RetroFrost Development' -or $publicCert.Thumbpri
 @'
 param()
 $ErrorActionPreference = 'Stop'
-$expectedThumbprint = '52C53117BB543E6D5FE401F850CA0A9197948263'
+$expectedThumbprint = '548F320EFE4885F54B93F254606BB723DB37FF99'
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -107,7 +107,7 @@ QUICK INSTALL
 4. The installer pins the Cubical Compare certificate thumbprint, verifies the MSIX signature, trusts that exact certificate, and installs through the Windows deployment API.
 
 FIXED SIGNING CERTIFICATE
-Cubical Compare Windows releases use one fixed signing identity instead of generating a new certificate for each build. After this certificate is trusted once, later releases signed by the same identity reuse that trust.
+Cubical Compare Windows releases use one effectively-permanent signing identity instead of generating a new certificate for each build. Its X.509 NotAfter is 31 December 9999. After this certificate is trusted once, later releases signed by the same identity reuse that trust.
 
 The signing private key is never included in release artifacts. Releases contain only the public certificate required for signature verification and first-time trust.
 '@ | Set-Content (Join-Path $OutputDirectory 'README.txt') -Encoding UTF8

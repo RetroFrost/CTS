@@ -2,7 +2,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $expectedSubject = 'CN=RetroFrost Development'
-$expectedThumbprint = '52C53117BB543E6D5FE401F850CA0A9197948263'
+$expectedThumbprint = '548F320EFE4885F54B93F254606BB723DB37FF99'
 
 if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_PFX_BASE64)) {
     throw 'Repository secret WINDOWS_SIGNING_PFX_BASE64 is missing. Rotating CI certificates are intentionally disabled.'
@@ -41,7 +41,7 @@ try {
 
     "CC_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
     "CC_CER=$cer" | Out-File -FilePath $env:GITHUB_ENV -Append
-    Write-Host "Loaded fixed signing certificate $($cert.Thumbprint), valid through $($cert.NotAfter.ToUniversalTime().ToString('u'))."
+    Write-Host "Loaded effectively-permanent signing certificate $($cert.Thumbprint), valid through $($cert.NotAfter.ToUniversalTime().ToString('u'))."
 }
 finally {
     if (Test-Path $pfx) { Remove-Item $pfx -Force }

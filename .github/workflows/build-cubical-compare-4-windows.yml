@@ -60,7 +60,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expectedThumbprint = '52C53117BB543E6D5FE401F850CA0A9197948263'
+          $expectedThumbprint = '548F320EFE4885F54B93F254606BB723DB37FF99'
           if ($env:CC_CERT_THUMBPRINT -ne $expectedThumbprint) { throw "Unexpected signing thumbprint: $env:CC_CERT_THUMBPRINT" }
 
           dotnet publish windows/CubicalCompare/CubicalCompare.csproj `
@@ -113,7 +113,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expectedThumbprint = '52C53117BB543E6D5FE401F850CA0A9197948263'
+          $expectedThumbprint = '548F320EFE4885F54B93F254606BB723DB37FF99'
           $existing = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
           if ($existing) { Remove-AppxPackage -Package $existing.PackageFullName -ErrorAction Stop }
 
@@ -151,8 +151,8 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - Signed by the fixed Cubical Compare Windows certificate.
-          - Pinned signer thumbprint: 52C53117BB543E6D5FE401F850CA0A9197948263.
+          - Signed by the effectively-permanent Cubical Compare Windows certificate (valid through 31 December 9999).
+          - Pinned signer thumbprint: 548F320EFE4885F54B93F254606BB723DB37FF99.
           - Future releases reuse the same trusted signer instead of rotating a certificate every build.
           - Renderer v3 source-component playback and embedded renderer audio remain included.
 
