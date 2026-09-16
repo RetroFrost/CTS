@@ -46,6 +46,7 @@ public sealed partial class MainWindow
         _videoExportCancellation = new CancellationTokenSource();
         var cancellationToken = _videoExportCancellation.Token;
         StorageFile? temporaryVideo = null;
+        StorageFile? temporaryRendererAudio = null;
 
         try
         {
@@ -63,8 +64,29 @@ public sealed partial class MainWindow
             var height = project.Height;
             var fps = project.Fps;
             var frameCount = Math.Max(1, renderer.FrameCount(project));
-            var hasSoundtrack = !string.IsNullOrWhiteSpace(_soundtrackPath) && File.Exists(_soundtrackPath);
 
+            var soundtrackPath = _soundtrackPath;
+            var soundtrackVolume = _soundtrackVolume;
+            var soundtrackLoop = _soundtrackLoop;
+            if (string.IsNullOrWhiteSpace(soundtrackPath) || !File.Exists(soundtrackPath))
+            {
+                var embeddedAudio = renderer.EmbeddedAudio;
+                if (embeddedAudio is not null)
+                {
+                    var extension = Path.GetExtension(embeddedAudio.FileName);
+                    if (string.IsNullOrWhiteSpace(extension) || extension.Length > 12)
+                        extension = ".m4a";
+                    temporaryRendererAudio = await ApplicationData.Current.TemporaryFolder.CreateFileAsync(
+                        $"cc-renderer-audio-{Guid.NewGuid():N}{extension}",
+                        CreationCollisionOption.ReplaceExisting);
+                    await FileIO.WriteBytesAsync(temporaryRendererAudio, embeddedAudio.Data);
+                    soundtrackPath = temporaryRendererAudio.Path;
+                    soundtrackVolume = embeddedAudio.Volume;
+                    soundtrackLoop = embeddedAudio.Loop;
+                }
+            }
+
+            var hasSoundtrack = !string.IsNullOrWhiteSpace(soundtrackPath) && File.Exists(soundtrackPath);
             if (hasSoundtrack)
             {
                 temporaryVideo = await ApplicationData.Current.TemporaryFolder.CreateFileAsync(
@@ -239,10 +261,16 @@ public sealed partial class MainWindow
 
             output.Dispose();
 
-            if (temporaryVideo is not null)
+            if (temporaryVideo is not null && hasSoundtrack)
             {
                 ExportProgressBar.Value = 0;
-                await AddSoundtrackAsync(temporaryVideo, file, cancellationToken);
+                await AddSoundtrackAsync(
+                    temporaryVideo,
+                    file,
+                    soundtrackPath!,
+                    soundtrackVolume,
+                    soundtrackLoop,
+                    cancellationToken);
             }
 
             ExportProgressBar.Value = 100;
@@ -273,6 +301,8 @@ public sealed partial class MainWindow
         {
             if (temporaryVideo is not null)
                 TryDeleteExport(temporaryVideo.Path);
+            if (temporaryRendererAudio is not null)
+                TryDeleteExport(temporaryRendererAudio.Path);
             _videoExportOperation = null;
             _videoExportCancellation?.Dispose();
             _videoExportCancellation = null;
