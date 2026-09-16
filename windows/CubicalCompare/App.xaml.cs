@@ -60,9 +60,6 @@ public partial class App : Application
             mainWindow.Activate();
             WriteLog("MainWindow activated.");
 
-            // Controls that need to inspect or extend the realised visual tree are deliberately
-            // installed after activation. Doing this in the constructor made their ancestors
-            // unreliable and was the reason direct transform occasionally appeared but did nothing.
             mainWindow.DispatcherQueue.TryEnqueue(() =>
             {
                 try
@@ -70,7 +67,8 @@ public partial class App : Application
                     mainWindow.InitializeDirectArtworkManipulator();
                     mainWindow.InitializeSoundtrackEditor();
                     mainWindow.InitializeFontSelector();
-                    mainWindow.InitializePreviewTransformEditor();
+                    mainWindow.InitializeReliablePreviewTransformEditor();
+                    mainWindow.InitializePreviewPlayback();
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
