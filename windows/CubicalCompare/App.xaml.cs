@@ -70,6 +70,7 @@ public partial class App : Application
                     mainWindow.InitializeReliablePreviewTransformEditor();
                     mainWindow.InitializePreviewPlayback();
                     mainWindow.InitializeFinalReleaseUi();
+                    mainWindow.InitializeAdaptiveExportUi();
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
