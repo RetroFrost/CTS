@@ -155,16 +155,20 @@ public sealed partial class MainWindow
                         || extension.Equals(".msixbundle", StringComparison.OrdinalIgnoreCase)
                         || extension.Equals(".appinstaller", StringComparison.OrdinalIgnoreCase))
                     {
-                        directInstaller = assetUri;
-                        break;
+                        directInstaller ??= assetUri;
+                        continue;
                     }
 
                     if (extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
                         fallbackZip ??= assetUri;
                 }
 
-                _latestWindowsPackageUri = directInstaller ?? fallbackZip;
-                _latestWindowsPackageIsDirectInstaller = directInstaller is not null;
+                // Current CI releases are signed with a fresh short-lived development
+                // certificate. Prefer the verified ZIP because its installer trusts the
+                // exact certificate shipped with that release. The raw MSIX/MSIXBundle
+                // remains available on GitHub for manual deployment and tooling.
+                _latestWindowsPackageUri = fallbackZip ?? directInstaller;
+                _latestWindowsPackageIsDirectInstaller = fallbackZip is null && directInstaller is not null;
                 if (_latestWindowsPackageUri is null)
                     continue;
 
