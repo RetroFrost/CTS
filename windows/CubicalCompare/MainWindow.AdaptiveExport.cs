@@ -129,6 +129,7 @@ public sealed partial class MainWindow
         }
 
         _workspaceSoundtrackLane = _workspaceEditorGrid.Children
+            .OfType<FrameworkElement>()
             .FirstOrDefault(element => Grid.GetRow(element) == 3);
     }
 
