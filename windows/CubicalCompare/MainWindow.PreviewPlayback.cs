@@ -17,31 +17,9 @@ public sealed partial class MainWindow
         if (_previewPlayButton is not null)
             return;
 
-        if (ProjectFrameSlider.Parent is not Grid timelineGrid)
-        {
-            RootNavigation.Loaded += PreviewPlayback_RootNavigationLoaded;
-            return;
-        }
-
-        RootNavigation.Loaded -= PreviewPlayback_RootNavigationLoaded;
-
-        _previewPlayButton = new Button
-        {
-            Width = 34,
-            Height = 34,
-            Padding = new Thickness(0),
-            Margin = new Thickness(0, 0, 8, 0),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center,
-            Content = new SymbolIcon(Symbol.Play),
-        };
-        ToolTipService.SetToolTip(_previewPlayButton, "Play preview");
+        _previewPlayButton = PreviewPlayButton;
         _previewPlayButton.Click += PreviewPlayButton_Click;
-
-        timelineGrid.Children.Add(_previewPlayButton);
-        Grid.SetColumn(_previewPlayButton, 0);
-        Canvas.SetZIndex(_previewPlayButton, 20);
-        FrameCounterText.Margin = new Thickness(44, 0, 0, 0);
+        ToolTipService.SetToolTip(_previewPlayButton, "Play preview");
 
         _previewPlaybackTimer = new DispatcherTimer
         {
@@ -50,12 +28,7 @@ public sealed partial class MainWindow
         _previewPlaybackTimer.Tick += PreviewPlaybackTimer_Tick;
 
         Closed += (_, _) => StopPreviewPlayback();
-    }
-
-    private void PreviewPlayback_RootNavigationLoaded(object sender, RoutedEventArgs e)
-    {
-        RootNavigation.Loaded -= PreviewPlayback_RootNavigationLoaded;
-        InitializePreviewPlayback();
+        RefreshPreviewPlayButton();
     }
 
     private void PreviewPlayButton_Click(object sender, RoutedEventArgs e)
@@ -69,6 +42,7 @@ public sealed partial class MainWindow
         if (_previewPlaying)
         {
             StopPreviewPlayback();
+            TimelineStatusText.Text = "Preview paused";
             return;
         }
 
@@ -111,9 +85,6 @@ public sealed partial class MainWindow
 
     private void StopPreviewPlayback()
     {
-        if (!_previewPlaying && _previewPlaybackTimer?.IsEnabled != true)
-            return;
-
         _previewPlaying = false;
         _previewPlaybackTimer?.Stop();
         _previewPlaybackClock.Stop();
