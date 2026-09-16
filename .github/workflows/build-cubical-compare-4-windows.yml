@@ -45,24 +45,13 @@ jobs:
           Set-Content -Path $manifestPath -Value $updated -Encoding UTF8 -NoNewline
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Release version: $version ($tag)"
 
-      - name: Create trusted CI signing identity
+      - name: Import fixed Windows signing certificate
         shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $cert = New-SelfSignedCertificate `
-            -Type CodeSigningCert `
-            -Subject 'CN=RetroFrost Development' `
-            -CertStoreLocation 'Cert:\CurrentUser\My' `
-            -NotAfter (Get-Date).AddDays(7)
-          $cer = Join-Path $env:RUNNER_TEMP 'CubicalCompare-CI.cer'
-          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
-          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
-          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
-          "CC_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "CC_CER=$cer" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Created CI signing identity $($cert.Thumbprint)."
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: windows/CubicalCompare/build/ImportFixedSigningCertificate.ps1
 
       - name: Restore
         run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
@@ -71,6 +60,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $expectedThumbprint = '52C53117BB543E6D5FE401F850CA0A9197948263'
+          if ($env:CC_CERT_THUMBPRINT -ne $expectedThumbprint) { throw "Unexpected signing thumbprint: $env:CC_CERT_THUMBPRINT" }
+
           dotnet publish windows/CubicalCompare/CubicalCompare.csproj `
             -c Release `
             -r win-x64 `
@@ -85,13 +77,11 @@ jobs:
           if (-not $package) { throw 'MSIX packaging completed without producing an installable package.' }
 
           $signature = Get-AuthenticodeSignature -FilePath $package.FullName
-          Write-Host "MSIX signature status: $($signature.Status); signer: $($signature.SignerCertificate.Subject)"
-          if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -ne 'CN=RetroFrost Development') {
-            throw 'The generated MSIX is not validly signed by the expected Cubical Compare development identity.'
+          if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $expectedThumbprint) {
+            throw 'The generated MSIX is not validly signed by the pinned Cubical Compare certificate.'
           }
-
           "CC_PACKAGE=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Package: $($package.FullName)"
+          Write-Host "Signed package: $($package.FullName)"
 
       - name: Install packaged app for CI
         shell: pwsh
@@ -100,8 +90,7 @@ jobs:
           Add-AppxPackage -Path "$env:CC_PACKAGE" -ForceApplicationShutdown
           $package = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
           if (-not $package) { throw 'Cubical Compare package was not registered after Add-AppxPackage.' }
-          Write-Host "Installed $($package.Name) $($package.Version) ($($package.PackageFullName))"
-          if ($package.Version.ToString() -ne $env:CC_VERSION) { throw "Installed package version $($package.Version) does not match stamped release version $env:CC_VERSION." }
+          if ($package.Version.ToString() -ne $env:CC_VERSION) { throw "Installed package version $($package.Version) does not match $env:CC_VERSION." }
           "CC_PFN=$($package.PackageFamilyName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Smoke test installed WinUI startup
@@ -109,241 +98,37 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Process explorer.exe -ArgumentList "shell:AppsFolder\$env:CC_PFN!App"
+          Start-Sleep -Seconds 8
+          $process = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $process) { throw 'Cubical Compare did not survive packaged startup.' }
+          Write-Host "Cubical Compare startup smoke passed (PID $($process.Id))."
+          Stop-Process -Id $process.Id -Force
 
-          Add-Type -TypeDefinition @'
-          using System;
-          using System.Runtime.InteropServices;
-
-          [ComImport, Guid("45ba127d-10a8-46ea-8ab7-56ea9078943c")]
-          internal class ApplicationActivationManager {}
-
-          [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-          internal interface IApplicationActivationManager
-          {
-              int ActivateApplication(string appUserModelId, string arguments, uint options, out uint processId);
-              int ActivateForFile(IntPtr appUserModelId, IntPtr itemArray, IntPtr verb, out uint processId);
-              int ActivateForProtocol(IntPtr appUserModelId, IntPtr itemArray, out uint processId);
-          }
-
-          public static class PackagedAppLauncher
-          {
-              public static uint Activate(string appUserModelId, string arguments)
-              {
-                  var manager = (IApplicationActivationManager)new ApplicationActivationManager();
-                  uint processId;
-                  int hr = manager.ActivateApplication(appUserModelId, arguments, 0, out processId);
-                  if (hr < 0) Marshal.ThrowExceptionForHR(hr);
-                  return processId;
-              }
-          }
-          '@
-
-          function Show-CubicalCompareDiagnostics {
-            Write-Host '--- relevant Application events ---'
-            Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=(Get-Date).AddMinutes(-3) } -ErrorAction SilentlyContinue |
-              Where-Object { $_.Message -match 'CubicalCompare|RetroFrost.CubicalCompare|Microsoft.UI.Xaml|WindowsAppSDK|USER32' } |
-              Select-Object -First 30 TimeCreated, ProviderName, Id, LevelDisplayName, Message |
-              Format-List | Out-String | Write-Host
-
-            $logs = @(
-              (Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'),
-              (Join-Path $env:LOCALAPPDATA "Packages/$env:CC_PFN/LocalState/CubicalCompare/startup.log")
-            ) | Where-Object { Test-Path $_ }
-            foreach ($log in $logs) {
-              Write-Host "--- startup log: $log ---"
-              Get-Content $log -Raw | Write-Host
-            }
-          }
-
-          function Assert-ActivationSurvives([string]$arguments, [string]$label) {
-            $aumid = "$env:CC_PFN!App"
-            Write-Host "Activating $label ($aumid $arguments)"
-            $launchedProcessId = [PackagedAppLauncher]::Activate($aumid, $arguments)
-            if (-not $launchedProcessId) { throw "$label activation returned no process ID." }
-            Write-Host "$label activation returned PID $launchedProcessId."
-            Start-Sleep -Seconds 8
-
-            $process = Get-Process -Id $launchedProcessId -ErrorAction SilentlyContinue
-            if (-not $process) {
-              Show-CubicalCompareDiagnostics
-              throw "$label exited during startup (PID $launchedProcessId)."
-            }
-
-            Write-Host "$label survived startup. PID $($process.Id)."
-            Stop-Process -Id $process.Id -Force
-            Start-Sleep -Seconds 2
-          }
-
-          Assert-ActivationSurvives '--ci-shell-smoke' 'WinUI shell smoke'
-          Assert-ActivationSurvives '' 'Cubical Compare editor'
-
-          $startupLogs = @(
-            (Join-Path $env:LOCALAPPDATA 'CubicalCompare/startup.log'),
-            (Join-Path $env:LOCALAPPDATA "Packages/$env:CC_PFN/LocalState/CubicalCompare/startup.log")
-          ) | Where-Object { Test-Path $_ }
-          foreach ($log in $startupLogs) {
-            $startup = Get-Content $log -Raw
-            if ($startup -match 'startup failed|unhandled exception|Recovery window also failed') {
-              $startup | Write-Host
-              throw 'Cubical Compare reached a managed recovery/crash path during packaged startup.'
-            }
-          }
-
-      - name: Stage verified MSIX
-        if: success()
+      - name: Stage verified Windows release
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $out = 'artifacts/CubicalCompare-4-MSIX'
-          New-Item -ItemType Directory -Path $out -Force | Out-Null
-          Copy-Item "$env:CC_PACKAGE" "$out/CubicalCompare-4-x64.msix"
-          Copy-Item "$env:CC_CER" "$out/CubicalCompare-Development.cer"
-
-          @'
-          param()
-          $ErrorActionPreference = 'Stop'
-
-          $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-              Write-Host 'Administrator access is required once to trust the development signing certificate.'
-              try {
-                  $arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
-                  $child = Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments -Wait -PassThru
-                  exit $child.ExitCode
-              }
-              catch {
-                  Write-Host "Could not start the elevated installer: $($_.Exception.Message)"
-                  exit 1
-              }
-          }
-
-          $root = Split-Path -Parent $PSCommandPath
-          $cer = Join-Path $root 'CubicalCompare-Development.cer'
-          $msix = Join-Path $root 'CubicalCompare-4-x64.msix'
-          $log = Join-Path $env:TEMP ('CubicalCompare-install-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
-          $exitCode = 0
-          Start-Transcript -Path $log -Force | Out-Null
-
-          try {
-              if (-not (Test-Path $cer)) { throw 'CubicalCompare-Development.cer is missing.' }
-              if (-not (Test-Path $msix)) { throw 'CubicalCompare-4-x64.msix is missing.' }
-
-              $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber
-              if ($build -lt 19041) {
-                  throw "Cubical Compare 4 requires Windows 10 build 19041 or newer. This PC is build $build."
-              }
-
-              $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cer)
-              if ($cert.Subject -ne 'CN=RetroFrost Development') {
-                  throw "Unexpected certificate subject: $($cert.Subject)"
-              }
-              if ((Get-Date) -gt $cert.NotAfter) {
-                  throw "The development certificate expired on $($cert.NotAfter). Download a newer Cubical Compare release."
-              }
-
-              Write-Host 'Trusting the Cubical Compare development signing certificate...'
-              Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
-
-              $signature = Get-AuthenticodeSignature -FilePath $msix
-              if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
-                  throw 'The MSIX signer does not match the certificate shipped with this release.'
-              }
-              if ($signature.Status -ne 'Valid') {
-                  throw "MSIX signature verification failed: $($signature.Status) $($signature.StatusMessage)"
-              }
-
-              Write-Host 'Installing Cubical Compare 4 with the Windows deployment API...'
-              Add-AppxPackage -Path $msix -ForceApplicationShutdown -ErrorAction Stop
-              $installed = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
-              if (-not $installed) { throw 'Windows did not register Cubical Compare after installation.' }
-
-              Write-Host "Installed $($installed.Name) $($installed.Version)."
-              Write-Host 'Cubical Compare 4 is ready in the Start menu.'
-          }
-          catch {
-              $exitCode = 1
-              Write-Host ''
-              Write-Host 'Cubical Compare installation failed:'
-              Write-Host $_.Exception.Message
-              Write-Host ''
-              Write-Host '--- recent AppX deployment events ---'
-              Get-WinEvent -FilterHashtable @{ LogName='Microsoft-Windows-AppXDeploymentServer/Operational'; StartTime=(Get-Date).AddMinutes(-10) } -ErrorAction SilentlyContinue |
-                  Select-Object -First 25 TimeCreated, Id, LevelDisplayName, Message |
-                  Format-List | Out-String | Write-Host
-              Write-Host "A diagnostic log was saved to: $log"
-          }
-          finally {
-              try { Stop-Transcript | Out-Null } catch {}
-          }
-
-          exit $exitCode
-          '@ | Set-Content "$out/Install-CubicalCompare.ps1" -Encoding UTF8
-
-          @'
-          @echo off
-          setlocal
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Install-CubicalCompare.ps1"
-          if errorlevel 1 (
-            echo.
-            echo Cubical Compare installation failed. See the message above.
-            pause
-            exit /b 1
-          )
-          echo.
-          echo Cubical Compare installation completed.
-          pause
-          '@ | Set-Content "$out/Install-CubicalCompare.cmd" -Encoding ASCII
-
-          @'
-          Cubical Compare 4 - verified Windows release package
-
-          QUICK INSTALL
-          1. Extract this entire ZIP to a normal folder.
-          2. Double-click Install-CubicalCompare.cmd (not the raw .msix).
-          3. Accept the Windows administrator prompt.
-          4. The installer validates the bundled certificate and MSIX signature, trusts that exact certificate in Local Machine > Trusted People, and installs through the Windows deployment API.
-
-          WHY THE RAW MSIX MAY SHOW "ERROR IN PARSING THE APP PACKAGE"
-          Some Windows App Installer builds can fail in their UI before giving useful deployment diagnostics. The supplied installer intentionally uses Add-AppxPackage directly and writes recent AppX deployment events to a diagnostic log if Windows rejects the package.
-
-          WHY WINDOWS SHOWS "CERTIFICATE IS NOT TRUSTED"
-          This build is signed with a short-lived CI development certificate. Windows cannot trust that signer on another PC until the included certificate is explicitly trusted. The supplied installer performs that trust step for the exact bundled certificate only.
-
-          GitHub Actions built, signed, installed and launch-tested this exact packaged WinUI 3 application. CI validates both a bare WinUI shell and the actual Cubical Compare editor window, then re-tests the same installer script shipped in this folder from an uninstalled state.
-          '@ | Set-Content "$out/README.txt" -Encoding UTF8
+        run: windows/CubicalCompare/build/StageWindowsRelease.ps1 -PackagePath "$env:CC_PACKAGE" -CertificatePath "$env:CC_CER"
 
       - name: Verify shipped installer path
-        if: success()
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-
+          $expectedThumbprint = '52C53117BB543E6D5FE401F850CA0A9197948263'
           $existing = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
-          if ($existing) {
-            Remove-AppxPackage -Package $existing.PackageFullName -ErrorAction Stop
-          }
+          if ($existing) { Remove-AppxPackage -Package $existing.PackageFullName -ErrorAction Stop }
 
           $artifactCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2('artifacts/CubicalCompare-4-MSIX/CubicalCompare-Development.cer')
+          if ($artifactCert.Thumbprint -ne $expectedThumbprint) { throw "Staged signer changed: $($artifactCert.Thumbprint)" }
           Get-ChildItem 'Cert:\LocalMachine\TrustedPeople' -ErrorAction SilentlyContinue |
-            Where-Object Thumbprint -eq $artifactCert.Thumbprint |
+            Where-Object Thumbprint -eq $expectedThumbprint |
             Remove-Item -Force -ErrorAction SilentlyContinue
 
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'artifacts/CubicalCompare-4-MSIX/Install-CubicalCompare.ps1'
-          if ($LASTEXITCODE -ne 0) { throw "The shipped installer script failed with exit code $LASTEXITCODE." }
-
+          if ($LASTEXITCODE -ne 0) { throw "The shipped installer failed with exit code $LASTEXITCODE." }
           $installed = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
           if (-not $installed) { throw 'The shipped installer returned success but the package is not installed.' }
 
-          Start-Process explorer.exe -ArgumentList "shell:AppsFolder\$($installed.PackageFamilyName)!App"
-          Start-Sleep -Seconds 8
-          $process = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $process) { throw 'Cubical Compare did not survive startup after installation through the shipped installer.' }
-          Write-Host "Shipped installer path launched Cubical Compare successfully (PID $($process.Id))."
-          Stop-Process -Id $process.Id -Force
-
       - name: Upload verified Windows MSIX
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: CubicalCompare-4-win-x64-msix
@@ -352,7 +137,6 @@ jobs:
           retention-days: 14
 
       - name: Publish verified GitHub Release
-        if: success()
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -367,20 +151,16 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - Final Fluent 2 workspace polish.
-          - Responsive layout now scales down correctly on 1366×768 and smaller displays instead of cropping the preview.
-          - Export resolution selector is live: 360p, 480p, 576p, 720p, 900p, 1080p, 1440p, 1800p and 4K.
-          - Export frame-rate selector is live: 24, 25, 30, 48, 50, 60, 90 and 120 FPS.
-          - Renderer timing is recalculated at the selected export FPS.
-          - Non-functional prototype controls were removed instead of being left as dead buttons.
-          - Settings checks this GitHub Releases channel for newer stable Windows builds.
+          - Signed by the fixed Cubical Compare Windows certificate.
+          - Pinned signer thumbprint: 52C53117BB543E6D5FE401F850CA0A9197948263.
+          - Future releases reuse the same trusted signer instead of rotating a certificate every build.
+          - Renderer v3 source-component playback and embedded renderer audio remain included.
 
           Download the Windows ZIP, extract it, then run `Install-CubicalCompare.cmd`.
           "@
 
           gh release view "$env:CC_TAG" --repo RetroFrost/CTS 2>$null | Out-Null
-          $releaseExists = $LASTEXITCODE -eq 0
-          if ($releaseExists) {
+          if ($LASTEXITCODE -eq 0) {
             gh release upload "$env:CC_TAG" "$bundle" "$checksum" --repo RetroFrost/CTS --clobber
             if ($LASTEXITCODE -ne 0) { throw 'Could not upload refreshed release assets.' }
             gh release edit "$env:CC_TAG" --repo RetroFrost/CTS --title "Cubical Compare $env:CC_VERSION — Windows" --notes "$notes" --latest
@@ -395,5 +175,3 @@ jobs:
               --latest
             if ($LASTEXITCODE -ne 0) { throw 'Could not publish the GitHub release.' }
           }
-
-          Write-Host "Published release $env:CC_TAG"
