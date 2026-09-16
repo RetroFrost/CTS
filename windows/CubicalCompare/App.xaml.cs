@@ -69,6 +69,7 @@ public partial class App : Application
                     mainWindow.InitializeFontSelector();
                     mainWindow.InitializeReliablePreviewTransformEditor();
                     mainWindow.InitializePreviewPlayback();
+                    mainWindow.InitializeFinalReleaseUi();
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
