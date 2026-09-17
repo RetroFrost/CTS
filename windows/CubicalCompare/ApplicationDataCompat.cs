@@ -1,5 +1,6 @@
 using CubicalCompare.Core.Project;
 using Microsoft.Win32;
+using Windows.Storage;
 
 namespace CubicalCompare;
 
@@ -29,6 +30,12 @@ internal sealed class CompatLocalFolder
     }
 
     public string Path { get; }
+
+    public async Task<StorageFile> CreateFileAsync(string desiredName, CreationCollisionOption option)
+    {
+        var folder = await StorageFolder.GetFolderFromPathAsync(Path);
+        return await folder.CreateFileAsync(desiredName, option);
+    }
 }
 
 internal sealed class CompatLocalSettings
