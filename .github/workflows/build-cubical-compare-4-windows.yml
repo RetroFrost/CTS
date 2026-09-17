@@ -140,9 +140,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          & "$env:CC_SETUP" --silent
-          if ($LASTEXITCODE -ne 0) { throw "Velopack Setup.exe failed with exit code $LASTEXITCODE." }
-          Start-Sleep -Seconds 3
+          $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -ArgumentList '--silent' -Wait -PassThru
+          if ($setupProcess.ExitCode -ne 0) { throw "Velopack Setup.exe failed with exit code $($setupProcess.ExitCode)." }
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
           $installedExe = Join-Path $env:LOCALAPPDATA 'CubicalCompare\current\CubicalCompare.exe'
