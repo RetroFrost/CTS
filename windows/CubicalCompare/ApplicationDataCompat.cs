@@ -1,4 +1,3 @@
-using CubicalCompare.Core.Project;
 using Microsoft.Win32;
 using Windows.Storage;
 
@@ -17,7 +16,7 @@ internal static class ApplicationData
 internal sealed class CompatApplicationData
 {
     public CompatLocalSettings LocalSettings { get; } = new();
-    public CompatLocalFolder LocalFolder { get; } = new(AppDataPaths.RootDirectory);
+    public CompatLocalFolder LocalFolder { get; } = new(CubicalCompare.Core.Project.AppDataPaths.RootDirectory);
     public CompatLocalFolder TemporaryFolder { get; } = new(Path.Combine(Path.GetTempPath(), "CubicalCompare"));
 }
 
