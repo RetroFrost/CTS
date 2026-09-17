@@ -57,6 +57,7 @@ public sealed partial class MainWindow
         ToolTipService.SetToolTip(ProjectFrameSlider, "Scrub renderer frames");
 
         AppTitleBar.SizeChanged += InterfaceReview_TitleBarSizeChanged;
+        Closed += (_, _) => AppTitleBar.SizeChanged -= InterfaceReview_TitleBarSizeChanged;
         ApplyReviewedTitleBarLayout(AppTitleBar.ActualWidth);
     }
 
@@ -90,9 +91,11 @@ public sealed partial class MainWindow
         }
 
         ExportVideoButton.Content = narrow ? "Export" : "Export Video";
-        ExportVideoButton.Padding = narrow ? new Thickness(13, 7) : new Thickness(18, 7);
+        ExportVideoButton.Padding = narrow ? new Thickness(13, 7, 13, 7) : new Thickness(18, 7, 18, 7);
 
         if (_titleBarGrid is not null)
-            _titleBarGrid.Padding = constrained ? new Thickness(12, 0, 146, 0) : new Thickness(18, 0, 152, 0);
+            _titleBarGrid.Padding = constrained
+                ? new Thickness(12, 0, 146, 0)
+                : new Thickness(18, 0, 152, 0);
     }
 }

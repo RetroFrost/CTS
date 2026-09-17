@@ -15,11 +15,12 @@ public static class Program
             .Run();
 
         WinRT.ComWrappersSupport.InitializeComWrappers();
-        Application.Start(_ =>
+        Application.Start(initializationParams =>
         {
+            _ = initializationParams; // WinUI owns the callback payload; the app only needs the UI thread.
             var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
             SynchronizationContext.SetSynchronizationContext(context);
-            _ = new App();
+            new App();
         });
         return 0;
     }

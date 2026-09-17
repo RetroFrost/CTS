@@ -4,10 +4,9 @@ using Microsoft.Win32;
 namespace CubicalCompare;
 
 /// <summary>
-/// Package-identity-free compatibility surface for the handful of editor files that
-/// historically used Windows.Storage.ApplicationData.Current. Keeping the familiar
-/// Current.LocalSettings / Current.LocalFolder shape avoids package-only runtime calls
-/// while the app transitions to unpackaged deployment.
+/// Package-identity-free compatibility surface for editor code that historically used
+/// Windows.Storage.ApplicationData.Current. The shape remains familiar while all paths
+/// now resolve to ordinary per-user folders/registry state that work unpackaged.
 /// </summary>
 internal static class ApplicationData
 {
@@ -17,12 +16,19 @@ internal static class ApplicationData
 internal sealed class CompatApplicationData
 {
     public CompatLocalSettings LocalSettings { get; } = new();
-    public CompatLocalFolder LocalFolder { get; } = new();
+    public CompatLocalFolder LocalFolder { get; } = new(AppDataPaths.RootDirectory);
+    public CompatLocalFolder TemporaryFolder { get; } = new(Path.Combine(Path.GetTempPath(), "CubicalCompare"));
 }
 
 internal sealed class CompatLocalFolder
 {
-    public string Path => AppDataPaths.RootDirectory;
+    public CompatLocalFolder(string path)
+    {
+        Path = path;
+        Directory.CreateDirectory(Path);
+    }
+
+    public string Path { get; }
 }
 
 internal sealed class CompatLocalSettings
