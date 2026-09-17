@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Core\CubicalCompare.Core.csproj" />
+    <ProjectReference Include="..\Thumbnail\CubicalCompare.Thumbnail.csproj" />
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
   </ItemGroup>
   <ItemGroup>
