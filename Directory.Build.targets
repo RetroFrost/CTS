@@ -1,0 +1,18 @@
+<Project>
+  <!-- Windows App SDK currently generates the app PRI for unpackaged WinUI builds but
+       can omit it from dotnet publish output. Without it Cubical Compare can crash after
+       XAML resource resolution begins. Keep this additive workaround until the SDK fixes
+       the unpackaged MRT Core publish path. -->
+  <Target Name="CubicalComparePublishProjectPri"
+          BeforeTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="$(GenerateProjectPriFile)"
+          Condition="'$(WindowsPackageType)' == 'None' and '$(UseWinUI)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="$(ProjectPriFullPath)" Condition="Exists('$(ProjectPriFullPath)')" />
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)" Condition="Exists('$(ProjectPriFullPath)')">
+        <RelativePath>$(ProjectPriFileName)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+</Project>

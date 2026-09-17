@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>CubicalCompare.Core</AssemblyName>
+    <RootNamespace>CubicalCompare.Core</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\CubicalCompare\Core\Project\**\*.cs" Link="Project\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

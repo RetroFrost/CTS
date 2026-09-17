@@ -4,8 +4,11 @@ on:
   push:
     branches:
       - windows/main
+      - work/portable-zip-windows
     paths:
       - 'windows/CubicalCompare/**'
+      - 'windows/CubicalCompare.Modules/**'
+      - 'Directory.Build.targets'
       - '.github/workflows/build-cubical-compare-4-windows.yml'
   workflow_dispatch:
 
@@ -19,155 +22,191 @@ permissions:
 jobs:
   build-win-x64:
     runs-on: windows-2025
-    timeout-minutes: 35
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
-      - name: Stamp release package version
+      - name: Set release version
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $revision = [int]'${{ github.run_number }}'
-          if ($revision -gt 65535) { throw "Workflow run number $revision no longer fits in an MSIX version revision." }
-          $version = "4.1.0.$revision"
-          $tag = "v$version-windows"
-          $manifestPath = 'windows/CubicalCompare/Package.appxmanifest'
-          $manifest = Get-Content $manifestPath -Raw
-          $updated = [regex]::Replace($manifest, 'Version="4\.1\.0\.\d+"', "Version=`"$version`"")
-          if ($updated -eq $manifest) { throw 'Could not stamp the MSIX version in Package.appxmanifest.' }
-          Set-Content -Path $manifestPath -Value $updated -Encoding UTF8 -NoNewline
+          $version = "4.1.$revision"
+          $assemblyVersion = "$version.0"
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "CC_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Import fixed Windows signing certificate
-        shell: powershell
-        env:
-          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
-          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
-        run: windows/CubicalCompare/build/ImportFixedSigningCertificate.ps1
+          "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_TAG=v$version-windows" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Cubical Compare Windows version: $version (.NET 10)"
 
       - name: Restore
         run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
 
-      - name: Build signed single-project MSIX
+      - name: Publish certificate-free portable app
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expectedThumbprint = '548F320EFE4885F54B93F254606BB723DB37FF99'
-          if ($env:CC_CERT_THUMBPRINT -ne $expectedThumbprint) { throw "Unexpected signing thumbprint: $env:CC_CERT_THUMBPRINT" }
-
+          Remove-Item artifacts/publish -Recurse -Force -ErrorAction SilentlyContinue
           dotnet publish windows/CubicalCompare/CubicalCompare.csproj `
             -c Release `
             -r win-x64 `
             -p:Platform=x64 `
-            -p:GenerateAppxPackageOnBuild=true `
-            -p:AppxBundle=Never `
-            -p:AppxPackageSigningEnabled=true `
-            -p:PackageCertificateThumbprint="$env:CC_CERT_THUMBPRINT"
+            -p:Version="$env:CC_VERSION" `
+            -p:AssemblyVersion="$env:CC_ASSEMBLY_VERSION" `
+            -p:FileVersion="$env:CC_ASSEMBLY_VERSION" `
+            -p:InformationalVersion="$env:CC_VERSION+${{ github.sha }}" `
+            -o artifacts/publish
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
 
-          $package = Get-ChildItem windows/CubicalCompare/AppPackages -Recurse -File | Where-Object { $_.Extension -in '.msix', '.appx' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-          if (-not $package) { throw 'MSIX packaging completed without producing an installable package.' }
-
-          $signature = Get-AuthenticodeSignature -FilePath $package.FullName
-          if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $expectedThumbprint) {
-            throw 'The generated MSIX is not validly signed by the pinned Cubical Compare certificate.'
-          }
-          "CC_PACKAGE=$($package.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Signed package: $($package.FullName)"
-
-      - name: Install packaged app for CI
+      - name: Verify .NET 10 modular output
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Add-AppxPackage -Path "$env:CC_PACKAGE" -ForceApplicationShutdown
-          $package = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
-          if (-not $package) { throw 'Cubical Compare package was not registered after Add-AppxPackage.' }
-          if ($package.Version.ToString() -ne $env:CC_VERSION) { throw "Installed package version $($package.Version) does not match $env:CC_VERSION." }
-          "CC_PFN=$($package.PackageFamilyName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $required = @(
+            'CubicalCompare.exe',
+            'CubicalCompare.dll',
+            'CubicalCompare.pri',
+            'CubicalCompare.Core.dll',
+            'CubicalCompare.MegaPack.dll',
+            'CubicalCompare.Renderer.dll',
+            'CubicalCompare.Thumbnail.dll',
+            'CubicalCompare.Updates.dll'
+          )
+          foreach ($name in $required) {
+            $path = Join-Path 'artifacts/publish' $name
+            if (-not (Test-Path $path)) { throw "Required portable output is missing: $name" }
+          }
+          $runtimeDlls = @(Get-ChildItem artifacts/publish -Filter '*.dll' -File)
+          if ($runtimeDlls.Count -lt 10) { throw 'Self-contained publish did not produce the expected multi-DLL application layout.' }
+          Write-Host "Portable layout verified: $($runtimeDlls.Count) DLL files plus CubicalCompare.exe."
 
-      - name: Smoke test installed WinUI startup
-        shell: powershell
+      - name: Smoke test unpackaged WinUI startup
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Start-Process explorer.exe -ArgumentList "shell:AppsFolder\$env:CC_PFN!App"
+          $exe = (Resolve-Path 'artifacts/publish/CubicalCompare.exe').Path
+          $process = Start-Process -FilePath $exe -ArgumentList '--ci-shell-smoke' -WorkingDirectory (Split-Path $exe) -PassThru
           Start-Sleep -Seconds 8
-          $process = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $process) { throw 'Cubical Compare did not survive packaged startup.' }
-          Write-Host "Cubical Compare startup smoke passed (PID $($process.Id))."
+          $process.Refresh()
+          if ($process.HasExited) { throw "Unpackaged Cubical Compare exited during WinUI smoke test with code $($process.ExitCode)." }
+          Write-Host "Unpackaged WinUI startup smoke passed (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
 
-      - name: Stage verified Windows release
-        shell: pwsh
-        run: windows/CubicalCompare/build/StageWindowsRelease.ps1 -PackagePath "$env:CC_PACKAGE" -CertificatePath "$env:CC_CER"
+      - name: Install Velopack CLI
+        run: dotnet tool install --global vpk --version 1.2.0
 
-      - name: Verify shipped installer path
+      - name: Build open-source setup and update packages
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expectedThumbprint = '548F320EFE4885F54B93F254606BB723DB37FF99'
-          $existing = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
-          if ($existing) { Remove-AppxPackage -Package $existing.PackageFullName -ErrorAction Stop }
+          Remove-Item artifacts/velopack -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path artifacts/velopack -Force | Out-Null
 
-          $artifactCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2('artifacts/CubicalCompare-4-MSIX/CubicalCompare-Development.cer')
-          if ($artifactCert.Thumbprint -ne $expectedThumbprint) { throw "Staged signer changed: $($artifactCert.Thumbprint)" }
-          Get-ChildItem 'Cert:\LocalMachine\TrustedPeople' -ErrorAction SilentlyContinue |
-            Where-Object Thumbprint -eq $expectedThumbprint |
-            Remove-Item -Force -ErrorAction SilentlyContinue
+          vpk pack `
+            --packId CubicalCompare `
+            --packVersion "$env:CC_VERSION" `
+            --packDir artifacts/publish `
+            --mainExe CubicalCompare.exe `
+            --packTitle "Cubical Compare" `
+            --runtime win-x64 `
+            --outputDir artifacts/velopack
+          if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit code $LASTEXITCODE." }
 
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'artifacts/CubicalCompare-4-MSIX/Install-CubicalCompare.ps1'
-          if ($LASTEXITCODE -ne 0) { throw "The shipped installer failed with exit code $LASTEXITCODE." }
-          $installed = Get-AppxPackage -Name 'RetroFrost.CubicalCompare' | Sort-Object Version -Descending | Select-Object -First 1
-          if (-not $installed) { throw 'The shipped installer returned success but the package is not installed.' }
+          $setup = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like '*Setup.exe' | Select-Object -First 1
+          $portable = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like '*Portable.zip' | Select-Object -First 1
+          $full = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like '*-full.nupkg' | Select-Object -First 1
+          $index = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like 'releases.*.json' | Select-Object -First 1
+          if (-not $setup) { throw 'Velopack did not produce Setup.exe.' }
+          if (-not $portable) { throw 'Velopack did not produce Portable.zip.' }
+          if (-not $full) { throw 'Velopack did not produce a full update package.' }
+          if (-not $index) { throw 'Velopack did not produce a release index.' }
 
-      - name: Upload verified Windows MSIX
-        uses: actions/upload-artifact@v4
+          $versionedPortable = "artifacts/velopack/CubicalCompare-$env:CC_VERSION-Windows-x64-Portable.zip"
+          Copy-Item $portable.FullName $versionedPortable -Force
+          "CC_SETUP=$($setup.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_PORTABLE=$versionedPortable" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Setup: $($setup.Name)"
+          Write-Host "Portable release asset: $(Split-Path $versionedPortable -Leaf)"
+
+      - name: Smoke test Velopack installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          & "$env:CC_SETUP" --silent
+          if ($LASTEXITCODE -ne 0) { throw "Velopack Setup.exe failed with exit code $LASTEXITCODE." }
+          Start-Sleep -Seconds 3
+          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+          $installedExe = Join-Path $env:LOCALAPPDATA 'CubicalCompare\current\CubicalCompare.exe'
+          if (-not (Test-Path $installedExe)) {
+            $installedExe = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'CubicalCompare') -Filter CubicalCompare.exe -File -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $installedExe -or -not (Test-Path $installedExe)) { throw 'Velopack completed but the installed Cubical Compare executable was not found.' }
+
+          $process = Start-Process -FilePath $installedExe -ArgumentList '--ci-shell-smoke' -WorkingDirectory (Split-Path $installedExe) -PassThru
+          Start-Sleep -Seconds 8
+          $process.Refresh()
+          if ($process.HasExited) { throw "Installed Cubical Compare exited during smoke test with code $($process.ExitCode)." }
+          Write-Host "Velopack installed-app smoke passed (PID $($process.Id))."
+          Stop-Process -Id $process.Id -Force
+
+      - name: Write SHA256 manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $lines = Get-ChildItem artifacts/velopack -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          $lines | Set-Content artifacts/velopack/SHA256SUMS.txt -Encoding ASCII
+
+      - name: Upload verified Windows release bundle
+        uses: actions/upload-artifact@v7
         with:
-          name: CubicalCompare-4-win-x64-msix
-          path: artifacts/CubicalCompare-4-MSIX/**
+          name: CubicalCompare-${{ env.CC_VERSION }}-windows-x64
+          path: artifacts/velopack/**
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish verified GitHub Release
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/windows/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $bundle = "artifacts/CubicalCompare-$env:CC_VERSION-Windows-x64.zip"
-          $checksum = "$bundle.sha256"
-          Compress-Archive -Path 'artifacts/CubicalCompare-4-MSIX/*' -DestinationPath $bundle -Force
-          $hash = (Get-FileHash -Algorithm SHA256 $bundle).Hash.ToLowerInvariant()
-          "$hash  $(Split-Path $bundle -Leaf)" | Set-Content -Path $checksum -Encoding ASCII
-
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - Signed by the effectively-permanent Cubical Compare Windows certificate (valid through 31 December 9999).
-          - Pinned signer thumbprint: 548F320EFE4885F54B93F254606BB723DB37FF99.
-          - Future releases reuse the same trusted signer instead of rotating a certificate every build.
-          - Renderer v3 source-component playback and embedded renderer audio remain included.
+          - Migrated to .NET 10 and Windows App SDK 2.4.
+          - Certificate-free unpackaged WinUI 3 deployment.
+          - Open-source Velopack Setup.exe and update packages.
+          - Versioned portable Windows ZIP release asset; the app updater ignores GitHub's generated source-code archive.
+          - Real modular assemblies: Core, Renderer, MegaPack, Thumbnail and Updates.
+          - Interface review fixes compact navigation, restores Thumbnail navigation and improves narrow-window title-bar behavior.
+          - Self-contained x64 build; no separate .NET or Windows App SDK runtime install is required.
 
-          Download the Windows ZIP, extract it, then run `Install-CubicalCompare.cmd`.
+          **Unsigned build note:** Windows SmartScreen may still warn on an unsigned download. No certificate is required to build, install or update Cubical Compare.
           "@
 
           gh release view "$env:CC_TAG" --repo RetroFrost/CTS 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload "$env:CC_TAG" "$bundle" "$checksum" --repo RetroFrost/CTS --clobber
+            gh release upload "$env:CC_TAG" artifacts/velopack/* --repo RetroFrost/CTS --clobber
             if ($LASTEXITCODE -ne 0) { throw 'Could not upload refreshed release assets.' }
             gh release edit "$env:CC_TAG" --repo RetroFrost/CTS --title "Cubical Compare $env:CC_VERSION — Windows" --notes "$notes" --latest
             if ($LASTEXITCODE -ne 0) { throw 'Could not update the GitHub release.' }
           }
           else {
-            gh release create "$env:CC_TAG" "$bundle" "$checksum" `
+            gh release create "$env:CC_TAG" artifacts/velopack/* `
               --repo RetroFrost/CTS `
               --target "$env:GITHUB_SHA" `
               --title "Cubical Compare $env:CC_VERSION — Windows" `

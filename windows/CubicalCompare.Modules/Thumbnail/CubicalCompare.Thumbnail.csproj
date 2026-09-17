@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>CubicalCompare.Thumbnail</AssemblyName>
+    <RootNamespace>CubicalCompare.Core.Thumbnail</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Core\CubicalCompare.Core.csproj" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\CubicalCompare\Core\Thumbnail\**\*.cs" Link="Thumbnail\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

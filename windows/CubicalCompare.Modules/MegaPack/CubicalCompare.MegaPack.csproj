@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>CubicalCompare.MegaPack</AssemblyName>
+    <RootNamespace>CubicalCompare.Core.MegaPack</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Core\CubicalCompare.Core.csproj" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\CubicalCompare\Core\MegaPack\**\*.cs" Link="MegaPack\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

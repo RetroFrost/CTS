@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>CubicalCompare</RootNamespace>
     <AssemblyName>CubicalCompare</AssemblyName>
@@ -9,43 +9,57 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <UseWinUI>true</UseWinUI>
 
-    <!-- Packaged + self-contained is deliberate: the MSIX carries the Windows App SDK
-         and .NET runtime, so the app does not depend on a preinstalled framework package.
-         Unlike the old unpackaged build, package identity means UndockedRegFreeWinRT
-         bootstrap is not used at process startup. -->
-    <WindowsPackageType>MSIX</WindowsPackageType>
-    <EnableMsixTooling>true</EnableMsixTooling>
-    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
-    <AppxBundle>Never</AppxBundle>
-    <AppxPackageSigningEnabled>true</AppxPackageSigningEnabled>
-    <AppxPackageDir>$(MSBuildProjectDirectory)\AppPackages\</AppxPackageDir>
+    <!-- Certificate-free Windows deployment: a normal unpackaged, self-contained
+         WinUI app folder. Velopack wraps this folder for setup/update delivery. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
 
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>12</LangVersion>
+    <LangVersion>14</LangVersion>
     <Version>4.1.0</Version>
     <Authors>RetroFrost</Authors>
   </PropertyGroup>
+
+  <!-- These subsystems compile into their own assemblies. Keep the source tree readable
+       while producing the multi-DLL layout used by the portable/setup releases. -->
+  <ItemGroup>
+    <Compile Remove="Core\Project\**\*.cs" />
+    <Compile Remove="Core\MegaPack\**\*.cs" />
+    <Compile Remove="Core\Renderer\**\*.cs" />
+    <Compile Remove="Core\Thumbnail\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CubicalCompare.Modules\Core\CubicalCompare.Core.csproj" />
+    <ProjectReference Include="..\CubicalCompare.Modules\MegaPack\CubicalCompare.MegaPack.csproj" />
+    <ProjectReference Include="..\CubicalCompare.Modules\Renderer\CubicalCompare.Renderer.csproj" />
+    <ProjectReference Include="..\CubicalCompare.Modules\Thumbnail\CubicalCompare.Thumbnail.csproj" />
+    <ProjectReference Include="..\CubicalCompare.Modules\Updates\CubicalCompare.Updates.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\StoreLogo.png" />
-    <Content Include="Assets\Square44x44Logo.png" />
-    <Content Include="Assets\Square150x150Logo.png" />
-    <Content Include="Assets\Wide310x150Logo.png" />
-    <Content Include="Assets\SplashScreen.png" />
+    <Content Include="Assets\StoreLogo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Square44x44Logo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Square150x150Logo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Wide310x150Logo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SplashScreen.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="GenerateCubicalComparePackageAssets" BeforeTargets="PrepareForBuild">

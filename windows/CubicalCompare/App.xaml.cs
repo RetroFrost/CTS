@@ -1,4 +1,5 @@
 using System.Text;
+using CubicalCompare.Core.Project;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -7,10 +8,7 @@ namespace CubicalCompare;
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
-    public static string LogPath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "CubicalCompare",
-        "startup.log");
+    public static string LogPath { get; } = Path.Combine(AppDataPaths.RootDirectory, "startup.log");
 
     public App()
     {
@@ -71,7 +69,7 @@ public partial class App : Application
                     mainWindow.InitializePreviewPlayback();
                     mainWindow.InitializeFinalReleaseUi();
                     mainWindow.InitializeAdaptiveExportUi();
-                    mainWindow.InitializeFinalReleaseFixes();
+                    mainWindow.InitializeInterfaceReview();
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
