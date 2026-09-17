@@ -187,6 +187,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
@@ -224,20 +225,62 @@ jobs:
               $_.Name -Like '*-delta.nupkg' -or
               $_.Name -Like 'releases.*.json' -or
               $_.Name -eq 'SHA256SUMS.txt'
-            }
+            } | Sort-Object @{ Expression = {
+              if ($_.Name -Like '*-Portable.zip') { 0 }
+              elseif ($_.Name -Like '*-Setup.exe') { 1 }
+              elseif ($_.Name -Like '*-full.nupkg') { 2 }
+              elseif ($_.Name -Like '*-delta.nupkg') { 3 }
+              elseif ($_.Name -Like 'releases.*.json') { 4 }
+              else { 5 }
+            } }
           )
           if ($assets.Count -eq 0) { throw 'No release assets were selected for upload.' }
 
-          Write-Host "Uploading $($assets.Count) release assets in parallel..."
-          $jobs = foreach ($asset in $assets) {
-            Start-Job -ArgumentList $env:GH_TOKEN, $env:CC_TAG, $asset.FullName -ScriptBlock {
-              param($token, $tag, $path)
-              $env:GH_TOKEN = $token
-              & gh release upload $tag $path --repo RetroFrost/CTS --clobber
-              if ($LASTEXITCODE -ne 0) { throw "Upload failed: $path" }
-            }
+          function Get-RemoteAsset([string]$name) {
+            $releaseJson = gh api "repos/RetroFrost/CTS/releases/tags/$env:CC_TAG" 2>$null
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($releaseJson)) { return $null }
+            $release = $releaseJson | ConvertFrom-Json
+            return $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
           }
-          $jobs | Wait-Job | Receive-Job
-          $failed = @($jobs | Where-Object State -ne 'Completed')
-          $jobs | Remove-Job -Force
-          if ($failed.Count -gt 0) { throw "$($failed.Count) release asset upload(s) failed." }
+
+          $delays = @(5, 15, 30)
+          foreach ($asset in $assets) {
+            $uploaded = $false
+            for ($attempt = 1; $attempt -le 4; $attempt++) {
+              $remote = Get-RemoteAsset $asset.Name
+              if ($null -ne $remote -and $remote.state -eq 'uploaded' -and [int64]$remote.size -eq [int64]$asset.Length) {
+                Write-Host "Release asset already verified: $($asset.Name)"
+                $uploaded = $true
+                break
+              }
+
+              if ($null -ne $remote) {
+                Write-Warning "Removing incomplete/mismatched release asset before retry: $($asset.Name)"
+                gh api --method DELETE "repos/RetroFrost/CTS/releases/assets/$($remote.id)" 2>$null | Out-Null
+              }
+
+              Write-Host "Uploading $($asset.Name) (attempt $attempt/4)..."
+              gh release upload "$env:CC_TAG" "$($asset.FullName)" --repo RetroFrost/CTS
+              $uploadExit = $LASTEXITCODE
+
+              $remote = Get-RemoteAsset $asset.Name
+              if ($uploadExit -eq 0 -and $null -ne $remote -and $remote.state -eq 'uploaded' -and [int64]$remote.size -eq [int64]$asset.Length) {
+                Write-Host "Verified release asset: $($asset.Name)"
+                $uploaded = $true
+                break
+              }
+              if ($null -ne $remote -and $remote.state -eq 'uploaded' -and [int64]$remote.size -eq [int64]$asset.Length) {
+                Write-Host "GitHub reported an upload error, but the asset is complete: $($asset.Name)"
+                $uploaded = $true
+                break
+              }
+
+              if ($attempt -lt 4) {
+                $delay = $delays[$attempt - 1]
+                Write-Warning "Upload failed for $($asset.Name); retrying in $delay seconds."
+                Start-Sleep -Seconds $delay
+              }
+            }
+
+            if (-not $uploaded) { throw "Release asset failed after 4 attempts: $($asset.Name)" }
+          }
