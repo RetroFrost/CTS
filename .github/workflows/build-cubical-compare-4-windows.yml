@@ -8,6 +8,7 @@ on:
     paths:
       - 'windows/CubicalCompare/**'
       - 'windows/CubicalCompare.Modules/**'
+      - 'windows/CubicalCompare.InstallerBootstrap/**'
       - 'Directory.Build.targets'
       - '.github/workflows/build-cubical-compare-4-windows.yml'
   workflow_dispatch:
@@ -37,8 +38,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $revision = [int]'${{ github.run_number }}'
-          $version = "4.1.$revision"
+          $version = "4.2.0"
           $assemblyVersion = "$version.0"
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -128,15 +128,32 @@ jobs:
           if (-not $full) { throw 'Velopack did not produce a full update package.' }
           if (-not $index) { throw 'Velopack did not produce a release index.' }
 
+          # Build the public no-dialog bootstrap. The embedded Velopack installer is
+          # always invoked with --silent, removing the final OK interaction.
+          Remove-Item artifacts/bootstrap -Recurse -Force -ErrorAction SilentlyContinue
+          dotnet publish windows/CubicalCompare.InstallerBootstrap/CubicalCompare.InstallerBootstrap.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:PublishTrimmed=true `
+            -p:VelopackSetupPath="$($setup.FullName)" `
+            -o artifacts/bootstrap
+          if ($LASTEXITCODE -ne 0) { throw "Installer bootstrap publish failed with exit code $LASTEXITCODE." }
+
+          $bootstrap = Get-ChildItem artifacts/bootstrap -File -Filter 'CubicalCompare.Setup.exe' | Select-Object -First 1
+          if (-not $bootstrap) { throw 'Installer bootstrap did not produce CubicalCompare.Setup.exe.' }
+
           $versionedSetup = "artifacts/velopack/CubicalCompare-$env:CC_VERSION-Windows-x64-Setup.exe"
           $versionedPortable = "artifacts/velopack/CubicalCompare-$env:CC_VERSION-Windows-x64-Portable.zip"
-          Move-Item $setup.FullName $versionedSetup -Force
+          Copy-Item $bootstrap.FullName $versionedSetup -Force
           Move-Item $portable.FullName $versionedPortable -Force
+          Remove-Item $setup.FullName -Force
           Remove-Item artifacts/velopack/RELEASES -Force -ErrorAction SilentlyContinue
 
           "CC_SETUP=$((Resolve-Path $versionedSetup).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_PORTABLE=$versionedPortable" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Setup: $(Split-Path $versionedSetup -Leaf)"
+          Write-Host "No-dialog setup: $(Split-Path $versionedSetup -Leaf)"
           Write-Host "Portable release asset: $(Split-Path $versionedPortable -Leaf)"
 
       - name: Smoke test Velopack installer
@@ -196,7 +213,10 @@ jobs:
           - Open-source Velopack Setup.exe and update packages.
           - Versioned portable Windows ZIP release asset; the app updater ignores GitHub's generated source-code archive.
           - Real modular assemblies: Core, Renderer, MegaPack, Thumbnail and Updates.
-          - Interface review fixes compact navigation, restores Thumbnail navigation and improves narrow-window title-bar behavior.
+          - Developer Options unlock by clicking the version seven times; bulk runtime C# source bundles are supported.
+          - Live update-download and video-export activity watcher with real-time progress.
+          - Dynamic Windows accent colouring, English regional variants, Mica surfaces and refreshed Settings.
+          - Public Setup.exe uses a no-dialog bootstrap, removing the final OK interaction while retaining Velopack updates.
           - Self-contained x64 build; no separate .NET or Windows App SDK runtime install is required.
 
           **Unsigned build note:** Windows SmartScreen may still warn on an unsigned download. No certificate is required to build, install or update Cubical Compare.
