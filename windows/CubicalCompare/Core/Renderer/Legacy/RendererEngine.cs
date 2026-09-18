@@ -15,8 +15,20 @@ public sealed class RendererEngine : IDisposable
     {
         width = Math.Max(2, width);
         height = Math.Max(2, height);
-        if (spec.Engine == "infinite-timeline-exact") return _infinite.Render(project, spec, Math.Max(0, frame), width, height);
-        if (spec.Engine == "relationships-exact") return _relationships.Render(project, spec, Math.Max(0, frame), width, height);
+        if (spec.Engine == "infinite-timeline-exact")
+        {
+            if (CubicalCompare.Core.Renderer.InternalCodeOverrideManager.TryRender(
+                    spec.Engine, project, spec, Math.Max(0, frame), width, height, out var overridden))
+                return overridden;
+            return _infinite.Render(project, spec, Math.Max(0, frame), width, height);
+        }
+        if (spec.Engine == "relationships-exact")
+        {
+            if (CubicalCompare.Core.Renderer.InternalCodeOverrideManager.TryRender(
+                    spec.Engine, project, spec, Math.Max(0, frame), width, height, out var overridden))
+                return overridden;
+            return _relationships.Render(project, spec, Math.Max(0, frame), width, height);
+        }
         var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Black);
@@ -33,8 +45,20 @@ public sealed class RendererEngine : IDisposable
     public int FrameCount(StudioProject project, RendererSpec spec)
     {
         if (!project.AutoLength) return Math.Max(1, (int)Math.Round(project.CustomLengthSeconds * spec.ReferenceFps));
-        if (spec.Engine == "infinite-timeline-exact") return _infinite.FrameCount(project, spec);
-        if (spec.Engine == "relationships-exact") return _relationships.FrameCount(project, spec);
+        if (spec.Engine == "infinite-timeline-exact")
+        {
+            if (CubicalCompare.Core.Renderer.InternalCodeOverrideManager.TryFrameCount(
+                    spec.Engine, project, spec, out var overridden))
+                return overridden;
+            return _infinite.FrameCount(project, spec);
+        }
+        if (spec.Engine == "relationships-exact")
+        {
+            if (CubicalCompare.Core.Renderer.InternalCodeOverrideManager.TryFrameCount(
+                    spec.Engine, project, spec, out var overridden))
+                return overridden;
+            return _relationships.FrameCount(project, spec);
+        }
         if (spec.Engine == "scene-v3" && spec.SceneV3 != null && spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal))
         {
             var lastIndex = Math.Max(0, project.Cards.Count - 1);
