@@ -1,5 +1,6 @@
 using System.Text;
 using CubicalCompare.Core.Project;
+using CubicalCompare.Core.Renderer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -30,6 +31,8 @@ public partial class App : Application
         {
             if (string.Equals(args.Arguments, "--ci-shell-smoke", StringComparison.Ordinal))
             {
+                InternalCodeOverrideManager.RunCompilerSelfTest();
+                WriteLog("Internal code override compiler self-test passed.");
                 MainWindow = new Window
                 {
                     Title = "Cubical Compare — WinUI shell smoke",
