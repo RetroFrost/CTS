@@ -160,8 +160,8 @@ jobs:
           if (-not $full) { throw 'Velopack did not produce a full update package.' }
           if (-not $index) { throw 'Velopack did not produce a release index.' }
 
-          # Build the public no-dialog bootstrap. The embedded Velopack installer is
-          # always invoked with --silent, removing the final OK interaction.
+          # Build the public interactive bootstrap. The embedded Velopack installer
+          # runs with its normal visible progress UI and launches Cubical Compare when done.
           Remove-Item artifacts/bootstrap -Recurse -Force -ErrorAction SilentlyContinue
           dotnet publish windows/CubicalCompare.InstallerBootstrap/CubicalCompare.InstallerBootstrap.csproj `
             -c Release `
@@ -185,17 +185,28 @@ jobs:
 
           "CC_SETUP=$((Resolve-Path $versionedSetup).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_PORTABLE=$versionedPortable" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "No-dialog setup: $(Split-Path $versionedSetup -Leaf)"
+          Write-Host "Visible interactive setup: $(Split-Path $versionedSetup -Leaf)"
           Write-Host "Portable release asset: $(Split-Path $versionedPortable -Leaf)"
 
-      - name: Smoke test Velopack installer
+      - name: Verify public setup is not silent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Get-Content 'windows/CubicalCompare.InstallerBootstrap/Program.cs' -Raw
+          if ($source -match 'Arguments\s*=\s*["''][^"'']*--silent') {
+            throw 'Public Cubical Compare Setup must never invoke Velopack with --silent.'
+          }
+          Write-Host 'Public setup bootstrap is interactive.'
+
+      - name: Smoke test visible Velopack installer
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -ArgumentList '--silent' -Wait -PassThru
-          if ($setupProcess.ExitCode -ne 0) { throw "Velopack Setup.exe failed with exit code $($setupProcess.ExitCode)." }
-          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+          # Run exactly like a user double-clicking the public Setup.exe: no silent flags.
+          $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -Wait -PassThru
+          if ($setupProcess.ExitCode -ne 0) { throw "Visible Cubical Compare Setup.exe failed with exit code $($setupProcess.ExitCode)." }
 
           $installedExe = Join-Path $env:LOCALAPPDATA 'CubicalCompare\current\CubicalCompare.exe'
           if (-not (Test-Path $installedExe)) {
@@ -204,11 +215,22 @@ jobs:
           }
           if (-not $installedExe -or -not (Test-Path $installedExe)) { throw 'Velopack completed but the installed Cubical Compare executable was not found.' }
 
+          # Non-silent Velopack installation should launch the main application when it finishes.
+          $launched = $null
+          for ($i = 0; $i -lt 15; $i++) {
+            $launched = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($launched) { break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $launched) { throw 'Visible setup completed but did not launch Cubical Compare.' }
+          Write-Host "Visible setup auto-launched Cubical Compare (PID $($launched.Id))."
+          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
           $process = Start-Process -FilePath $installedExe -ArgumentList '--ci-shell-smoke' -WorkingDirectory (Split-Path $installedExe) -PassThru
           Start-Sleep -Seconds 8
           $process.Refresh()
           if ($process.HasExited) { throw "Installed Cubical Compare exited during smoke test with code $($process.ExitCode)." }
-          Write-Host "Velopack installed-app smoke passed (PID $($process.Id))."
+          Write-Host "Installed-app smoke passed (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
 
       - name: Write SHA256 manifest
@@ -245,10 +267,10 @@ jobs:
           - Open-source Velopack Setup.exe and update packages.
           - Versioned portable Windows ZIP release asset; the app updater ignores GitHub's generated source-code archive.
           - Real modular assemblies: Core, Renderer, MegaPack, Thumbnail and Updates.
-          - Developer Options unlock by clicking the version seven times; bulk runtime C# source bundles are supported.
+          - Developer Options are visible by default; bulk runtime C# source bundles are supported.
           - Live update-download and video-export activity watcher with real-time progress.
           - Dynamic Windows accent colouring, English regional variants, Mica surfaces and refreshed Settings.
-          - Public Setup.exe uses a no-dialog bootstrap, removing the final OK interaction while retaining Velopack updates.
+          - Public Setup.exe always shows visible installation progress and launches Cubical Compare after installation.
           - Self-contained x64 build; no separate .NET or Windows App SDK runtime install is required.
 
           **Unsigned build note:** Windows SmartScreen may still warn on an unsigned download. No certificate is required to build, install or update Cubical Compare.
