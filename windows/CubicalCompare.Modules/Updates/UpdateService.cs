@@ -22,6 +22,12 @@ public sealed record CubicalUpdateCandidate(
     Uri? DownloadUri,
     Uri ReleaseUri);
 
+public sealed record CubicalUpdateProgress(
+    string Phase,
+    int Percent,
+    long BytesReceived,
+    long? TotalBytes);
+
 /// <summary>
 /// Update service for both installed and portable Cubical Compare builds.
 /// Installed copies use Velopack packages. A raw/portable copy falls back to a
@@ -78,6 +84,7 @@ public sealed class CubicalUpdateService
         CubicalUpdateCandidate candidate,
         string applicationDirectory,
         string executableName,
+        IProgress<CubicalUpdateProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(candidate);
@@ -91,7 +98,11 @@ public sealed class CubicalUpdateService
             if (update is null)
                 return false;
 
-            await manager.DownloadUpdatesAsync(update);
+            await manager.DownloadUpdatesAsync(
+                update,
+                value => progress?.Report(new CubicalUpdateProgress("Downloading update", Math.Clamp(value, 0, 100), 0, null)),
+                cancellationToken);
+            progress?.Report(new CubicalUpdateProgress("Applying update", 100, 0, null));
             manager.ApplyUpdatesAndRestart(update);
             return false; // ApplyUpdatesAndRestart normally terminates this process.
         }
@@ -104,7 +115,8 @@ public sealed class CubicalUpdateService
         var zipPath = Path.Combine(updateRoot, "CubicalCompare-update.zip");
         var scriptPath = Path.Combine(updateRoot, "Apply-CubicalCompareUpdate.ps1");
 
-        await DownloadAsync(candidate.DownloadUri, zipPath, cancellationToken);
+        await DownloadAsync(candidate.DownloadUri, zipPath, progress, cancellationToken);
+        progress?.Report(new CubicalUpdateProgress("Validating download", 100, new FileInfo(zipPath).Length, new FileInfo(zipPath).Length));
         ValidatePortableArchive(zipPath, executableName);
         await File.WriteAllTextAsync(scriptPath, BuildPortableUpdateScript(), cancellationToken);
 
@@ -215,13 +227,32 @@ public sealed class CubicalUpdateService
             || name.Contains("portable", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task DownloadAsync(Uri uri, string destination, CancellationToken cancellationToken)
+    private static async Task DownloadAsync(
+        Uri uri,
+        string destination,
+        IProgress<CubicalUpdateProgress>? progress,
+        CancellationToken cancellationToken)
     {
         using var response = await Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
+        var total = response.Content.Headers.ContentLength;
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 256 * 1024, true);
-        await input.CopyToAsync(output, 256 * 1024, cancellationToken);
+        await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 256 * 1024, true);
+
+        var buffer = new byte[256 * 1024];
+        long received = 0;
+        while (true)
+        {
+            var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+            if (read <= 0) break;
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            received += read;
+            var percent = total is > 0
+                ? (int)Math.Clamp(Math.Round(received * 100d / total.Value), 0, 100)
+                : 0;
+            progress?.Report(new CubicalUpdateProgress("Downloading update", percent, received, total));
+        }
+
         await output.FlushAsync(cancellationToken);
     }
 
