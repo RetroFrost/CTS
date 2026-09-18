@@ -96,7 +96,7 @@ internal static class Program
                     ?? throw new FileNotFoundException("Cubical Compare was installed, but CubicalCompare.exe could not be found.");
 
                 _status.Text = "Starting Cubical Compare…";
-                Process.Start(new ProcessStartInfo
+                _ = Process.Start(new ProcessStartInfo
                 {
                     FileName = installedExe,
                     WorkingDirectory = Path.GetDirectoryName(installedExe)!,
