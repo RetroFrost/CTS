@@ -33,6 +33,12 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // The XAML reserves the right-side caption-button inset and declares a Mica
+        // backdrop, so make the 64 px app bar the actual draggable title bar instead of
+        // leaving a second native caption row above it.
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+
         AddProjectCard(new ProjectCardViewModel
         {
             Title = "Card 1",
