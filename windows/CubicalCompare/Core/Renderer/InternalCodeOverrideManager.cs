@@ -346,7 +346,7 @@ public sealed class RelationshipsRenderer : IDisposable
         AddReferencePath(paths, typeof(Legacy.RendererEngine).Assembly.Location);
         AddReferencePath(paths, typeof(SKBitmap).Assembly.Location);
 
-        return paths.Select(MetadataReference.CreateFromFile).ToArray();
+        return paths.Select(path => MetadataReference.CreateFromFile(path)).ToArray();
     }
 
     private static void AddReferencePath(HashSet<string> paths, string? path)
