@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Core\CubicalCompare.Core.csproj" />
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\CubicalCompare\Core\Renderer\**\*.cs" Link="Renderer\%(RecursiveDir)%(Filename)%(Extension)" />
