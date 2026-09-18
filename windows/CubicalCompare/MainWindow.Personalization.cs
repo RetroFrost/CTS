@@ -90,9 +90,9 @@ public sealed partial class MainWindow
             : Color.FromArgb(255, 15, 108, 189);
 
         SetResourceColor("EditorAccentBrush", accent);
-        SetResourceColor("EditorAccentSoftBrush", Mix(accent, Colors.White, 0.82));
-        SetResourceColor("EditorBorderStrongBrush", Mix(accent, Colors.White, 0.72));
-        SetResourceColor("EditorSurfaceSoftBrush", WithAlpha(Mix(accent, Colors.White, 0.91), 224));
+        SetResourceColor("EditorAccentSoftBrush", Mix(accent, Microsoft.UI.Colors.White, 0.82));
+        SetResourceColor("EditorBorderStrongBrush", Mix(accent, Microsoft.UI.Colors.White, 0.72));
+        SetResourceColor("EditorSurfaceSoftBrush", WithAlpha(Mix(accent, Microsoft.UI.Colors.White, 0.91), 224));
         Application.Current.Resources["SystemAccentColor"] = accent;
     }
 
