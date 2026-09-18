@@ -265,6 +265,9 @@ public sealed partial class MainWindow
         if (width <= 0 || height <= 0)
             return;
 
+        // Keep the live activity card inside the window on narrow layouts.
+        ActivityWatcherPanel.Width = Math.Clamp(width - 36, 240, 390);
+
         var compactNavigation = width < 1220;
         RootNavigation.PaneDisplayMode = compactNavigation
             ? NavigationViewPaneDisplayMode.LeftCompact
