@@ -168,7 +168,7 @@ jobs:
             -r win-x64 `
             --self-contained true `
             -p:PublishSingleFile=true `
-            -p:PublishTrimmed=true `
+            -p:PublishTrimmed=false `
             -p:VelopackSetupPath="$($setup.FullName)" `
             -o artifacts/bootstrap
           if ($LASTEXITCODE -ne 0) { throw "Installer bootstrap publish failed with exit code $LASTEXITCODE." }
