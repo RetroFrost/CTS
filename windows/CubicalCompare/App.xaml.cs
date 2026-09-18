@@ -70,6 +70,7 @@ public partial class App : Application
                     mainWindow.InitializeFontSelector();
                     mainWindow.InitializeReliablePreviewTransformEditor();
                     mainWindow.InitializePreviewPlayback();
+                    mainWindow.InitializePersonalization();
                     mainWindow.InitializeFinalReleaseUi();
                     mainWindow.InitializeAdaptiveExportUi();
                     mainWindow.InitializeInterfaceReview();
