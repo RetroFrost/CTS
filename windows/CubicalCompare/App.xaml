@@ -9,10 +9,10 @@
             </ResourceDictionary.MergedDictionaries>
 
             <FontFamily x:Key="BrandFontFamily">Segoe UI Variable Display</FontFamily>
-            <SolidColorBrush x:Key="EditorBackgroundBrush" Color="#EDF5FF" />
-            <SolidColorBrush x:Key="EditorSurfaceBrush" Color="#F7FAFE" />
-            <SolidColorBrush x:Key="EditorSurfaceRaisedBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="EditorSurfaceSoftBrush" Color="#EAF3FF" />
+            <SolidColorBrush x:Key="EditorBackgroundBrush" Color="#D9EDF5FF" />
+            <SolidColorBrush x:Key="EditorSurfaceBrush" Color="#EAF7FAFE" />
+            <SolidColorBrush x:Key="EditorSurfaceRaisedBrush" Color="#F4FFFFFF" />
+            <SolidColorBrush x:Key="EditorSurfaceSoftBrush" Color="#E0EAF3FF" />
             <SolidColorBrush x:Key="EditorBorderBrush" Color="#D7E2F0" />
             <SolidColorBrush x:Key="EditorBorderStrongBrush" Color="#C5D4E7" />
             <SolidColorBrush x:Key="EditorTextSecondaryBrush" Color="#66758A" />
