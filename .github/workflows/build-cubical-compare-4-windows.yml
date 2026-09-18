@@ -298,16 +298,27 @@ jobs:
           $delays = @(5, 15, 30)
           foreach ($asset in $assets) {
             $uploaded = $false
+            $localDigest = "sha256:" + (Get-FileHash -Algorithm SHA256 $asset.FullName).Hash.ToLowerInvariant()
+
+            function Test-RemoteAssetMatch($remoteAsset, [int64]$expectedSize, [string]$expectedDigest) {
+              return $null -ne $remoteAsset -and
+                $remoteAsset.state -eq 'uploaded' -and
+                [int64]$remoteAsset.size -eq $expectedSize -and
+                -not [string]::IsNullOrWhiteSpace([string]$remoteAsset.digest) -and
+                [string]::Equals([string]$remoteAsset.digest, $expectedDigest, [System.StringComparison]::OrdinalIgnoreCase)
+            }
+
             for ($attempt = 1; $attempt -le 4; $attempt++) {
               $remote = Get-RemoteAsset $asset.Name
-              if ($null -ne $remote -and $remote.state -eq 'uploaded' -and [int64]$remote.size -eq [int64]$asset.Length) {
-                Write-Host "Release asset already verified: $($asset.Name)"
+              if (Test-RemoteAssetMatch $remote ([int64]$asset.Length) $localDigest) {
+                Write-Host "Release asset already verified by SHA-256: $($asset.Name)"
                 $uploaded = $true
                 break
               }
 
               if ($null -ne $remote) {
-                Write-Warning "Removing incomplete/mismatched release asset before retry: $($asset.Name)"
+                $remoteDigest = if ([string]::IsNullOrWhiteSpace([string]$remote.digest)) { '<missing>' } else { [string]$remote.digest }
+                Write-Warning "Removing stale/mismatched release asset: $($asset.Name) (remote digest $remoteDigest, local digest $localDigest)"
                 gh api --method DELETE "repos/RetroFrost/CTS/releases/assets/$($remote.id)" 2>$null | Out-Null
               }
 
@@ -316,23 +327,23 @@ jobs:
               $uploadExit = $LASTEXITCODE
 
               $remote = Get-RemoteAsset $asset.Name
-              if ($uploadExit -eq 0 -and $null -ne $remote -and $remote.state -eq 'uploaded' -and [int64]$remote.size -eq [int64]$asset.Length) {
-                Write-Host "Verified release asset: $($asset.Name)"
-                $uploaded = $true
-                break
-              }
-              if ($null -ne $remote -and $remote.state -eq 'uploaded' -and [int64]$remote.size -eq [int64]$asset.Length) {
-                Write-Host "GitHub reported an upload error, but the asset is complete: $($asset.Name)"
+              if (Test-RemoteAssetMatch $remote ([int64]$asset.Length) $localDigest) {
+                if ($uploadExit -eq 0) {
+                  Write-Host "Verified release asset by SHA-256: $($asset.Name)"
+                }
+                else {
+                  Write-Host "GitHub reported an upload error, but the SHA-256 digest is correct: $($asset.Name)"
+                }
                 $uploaded = $true
                 break
               }
 
               if ($attempt -lt 4) {
                 $delay = $delays[$attempt - 1]
-                Write-Warning "Upload failed for $($asset.Name); retrying in $delay seconds."
+                Write-Warning "Upload failed or digest mismatched for $($asset.Name); retrying in $delay seconds."
                 Start-Sleep -Seconds $delay
               }
             }
 
-            if (-not $uploaded) { throw "Release asset failed after 4 attempts: $($asset.Name)" }
+            if (-not $uploaded) { throw "Release asset failed SHA-256 verification after 4 attempts: $($asset.Name)" }
           }
