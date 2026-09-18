@@ -47,10 +47,17 @@ public sealed partial class MainWindow
         var remaining = 7 - _developerUnlockClicks;
         if (remaining > 0)
         {
+            var hint = remaining == 1
+                ? "One more click to become a developer."
+                : $"{remaining} more clicks to enable Developer Options.";
             if (_developerUnlockStatus is not null)
-                _developerUnlockStatus.Text = remaining == 1
-                    ? "One more click to become a developer."
-                    : $"{remaining} more clicks to enable Developer Options.";
+                _developerUnlockStatus.Text = hint;
+
+            // The developer card is intentionally hidden until unlock, so put the
+            // countdown on the visible version line instead of writing feedback only
+            // into a collapsed control.
+            if (_currentVersionText is not null)
+                _currentVersionText.Text = hint;
             return;
         }
 
@@ -59,6 +66,8 @@ public sealed partial class MainWindow
         ApplyDeveloperVisibility();
         if (_developerUnlockStatus is not null)
             _developerUnlockStatus.Text = "Developer Options enabled. Style & Model now exposes internal C# overrides.";
+        if (_currentVersionText is not null)
+            _currentVersionText.Text = $"Cubical Compare {FormatVersion(GetCurrentAppVersion())} · Developer Options";
         TimelineStatusText.Text = "Developer Options enabled.";
     }
 
