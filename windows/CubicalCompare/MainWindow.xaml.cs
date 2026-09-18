@@ -27,7 +27,7 @@ public sealed partial class MainWindow : Window
     public ObservableCollection<ProjectCardViewModel> Cards { get; } = [];
     public ObservableCollection<DetectedCardViewModel> DetectedCards { get; } = [];
 
-    public string ProjectName => "Untitled comparison";
+    public string ProjectName => _projectDisplayName;
 
     public MainWindow()
     {
