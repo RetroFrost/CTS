@@ -28,7 +28,8 @@ public sealed partial class MainWindow
         _titleBarGrid = AppTitleBar.Child as Grid;
         _brandSubtitle = EnumerateVisualDescendants(AppTitleBar)
             .OfType<TextBlock>()
-            .FirstOrDefault(x => string.Equals(x.Text, "Create stunning comparison videos", StringComparison.Ordinal));
+            .FirstOrDefault(text => Math.Abs(text.FontSize - 11) < 0.1
+                && text.Text.Contains("comparison", StringComparison.OrdinalIgnoreCase));
 
         var titleCombos = EnumerateVisualDescendants(AppTitleBar).OfType<ComboBox>().ToArray();
         if (titleCombos.Length > 0) _titleResolutionCombo = titleCombos[0];
