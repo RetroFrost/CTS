@@ -96,6 +96,7 @@ public sealed partial class MainWindow
             }
 
             var renderTarget = temporaryVideo ?? file;
+            var finalOutputTouched = temporaryVideo is null;
             using var output = await renderTarget.OpenAsync(FileAccessMode.ReadWrite);
             output.Size = 0;
 
@@ -114,7 +115,7 @@ public sealed partial class MainWindow
             var nextFrame = -1;
             var frameDurationTicks = Math.Max(1L, TimeSpan.TicksPerSecond / fps);
             Exception? renderFailure = null;
-            var sampleGate = new SemaphoreSlim(1, 1);
+            using var sampleGate = new SemaphoreSlim(1, 1);
             var lastUiProgressTicks = 0L;
 
             mediaSource.Starting += (_, args) =>
@@ -273,6 +274,7 @@ public sealed partial class MainWindow
             {
                 ExportProgressBar.Value = 0;
                 ShowActivityWatcher("Video export", "Adding soundtrack…", null, true);
+                finalOutputTouched = true;
                 await AddSoundtrackAsync(
                     temporaryVideo,
                     file,
@@ -290,20 +292,21 @@ public sealed partial class MainWindow
         }
         catch (TaskCanceledException)
         {
-            TryDeleteExport(file.Path);
+            if (finalOutputTouched) TryDeleteExport(file.Path);
             ExportStatusText.Text = "Video export cancelled.";
             TimelineStatusText.Text = "Export cancelled";
             FailActivityWatcher("Video export cancelled", Path.GetFileName(file.Path));
         }
         catch (OperationCanceledException)
         {
-            TryDeleteExport(file.Path);
+            if (finalOutputTouched) TryDeleteExport(file.Path);
             ExportStatusText.Text = "Video export cancelled.";
             TimelineStatusText.Text = "Export cancelled";
+            FailActivityWatcher("Video export cancelled", Path.GetFileName(file.Path));
         }
         catch (Exception ex)
         {
-            TryDeleteExport(file.Path);
+            if (finalOutputTouched) TryDeleteExport(file.Path);
             ExportStatusText.Text = "Video export failed.";
             TimelineStatusText.Text = $"Export failed: {ex.Message}";
             App.WriteLog("Video export failed", ex);
