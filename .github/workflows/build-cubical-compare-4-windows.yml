@@ -5,7 +5,6 @@ on:
     branches:
       - windows/main
       - work/portable-zip-windows
-      - fix/4.2.1-bug-sweep
     paths:
       - 'windows/CubicalCompare/**'
       - 'windows/CubicalCompare.Modules/**'
