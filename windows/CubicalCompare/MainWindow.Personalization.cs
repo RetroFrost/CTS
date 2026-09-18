@@ -98,7 +98,7 @@ public sealed partial class MainWindow
 
     private static void SetResourceColor(string key, Color color)
     {
-        if (Application.Current.Resources.TryGetValue(key, out var value) && value is SolidColorBrush brush)
+        if (Application.Current.Resources[key] is SolidColorBrush brush)
             brush.Color = color;
         else
             Application.Current.Resources[key] = new SolidColorBrush(color);
