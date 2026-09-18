@@ -358,8 +358,13 @@ public sealed class RelationshipsRenderer : IDisposable
             ?? throw new InvalidOperationException("Could not determine the developer override directory.");
         Directory.CreateDirectory(parent);
 
-        var staging = SourceDirectory + ".new-" + Guid.NewGuid().ToString("N");
+        var token = Guid.NewGuid().ToString("N");
+        var staging = SourceDirectory + ".new-" + token;
+        var backup = SourceDirectory + ".old-" + token;
         Directory.CreateDirectory(staging);
+        var oldMoved = false;
+        var newInstalled = false;
+
         try
         {
             for (var index = 0; index < sources.Count; index++)
@@ -369,14 +374,42 @@ public sealed class RelationshipsRenderer : IDisposable
                 File.WriteAllText(destination, sources[index].Text);
             }
 
+            // Never delete the last working bundle before the replacement directory is
+            // ready. Directory.Move is a same-volume rename here, so the swap leaves us
+            // with either the old bundle or the new one if an I/O error interrupts it.
             if (Directory.Exists(SourceDirectory))
-                Directory.Delete(SourceDirectory, recursive: true);
+            {
+                Directory.Move(SourceDirectory, backup);
+                oldMoved = true;
+            }
+
             Directory.Move(staging, SourceDirectory);
+            newInstalled = true;
+
+            if (oldMoved && Directory.Exists(backup))
+                Directory.Delete(backup, recursive: true);
+        }
+        catch
+        {
+            if (!newInstalled && oldMoved && Directory.Exists(backup) && !Directory.Exists(SourceDirectory))
+            {
+                try { Directory.Move(backup, SourceDirectory); }
+                catch { }
+            }
+            throw;
         }
         finally
         {
             if (Directory.Exists(staging))
-                Directory.Delete(staging, recursive: true);
+            {
+                try { Directory.Delete(staging, recursive: true); }
+                catch { }
+            }
+            if (newInstalled && Directory.Exists(backup))
+            {
+                try { Directory.Delete(backup, recursive: true); }
+                catch { }
+            }
         }
     }
 
