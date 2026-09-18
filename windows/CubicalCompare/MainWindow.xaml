@@ -510,7 +510,6 @@
                 Background="{StaticResource EditorSurfaceRaisedBrush}"
                 BorderBrush="{StaticResource EditorBorderStrongBrush}"
                 BorderThickness="1"
-                Shadow="{ThemeResource ContentDialogShadow}"
                 Visibility="Collapsed">
             <Grid RowSpacing="8">
                 <Grid.RowDefinitions>
