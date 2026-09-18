@@ -241,28 +241,7 @@
 
                     <Border Grid.Column="2" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="0">
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="50" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <Border BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="0,0,0,1">
-                                <Grid ColumnSpacing="0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Button Content="Card" Background="Transparent" Foreground="{StaticResource EditorAccentBrush}" FontWeight="SemiBold" />
-                                    <Button Grid.Column="1" Content="Text" Background="Transparent" />
-                                    <Button Grid.Column="2" Content="Style" Background="Transparent" />
-                                    <Button Grid.Column="3" Content="Project" Background="Transparent" />
-                                    <Rectangle Height="2" Fill="{StaticResource EditorAccentBrush}" VerticalAlignment="Bottom" Grid.Column="0" Margin="12,0" />
-                                </Grid>
-                            </Border>
-
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel DataContext="{Binding SelectedItem, ElementName=CardsList}" Spacing="10" Padding="14,12,14,16">
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
