@@ -387,7 +387,10 @@ public sealed class RelationshipsRenderer : IDisposable
             newInstalled = true;
 
             if (oldMoved && Directory.Exists(backup))
-                Directory.Delete(backup, recursive: true);
+            {
+                try { Directory.Delete(backup, recursive: true); }
+                catch { }
+            }
         }
         catch
         {
