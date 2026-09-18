@@ -64,31 +64,38 @@ public sealed partial class MainWindow
             SafeFileStem(_projectDisplayName));
         if (file is null) return;
 
+        var proposedName = string.Equals(_projectDisplayName, "Untitled comparison", StringComparison.Ordinal)
+            ? Path.GetFileNameWithoutExtension(file.Name)
+            : _projectDisplayName;
+
+        if (!await SaveProjectToPathAsync(file.Path, proposedName))
+            return;
+
         _activeProjectPath = file.Path;
-        if (string.Equals(_projectDisplayName, "Untitled comparison", StringComparison.Ordinal))
-            _projectDisplayName = Path.GetFileNameWithoutExtension(file.Name);
+        _projectDisplayName = proposedName;
         UpdateProjectIdentityUi();
-        await SaveProjectToPathAsync(file.Path);
     }
 
-    private async Task SaveProjectToPathAsync(string path)
+    private async Task<bool> SaveProjectToPathAsync(string path, string? projectName = null)
     {
         try
         {
             TimelineStatusText.Text = $"Saving {Path.GetFileName(path)}…";
             var project = BuildProject();
-            project.Name = _projectDisplayName;
+            project.Name = string.IsNullOrWhiteSpace(projectName) ? _projectDisplayName : projectName;
             project.SoundtrackPath = _soundtrackPath;
             project.SoundtrackVolume = _soundtrackVolume;
             project.SoundtrackLoop = _soundtrackLoop;
             await ProjectFileService.SaveAsync(project, path);
             TimelineStatusText.Text = $"Saved {Path.GetFileName(path)}";
+            return true;
         }
         catch (Exception ex)
         {
             App.WriteLog($"Project save failed: {path}", ex);
             TimelineStatusText.Text = "Could not save project.";
             await ShowErrorAsync("Could not save project", ex.Message);
+            return false;
         }
     }
 
