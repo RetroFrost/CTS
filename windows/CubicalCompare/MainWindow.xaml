@@ -129,23 +129,6 @@
                                                     <TextBlock Text="60 FPS" Foreground="#DCE7F3" FontSize="12" />
                                                 </StackPanel>
                                             </Border>
-
-                                            <Border Width="76" Height="76" CornerRadius="38" Background="#B9181F26" BorderBrush="#E8FFFFFF" BorderThickness="2" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                                                <SymbolIcon Symbol="Play" Foreground="White" />
-                                            </Border>
-
-                                            <Border VerticalAlignment="Bottom" Height="34" Background="#A8000000" IsHitTestVisible="False">
-                                                <Grid Padding="14,0" ColumnSpacing="10">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="Preview" Foreground="White" VerticalAlignment="Center" FontSize="11" />
-                                                    <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="42" Height="4" VerticalAlignment="Center" Foreground="#4AA3FF" />
-                                                    <TextBlock Grid.Column="2" Text="Right-click a card to transform" Foreground="#DCE7F3" VerticalAlignment="Center" FontSize="11" />
-                                                </Grid>
-                                            </Border>
                                         </Grid>
                                     </Border>
                                 </Viewbox>
@@ -167,7 +150,6 @@
                                 <TextBlock x:Name="FrameCounterText" Grid.Column="1" Text="Frame —" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" MinWidth="88" />
                                 <Slider x:Name="ProjectFrameSlider" Grid.Column="2" Minimum="0" Maximum="0" Value="0" IsEnabled="False" StepFrequency="1" ValueChanged="ProjectFrameSlider_ValueChanged" VerticalAlignment="Center" />
                                 <TextBlock x:Name="TimelineStatusText" Grid.Column="3" Text="Load a renderer to enable timeline" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" MaxWidth="260" TextTrimming="CharacterEllipsis" />
-                                <Button Grid.Column="4" Content="Fit" Padding="12,4" />
                             </Grid>
                         </Border>
 
