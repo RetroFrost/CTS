@@ -80,10 +80,10 @@ public sealed partial class MainWindow
         });
 
         var developerCard = CreateSettingsCard(developerPanel);
-        developerCard.Visibility = Visibility.Collapsed;
+        developerCard.Visibility = Visibility.Visible;
 
         // Put personalization before build diagnostics so Settings reads as user-first,
-        // while the hidden developer card remains close to the About/version area.
+        // with Developer Options visible near the About/version area.
         var buildIndex = Math.Max(2, pageStack.Children.Count - 1);
         pageStack.Children.Insert(buildIndex, CreateSettingsCard(appearancePanel));
         pageStack.Children.Insert(buildIndex + 1, CreateSettingsCard(languagePanel));

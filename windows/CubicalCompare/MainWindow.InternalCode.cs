@@ -10,9 +10,7 @@ namespace CubicalCompare;
 
 public sealed partial class MainWindow
 {
-    private const string DeveloperUnlockedPreference = "developer.unlocked";
-    private bool _developerModeUnlocked = AppPreferences.GetBool(DeveloperUnlockedPreference, false);
-    private int _developerUnlockClicks;
+    private bool _developerModeUnlocked = true;
     private Border? _developerSettingsCard;
     private TextBlock? _developerUnlockStatus;
 
@@ -29,62 +27,18 @@ public sealed partial class MainWindow
     {
         _developerSettingsCard = developerSettingsCard;
         _developerUnlockStatus = developerUnlockStatus;
-        versionText.PointerPressed += DeveloperVersion_PointerPressed;
-        ToolTipService.SetToolTip(versionText, "There might be more here than a version number.");
-        ApplyDeveloperVisibility();
-    }
-
-    private async void DeveloperVersion_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
-    {
-        if (_developerModeUnlocked)
-        {
-            if (_developerUnlockStatus is not null)
-                _developerUnlockStatus.Text = "Developer Options are already enabled.";
-            return;
-        }
-
-        _developerUnlockClicks++;
-        var remaining = 7 - _developerUnlockClicks;
-        if (remaining > 0)
-        {
-            var hint = remaining == 1
-                ? "One more click to become a developer."
-                : $"{remaining} more clicks to enable Developer Options.";
-            if (_developerUnlockStatus is not null)
-                _developerUnlockStatus.Text = hint;
-
-            // The developer card is intentionally hidden until unlock, so put the
-            // countdown on the visible version line instead of writing feedback only
-            // into a collapsed control.
-            if (_currentVersionText is not null)
-                _currentVersionText.Text = hint;
-
-            var clickSnapshot = _developerUnlockClicks;
-            await Task.Delay(1200);
-            if (!_developerModeUnlocked
-                && clickSnapshot == _developerUnlockClicks
-                && _currentVersionText is not null)
-            {
-                _currentVersionText.Text = $"Cubical Compare {FormatVersion(GetCurrentAppVersion())}";
-            }
-            return;
-        }
-
         _developerModeUnlocked = true;
-        AppPreferences.SetBool(DeveloperUnlockedPreference, true);
-        ApplyDeveloperVisibility();
+        ToolTipService.SetToolTip(versionText, "Developer Options are available in Settings and Style & Model.");
         if (_developerUnlockStatus is not null)
-            _developerUnlockStatus.Text = "Developer Options enabled. Style & Model now exposes internal C# overrides.";
-        if (_currentVersionText is not null)
-            _currentVersionText.Text = $"Cubical Compare {FormatVersion(GetCurrentAppVersion())} · Developer Options";
-        TimelineStatusText.Text = "Developer Options enabled.";
+            _developerUnlockStatus.Text = "Developer Options are enabled and always visible.";
+        ApplyDeveloperVisibility();
     }
 
     private void ApplyDeveloperVisibility()
     {
-        DeveloperCodeOverridePanel.Visibility = _developerModeUnlocked ? Visibility.Visible : Visibility.Collapsed;
+        DeveloperCodeOverridePanel.Visibility = Visibility.Visible;
         if (_developerSettingsCard is not null)
-            _developerSettingsCard.Visibility = _developerModeUnlocked ? Visibility.Visible : Visibility.Collapsed;
+            _developerSettingsCard.Visibility = Visibility.Visible;
     }
 
     private async void ReplaceInternalCode_Click(object sender, RoutedEventArgs e)

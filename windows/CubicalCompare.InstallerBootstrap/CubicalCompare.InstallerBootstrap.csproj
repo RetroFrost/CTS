@@ -5,7 +5,8 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-    <PublishTrimmed>true</PublishTrimmed>
+    <PublishTrimmed>false</PublishTrimmed>
+    <UseWindowsForms>true</UseWindowsForms>
     <InvariantGlobalization>true</InvariantGlobalization>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
