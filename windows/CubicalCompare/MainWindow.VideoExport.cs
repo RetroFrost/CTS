@@ -201,8 +201,8 @@ public sealed partial class MainWindow
                             DispatcherQueue.TryEnqueue(() =>
                             {
                                 ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
-                                var bytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
-                                var detail = $"Rendering · {renderedCount:N0}/{frameCount:N0} frames · {progress:0.0}% · {FormatByteCount(bytes)}";
+                                var writtenBytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
+                                var detail = $"Rendering · {renderedCount:N0}/{frameCount:N0} frames · {progress:0.0}% · {FormatByteCount(writtenBytes)}";
                                 ExportStatusText.Text = detail;
                                 UpdateActivityWatcher("Video export", detail, Math.Clamp(progress, 0, 99.5));
                             });
@@ -253,8 +253,8 @@ public sealed partial class MainWindow
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
-                    var bytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
-                    var detail = $"Encoding MP4 · {progress:0.0}% · {FormatByteCount(bytes)} written";
+                    var writtenBytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
+                    var detail = $"Encoding MP4 · {progress:0.0}% · {FormatByteCount(writtenBytes)} written";
                     ExportStatusText.Text = detail;
                     UpdateActivityWatcher("Video export", detail, Math.Clamp(progress, 0, 99.5));
                 });
