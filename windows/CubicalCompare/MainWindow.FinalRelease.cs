@@ -318,7 +318,21 @@ public sealed partial class MainWindow
                     _updateStatusText.Text = "Update staged. Restarting into the new files…";
                 CompleteActivityWatcher("Windows update", "Update staged. Restarting Cubical Compare…");
                 Application.Current.Exit();
+                return;
             }
+
+            // The release can disappear between the check and the click (for example,
+            // when a release is replaced). Do not leave the Install button permanently
+            // disabled if the updater no longer has anything to apply.
+            _availableUpdate = null;
+            if (_updateStatusText is not null)
+                _updateStatusText.Text = "That update is no longer available. Check again for the latest Windows release.";
+            if (_installUpdateButton is not null)
+            {
+                _installUpdateButton.Visibility = Visibility.Collapsed;
+                _installUpdateButton.IsEnabled = true;
+            }
+            FailActivityWatcher("Windows update changed", "The selected release is no longer available.");
         }
         catch (Exception ex)
         {
