@@ -1,30 +1,94 @@
+using CubicalCompare.Core.Project;
 using CubicalCompare.Core.Renderer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.Storage;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace CubicalCompare;
 
 public sealed partial class MainWindow
 {
+    private const string DeveloperUnlockedPreference = "developer.unlocked";
+    private bool _developerModeUnlocked = AppPreferences.GetBool(DeveloperUnlockedPreference, false);
+    private int _developerUnlockClicks;
+    private Border? _developerSettingsCard;
+    private TextBlock? _developerUnlockStatus;
+
     private void RendererPage_Loaded(object sender, RoutedEventArgs e)
     {
+        ApplyDeveloperVisibility();
         RefreshInternalCodeOverrideStatus();
+    }
+
+    private void ConfigureDeveloperUnlock(
+        TextBlock versionText,
+        Border developerSettingsCard,
+        TextBlock developerUnlockStatus)
+    {
+        _developerSettingsCard = developerSettingsCard;
+        _developerUnlockStatus = developerUnlockStatus;
+        versionText.PointerPressed += DeveloperVersion_PointerPressed;
+        ToolTipService.SetToolTip(versionText, "There might be more here than a version number.");
+        ApplyDeveloperVisibility();
+    }
+
+    private void DeveloperVersion_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (_developerModeUnlocked)
+        {
+            if (_developerUnlockStatus is not null)
+                _developerUnlockStatus.Text = "Developer Options are already enabled.";
+            return;
+        }
+
+        _developerUnlockClicks++;
+        var remaining = 7 - _developerUnlockClicks;
+        if (remaining > 0)
+        {
+            if (_developerUnlockStatus is not null)
+                _developerUnlockStatus.Text = remaining == 1
+                    ? "One more click to become a developer."
+                    : $"{remaining} more clicks to enable Developer Options.";
+            return;
+        }
+
+        _developerModeUnlocked = true;
+        AppPreferences.SetBool(DeveloperUnlockedPreference, true);
+        ApplyDeveloperVisibility();
+        if (_developerUnlockStatus is not null)
+            _developerUnlockStatus.Text = "Developer Options enabled. Style & Model now exposes internal C# overrides.";
+        TimelineStatusText.Text = "Developer Options enabled.";
+    }
+
+    private void ApplyDeveloperVisibility()
+    {
+        DeveloperCodeOverridePanel.Visibility = _developerModeUnlocked ? Visibility.Visible : Visibility.Collapsed;
+        if (_developerSettingsCard is not null)
+            _developerSettingsCard.Visibility = _developerModeUnlocked ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void ReplaceInternalCode_Click(object sender, RoutedEventArgs e)
     {
-        var file = await PickFileAsync([".cs"]);
-        if (file is null) return;
+        if (!_developerModeUnlocked)
+            return;
 
-        var supported = string.Join(", ", InternalCodeOverrideManager.SupportedFiles);
+        var files = await PickFilesAsync([".cs"]);
+        if (files.Count == 0) return;
+
+        var names = files.Select(file => file.Name).ToArray();
         var confirmation = new ContentDialog
         {
             XamlRoot = RootNavigation.XamlRoot,
-            Title = "Replace internal code?",
+            Title = files.Count == 1 ? "Replace internal code?" : $"Import {files.Count} C# files?",
             Content =
-                $"Cubical Compare will compile and run {file.Name} inside the app. " +
-                "C# overrides have the same permissions as Cubical Compare and are not sandboxed.\n\n" +
-                $"Hot-swappable files in this build: {supported}.",
+                "Cubical Compare will compile the selected .cs files together as one runtime source bundle. " +
+                "Any valid C# filename is accepted; helper files, partial classes and shared code can be imported in bulk. " +
+                "Known renderer classes are hot-swapped automatically when present.\n\n" +
+                "Imported C# runs with the same permissions as Cubical Compare and is not sandboxed.\n\n" +
+                string.Join(Environment.NewLine, names.Take(12)) +
+                (names.Length > 12 ? $"{Environment.NewLine}…and {names.Length - 12} more" : string.Empty),
             PrimaryButtonText = "Compile & replace",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
@@ -34,15 +98,20 @@ public sealed partial class MainWindow
 
         ReplaceInternalCodeButton.IsEnabled = false;
         RemoveInternalCodeOverrideButton.IsEnabled = false;
-        InternalCodeOverrideStatusText.Text = $"Compiling {file.Name}…";
+        InternalCodeOverrideStatusText.Text = $"Compiling {files.Count} source file{(files.Count == 1 ? "" : "s")}…";
+        ShowActivityWatcher("Developer compile", $"Compiling {files.Count} C# file{(files.Count == 1 ? "" : "s")}…", null, true);
 
         try
         {
-            var result = await Task.Run(() => InternalCodeOverrideManager.Install(file.Path));
+            var paths = files.Select(file => file.Path).ToArray();
+            var result = await Task.Run(() => InternalCodeOverrideManager.InstallMany(paths));
+            var targets = result.ActivatedTargets.Count == 0
+                ? "source bundle loaded (support code only)"
+                : "active · " + string.Join(", ", result.ActivatedTargets);
             InternalCodeOverrideStatusText.Text =
-                $"Active · {result.FriendlyName} · saved for future launches" +
+                $"{targets} · {result.Files.Count} source file{(result.Files.Count == 1 ? "" : "s")} saved" +
                 (result.Warnings.Count > 0 ? $" · {result.Warnings.Count} compiler warning(s)" : "");
-            TimelineStatusText.Text = $"Internal code override active · {result.FriendlyName}";
+            TimelineStatusText.Text = "Internal C# bundle reloaded.";
 
             await RenderCurrentFrameAsync();
 
@@ -51,18 +120,21 @@ public sealed partial class MainWindow
                 var warningDialog = new ContentDialog
                 {
                     XamlRoot = RootNavigation.XamlRoot,
-                    Title = "Override installed with warnings",
-                    Content = string.Join(Environment.NewLine, result.Warnings.Take(12)),
+                    Title = "C# bundle installed with warnings",
+                    Content = string.Join(Environment.NewLine, result.Warnings.Take(16)),
                     CloseButtonText = "Close",
                     DefaultButton = ContentDialogButton.Close,
                 };
                 await warningDialog.ShowAsync();
             }
+
+            CompleteActivityWatcher("Developer compile", $"Loaded {result.Files.Count} C# source file{(result.Files.Count == 1 ? "" : "s")}.");
         }
         catch (Exception ex)
         {
-            App.WriteLog($"Could not install internal code override from {file.Path}", ex);
+            App.WriteLog("Could not install internal C# source bundle", ex);
             RefreshInternalCodeOverrideStatus();
+            FailActivityWatcher("Developer compile failed", ex.Message);
             await ShowErrorAsync("Could not replace internal code", ex.Message);
         }
         finally
@@ -75,16 +147,16 @@ public sealed partial class MainWindow
 
     private async void RemoveInternalCodeOverride_Click(object sender, RoutedEventArgs e)
     {
+        if (!_developerModeUnlocked)
+            return;
+
         try
         {
             var removed = InternalCodeOverrideManager.RemoveAll();
             InternalCodeOverrideStatusText.Text = removed
                 ? "Built-in renderer code restored."
-                : "No internal code override was installed.";
-            TimelineStatusText.Text = removed
-                ? "Internal code overrides removed."
-                : TimelineStatusText.Text;
-
+                : "No internal C# bundle was installed.";
+            if (removed) TimelineStatusText.Text = "Internal C# overrides removed.";
             await RenderCurrentFrameAsync();
         }
         catch (Exception ex)
@@ -100,35 +172,46 @@ public sealed partial class MainWindow
 
     private void RefreshInternalCodeOverrideStatus()
     {
-        var statuses = InternalCodeOverrideManager.Status();
-        var failures = statuses.Where(status => !string.IsNullOrWhiteSpace(status.Error)).ToArray();
-        if (failures.Length > 0)
+        var status = InternalCodeOverrideManager.Status();
+        if (!string.IsNullOrWhiteSpace(status.Error))
         {
-            InternalCodeOverrideStatusText.Text = string.Join(
-                " · ",
-                failures.Select(status => $"{status.FriendlyName}: {status.Error}"));
+            InternalCodeOverrideStatusText.Text = $"Stored bundle could not load · {status.Error}";
             return;
         }
 
-        var active = statuses.Where(status => status.Active).ToArray();
-        if (active.Length > 0)
+        if (status.Loaded)
         {
+            var targetText = status.ActivatedTargets.Count == 0
+                ? "support-code bundle"
+                : string.Join(", ", status.ActivatedTargets);
             InternalCodeOverrideStatusText.Text =
-                "Active · " + string.Join(", ", active.Select(status => status.FriendlyName));
+                $"Loaded · {targetText} · {status.Files.Count} source file{(status.Files.Count == 1 ? "" : "s")}";
             return;
         }
 
-        var installed = statuses.Where(status => status.Installed).ToArray();
-        if (installed.Length > 0)
+        if (status.Installed)
         {
             InternalCodeOverrideStatusText.Text =
-                "Installed · loads automatically when its renderer is used · " +
-                string.Join(", ", installed.Select(status => status.FriendlyName));
+                $"Installed · {status.Files.Count} source file{(status.Files.Count == 1 ? "" : "s")} · loads on renderer use";
             return;
         }
 
         InternalCodeOverrideStatusText.Text =
-            "Using built-in code · supported: " +
-            string.Join(", ", InternalCodeOverrideManager.SupportedFiles);
+            "Using built-in code · bulk .cs bundles accepted · hot-swap targets: " +
+            string.Join(", ", InternalCodeOverrideManager.HotSwapTargets);
+    }
+
+    private async Task<IReadOnlyList<StorageFile>> PickFilesAsync(IReadOnlyList<string> extensions)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.Downloads,
+            ViewMode = PickerViewMode.List,
+        };
+        foreach (var extension in extensions) picker.FileTypeFilter.Add(extension);
+
+        var hwnd = WindowNative.GetWindowHandle(this);
+        InitializeWithWindow.Initialize(picker, hwnd);
+        return await picker.PickMultipleFilesAsync();
     }
 }

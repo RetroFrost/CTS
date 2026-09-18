@@ -28,6 +28,7 @@ public sealed partial class MainWindow
         BuildFinalNavigation();
         RemovePrototypeInspectorTabs();
         BuildSettingsPage();
+        Initialize42SettingsEnhancements();
         RootNavigation.SelectionChanged += FinalNavigation_SelectionChanged;
 
         if (RootNavigation.MenuItems.Count > 0)
@@ -295,15 +296,27 @@ public sealed partial class MainWindow
 
         try
         {
+            ShowActivityWatcher("Windows update", "Starting download…", 0);
+            var progress = new Progress<CubicalUpdateProgress>(state =>
+            {
+                var detail = state.TotalBytes is > 0
+                    ? $"{state.Phase} · {FormatByteCount(state.BytesReceived)} / {FormatByteCount(state.TotalBytes.Value)} · {state.Percent}%"
+                    : $"{state.Phase} · {state.Percent}%";
+                if (_updateStatusText is not null) _updateStatusText.Text = detail;
+                UpdateActivityWatcher("Windows update", detail, state.Percent);
+            });
+
             var exitRequired = await _updateService.ApplyUpdateAsync(
                 _availableUpdate,
                 AppContext.BaseDirectory,
-                "CubicalCompare.exe");
+                "CubicalCompare.exe",
+                progress);
 
             if (exitRequired)
             {
                 if (_updateStatusText is not null)
                     _updateStatusText.Text = "Update staged. Restarting into the new files…";
+                CompleteActivityWatcher("Windows update", "Update staged. Restarting Cubical Compare…");
                 Application.Current.Exit();
             }
         }
@@ -314,6 +327,7 @@ public sealed partial class MainWindow
                 _updateStatusText.Text = $"Update failed: {ex.Message}";
             if (_installUpdateButton is not null)
                 _installUpdateButton.IsEnabled = true;
+            FailActivityWatcher("Windows update failed", ex.Message);
         }
     }
 
@@ -326,7 +340,7 @@ public sealed partial class MainWindow
     }
 
     private static Version GetCurrentAppVersion()
-        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 1, 0, 0);
+        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 0, 0);
 
     private static Version NormalizeVersion(Version version) => new(
         Math.Max(0, version.Major),

@@ -43,6 +43,44 @@ public static class AppPreferences
         }
     }
 
+    public static string GetString(string key, string fallback)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        lock (Gate)
+        {
+            try
+            {
+                var values = Load();
+                return values.TryGetValue(key, out var node) && node.ValueKind == JsonValueKind.String
+                    ? node.GetString() ?? fallback
+                    : fallback;
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+    }
+
+    public static bool GetBool(string key, bool fallback)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        lock (Gate)
+        {
+            try
+            {
+                var values = Load();
+                return values.TryGetValue(key, out var node) && node.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? node.GetBoolean()
+                    : fallback;
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+    }
+
     public static void SetInts(params (string Key, int Value)[] values)
     {
         lock (Gate)
@@ -50,6 +88,28 @@ public static class AppPreferences
             var current = Load();
             foreach (var (key, value) in values)
                 current[key] = JsonSerializer.SerializeToElement(value);
+            Save(current);
+        }
+    }
+
+    public static void SetString(string key, string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        lock (Gate)
+        {
+            var current = Load();
+            current[key] = JsonSerializer.SerializeToElement(value ?? string.Empty);
+            Save(current);
+        }
+    }
+
+    public static void SetBool(string key, bool value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        lock (Gate)
+        {
+            var current = Load();
+            current[key] = JsonSerializer.SerializeToElement(value);
             Save(current);
         }
     }
