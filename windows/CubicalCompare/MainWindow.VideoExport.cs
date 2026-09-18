@@ -41,6 +41,7 @@ public sealed partial class MainWindow
         ExportProgressBar.Visibility = Visibility.Visible;
         ExportProgressBar.Value = 0;
         ExportStatusText.Text = "Preparing video export…";
+        ShowActivityWatcher("Video export", $"Preparing {Path.GetFileName(file.Path)}…", 0);
 
         _videoExportCancellation?.Dispose();
         _videoExportCancellation = new CancellationTokenSource();
@@ -200,7 +201,10 @@ public sealed partial class MainWindow
                             DispatcherQueue.TryEnqueue(() =>
                             {
                                 ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
-                                ExportStatusText.Text = $"Rendering video… {renderedCount:N0} / {frameCount:N0} frames · {progress:0.0}%";
+                                var bytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
+                                var detail = $"Rendering · {renderedCount:N0}/{frameCount:N0} frames · {progress:0.0}% · {FormatByteCount(bytes)}";
+                                ExportStatusText.Text = detail;
+                                UpdateActivityWatcher("Video export", detail, Math.Clamp(progress, 0, 99.5));
                             });
                         }
                     }
@@ -249,6 +253,10 @@ public sealed partial class MainWindow
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
+                    var bytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
+                    var detail = $"Encoding MP4 · {progress:0.0}% · {FormatByteCount(bytes)} written";
+                    ExportStatusText.Text = detail;
+                    UpdateActivityWatcher("Video export", detail, Math.Clamp(progress, 0, 99.5));
                 });
             };
 
@@ -264,6 +272,7 @@ public sealed partial class MainWindow
             if (temporaryVideo is not null && hasSoundtrack)
             {
                 ExportProgressBar.Value = 0;
+                ShowActivityWatcher("Video export", "Adding soundtrack…", null, true);
                 await AddSoundtrackAsync(
                     temporaryVideo,
                     file,
@@ -276,12 +285,15 @@ public sealed partial class MainWindow
             ExportProgressBar.Value = 100;
             ExportStatusText.Text = $"Exported {Path.GetFileName(file.Path)} · {width}×{height} · {fps} FPS";
             TimelineStatusText.Text = "Video export complete";
+            var finalBytes = File.Exists(file.Path) ? new FileInfo(file.Path).Length : 0;
+            CompleteActivityWatcher("Video export complete", $"{Path.GetFileName(file.Path)} · {FormatByteCount(finalBytes)}");
         }
         catch (TaskCanceledException)
         {
             TryDeleteExport(file.Path);
             ExportStatusText.Text = "Video export cancelled.";
             TimelineStatusText.Text = "Export cancelled";
+            FailActivityWatcher("Video export cancelled", Path.GetFileName(file.Path));
         }
         catch (OperationCanceledException)
         {
@@ -295,6 +307,7 @@ public sealed partial class MainWindow
             ExportStatusText.Text = "Video export failed.";
             TimelineStatusText.Text = $"Export failed: {ex.Message}";
             App.WriteLog("Video export failed", ex);
+            FailActivityWatcher("Video export failed", ex.Message);
             await ShowErrorAsync("Could not export video", ex.Message);
         }
         finally
