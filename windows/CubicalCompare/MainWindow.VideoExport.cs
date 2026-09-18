@@ -48,6 +48,7 @@ public sealed partial class MainWindow
         var cancellationToken = _videoExportCancellation.Token;
         StorageFile? temporaryVideo = null;
         StorageFile? temporaryRendererAudio = null;
+        var finalOutputTouched = false;
 
         try
         {
@@ -96,7 +97,7 @@ public sealed partial class MainWindow
             }
 
             var renderTarget = temporaryVideo ?? file;
-            var finalOutputTouched = temporaryVideo is null;
+            finalOutputTouched = temporaryVideo is null;
             using var output = await renderTarget.OpenAsync(FileAccessMode.ReadWrite);
             output.Size = 0;
 
