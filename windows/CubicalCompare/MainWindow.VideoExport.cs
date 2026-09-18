@@ -46,9 +46,9 @@ public sealed partial class MainWindow
         _videoExportCancellation?.Dispose();
         _videoExportCancellation = new CancellationTokenSource();
         var cancellationToken = _videoExportCancellation.Token;
-        StorageFile? temporaryVideo = null;
+        StorageFile? stagedRenderVideo = null;
+        StorageFile? stagedFinalVideo = null;
         StorageFile? temporaryRendererAudio = null;
-        var finalOutputTouched = false;
 
         try
         {
@@ -89,15 +89,24 @@ public sealed partial class MainWindow
             }
 
             var hasSoundtrack = !string.IsNullOrWhiteSpace(soundtrackPath) && File.Exists(soundtrackPath);
+
+            // Render next to the selected destination and only replace the user's file
+            // once every render/mux stage has succeeded. This prevents a cancelled or
+            // failed export from truncating an existing MP4 selected in FileSavePicker.
+            var destinationDirectory = Path.GetDirectoryName(file.Path)
+                ?? throw new InvalidOperationException("Could not determine the export destination folder.");
+            var destinationFolder = await StorageFolder.GetFolderFromPathAsync(destinationDirectory);
+            stagedFinalVideo = await destinationFolder.CreateFileAsync(
+                $".cc-export-{Guid.NewGuid():N}.mp4",
+                CreationCollisionOption.GenerateUniqueName);
             if (hasSoundtrack)
             {
-                temporaryVideo = await ApplicationData.Current.TemporaryFolder.CreateFileAsync(
-                    $"cc-silent-{Guid.NewGuid():N}.mp4",
-                    CreationCollisionOption.ReplaceExisting);
+                stagedRenderVideo = await destinationFolder.CreateFileAsync(
+                    $".cc-silent-{Guid.NewGuid():N}.mp4",
+                    CreationCollisionOption.GenerateUniqueName);
             }
 
-            var renderTarget = temporaryVideo ?? file;
-            finalOutputTouched = temporaryVideo is null;
+            var renderTarget = stagedRenderVideo ?? stagedFinalVideo;
             using var output = await renderTarget.OpenAsync(FileAccessMode.ReadWrite);
             output.Size = 0;
 
@@ -271,19 +280,22 @@ public sealed partial class MainWindow
 
             output.Dispose();
 
-            if (temporaryVideo is not null && hasSoundtrack)
+            if (stagedRenderVideo is not null && hasSoundtrack)
             {
                 ExportProgressBar.Value = 0;
                 ShowActivityWatcher("Video export", "Adding soundtrack…", null, true);
-                finalOutputTouched = true;
                 await AddSoundtrackAsync(
-                    temporaryVideo,
-                    file,
+                    stagedRenderVideo,
+                    stagedFinalVideo,
                     soundtrackPath!,
                     soundtrackVolume,
                     soundtrackLoop,
                     cancellationToken);
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            CommitStagedExport(stagedFinalVideo.Path, file.Path);
+            stagedFinalVideo = null;
 
             ExportProgressBar.Value = 100;
             ExportStatusText.Text = $"Exported {Path.GetFileName(file.Path)} · {width}×{height} · {fps} FPS";
@@ -293,21 +305,18 @@ public sealed partial class MainWindow
         }
         catch (TaskCanceledException)
         {
-            if (finalOutputTouched) TryDeleteExport(file.Path);
             ExportStatusText.Text = "Video export cancelled.";
             TimelineStatusText.Text = "Export cancelled";
             FailActivityWatcher("Video export cancelled", Path.GetFileName(file.Path));
         }
         catch (OperationCanceledException)
         {
-            if (finalOutputTouched) TryDeleteExport(file.Path);
             ExportStatusText.Text = "Video export cancelled.";
             TimelineStatusText.Text = "Export cancelled";
             FailActivityWatcher("Video export cancelled", Path.GetFileName(file.Path));
         }
         catch (Exception ex)
         {
-            if (finalOutputTouched) TryDeleteExport(file.Path);
             ExportStatusText.Text = "Video export failed.";
             TimelineStatusText.Text = $"Export failed: {ex.Message}";
             App.WriteLog("Video export failed", ex);
@@ -316,8 +325,10 @@ public sealed partial class MainWindow
         }
         finally
         {
-            if (temporaryVideo is not null)
-                TryDeleteExport(temporaryVideo.Path);
+            if (stagedRenderVideo is not null)
+                TryDeleteExport(stagedRenderVideo.Path);
+            if (stagedFinalVideo is not null)
+                TryDeleteExport(stagedFinalVideo.Path);
             if (temporaryRendererAudio is not null)
                 TryDeleteExport(temporaryRendererAudio.Path);
             _videoExportOperation = null;
@@ -369,6 +380,33 @@ public sealed partial class MainWindow
         ExportStatusText.Text = "Cancelling export…";
         _videoExportCancellation?.Cancel();
         _videoExportOperation?.Cancel();
+    }
+
+    private static void CommitStagedExport(string stagedPath, string destinationPath)
+    {
+        if (string.IsNullOrWhiteSpace(stagedPath) || !File.Exists(stagedPath))
+            throw new FileNotFoundException("The completed staged export is missing.", stagedPath);
+        if (string.IsNullOrWhiteSpace(destinationPath))
+            throw new ArgumentException("The export destination path is empty.", nameof(destinationPath));
+
+        var backupPath = destinationPath + ".cc-backup-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            if (File.Exists(destinationPath))
+            {
+                // The staged file lives beside the destination, so File.Replace stays on
+                // one volume and can swap the finished MP4 in only after export succeeds.
+                File.Replace(stagedPath, destinationPath, backupPath, ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(stagedPath, destinationPath);
+            }
+        }
+        finally
+        {
+            TryDeleteExport(backupPath);
+        }
     }
 
     private static void TryDeleteExport(string path)
