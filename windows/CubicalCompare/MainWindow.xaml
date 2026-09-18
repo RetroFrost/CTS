@@ -6,13 +6,17 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="BaseAlt" />
+    </Window.SystemBackdrop>
+
     <Grid RequestedTheme="Light" Background="{StaticResource EditorBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="64" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border x:Name="AppTitleBar" Grid.Row="0" Background="#F8FBFF" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="0,0,0,1">
+        <Border x:Name="AppTitleBar" Grid.Row="0" Background="{StaticResource EditorSurfaceBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="0,0,0,1">
             <Grid Padding="18,0,152,0" ColumnSpacing="14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -517,12 +521,12 @@
                     </StackPanel>
                     <Button Grid.Row="1" Content="Load renderer package" Click="InspectRenderer_Click" HorizontalAlignment="Left" Margin="0,18,0,0" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
 
-                    <Border Grid.Row="2" Margin="0,18,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
+                    <Border x:Name="DeveloperCodeOverridePanel" Grid.Row="2" Margin="0,18,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="18" Visibility="Collapsed">
                         <StackPanel Spacing="10">
                             <TextBlock Text="Developer code override" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Text="Replace a supported internal renderer .cs file directly. Cubical Compare compiles the source, validates its public renderer contract and reloads it without rebuilding the app." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                            <TextBlock Text="Import one or many C# files as a live source bundle. Any valid .cs filename is accepted; helper files and partial classes compile together, and recognised internal renderer types hot-swap automatically." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="ReplaceInternalCodeButton" Content="Replace internal code (.cs)" Click="ReplaceInternalCode_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
+                                <Button x:Name="ReplaceInternalCodeButton" Content="Import C# bundle…" Click="ReplaceInternalCode_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
                                 <Button x:Name="RemoveInternalCodeOverrideButton" Content="Restore built-in code" Click="RemoveInternalCodeOverride_Click" />
                             </StackPanel>
                             <TextBlock x:Name="InternalCodeOverrideStatusText" Text="Using built-in code" TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
@@ -551,5 +555,38 @@
                 </Grid>
             </Grid>
         </NavigationView>
+
+        <Border x:Name="ActivityWatcherPanel"
+                Grid.Row="1"
+                Canvas.ZIndex="300"
+                Width="390"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,18,18"
+                Padding="14,12"
+                CornerRadius="16"
+                Background="{StaticResource EditorSurfaceRaisedBrush}"
+                BorderBrush="{StaticResource EditorBorderStrongBrush}"
+                BorderThickness="1"
+                Shadow="{ThemeResource ContentDialogShadow}"
+                Visibility="Collapsed">
+            <Grid RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ActivityWatcherTitleText" Text="Activity" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Text="LIVE" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource EditorAccentBrush}" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock x:Name="ActivityWatcherDetailText" Grid.Row="1" Text="" FontSize="12" Foreground="{StaticResource EditorTextSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" />
+                <ProgressBar x:Name="ActivityWatcherProgressBar" Grid.Row="2" Minimum="0" Maximum="100" Height="5" />
+            </Grid>
+        </Border>
     </Grid>
 </Window>
