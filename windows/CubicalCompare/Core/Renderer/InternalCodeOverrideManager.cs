@@ -228,6 +228,35 @@ public sealed class RelationshipsRenderer : IDisposable
         using var bitmap = renderer.Render(project, spec, 0, 8, 6);
         if (bitmap.Width != 8 || bitmap.Height != 6 || renderer.FrameCount(project, spec) != 7)
             throw new InvalidOperationException("Internal code override compiler self-test returned unexpected results.");
+
+        var rejectedStaleHelper = false;
+        try
+        {
+            using var invalid = CompileAndLoad(
+            [
+                new SourceUnit("ReplacementWithoutHelper.cs", """
+using SkiaSharp;
+
+namespace CubicalCompare.Windows;
+
+public sealed class RelationshipsRenderer : IDisposable
+{
+    public SKBitmap Render(StudioProject project, RendererSpec spec, int frame, int width, int height)
+        => new(Math.Max(2, width), Math.Max(2, height));
+
+    public int FrameCount(StudioProject project, RendererSpec spec) => OverrideHelper.Frames;
+    public void Dispose() { }
+}
+"""),
+            ]);
+        }
+        catch (InvalidDataException ex) when (ex.Message.Contains("OverrideHelper", StringComparison.Ordinal))
+        {
+            rejectedStaleHelper = true;
+        }
+
+        if (!rejectedStaleHelper)
+            throw new InvalidOperationException("A new C# bundle incorrectly resolved a helper type from the previous override assembly.");
     }
 
     private static void EnsureBundleLoadedLocked()
@@ -338,6 +367,16 @@ public sealed class RelationshipsRenderer : IDisposable
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             if (assembly.IsDynamic) continue;
+
+            // Never compile a replacement bundle against an older collectible override.
+            // InstallMany intentionally compiles before swapping the active bundle, so the
+            // previous override can still be loaded here. Referencing it would let missing
+            // helper types compile successfully and then disappear when the old ALC unloads.
+            var loadContext = AssemblyLoadContext.GetLoadContext(assembly);
+            if (loadContext is OverrideLoadContext
+                || assembly.GetName().Name?.StartsWith("CubicalCompare.InternalOverride.", StringComparison.Ordinal) == true)
+                continue;
+
             try { AddReferencePath(paths, assembly.Location); }
             catch (NotSupportedException) { }
         }
