@@ -11,6 +11,15 @@ on:
       - 'windows/CubicalCompare.InstallerBootstrap/**'
       - 'Directory.Build.targets'
       - '.github/workflows/build-cubical-compare-4-windows.yml'
+  pull_request:
+    branches:
+      - windows/main
+    paths:
+      - 'windows/CubicalCompare/**'
+      - 'windows/CubicalCompare.Modules/**'
+      - 'windows/CubicalCompare.InstallerBootstrap/**'
+      - 'Directory.Build.targets'
+      - '.github/workflows/build-cubical-compare-4-windows.yml'
   workflow_dispatch:
 
 concurrency:
@@ -97,6 +106,29 @@ jobs:
           $process.Refresh()
           if ($process.HasExited) { throw "Unpackaged Cubical Compare exited during WinUI smoke test with code $($process.ExitCode)." }
           Write-Host "Unpackaged WinUI startup smoke passed (PID $($process.Id))."
+          Stop-Process -Id $process.Id -Force
+
+      - name: Smoke test full MainWindow and XAML runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $log = Join-Path $env:LOCALAPPDATA 'RetroFrost\CubicalCompare\startup.log'
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+          $exe = (Resolve-Path 'artifacts/publish/CubicalCompare.exe').Path
+          $process = Start-Process -FilePath $exe -ArgumentList '--ci-mainwindow-smoke' -WorkingDirectory (Split-Path $exe) -PassThru
+          Start-Sleep -Seconds 10
+          $process.Refresh()
+          if ($process.HasExited) { throw "Full Cubical Compare window exited during smoke test with code $($process.ExitCode)." }
+          if (-not (Test-Path $log)) { throw "Full-window smoke did not create startup.log." }
+          $text = Get-Content $log -Raw
+          if ($text -match 'Post-activation editor control initialisation failed') {
+            throw ("Full-window post-activation initialisation failed. " + $text)
+          }
+          if ($text -notmatch 'Post-activation editor controls initialised') {
+            throw ("Full-window smoke did not reach completed editor initialisation. " + $text)
+          }
+          Write-Host "Full MainWindow/XAML smoke passed (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
 
       - name: Install Velopack CLI
