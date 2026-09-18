@@ -34,7 +34,7 @@ public sealed partial class MainWindow
         ApplyDeveloperVisibility();
     }
 
-    private void DeveloperVersion_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    private async void DeveloperVersion_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
         if (_developerModeUnlocked)
         {
@@ -58,6 +58,15 @@ public sealed partial class MainWindow
             // into a collapsed control.
             if (_currentVersionText is not null)
                 _currentVersionText.Text = hint;
+
+            var clickSnapshot = _developerUnlockClicks;
+            await Task.Delay(1200);
+            if (!_developerModeUnlocked
+                && clickSnapshot == _developerUnlockClicks
+                && _currentVersionText is not null)
+            {
+                _currentVersionText.Text = $"Cubical Compare {FormatVersion(GetCurrentAppVersion())}";
+            }
             return;
         }
 
