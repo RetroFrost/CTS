@@ -31,16 +31,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $revision = [int]'${{ github.event.workflow_run.run_number }}'
-          if ($revision -gt 65535) { throw "Workflow run number $revision no longer fits in an MSIX version revision." }
-          $version = "4.1.0.$revision"
-          $tag = "v$version-windows"
+          $version = "4.2.0.0"
+          $displayVersion = "4.2.0"
+          $tag = "v$displayVersion-windows"
           $manifestPath = 'windows/CubicalCompare/Package.appxmanifest'
           $manifest = Get-Content $manifestPath -Raw
-          $updated = [regex]::Replace($manifest, 'Version="4\.1\.0\.\d+"', "Version=`"$version`"")
+          $updated = [regex]::Replace($manifest, 'Version="[^"]+"', "Version=`"$version`"", 1)
           if ($updated -eq $manifest) { throw 'Could not stamp the MSIX version in Package.appxmanifest.' }
           Set-Content -Path $manifestPath -Value $updated -Encoding UTF8 -NoNewline
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_DISPLAY_VERSION=$displayVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "MSIXBundle release version: $version ($tag)"
 
@@ -116,8 +116,8 @@ jobs:
           $out = 'artifacts/msixbundle-release'
           New-Item -ItemType Directory -Path $out -Force | Out-Null
 
-          $bundleAsset = "$out/CubicalCompare-$env:CC_VERSION-Windows-x64.msixbundle"
-          $certAsset = "$out/CubicalCompare-$env:CC_VERSION-Development.cer"
+          $bundleAsset = "$out/CubicalCompare-$env:CC_DISPLAY_VERSION-Windows-x64.msixbundle"
+          $certAsset = "$out/CubicalCompare-$env:CC_DISPLAY_VERSION-Development.cer"
           $checksum = "$bundleAsset.sha256"
           Copy-Item "$env:CC_BUNDLE" $bundleAsset
           Copy-Item "$env:CC_CER" $certAsset
