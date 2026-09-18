@@ -21,10 +21,12 @@ internal static class Program
             using (var output = new FileStream(setupPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
                 input.CopyTo(output);
 
+            // Public Cubical Compare installers are always interactive by default.
+            // Do not pass --silent here: Velopack's normal Setup UI shows installation
+            // progress and launches the app when installation completes.
             var process = Process.Start(new ProcessStartInfo
             {
                 FileName = setupPath,
-                Arguments = "--silent",
                 UseShellExecute = true,
                 WorkingDirectory = root,
             }) ?? throw new InvalidOperationException("Windows could not start the Cubical Compare installer.");
