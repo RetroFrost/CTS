@@ -188,24 +188,49 @@ jobs:
           Write-Host "Visible interactive setup: $(Split-Path $versionedSetup -Leaf)"
           Write-Host "Portable release asset: $(Split-Path $versionedPortable -Leaf)"
 
-      - name: Verify public setup is not silent
+      - name: Verify public setup has visible UI
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $project = Get-Content 'windows/CubicalCompare.InstallerBootstrap/CubicalCompare.InstallerBootstrap.csproj' -Raw
           $source = Get-Content 'windows/CubicalCompare.InstallerBootstrap/Program.cs' -Raw
-          if ($source -match 'Arguments\s*=\s*["''][^"'']*--silent') {
-            throw 'Public Cubical Compare Setup must never invoke Velopack with --silent.'
+          if ($project -notmatch '<UseWindowsForms>true</UseWindowsForms>') {
+            throw 'Public Cubical Compare Setup must use a visible Windows UI.'
           }
-          Write-Host 'Public setup bootstrap is interactive.'
+          if ($source -notmatch 'ShowInTaskbar\s*=\s*true') {
+            throw 'Public Cubical Compare Setup must remain visible in the taskbar while installing.'
+          }
+          Write-Host 'Public setup source declares a visible installer window.'
 
-      - name: Smoke test visible Velopack installer
+      - name: Smoke test visible Cubical Compare installer
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-          # Run exactly like a user double-clicking the public Setup.exe: no silent flags.
-          $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -Wait -PassThru
+          # Run exactly like a user double-clicking the public Setup.exe.
+          $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -PassThru
+
+          $visible = $false
+          for ($i = 0; $i -lt 15; $i++) {
+            Start-Sleep -Seconds 1
+            $setupProcess.Refresh()
+            if ($setupProcess.HasExited) { break }
+            if ($setupProcess.MainWindowHandle -ne 0) {
+              $visible = $true
+              break
+            }
+          }
+          if (-not $visible) {
+            if (-not $setupProcess.HasExited) { Stop-Process -Id $setupProcess.Id -Force -ErrorAction SilentlyContinue }
+            throw 'Public Setup.exe never exposed a visible installer window.'
+          }
+          Write-Host "Visible Setup window detected (PID $($setupProcess.Id), HWND $($setupProcess.MainWindowHandle))."
+
+          if (-not $setupProcess.WaitForExit(120000)) {
+            Stop-Process -Id $setupProcess.Id -Force -ErrorAction SilentlyContinue
+            throw 'Visible Cubical Compare Setup.exe did not finish within the installer smoke window.'
+          }
           if ($setupProcess.ExitCode -ne 0) { throw "Visible Cubical Compare Setup.exe failed with exit code $($setupProcess.ExitCode)." }
 
           $installedExe = Join-Path $env:LOCALAPPDATA 'CubicalCompare\current\CubicalCompare.exe'
@@ -213,9 +238,8 @@ jobs:
             $installedExe = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'CubicalCompare') -Filter CubicalCompare.exe -File -Recurse -ErrorAction SilentlyContinue |
               Select-Object -First 1 -ExpandProperty FullName
           }
-          if (-not $installedExe -or -not (Test-Path $installedExe)) { throw 'Velopack completed but the installed Cubical Compare executable was not found.' }
+          if (-not $installedExe -or -not (Test-Path $installedExe)) { throw 'Setup completed but the installed Cubical Compare executable was not found.' }
 
-          # Non-silent Velopack installation should launch the main application when it finishes.
           $launched = $null
           for ($i = 0; $i -lt 15; $i++) {
             $launched = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -270,7 +294,7 @@ jobs:
           - Developer Options are visible by default; bulk runtime C# source bundles are supported.
           - Live update-download and video-export activity watcher with real-time progress.
           - Dynamic Windows accent colouring, English regional variants, Mica surfaces and refreshed Settings.
-          - Public Setup.exe always shows visible installation progress and launches Cubical Compare after installation.
+          - Public Setup.exe always shows Cubical Compare's own visible progress window, closes without a success acknowledgement dialog, and launches Cubical Compare after installation.
           - Self-contained x64 build; no separate .NET or Windows App SDK runtime install is required.
 
           **Unsigned build note:** Windows SmartScreen may still warn on an unsigned download. No certificate is required to build, install or update Cubical Compare.
