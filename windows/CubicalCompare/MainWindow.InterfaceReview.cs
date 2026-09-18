@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Windowing;
+using WinRT.Interop;
 
 namespace CubicalCompare;
 
@@ -28,7 +30,8 @@ public sealed partial class MainWindow
         _titleBarGrid = AppTitleBar.Child as Grid;
         _brandSubtitle = EnumerateVisualDescendants(AppTitleBar)
             .OfType<TextBlock>()
-            .FirstOrDefault(x => string.Equals(x.Text, "Create stunning comparison videos", StringComparison.Ordinal));
+            .FirstOrDefault(text => Math.Abs(text.FontSize - 11) < 0.1
+                && text.Text.Contains("comparison", StringComparison.OrdinalIgnoreCase));
 
         var titleCombos = EnumerateVisualDescendants(AppTitleBar).OfType<ComboBox>().ToArray();
         if (titleCombos.Length > 0) _titleResolutionCombo = titleCombos[0];
@@ -94,8 +97,32 @@ public sealed partial class MainWindow
         ExportVideoButton.Padding = narrow ? new Thickness(13, 7, 13, 7) : new Thickness(18, 7, 18, 7);
 
         if (_titleBarGrid is not null)
-            _titleBarGrid.Padding = constrained
-                ? new Thickness(12, 0, 146, 0)
-                : new Thickness(18, 0, 152, 0);
+        {
+            var leftPadding = constrained ? 12d : 18d;
+            var captionInset = GetCaptionButtonRightInset();
+            _titleBarGrid.Padding = new Thickness(
+                leftPadding,
+                0,
+                Math.Max(leftPadding, captionInset + 14),
+                0);
+        }
+    }
+
+    private double GetCaptionButtonRightInset()
+    {
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(this);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = AppWindow.GetFromWindowId(windowId);
+            var rasterScale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1d;
+            if (rasterScale <= 0) rasterScale = 1d;
+            return Math.Max(0, appWindow.TitleBar.RightInset / rasterScale);
+        }
+        catch
+        {
+            // Keep a conservative fallback if the window is between presentation states.
+            return 138;
+        }
     }
 }

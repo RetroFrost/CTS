@@ -9,14 +9,18 @@ public sealed partial class MainWindow
 {
     private async Task RenderSoundtrackCompositionAsync(MediaComposition composition, StorageFile outputFile, CancellationToken cancellationToken)
     {
+        var width = Math.Clamp(SelectedExportWidth, 320, 3840);
+        var height = Math.Clamp(SelectedExportHeight, 240, 2160);
+        var fps = Math.Clamp(SelectedExportFps, 1, 120);
+
         var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.HD1080p);
-        profile.Video.Width = 1920;
-        profile.Video.Height = 1080;
-        profile.Video.FrameRate.Numerator = 60;
+        profile.Video.Width = (uint)width;
+        profile.Video.Height = (uint)height;
+        profile.Video.FrameRate.Numerator = (uint)fps;
         profile.Video.FrameRate.Denominator = 1;
         profile.Video.PixelAspectRatio.Numerator = 1;
         profile.Video.PixelAspectRatio.Denominator = 1;
-        profile.Video.Bitrate = 12_000_000;
+        profile.Video.Bitrate = CalculateVideoBitrate(width, height, fps);
         if (profile.Audio is not null) profile.Audio.Bitrate = 192_000;
 
         ExportStatusText.Text = "Adding soundtrack…";
@@ -28,7 +32,10 @@ public sealed partial class MainWindow
             {
                 var p = Math.Clamp(progress, 0, 100);
                 ExportProgressBar.Value = p;
-                ExportStatusText.Text = $"Adding soundtrack… {p:0}%";
+                var writtenBytes = File.Exists(outputFile.Path) ? new FileInfo(outputFile.Path).Length : 0;
+                var detail = $"Adding soundtrack · {p:0}% · {FormatByteCount(writtenBytes)} written";
+                ExportStatusText.Text = detail;
+                UpdateActivityWatcher("Video export", detail, p);
             });
         };
 

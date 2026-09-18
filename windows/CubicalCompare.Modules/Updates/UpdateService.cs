@@ -114,37 +114,51 @@ public sealed class CubicalUpdateService
         Directory.CreateDirectory(updateRoot);
         var zipPath = Path.Combine(updateRoot, "CubicalCompare-update.zip");
         var scriptPath = Path.Combine(updateRoot, "Apply-CubicalCompareUpdate.ps1");
+        var helperStarted = false;
 
-        await DownloadAsync(candidate.DownloadUri, zipPath, progress, cancellationToken);
-        progress?.Report(new CubicalUpdateProgress("Validating download", 100, new FileInfo(zipPath).Length, new FileInfo(zipPath).Length));
-        ValidatePortableArchive(zipPath, executableName);
-        await File.WriteAllTextAsync(scriptPath, BuildPortableUpdateScript(), cancellationToken);
-
-        var target = Path.GetFullPath(applicationDirectory);
-        var requiresElevation = !CanWriteDirectory(target);
-        var process = Process.GetCurrentProcess();
-        var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{Escape(scriptPath)}\" " +
-                   $"-ProcessId {process.Id} -ZipPath \"{Escape(zipPath)}\" " +
-                   $"-TargetDirectory \"{Escape(target)}\" -ExecutableName \"{Escape(executableName)}\"";
-
-        var info = new ProcessStartInfo
+        try
         {
-            FileName = "powershell.exe",
-            Arguments = args,
-            UseShellExecute = true,
-            WindowStyle = ProcessWindowStyle.Hidden,
-        };
-        if (requiresElevation)
-        {
-            info.Verb = "runas";
-            info.WindowStyle = ProcessWindowStyle.Normal;
+            await DownloadAsync(candidate.DownloadUri, zipPath, progress, cancellationToken);
+            var downloadedBytes = new FileInfo(zipPath).Length;
+            progress?.Report(new CubicalUpdateProgress("Validating download", 100, downloadedBytes, downloadedBytes));
+            ValidatePortableArchive(zipPath, executableName);
+            await File.WriteAllTextAsync(scriptPath, BuildPortableUpdateScript(), cancellationToken);
+
+            var target = Path.GetFullPath(applicationDirectory);
+            var requiresElevation = !CanWriteDirectory(target);
+            var process = Process.GetCurrentProcess();
+            var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{Escape(scriptPath)}\" " +
+                       $"-ProcessId {process.Id} -ZipPath \"{Escape(zipPath)}\" " +
+                       $"-TargetDirectory \"{Escape(target)}\" -ExecutableName \"{Escape(executableName)}\"";
+
+            var info = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = args,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            if (requiresElevation)
+            {
+                info.Verb = "runas";
+                info.WindowStyle = ProcessWindowStyle.Normal;
+            }
+
+            _ = Process.Start(info)
+                ?? throw new InvalidOperationException("Windows could not start the portable update helper.");
+            helperStarted = true;
+
+            // Caller should close the running app so the helper can replace locked files.
+            return true;
         }
-
-        _ = Process.Start(info)
-            ?? throw new InvalidOperationException("Windows could not start the portable update helper.");
-
-        // Caller should close the running app so the helper can replace locked files.
-        return true;
+        finally
+        {
+            if (!helperStarted)
+            {
+                try { Directory.Delete(updateRoot, recursive: true); }
+                catch { }
+            }
+        }
     }
 
     private static async Task<CubicalUpdateCandidate?> CheckPortableZipAsync(
@@ -156,6 +170,7 @@ public sealed class CubicalUpdateService
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
+        var available = new List<CubicalUpdateCandidate>();
         foreach (var release in document.RootElement.EnumerateArray())
         {
             if (release.TryGetProperty("draft", out var draft) && draft.GetBoolean())
@@ -193,7 +208,10 @@ public sealed class CubicalUpdateService
                 candidates.Add((name, uri, score));
             }
 
-            var selected = candidates.OrderByDescending(x => x.Score).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            var selected = candidates
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
             if (selected.Uri is null)
                 continue;
 
@@ -202,16 +220,19 @@ public sealed class CubicalUpdateService
                 ? parsedRelease
                 : new Uri(ReleasesPageUrl);
 
-            return new CubicalUpdateCandidate(
+            available.Add(new CubicalUpdateCandidate(
                 CubicalUpdateDelivery.PortableZip,
                 Normalize(version),
                 tag,
                 selected.Name,
                 selected.Uri,
-                releaseUrl);
+                releaseUrl));
         }
 
-        return null;
+        return available
+            .OrderByDescending(candidate => candidate.Version)
+            .ThenBy(candidate => candidate.Tag, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
     }
 
     private static bool IsPortableWindowsZip(string name)

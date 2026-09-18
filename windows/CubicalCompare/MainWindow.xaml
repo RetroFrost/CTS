@@ -10,13 +10,13 @@
         <MicaBackdrop Kind="BaseAlt" />
     </Window.SystemBackdrop>
 
-    <Grid RequestedTheme="Light" Background="{StaticResource EditorBackgroundBrush}">
+    <Grid RequestedTheme="Light" Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="64" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border x:Name="AppTitleBar" Grid.Row="0" Background="{StaticResource EditorSurfaceBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="0,0,0,1">
+        <Border x:Name="AppTitleBar" Grid.Row="0" Background="Transparent" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="0,0,0,1">
             <Grid Padding="18,0,152,0" ColumnSpacing="14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -59,7 +59,7 @@
             Background="Transparent"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
-            IsPaneToggleButtonVisible="False"
+            IsPaneToggleButtonVisible="True"
             PaneDisplayMode="Left"
             IsPaneOpen="True"
             OpenPaneLength="220"
@@ -67,41 +67,22 @@
             SelectionChanged="RootNavigation_SelectionChanged">
 
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="Home" Tag="project">
+                <NavigationViewItem Content="Workspace" Tag="project">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Home" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Project" Tag="project">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Document" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Cards" Tag="project">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Pictures" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Style &amp; Model" Tag="renderer">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Soundtrack" Tag="project">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Microphone" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Text &amp; Fonts" Tag="project">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Font" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Export" Tag="project">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Save" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItemHeader Content="TOOLS" />
-                <NavigationViewItem Content="Megapacks" Tag="assets">
+                <NavigationViewItem Content="MegaPacks" Tag="assets">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Library" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Thumbnail" Tag="thumbnail">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Pictures" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Renderer" Tag="renderer">
+                <NavigationViewItem Content="Style &amp; Model" Tag="renderer">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <NavigationView.FooterMenuItems>
-                <NavigationViewItem Content="Settings" Tag="project">
+                <NavigationViewItem Content="Settings" Tag="settings">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
@@ -148,23 +129,6 @@
                                                     <TextBlock Text="60 FPS" Foreground="#DCE7F3" FontSize="12" />
                                                 </StackPanel>
                                             </Border>
-
-                                            <Border Width="76" Height="76" CornerRadius="38" Background="#B9181F26" BorderBrush="#E8FFFFFF" BorderThickness="2" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                                                <SymbolIcon Symbol="Play" Foreground="White" />
-                                            </Border>
-
-                                            <Border VerticalAlignment="Bottom" Height="34" Background="#A8000000" IsHitTestVisible="False">
-                                                <Grid Padding="14,0" ColumnSpacing="10">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="Preview" Foreground="White" VerticalAlignment="Center" FontSize="11" />
-                                                    <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="42" Height="4" VerticalAlignment="Center" Foreground="#4AA3FF" />
-                                                    <TextBlock Grid.Column="2" Text="Right-click a card to transform" Foreground="#DCE7F3" VerticalAlignment="Center" FontSize="11" />
-                                                </Grid>
-                                            </Border>
                                         </Grid>
                                     </Border>
                                 </Viewbox>
@@ -186,7 +150,6 @@
                                 <TextBlock x:Name="FrameCounterText" Grid.Column="1" Text="Frame —" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" MinWidth="88" />
                                 <Slider x:Name="ProjectFrameSlider" Grid.Column="2" Minimum="0" Maximum="0" Value="0" IsEnabled="False" StepFrequency="1" ValueChanged="ProjectFrameSlider_ValueChanged" VerticalAlignment="Center" />
                                 <TextBlock x:Name="TimelineStatusText" Grid.Column="3" Text="Load a renderer to enable timeline" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" MaxWidth="260" TextTrimming="CharacterEllipsis" />
-                                <Button Grid.Column="4" Content="Fit" Padding="12,4" />
                             </Grid>
                         </Border>
 
@@ -278,28 +241,7 @@
 
                     <Border Grid.Column="2" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="0">
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="50" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <Border BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="0,0,0,1">
-                                <Grid ColumnSpacing="0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Button Content="Card" Background="Transparent" Foreground="{StaticResource EditorAccentBrush}" FontWeight="SemiBold" />
-                                    <Button Grid.Column="1" Content="Text" Background="Transparent" />
-                                    <Button Grid.Column="2" Content="Style" Background="Transparent" />
-                                    <Button Grid.Column="3" Content="Project" Background="Transparent" />
-                                    <Rectangle Height="2" Fill="{StaticResource EditorAccentBrush}" VerticalAlignment="Bottom" Grid.Column="0" Margin="12,0" />
-                                </Grid>
-                            </Border>
-
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel DataContext="{Binding SelectedItem, ElementName=CardsList}" Spacing="10" Padding="14,12,14,16">
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
@@ -536,7 +478,7 @@
                     <Border Grid.Row="3" Margin="0,18,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
                         <Grid ColumnSpacing="18">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="300" />
+                                <ColumnDefinition Width="230" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="8">
@@ -547,7 +489,7 @@
                                 <TextBlock x:Name="RendererSourceText" Text="" TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
                                 <TextBlock x:Name="RendererCompatibilityText" Text="" TextWrapping="Wrap" Margin="0,8,0,0" />
                             </StackPanel>
-                            <Border Grid.Column="1" Background="Black" CornerRadius="10" MinWidth="420" MinHeight="236">
+                            <Border Grid.Column="1" Background="Black" CornerRadius="10" MinHeight="180">
                                 <Image x:Name="RendererPagePreviewImage" Stretch="Uniform" />
                             </Border>
                         </Grid>
@@ -568,7 +510,6 @@
                 Background="{StaticResource EditorSurfaceRaisedBrush}"
                 BorderBrush="{StaticResource EditorBorderStrongBrush}"
                 BorderThickness="1"
-                Shadow="{ThemeResource ContentDialogShadow}"
                 Visibility="Collapsed">
             <Grid RowSpacing="8">
                 <Grid.RowDefinitions>
