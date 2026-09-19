@@ -171,15 +171,55 @@ internal static class SmartBadgeSequence
                 throw new InvalidDataException($"Smart badge sequence '{root}' has an unsafe part folder.");
 
             var prefix = root + "/" + folder.Trim('/') + "/";
-            var frames = scene.Assets.Keys
+            var frameCandidates = scene.Assets.Keys
                 .Where(path => Normalize(path).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 .Where(IsFrameAsset)
-                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-                .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            if (frames.Length == 0)
+            if (frameCandidates.Length == 0)
                 throw new InvalidDataException($"Smart badge sequence '{root}' part '{folder}' has no frame images.");
+
+            // Exact animation sequences are normally numbered 0000.png, 0001.png, ...
+            // Sort numerically when every stem is numeric and reject missing/duplicate
+            // indexes. This prevents a damaged package from silently skipping visible
+            // source frames while still allowing descriptive filenames for non-numeric
+            // authoring sequences.
+            var numbered = frameCandidates
+                .Select(path => (
+                    Path: path,
+                    Parsed: int.TryParse(Path.GetFileNameWithoutExtension(path), out var number),
+                    Number: number))
+                .ToArray();
+
+            string[] frames;
+            if (numbered.All(x => x.Parsed))
+            {
+                var ordered = numbered
+                    .OrderBy(x => x.Number)
+                    .ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                for (var frameIndex = 1; frameIndex < ordered.Length; frameIndex++)
+                {
+                    var previous = ordered[frameIndex - 1].Number;
+                    var current = ordered[frameIndex].Number;
+                    if (current == previous)
+                        throw new InvalidDataException(
+                            $"Smart badge sequence '{root}' part '{folder}' contains duplicate frame index {current}.");
+                    if (current != previous + 1)
+                        throw new InvalidDataException(
+                            $"Smart badge sequence '{root}' part '{folder}' is missing frame index {previous + 1}; exact sequences must be contiguous.");
+                }
+
+                frames = ordered.Select(x => x.Path).ToArray();
+            }
+            else
+            {
+                frames = frameCandidates
+                    .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+            }
 
             parts.Add(new SmartBadgePartDefinition(type, count, pause, folder, frames, templateOffset));
             templateOffset += frames.Length;
