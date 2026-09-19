@@ -388,7 +388,7 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    public const string AppVersion = "3.0.301";
+    public const string AppVersion = "4.2.1";
     public const int RendererApi = 3;
 
     private static readonly HashSet<string> Engines = new(StringComparer.Ordinal)
@@ -417,6 +417,15 @@ public static class RendererCapabilities
         "relationships-rich-typography", "relationships-shadow-mask-v1", "relationships-shadow-outside-v2",
         "relationships-single-owner-pass-v1", "relationships-windowed-card-tracks-v1", "infinite-timeline-source-v1",
         "infinite-timeline-source-v2", "illustrated-project-layout-v1", "renderer-font-asset-v1",
+
+        // 4.2.1 accuracy pack: each feature has a real evaluator/renderer or validation path.
+        "source-exact-opening-overlay", "source-exact-outro-overlay", "verified-opening-boundaries",
+        "verified-outro-boundaries", "verified-266-frame-conveyor", "source-region-crop-v1",
+        "source-native-size-v1", "raster-filter-mode-v1", "deterministic-pixel-snap-v1",
+        "subpixel-transform-v1", "clip-antialias-control-v1", "local-space-clip-v1",
+        "deterministic-z-index-v1", "local-frame-offset-v1", "dense-track-stride-v1",
+        "exact-step-interpolation-v1", "exact-linear-interpolation-v1",
+        "deterministic-alpha-rounding-v1", "extended-blend-modes-v1", "source-raster-premul-alpha-v1",
     };
 
     public static RendererValidationReport Report(RendererSpec spec)
@@ -431,7 +440,129 @@ public static class RendererCapabilities
         if (spec.ReferenceWidth != 1920 || spec.ReferenceHeight != 1080) warnings.Add($"Reference canvas is {spec.ReferenceWidth}×{spec.ReferenceHeight}; exports may be scaled.");
         if (spec.ReferenceFps != 60) warnings.Add($"Reference frame rate is {spec.ReferenceFps} fps.");
         if (spec.PrecisionMode == "frame-exact" && spec.TimelineUnit != "frames") errors.Add("Frame-exact renderers must use frame timeline units.");
+        ValidateAccuracy421(spec, errors, warnings);
         return new RendererValidationReport(errors, warnings);
+    }
+
+    private static void ValidateAccuracy421(RendererSpec spec, List<string> errors, List<string> warnings)
+    {
+        var scene = spec.SceneV3;
+        if (scene is null) return;
+
+        bool Has(string feature) => spec.RequiredFeatures.Contains(feature, StringComparer.Ordinal);
+
+        var opening = scene.Objects.FirstOrDefault(obj =>
+            obj.Kind.Contains("opening", StringComparison.OrdinalIgnoreCase));
+        var outro = scene.Objects.FirstOrDefault(obj =>
+            obj.Kind.Contains("outro", StringComparison.OrdinalIgnoreCase));
+
+        if (Has("source-exact-opening-overlay"))
+        {
+            if (opening is null || opening.Resource is null || !scene.Resources.TryGetValue(opening.Resource, out var resource))
+            {
+                errors.Add("source-exact-opening-overlay requires a frame-addressed opening overlay object.");
+            }
+            else
+            {
+                var type = resource.String("type", "");
+                if (type is not ("exact-outro-overlay" or "exact-opening-overlay" or "source-exact-opening-overlay"))
+                    errors.Add($"Opening overlay resource type '{type}' is not source-exact.");
+            }
+        }
+
+        if (Has("source-exact-outro-overlay"))
+        {
+            if (outro is null || outro.Resource is null || !scene.Resources.TryGetValue(outro.Resource, out var resource))
+            {
+                errors.Add("source-exact-outro-overlay requires a frame-addressed outro overlay object.");
+            }
+            else
+            {
+                var type = resource.String("type", "");
+                if (type is not ("exact-outro-overlay" or "source-exact-outro-overlay"))
+                    errors.Add($"Outro overlay resource type '{type}' is not source-exact.");
+            }
+        }
+
+        if (Has("verified-opening-boundaries"))
+        {
+            if (opening is null)
+            {
+                errors.Add("verified-opening-boundaries requires an opening object.");
+            }
+            else
+            {
+                if (opening.LifespanStart != 0)
+                    errors.Add($"Verified opening must begin at frame 0, not {opening.LifespanStart}.");
+                var firstSteady = scene.Objects
+                    .Where(obj => !obj.Kind.Contains("opening", StringComparison.OrdinalIgnoreCase) &&
+                                  !obj.Kind.Contains("outro", StringComparison.OrdinalIgnoreCase))
+                    .Select(obj => obj.LifespanStart)
+                    .DefaultIfEmpty(scene.Frames)
+                    .Min();
+                if (opening.LifespanEnd >= firstSteady)
+                    errors.Add("Verified opening overlaps the steady renderer-owned scene.");
+            }
+        }
+
+        if (Has("verified-outro-boundaries"))
+        {
+            if (outro is null)
+            {
+                errors.Add("verified-outro-boundaries requires an outro object.");
+            }
+            else if (outro.LifespanEnd != scene.Frames - 1)
+            {
+                errors.Add($"Verified outro must end at frame {scene.Frames - 1}, not {outro.LifespanEnd}.");
+            }
+        }
+
+        if (Has("verified-266-frame-conveyor"))
+        {
+            var verified = false;
+            foreach (var selector in scene.Selectors)
+            {
+                var properties = selector.Properties;
+                if (properties.ValueKind != JsonValueKind.Object ||
+                    !properties.TryGetProperty("movement", out var movement) ||
+                    movement.ValueKind != JsonValueKind.Object ||
+                    !movement.TryGetProperty("x", out var x) ||
+                    x.ValueKind != JsonValueKind.Object ||
+                    !x.TryGetProperty("dense", out var dense))
+                    continue;
+
+                JsonElement values;
+                if (dense.ValueKind == JsonValueKind.Array) values = dense;
+                else if (dense.ValueKind == JsonValueKind.Object && dense.TryGetProperty("values", out values) && values.ValueKind == JsonValueKind.Array) { }
+                else continue;
+
+                if (values.GetArrayLength() <= 266 ||
+                    !values[0].TryGetDouble(out var first) ||
+                    !values[266].TryGetDouble(out var next))
+                    continue;
+
+                var displacement = Math.Abs(next - first);
+                var expected = Math.Max(1d, spec.SlotPitch);
+                var tolerance = Math.Max(8d, expected * 0.03d);
+                if (Math.Abs(displacement - expected) <= tolerance)
+                {
+                    verified = true;
+                    break;
+                }
+            }
+
+            if (!verified)
+                errors.Add("verified-266-frame-conveyor requires a dense movement.x track whose 266-frame displacement matches the card pitch.");
+        }
+
+        if (Has("source-native-size-v1") && scene.Resources.Values.Any(resource =>
+                resource.ValueKind == JsonValueKind.Object &&
+                resource.String("type", "").Contains("raster", StringComparison.OrdinalIgnoreCase) &&
+                resource.Double("width", 0) < 0))
+            errors.Add("source-native-size-v1 resources cannot declare negative dimensions.");
+
+        if (Has("subpixel-transform-v1") && Has("deterministic-pixel-snap-v1"))
+            warnings.Add("Both subpixel-transform-v1 and deterministic-pixel-snap-v1 are enabled; pixelSnap is applied only where explicitly requested.");
     }
 
     public static int CompareVersions(string a, string b)
