@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.1.6 — 2026-09-19
+
+- Added **Smart Card Animation** for frame-addressed card-shell animation instead of relying only on procedural card reconstruction.
+- Smart Card plates stay transparent outside the card and keep project artwork, title and description live.
+- Added per-frame artwork destination + clip geometry so source reveal animation uncovers the live artwork without rescaling it.
+- Added live `jsparse` title and description fields; descriptions retain wrapped Relationships typography.
+- Opening card sequences can play one source frame per renderer frame; steady conveyor cards can hold the final fully formed card plate.
+- Smart Card resources use the same contiguous numeric-frame validation as Smart Badge resources, so missing/duplicate source frames are rejected.
+- Smart Badge, fast delta updater, native no-runtime Setup.exe and automatic restart behavior remain included.
+
+
 ## 4.2.1.5 — 2026-09-19
 
 - Smart Badge sequences now use one-to-one source-frame playback whenever their FPS matches the renderer reference FPS.
