@@ -388,7 +388,7 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    public const string AppVersion = "4.2.1";
+    public const string AppVersion = "4.2.1.1";
     public const int RendererApi = 3;
 
     private static readonly HashSet<string> Engines = new(StringComparer.Ordinal)
@@ -426,6 +426,9 @@ public static class RendererCapabilities
         "deterministic-z-index-v1", "local-frame-offset-v1", "dense-track-stride-v1",
         "exact-step-interpolation-v1", "exact-linear-interpolation-v1",
         "deterministic-alpha-rounding-v1", "extended-blend-modes-v1", "source-raster-premul-alpha-v1",
+
+        // 4.2.1.1 Smart Features.
+        "smart-badge-animation-v1", "smart-badge-jsparse-v1", "bootanimation-frame-sequence-v1",
     };
 
     public static RendererValidationReport Report(RendererSpec spec)
@@ -441,6 +444,7 @@ public static class RendererCapabilities
         if (spec.ReferenceFps != 60) warnings.Add($"Reference frame rate is {spec.ReferenceFps} fps.");
         if (spec.PrecisionMode == "frame-exact" && spec.TimelineUnit != "frames") errors.Add("Frame-exact renderers must use frame timeline units.");
         ValidateAccuracy421(spec, errors, warnings);
+        ValidateSmartFeatures4211(spec, errors, warnings);
         return new RendererValidationReport(errors, warnings);
     }
 
@@ -563,6 +567,56 @@ public static class RendererCapabilities
 
         if (Has("subpixel-transform-v1") && Has("deterministic-pixel-snap-v1"))
             warnings.Add("Both subpixel-transform-v1 and deterministic-pixel-snap-v1 are enabled; pixelSnap is applied only where explicitly requested.");
+    }
+
+    private static void ValidateSmartFeatures4211(RendererSpec spec, List<string> errors, List<string> warnings)
+    {
+        var scene = spec.SceneV3;
+        if (scene is null) return;
+
+        bool Has(string feature) => spec.RequiredFeatures.Contains(feature, StringComparer.Ordinal);
+        var smartResources = scene.Resources
+            .Where(pair => pair.Value.ValueKind == JsonValueKind.Object &&
+                           pair.Value.String("type", "").Equals("smart-badge-animation", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if ((Has("smart-badge-animation-v1") || Has("smart-badge-jsparse-v1") || Has("bootanimation-frame-sequence-v1")) &&
+            smartResources.Length == 0)
+        {
+            errors.Add("Smart badge features require at least one smart-badge-animation resource.");
+            return;
+        }
+
+        foreach (var pair in smartResources)
+        {
+            var root = pair.Value.String("sequenceRoot", "");
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                errors.Add($"Smart badge resource '{pair.Key}' has no sequenceRoot.");
+                continue;
+            }
+
+            foreach (var error in SmartBadgeSequence.Validate(scene, root))
+                errors.Add($"Smart badge resource '{pair.Key}': {error}");
+        }
+
+        var smartObjects = scene.Objects.Where(obj =>
+            obj.Resource is not null &&
+            scene.Resources.TryGetValue(obj.Resource, out var resource) &&
+            resource.String("type", "").Equals("smart-badge-animation", StringComparison.OrdinalIgnoreCase)).ToArray();
+
+        foreach (var obj in smartObjects)
+        {
+            var hasIndex = obj.Raw.ValueKind == JsonValueKind.Object &&
+                           ((obj.Raw.TryGetProperty("cardIndex", out var cardIndex) && cardIndex.TryGetInt32(out _)) ||
+                            (obj.Raw.TryGetProperty("dataIndex", out var dataIndex) && dataIndex.TryGetInt32(out _))) ||
+                           obj.Id.LastIndexOf('@') is var at && at >= 0 && int.TryParse(obj.Id[(at + 1)..], out _);
+            if (!hasIndex)
+                errors.Add($"Smart badge object '{obj.Id}' needs cardIndex/dataIndex or an @index id suffix.");
+        }
+
+        if (smartResources.Length > 0 && !spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal))
+            warnings.Add("Smart badge animation resources normally pair with project-card-data so jsparse fields can receive live card values.");
     }
 
     public static int CompareVersions(string a, string b)
