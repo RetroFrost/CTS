@@ -25,7 +25,7 @@ $cmdFile = Join-Path $tempDir 'build.cmd'
 @echo off
 call "$vcvars"
 if errorlevel 1 exit /b %errorlevel%
-cl.exe /nologo /std:c++17 /O2 /MT /EHsc "$source" /link /SUBSYSTEM:WINDOWS /OUT:"$launcher" user32.lib comctl32.lib shell32.lib ole32.lib
+cl.exe /nologo /std:c++17 /O2 /MT /EHsc "$source" /link /SUBSYSTEM:WINDOWS /OUT:"$launcher" user32.lib gdi32.lib comctl32.lib shell32.lib ole32.lib
 exit /b %errorlevel%
 "@ | Set-Content $cmdFile -Encoding ASCII
 
