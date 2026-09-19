@@ -93,8 +93,21 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.4 · Fast native setup",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• removed the huge self-contained .NET wrapper around Setup.exe\n• native Velopack setup now opens directly and is smoke-tested for fast visible startup\n• setup fallbacks use direct process launch instead of Windows shell resolution, preventing Microsoft Store fallbacks\n• fast delta updates and no-OK automatic restart remain enabled",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.3 · No-block update restart",
             FontSize = 14,
+            Margin = new Thickness(0, 4, 0, 0),
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         });
         changelogPanel.Children.Add(new TextBlock
