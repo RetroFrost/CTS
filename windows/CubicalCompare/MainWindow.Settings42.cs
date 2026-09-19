@@ -93,8 +93,21 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.7 · SmartBadge v2",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• one renderer can embed multiple badge-animation ZIPs and choose one per card\n• nested badge packs keep value/unit/header live through jsparse\n• shine/glass overlay frames now composite after live text, so the shine carries across the text too\n• v3 packages can wrap exact ribbon renderers while adding SmartBadge v2 sidecars\n• nested ZIPs and numbered frame continuity are validated before use",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.6 · Smart Card Animation",
             FontSize = 14,
+            Margin = new Thickness(0, 4, 0, 0),
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         });
         changelogPanel.Children.Add(new TextBlock
