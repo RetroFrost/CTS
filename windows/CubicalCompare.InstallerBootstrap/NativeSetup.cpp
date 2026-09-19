@@ -1,5 +1,6 @@
 #define UNICODE
 #define _UNICODE
+#define NOMINMAX
 #include <windows.h>
 #include <commctrl.h>
 #include <shellapi.h>
@@ -7,10 +8,12 @@
 #include <vector>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CubicalCompareNativeSetup";
@@ -76,7 +79,7 @@ void ExtractPayload(const std::wstring& self, const std::wstring& destination) {
     std::vector<char> buffer(kBufferSize);
     unsigned long long remaining = payloadSize;
     while (remaining > 0) {
-        const auto chunk = static_cast<std::streamsize>(min<unsigned long long>(remaining, buffer.size()));
+        const auto chunk = static_cast<std::streamsize>(std::min<unsigned long long>(remaining, buffer.size()));
         input.read(buffer.data(), chunk);
         if (input.gcount() != chunk) throw std::runtime_error("Installer payload ended unexpectedly.");
         output.write(buffer.data(), chunk);
