@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.2"
+          $version = "4.2.1.3"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.1.2 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.3"
+          $velopackVersion = "4.2.4"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -80,6 +80,19 @@ jobs:
             -p:InformationalVersion="$env:CC_VERSION+${{ github.sha }}" `
             -o artifacts/publish
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
+
+      - name: Verify update restart does not block on Velopack OK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Get-Content 'windows/CubicalCompare.Modules/Updates/UpdateService.cs' -Raw
+          if ($source -match 'ApplyUpdatesAndRestart\s*\(') {
+            throw 'In-app package updates must not use ApplyUpdatesAndRestart; its Velopack UI can block on a final OK acknowledgement.'
+          }
+          if ($source -notmatch 'WaitExitThenApplyUpdates\s*\(' -or $source -notmatch 'silent:\s*true' -or $source -notmatch 'restart:\s*true') {
+            throw 'Package updater must hand off with WaitExitThenApplyUpdates(silent: true, restart: true).'
+          }
+          Write-Host 'Verified package update handoff has no blocking Velopack completion acknowledgement.'
 
       - name: Verify .NET 10 modular output
         shell: pwsh
@@ -301,6 +314,7 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - In-app package updates no longer stop on Velopack's final OK acknowledgement; Cubical Compare shows its own progress, then performs the file-swap handoff without a blocking completion dialog and restarts automatically.
           - Reliability-first automatic updater replaces the old fixed Update from ZIP path.
           - Real Velopack-managed installs prefer the verified full .nupkg + releases.win.json feed automatically.
           - Installed copies fall back to the visible Setup.exe if the package feed is unavailable or does not resolve safely.
