@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.2.1.3 — 2026-09-19
+
+- Removed the blocking Velopack **OK** acknowledgement from in-app package updates.
+- Cubical Compare now keeps its own update progress visible during download/staging, then hands off to Velopack's silent file-swap phase and restarts automatically.
+- The user-facing updater no longer exposes the internal Velopack package version during the apply phase.
+- Installed copies still prefer verified `.nupkg` + `releases.win.json` updates when available, with Setup.exe/portable fallbacks retained.
+- Added a CI guard so package updates cannot regress back to `ApplyUpdatesAndRestart` and its blocking completion dialog.
+
+
 ## 4.2.1.2 — 2026-09-19
 
 - Replaced the fixed **Update from ZIP** behaviour with an automatic reliability-first updater.
