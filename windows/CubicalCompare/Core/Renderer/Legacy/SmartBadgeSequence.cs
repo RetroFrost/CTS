@@ -243,6 +243,18 @@ internal static class SmartBadgeSequence
                 ReadNumberTrack(artworkElement, "alphas"));
         }
 
+        IReadOnlyList<string> overlayFrames = [];
+        var overlayFolder = Normalize(smart.String("overlayFolder", ""));
+        if (overlayFolder.Length > 0)
+        {
+            if (overlayFolder.Contains("..", StringComparison.Ordinal))
+                throw new InvalidDataException($"Smart sequence overlay folder '{overlayFolder}' is unsafe.");
+            overlayFrames = CollectFrameAssets(scene, root + "/" + overlayFolder, $"{root}/{overlayFolder}");
+            if (overlayFrames.Count != descriptor.TotalTemplateFrames)
+                throw new InvalidDataException(
+                    $"Smart sequence overlay folder '{overlayFolder}' has {overlayFrames.Count} frames; expected {descriptor.TotalTemplateFrames}.");
+        }
+
         return new SmartBadgeSequenceDefinition(
             root,
             descriptor.Width,
@@ -251,7 +263,8 @@ internal static class SmartBadgeSequence
             descriptor.Parts,
             fields,
             artwork,
-            scene.Assets);
+            scene.Assets,
+            overlayFrames);
     }
 
     private static SmartBadgeDescriptor ParseDescriptor(RendererSceneV3 scene, string root, string text)
@@ -291,59 +304,9 @@ internal static class SmartBadgeSequence
             if (folder.Length == 0 || folder.Contains("..", StringComparison.Ordinal))
                 throw new InvalidDataException($"Smart badge sequence '{root}' has an unsafe part folder.");
 
-            var prefix = root + "/" + folder.Trim('/') + "/";
-            var frameCandidates = scene.Assets.Keys
-                .Where(path => Normalize(path).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                .Where(IsFrameAsset)
-                .ToArray();
-
-            if (frameCandidates.Length == 0)
-                throw new InvalidDataException($"Smart badge sequence '{root}' part '{folder}' has no frame images.");
-
-            // Exact animation sequences are normally numbered 0000.png, 0001.png, ...
-            // Sort numerically when every stem is numeric and reject missing/duplicate
-            // indexes. This prevents a damaged package from silently skipping visible
-            // source frames while still allowing descriptive filenames for non-numeric
-            // authoring sequences.
-            var numbered = frameCandidates
-                .Select(path => (
-                    Path: path,
-                    Parsed: int.TryParse(Path.GetFileNameWithoutExtension(path), out var number),
-                    Number: number))
-                .ToArray();
-
-            string[] frames;
-            if (numbered.All(x => x.Parsed))
-            {
-                var ordered = numbered
-                    .OrderBy(x => x.Number)
-                    .ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-
-                for (var frameIndex = 1; frameIndex < ordered.Length; frameIndex++)
-                {
-                    var previous = ordered[frameIndex - 1].Number;
-                    var current = ordered[frameIndex].Number;
-                    if (current == previous)
-                        throw new InvalidDataException(
-                            $"Smart badge sequence '{root}' part '{folder}' contains duplicate frame index {current}.");
-                    if (current != previous + 1)
-                        throw new InvalidDataException(
-                            $"Smart badge sequence '{root}' part '{folder}' is missing frame index {previous + 1}; exact sequences must be contiguous.");
-                }
-
-                frames = ordered.Select(x => x.Path).ToArray();
-            }
-            else
-            {
-                frames = frameCandidates
-                    .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-            }
-
+            var frames = CollectFrameAssets(scene, root + "/" + folder.Trim('/'), $"{root}/{folder}");
             parts.Add(new SmartBadgePartDefinition(type, count, pause, folder, frames, templateOffset));
-            templateOffset += frames.Length;
+            templateOffset += frames.Count;
         }
 
         if (parts.Count == 0)
@@ -366,6 +329,49 @@ internal static class SmartBadgeSequence
                 return pair.Value;
         }
         return null;
+    }
+
+    private static IReadOnlyList<string> CollectFrameAssets(RendererSceneV3 scene, string prefixRoot, string label)
+    {
+        var prefix = Normalize(prefixRoot).Trim('/') + "/";
+        var frameCandidates = scene.Assets.Keys
+            .Where(path => Normalize(path).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Where(IsFrameAsset)
+            .ToArray();
+
+        if (frameCandidates.Length == 0)
+            throw new InvalidDataException($"Smart sequence '{label}' has no frame images.");
+
+        var numbered = frameCandidates
+            .Select(path => (
+                Path: path,
+                Parsed: int.TryParse(Path.GetFileNameWithoutExtension(path), out var number),
+                Number: number))
+            .ToArray();
+
+        if (!numbered.All(x => x.Parsed))
+            return frameCandidates
+                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        var ordered = numbered
+            .OrderBy(x => x.Number)
+            .ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        for (var frameIndex = 1; frameIndex < ordered.Length; frameIndex++)
+        {
+            var previous = ordered[frameIndex - 1].Number;
+            var current = ordered[frameIndex].Number;
+            if (current == previous)
+                throw new InvalidDataException($"Smart sequence '{label}' contains duplicate frame index {current}.");
+            if (current != previous + 1)
+                throw new InvalidDataException(
+                    $"Smart sequence '{label}' is missing frame index {previous + 1}; exact sequences must be contiguous.");
+        }
+
+        return ordered.Select(x => x.Path).ToArray();
     }
 
     private static bool IsFrameAsset(string path)
@@ -452,7 +458,10 @@ internal static class SmartBadgeSequence
         int Width,
         int Height,
         int Fps,
-        IReadOnlyList<SmartBadgePartDefinition> Parts);
+        IReadOnlyList<SmartBadgePartDefinition> Parts)
+    {
+        public int TotalTemplateFrames => Parts.Sum(part => part.Frames.Count);
+    }
 }
 
 internal sealed record SmartBadgePartDefinition(
@@ -555,8 +564,12 @@ internal sealed record SmartBadgeSequenceDefinition(
     IReadOnlyList<SmartBadgePartDefinition> Parts,
     IReadOnlyList<SmartBadgeFieldDefinition> Fields,
     SmartSequenceArtworkDefinition? Artwork,
-    IReadOnlyDictionary<string, byte[]> Assets)
+    IReadOnlyDictionary<string, byte[]> Assets,
+    IReadOnlyList<string> OverlayFrames)
 {
+    public string? OverlayAssetAt(int templateFrame) =>
+        templateFrame >= 0 && templateFrame < OverlayFrames.Count ? OverlayFrames[templateFrame] : null;
+
     public SmartBadgeFrameSelection? SelectFrame(int frame)
     {
         if (frame < 0 || Parts.Count == 0) return null;
