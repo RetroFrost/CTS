@@ -162,6 +162,24 @@ jobs:
           Remove-Item artifacts/velopack -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path artifacts/velopack -Force | Out-Null
 
+          # Fetch the previous published package/feed before packing. Velopack only
+          # creates delta packages when the previous release is present locally.
+          # This dramatically reduces normal update download/preparation time.
+          vpk download github `
+            --repoUrl "https://github.com/RetroFrost/CTS" `
+            --token "${{ github.token }}" `
+            --channel win `
+            --outputDir artifacts/velopack
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Could not fetch previous Velopack release; continuing with a full package only."
+          }
+
+          # Keep only update/feed history from the download. Public installer/portable
+          # assets are rebuilt below and must never be reused from the previous release.
+          Get-ChildItem artifacts/velopack -File | Where-Object {
+            $_.Name -Like '*-Setup.exe' -or $_.Name -Like '*-Portable.zip'
+          } | Remove-Item -Force -ErrorAction SilentlyContinue
+
           vpk pack `
             --packId CubicalCompare `
             --packVersion "$env:CC_VELOPACK_VERSION" `
@@ -169,17 +187,25 @@ jobs:
             --mainExe CubicalCompare.exe `
             --packTitle "Cubical Compare" `
             --runtime win-x64 `
+            --delta BestSpeed `
             --outputDir artifacts/velopack
           if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit code $LASTEXITCODE." }
 
           $setup = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like '*Setup.exe' | Select-Object -First 1
           $portable = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like '*Portable.zip' | Select-Object -First 1
-          $full = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like '*-full.nupkg' | Select-Object -First 1
+          $full = Get-ChildItem artifacts/velopack -File | Where-Object Name -EQ "CubicalCompare-$env:CC_VELOPACK_VERSION-full.nupkg" | Select-Object -First 1
+          $delta = Get-ChildItem artifacts/velopack -File | Where-Object Name -EQ "CubicalCompare-$env:CC_VELOPACK_VERSION-delta.nupkg" | Select-Object -First 1
           $index = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like 'releases.*.json' | Select-Object -First 1
           if (-not $setup) { throw 'Velopack did not produce Setup.exe.' }
           if (-not $portable) { throw 'Velopack did not produce Portable.zip.' }
-          if (-not $full) { throw 'Velopack did not produce a full update package.' }
+          if (-not $full) { throw 'Velopack did not produce the current full update package.' }
           if (-not $index) { throw 'Velopack did not produce a release index.' }
+          if ($delta) {
+            Write-Host "Fast delta package generated: $($delta.Name) ($([math]::Round($delta.Length / 1MB, 2)) MiB)"
+          }
+          else {
+            Write-Warning 'No delta package was generated; clients will automatically use the full package for this transition.'
+          }
 
           # Build the public interactive bootstrap. The embedded Velopack installer
           # runs with its normal visible progress UI and launches Cubical Compare when done.
@@ -286,6 +312,7 @@ jobs:
             $_.Name -Like '*-Setup.exe' -or
             $_.Name -Like '*-Portable.zip' -or
             $_.Name -Like '*-full.nupkg' -or
+            $_.Name -Like '*-delta.nupkg' -or
             $_.Name -Like 'releases.*.json'
           } | Sort-Object Name
           if ($public.Count -lt 4) { throw 'Expected Setup.exe, Portable.zip, full nupkg and release index before writing SHA256SUMS.txt.' }
@@ -315,6 +342,8 @@ jobs:
           ## Cubical Compare $env:CC_VERSION — Windows
 
           - In-app package updates no longer stop on Velopack's final OK acknowledgement; Cubical Compare shows its own progress, then performs the file-swap handoff without a blocking completion dialog and restarts automatically.
+          - CI now downloads the previous Velopack release before packing and generates BestSpeed delta packages when possible, so routine updates avoid re-downloading/re-preparing the full self-contained app.
+          - The updater reports whether it selected a fast delta package or a full package.
           - Reliability-first automatic updater replaces the old fixed Update from ZIP path.
           - Real Velopack-managed installs prefer the verified full .nupkg + releases.win.json feed automatically.
           - Installed copies fall back to the visible Setup.exe if the package feed is unavailable or does not resolve safely.
@@ -349,14 +378,16 @@ jobs:
               $_.Name -Like '*-Setup.exe' -or
               $_.Name -Like '*-Portable.zip' -or
               $_.Name -Like '*-full.nupkg' -or
+              $_.Name -Like '*-delta.nupkg' -or
               $_.Name -Like 'releases.*.json' -or
               $_.Name -eq 'SHA256SUMS.txt'
             } | Sort-Object @{ Expression = {
-              if ($_.Name -Like '*-full.nupkg') { 0 }
-              elseif ($_.Name -Like 'releases.*.json') { 1 }
-              elseif ($_.Name -Like '*-Portable.zip') { 2 }
-              elseif ($_.Name -Like '*-Setup.exe') { 3 }
-              else { 4 }
+              if ($_.Name -Like '*-delta.nupkg') { 0 }
+              elseif ($_.Name -Like '*-full.nupkg') { 1 }
+              elseif ($_.Name -Like 'releases.*.json') { 2 }
+              elseif ($_.Name -Like '*-Portable.zip') { 3 }
+              elseif ($_.Name -Like '*-Setup.exe') { 4 }
+              else { 5 }
             } }
           )
           if ($assets.Count -eq 0) { throw 'No release assets were selected for upload.' }
