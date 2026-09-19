@@ -1051,9 +1051,9 @@ public sealed class RendererEngine : IDisposable
         if (field.Source.Trim().Equals("description", StringComparison.OrdinalIgnoreCase))
         {
             canvas.Save();
-            var rotation = field.RotationAt(templateFrame);
-            if (Math.Abs(rotation) > 0.001f)
-                canvas.RotateDegrees(rotation, rect.MidX, rect.MidY);
+            var descriptionRotation = field.RotationAt(templateFrame);
+            if (Math.Abs(descriptionRotation) > 0.001f)
+                canvas.RotateDegrees(descriptionRotation, rect.MidX, rect.MidY);
 
             DrawRelationshipsDescription(
                 canvas,
