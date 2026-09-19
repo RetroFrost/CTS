@@ -93,8 +93,21 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.6 · Smart Card Animation",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• frame-addressed transparent card plates now animate the card shell itself\n• project artwork stays live through per-frame artwork destination + reveal clip geometry\n• title and description remain live jsparse fields\n• opening cards can play one source frame per renderer frame while steady cards hold the exact final plate\n• missing or duplicate numbered card frames are rejected instead of silently skipped",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.5 · Renderer frame accuracy",
             FontSize = 14,
+            Margin = new Thickness(0, 4, 0, 0),
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         });
         changelogPanel.Children.Add(new TextBlock
