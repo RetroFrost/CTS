@@ -93,8 +93,21 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.2 · Reliable automatic updater",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• automatically prefers verified Velopack .nupkg updates when the current install can use them\n• automatically falls back to the visible Setup.exe for installed copies\n• portable copies use ZIP only when it is the safer path\n• ZIP downloads retry, verify GitHub SHA-256 digests, fully stage before exit and roll back on copy failure\n• Updates now has one Install update action instead of a fixed Update from ZIP button",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.1 · Smart Features",
             FontSize = 14,
+            Margin = new Thickness(0, 4, 0, 0),
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         });
         changelogPanel.Children.Add(new TextBlock
