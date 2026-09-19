@@ -116,9 +116,53 @@ public static class RendererBundleReader
         var sceneEntry = entries.FirstOrDefault(x => x.Key.Equals("renderer.renderer3", StringComparison.OrdinalIgnoreCase));
         if (sceneEntry.Value == null) sceneEntry = entries.FirstOrDefault(x => x.Key.Equals("manifest.renderer3", StringComparison.OrdinalIgnoreCase));
         if (sceneEntry.Value == null) sceneEntry = entries.FirstOrDefault(x => x.Key.EndsWith(".renderer3", StringComparison.OrdinalIgnoreCase));
-        if (sceneEntry.Value == null) throw new InvalidDataException("Renderer v3 ZIP has no .renderer3 scene file.");
-        var assets = entries.Where(x => !x.Key.Equals(sceneEntry.Key, StringComparison.OrdinalIgnoreCase)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
-        return ReadV3Container(sceneEntry.Value, assets, packageBytes);
+        if (sceneEntry.Value != null)
+        {
+            var assets = entries
+                .Where(x => !x.Key.Equals(sceneEntry.Key, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+            var spec = ReadV3Container(sceneEntry.Value, assets, packageBytes);
+            spec.PackageAssets = assets;
+            AttachSmartBadgeV2Manifest(spec, assets);
+            return spec;
+        }
+
+        // SmartBadge v2 also allows a v3 ZIP package to wrap an existing exact
+        // legacy renderer. This keeps the proven ribbon/card/scroll engine intact
+        // while the package supplies multiple nested badge-animation ZIPs.
+        var legacyEntry = entries.FirstOrDefault(x => x.Key.Equals("renderer.renderer", StringComparison.OrdinalIgnoreCase));
+        if (legacyEntry.Value == null)
+            legacyEntry = entries.FirstOrDefault(x => x.Key.EndsWith(".renderer", StringComparison.OrdinalIgnoreCase));
+        if (legacyEntry.Value == null)
+            throw new InvalidDataException("Renderer v3 ZIP has no .renderer3 scene or wrapped .renderer file.");
+
+        var legacyAssets = entries
+            .Where(x => !x.Key.Equals(legacyEntry.Key, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+        var legacySpec = ReadLegacy(legacyEntry.Value);
+        legacySpec.PackageAssets = legacyAssets;
+        AttachSmartBadgeV2Manifest(legacySpec, legacyAssets);
+        return legacySpec;
+    }
+
+    private static void AttachSmartBadgeV2Manifest(RendererSpec spec, Dictionary<string, byte[]> assets)
+    {
+        var entry = assets.FirstOrDefault(pair =>
+            pair.Key.Equals("smartbadge-v2.json", StringComparison.OrdinalIgnoreCase) ||
+            pair.Key.EndsWith("/smartbadge-v2.json", StringComparison.OrdinalIgnoreCase));
+        if (entry.Value is null) return;
+
+        try
+        {
+            using var document = JsonDocument.Parse(entry.Value);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                throw new InvalidDataException("smartbadge-v2.json must contain a JSON object.");
+            spec.SmartBadgeV2Manifest = document.RootElement.Clone();
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException("smartbadge-v2.json is not valid JSON.", ex);
+        }
     }
 
     private static RendererSpec ReadV3Container(byte[] container, Dictionary<string, byte[]> assets, byte[] originalBytes)
