@@ -509,7 +509,7 @@ public static class RendererCapabilities
 
         // Smart Features.
         "smart-badge-animation-v1", "smart-badge-jsparse-v1", "bootanimation-frame-sequence-v1",
-        "smart-card-animation-v1", "smart-card-jsparse-v1",
+        "smart-card-animation-v1", "smart-card-jsparse-v1", "smart-card-layered-compositing-v1",
         "smart-badge-animation-v2", "embedded-badge-bootanimation-zips-v1",
         "per-card-badge-pack-selection-v1",
     };
@@ -711,6 +711,8 @@ public static class RendererCapabilities
                 var sequence = SmartBadgeSequence.Load(scene, root);
                 if (sequence.Artwork is null)
                     errors.Add($"Smart card resource '{pair.Key}' needs artwork geometry in smart.json.");
+                if (Has("smart-card-layered-compositing-v1") && sequence.OverlayFrames.Count == 0)
+                    errors.Add($"Smart card resource '{pair.Key}' needs overlayFolder frames so shine/glass can composite above live artwork and text.");
             }
             catch
             {
