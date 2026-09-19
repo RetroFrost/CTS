@@ -474,6 +474,8 @@ public static class RendererCapabilities
         // Smart Features.
         "smart-badge-animation-v1", "smart-badge-jsparse-v1", "bootanimation-frame-sequence-v1",
         "smart-card-animation-v1", "smart-card-jsparse-v1",
+        "smart-badge-animation-v2", "embedded-badge-bootanimation-zips-v1",
+        "per-card-badge-pack-selection-v1",
     };
 
     public static RendererValidationReport Report(RendererSpec spec)
@@ -490,6 +492,7 @@ public static class RendererCapabilities
         if (spec.PrecisionMode == "frame-exact" && spec.TimelineUnit != "frames") errors.Add("Frame-exact renderers must use frame timeline units.");
         ValidateAccuracy421(spec, errors, warnings);
         ValidateSmartFeatures4211(spec, errors, warnings);
+        ValidateSmartBadgeV2(spec, errors, warnings);
         return new RendererValidationReport(errors, warnings);
     }
 
@@ -699,6 +702,97 @@ public static class RendererCapabilities
         if ((smartBadgeResources.Length > 0 || smartCardResources.Length > 0) &&
             !spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal))
             warnings.Add("Smart animation resources normally pair with project-card-data so jsparse fields and artwork can receive live card values.");
+    }
+
+    private static void ValidateSmartBadgeV2(RendererSpec spec, List<string> errors, List<string> warnings)
+    {
+        var hasFeature = spec.RequiredFeatures.Contains("smart-badge-animation-v2", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("embedded-badge-bootanimation-zips-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("per-card-badge-pack-selection-v1", StringComparer.Ordinal);
+
+        if (spec.SmartBadgeV2Manifest is not JsonElement manifest)
+        {
+            if (hasFeature)
+                errors.Add("SmartBadge v2 features require smartbadge-v2.json inside the renderer package.");
+            return;
+        }
+
+        if (manifest.ValueKind != JsonValueKind.Object)
+        {
+            errors.Add("smartbadge-v2.json must be a JSON object.");
+            return;
+        }
+
+        if (manifest.Int("version", 0) != 2)
+            errors.Add("smartbadge-v2.json must declare version 2.");
+
+        if (!manifest.TryGetProperty("packs", out var packs) || packs.ValueKind != JsonValueKind.Object)
+        {
+            errors.Add("SmartBadge v2 requires a packs object.");
+            return;
+        }
+
+        var packAssets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in packs.EnumerateObject())
+        {
+            string asset;
+            if (property.Value.ValueKind == JsonValueKind.String)
+                asset = property.Value.GetString() ?? "";
+            else if (property.Value.ValueKind == JsonValueKind.Object)
+                asset = property.Value.String("asset", "");
+            else
+            {
+                errors.Add($"SmartBadge v2 pack '{property.Name}' must be a ZIP asset path or an object with asset.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(asset))
+            {
+                errors.Add($"SmartBadge v2 pack '{property.Name}' has no asset.");
+                continue;
+            }
+            if (!asset.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                warnings.Add($"SmartBadge v2 pack '{property.Name}' does not use a .zip file extension.");
+
+            packAssets[property.Name] = asset;
+            foreach (var error in SmartBadgeSequence.ValidateArchive(spec, asset))
+                errors.Add($"SmartBadge v2 pack '{property.Name}': {error}");
+        }
+
+        if (packAssets.Count == 0)
+            errors.Add("SmartBadge v2 has no usable badge packs.");
+
+        var defaultPack = manifest.String("defaultPack", "");
+        if (!string.IsNullOrWhiteSpace(defaultPack) && !packAssets.ContainsKey(defaultPack))
+            errors.Add($"SmartBadge v2 defaultPack '{defaultPack}' is not declared in packs.");
+
+        if (manifest.TryGetProperty("cards", out var cards) && cards.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in cards.EnumerateObject())
+            {
+                var pack = property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString() ?? ""
+                    : property.Value.ValueKind == JsonValueKind.Object
+                        ? property.Value.String("pack", defaultPack)
+                        : "";
+
+                if (string.IsNullOrWhiteSpace(pack))
+                {
+                    errors.Add($"SmartBadge v2 card selection '{property.Name}' has no pack.");
+                    continue;
+                }
+                if (!packAssets.ContainsKey(pack))
+                    errors.Add($"SmartBadge v2 card selection '{property.Name}' references unknown pack '{pack}'.");
+
+                if (property.Value.ValueKind == JsonValueKind.Object &&
+                    property.Value.TryGetProperty("startFrame", out var startFrame) &&
+                    (!startFrame.TryGetInt32(out var start) || start < 0))
+                    errors.Add($"SmartBadge v2 card selection '{property.Name}' has an invalid startFrame.");
+            }
+        }
+
+        if (spec.PackageAssets.Count == 0)
+            errors.Add("SmartBadge v2 requires renderer package sidecar assets.");
     }
 
     public static int CompareVersions(string a, string b)
