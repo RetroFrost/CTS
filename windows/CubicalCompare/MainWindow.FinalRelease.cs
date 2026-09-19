@@ -100,7 +100,7 @@ public sealed partial class MainWindow
 
         _updateStatusText = new TextBlock
         {
-            Text = "Updates use official GitHub Release assets. GitHub's generated source-code ZIP is never selected.",
+            Text = "Updates automatically choose the safest available path: verified Velopack package, visible Setup.exe, or portable ZIP fallback.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
         };
@@ -260,12 +260,18 @@ public sealed partial class MainWindow
             }
 
             _latestVersionText.Text = $"Latest Windows release · {candidate.Tag} · {candidate.AssetName}";
-            _updateStatusText.Text = candidate.Delivery == CubicalUpdateDelivery.Velopack
-                ? $"Update available: {FormatVersion(candidate.Version)}. Velopack can install it atomically and restart Cubical Compare."
-                : $"Update available: {FormatVersion(candidate.Version)}. This portable copy will update from the published Windows ZIP asset.";
-            _installUpdateButton.Content = candidate.Delivery == CubicalUpdateDelivery.Velopack
-                ? "Install update"
-                : "Update from ZIP";
+            var method = candidate.Delivery switch
+            {
+                CubicalUpdateDelivery.Velopack => "verified package update",
+                CubicalUpdateDelivery.SetupExe => "visible installer",
+                CubicalUpdateDelivery.PortableZip => "portable ZIP with rollback",
+                _ => "automatic updater",
+            };
+            var fallback = candidate.HasFallback && !string.IsNullOrWhiteSpace(candidate.FallbackAssetName)
+                ? $" If that path fails before applying, Cubical Compare will automatically fall back to {candidate.FallbackAssetName}."
+                : string.Empty;
+            _updateStatusText.Text = $"Update available: {FormatVersion(candidate.Version)}. Selected automatically: {method}. {candidate.SelectionReason}{fallback}";
+            _installUpdateButton.Content = "Install update";
             _installUpdateButton.Visibility = Visibility.Visible;
         }
         catch (Exception ex)
@@ -290,9 +296,13 @@ public sealed partial class MainWindow
         if (_installUpdateButton is not null)
             _installUpdateButton.IsEnabled = false;
         if (_updateStatusText is not null)
-            _updateStatusText.Text = _availableUpdate.Delivery == CubicalUpdateDelivery.Velopack
-                ? "Downloading and staging update…"
-                : "Downloading the portable Windows ZIP…";
+            _updateStatusText.Text = _availableUpdate.Delivery switch
+            {
+                CubicalUpdateDelivery.Velopack => "Starting verified package update…",
+                CubicalUpdateDelivery.SetupExe => "Downloading the visible update installer…",
+                CubicalUpdateDelivery.PortableZip => "Preparing portable update with rollback protection…",
+                _ => "Starting automatic update…",
+            };
 
         try
         {
@@ -354,7 +364,7 @@ public sealed partial class MainWindow
     }
 
     private static Version GetCurrentAppVersion()
-        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 1);
+        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 2);
 
     private static Version NormalizeVersion(Version version) => new(
         Math.Max(0, version.Major),
