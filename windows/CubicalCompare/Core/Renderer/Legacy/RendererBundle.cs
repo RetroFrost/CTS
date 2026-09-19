@@ -427,8 +427,9 @@ public static class RendererCapabilities
         "exact-step-interpolation-v1", "exact-linear-interpolation-v1",
         "deterministic-alpha-rounding-v1", "extended-blend-modes-v1", "source-raster-premul-alpha-v1",
 
-        // 4.2.1.1 Smart Features.
+        // Smart Features.
         "smart-badge-animation-v1", "smart-badge-jsparse-v1", "bootanimation-frame-sequence-v1",
+        "smart-card-animation-v1", "smart-card-jsparse-v1",
     };
 
     public static RendererValidationReport Report(RendererSpec spec)
@@ -575,19 +576,29 @@ public static class RendererCapabilities
         if (scene is null) return;
 
         bool Has(string feature) => spec.RequiredFeatures.Contains(feature, StringComparer.Ordinal);
-        var smartResources = scene.Resources
+        var smartBadgeResources = scene.Resources
             .Where(pair => pair.Value.ValueKind == JsonValueKind.Object &&
                            pair.Value.String("type", "").Equals("smart-badge-animation", StringComparison.OrdinalIgnoreCase))
             .ToArray();
+        var smartCardResources = scene.Resources
+            .Where(pair => pair.Value.ValueKind == JsonValueKind.Object &&
+                           pair.Value.String("type", "").Equals("smart-card-animation", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
 
-        if ((Has("smart-badge-animation-v1") || Has("smart-badge-jsparse-v1") || Has("bootanimation-frame-sequence-v1")) &&
-            smartResources.Length == 0)
-        {
+        if ((Has("smart-badge-animation-v1") || Has("smart-badge-jsparse-v1")) &&
+            smartBadgeResources.Length == 0)
             errors.Add("Smart badge features require at least one smart-badge-animation resource.");
-            return;
-        }
 
-        foreach (var pair in smartResources)
+        if ((Has("smart-card-animation-v1") || Has("smart-card-jsparse-v1")) &&
+            smartCardResources.Length == 0)
+            errors.Add("Smart card features require at least one smart-card-animation resource.");
+
+        if (Has("bootanimation-frame-sequence-v1") &&
+            smartBadgeResources.Length == 0 &&
+            smartCardResources.Length == 0)
+            errors.Add("bootanimation-frame-sequence-v1 requires at least one Smart Badge or Smart Card frame-sequence resource.");
+
+        foreach (var pair in smartBadgeResources)
         {
             var root = pair.Value.String("sequenceRoot", "");
             if (string.IsNullOrWhiteSpace(root))
@@ -600,10 +611,36 @@ public static class RendererCapabilities
                 errors.Add($"Smart badge resource '{pair.Key}': {error}");
         }
 
+        foreach (var pair in smartCardResources)
+        {
+            var root = pair.Value.String("sequenceRoot", "");
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                errors.Add($"Smart card resource '{pair.Key}' has no sequenceRoot.");
+                continue;
+            }
+
+            foreach (var error in SmartBadgeSequence.Validate(scene, root))
+                errors.Add($"Smart card resource '{pair.Key}': {error}");
+
+            try
+            {
+                var sequence = SmartBadgeSequence.Load(scene, root);
+                if (sequence.Artwork is null)
+                    errors.Add($"Smart card resource '{pair.Key}' needs artwork geometry in smart.json.");
+            }
+            catch
+            {
+                // Detailed parser error is already added above.
+            }
+        }
+
         var smartObjects = scene.Objects.Where(obj =>
             obj.Resource is not null &&
             scene.Resources.TryGetValue(obj.Resource, out var resource) &&
-            resource.String("type", "").Equals("smart-badge-animation", StringComparison.OrdinalIgnoreCase)).ToArray();
+            resource.String("type", "") is var type &&
+            (type.Equals("smart-badge-animation", StringComparison.OrdinalIgnoreCase) ||
+             type.Equals("smart-card-animation", StringComparison.OrdinalIgnoreCase))).ToArray();
 
         foreach (var obj in smartObjects)
         {
@@ -612,11 +649,12 @@ public static class RendererCapabilities
                             (obj.Raw.TryGetProperty("dataIndex", out var dataIndex) && dataIndex.TryGetInt32(out _))) ||
                            obj.Id.LastIndexOf('@') is var at && at >= 0 && int.TryParse(obj.Id[(at + 1)..], out _);
             if (!hasIndex)
-                errors.Add($"Smart badge object '{obj.Id}' needs cardIndex/dataIndex or an @index id suffix.");
+                errors.Add($"Smart animation object '{obj.Id}' needs cardIndex/dataIndex or an @index id suffix.");
         }
 
-        if (smartResources.Length > 0 && !spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal))
-            warnings.Add("Smart badge animation resources normally pair with project-card-data so jsparse fields can receive live card values.");
+        if ((smartBadgeResources.Length > 0 || smartCardResources.Length > 0) &&
+            !spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal))
+            warnings.Add("Smart animation resources normally pair with project-card-data so jsparse fields and artwork can receive live card values.");
     }
 
     public static int CompareVersions(string a, string b)
