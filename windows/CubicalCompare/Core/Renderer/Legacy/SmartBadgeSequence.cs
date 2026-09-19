@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -19,6 +20,10 @@ namespace CubicalCompare.Windows;
 internal static class SmartBadgeSequence
 {
     private static readonly ConditionalWeakTable<RendererSceneV3, Dictionary<string, SmartBadgeSequenceDefinition>> Cache = new();
+    private static readonly ConditionalWeakTable<RendererSpec, Dictionary<string, SmartBadgeSequenceDefinition>> ArchiveCache = new();
+    private const int MaxArchiveEntries = 1024;
+    private const long MaxArchiveEntryBytes = 16L * 1024 * 1024;
+    private const long MaxArchiveExpandedBytes = 64L * 1024 * 1024;
 
     public static SmartBadgeSequenceDefinition Load(RendererSceneV3 scene, string sequenceRoot)
     {
@@ -44,6 +49,100 @@ internal static class SmartBadgeSequence
         try
         {
             _ = Load(scene, sequenceRoot);
+            return [];
+        }
+        catch (Exception ex)
+        {
+            return [ex.Message];
+        }
+    }
+
+    public static SmartBadgeSequenceDefinition LoadArchive(RendererSpec spec, string archiveAsset)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        var normalizedAsset = Normalize(archiveAsset);
+        if (normalizedAsset.Length == 0)
+            throw new InvalidDataException("SmartBadge v2 pack asset is empty.");
+
+        var map = ArchiveCache.GetValue(
+            spec,
+            _ => new Dictionary<string, SmartBadgeSequenceDefinition>(StringComparer.OrdinalIgnoreCase));
+        lock (map)
+        {
+            if (map.TryGetValue(normalizedAsset, out var cached))
+                return cached;
+
+            var pair = spec.PackageAssets.FirstOrDefault(entry =>
+                Normalize(entry.Key).Equals(normalizedAsset, StringComparison.OrdinalIgnoreCase) ||
+                Normalize(entry.Key).EndsWith('/' + normalizedAsset, StringComparison.OrdinalIgnoreCase));
+            if (pair.Value is null)
+                throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' is missing from the renderer package.");
+
+            var assets = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+            long expanded = 0;
+            using (var memory = new MemoryStream(pair.Value, writable: false))
+            using (var zip = new ZipArchive(memory, ZipArchiveMode.Read, leaveOpen: false))
+            {
+                if (zip.Entries.Count > MaxArchiveEntries)
+                    throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' contains too many files.");
+
+                foreach (var entry in zip.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name)) continue;
+                    var name = Normalize(entry.FullName);
+                    if (name.Length == 0 || name.Contains("..", StringComparison.Ordinal))
+                        throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' contains an unsafe path.");
+                    if (entry.Length < 0 || entry.Length > MaxArchiveEntryBytes)
+                        throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' contains an oversized file '{name}'.");
+
+                    expanded += entry.Length;
+                    if (expanded > MaxArchiveExpandedBytes)
+                        throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' expands beyond the supported size.");
+
+                    using var input = entry.Open();
+                    using var output = new MemoryStream();
+                    var buffer = new byte[64 * 1024];
+                    long copied = 0;
+                    while (true)
+                    {
+                        var read = input.Read(buffer, 0, buffer.Length);
+                        if (read <= 0) break;
+                        copied += read;
+                        if (copied > MaxArchiveEntryBytes)
+                            throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' contains an oversized file '{name}'.");
+                        output.Write(buffer, 0, read);
+                    }
+                    assets["pack/" + name.TrimStart('/')] = output.ToArray();
+                }
+            }
+
+            using var emptyDocument = JsonDocument.Parse("{}");
+            var scene = new RendererSceneV3
+            {
+                Root = emptyDocument.RootElement.Clone(),
+                Assets = assets,
+                Objects = [],
+                Selectors = [],
+                Layers = [],
+                Resources = new Dictionary<string, JsonElement>(StringComparer.Ordinal),
+                Frames = 1,
+            };
+
+            var parsed = Parse(scene, "pack") with
+            {
+                Root = "archive:" + normalizedAsset,
+                Assets = assets,
+            };
+            map[normalizedAsset] = parsed;
+            return parsed;
+        }
+    }
+
+    public static IReadOnlyList<string> ValidateArchive(RendererSpec spec, string archiveAsset)
+    {
+        try
+        {
+            _ = LoadArchive(spec, archiveAsset);
             return [];
         }
         catch (Exception ex)
@@ -151,7 +250,8 @@ internal static class SmartBadgeSequence
             descriptor.Fps,
             descriptor.Parts,
             fields,
-            artwork);
+            artwork,
+            scene.Assets);
     }
 
     private static SmartBadgeDescriptor ParseDescriptor(RendererSceneV3 scene, string root, string text)
@@ -454,7 +554,8 @@ internal sealed record SmartBadgeSequenceDefinition(
     int Fps,
     IReadOnlyList<SmartBadgePartDefinition> Parts,
     IReadOnlyList<SmartBadgeFieldDefinition> Fields,
-    SmartSequenceArtworkDefinition? Artwork)
+    SmartSequenceArtworkDefinition? Artwork,
+    IReadOnlyDictionary<string, byte[]> Assets)
 {
     public SmartBadgeFrameSelection? SelectFrame(int frame)
     {
