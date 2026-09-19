@@ -262,6 +262,12 @@ public sealed class RendererSpec
     public List<RendererTrack> Tracks { get; set; } = [];
     public RendererSceneV3? SceneV3 { get; set; }
 
+    // Renderer v3 ZIP packages may wrap a legacy/exact engine while carrying
+    // sidecar resources. SmartBadge v2 uses this to keep multiple independent
+    // bootanimation-style badge ZIPs inside a single renderer package.
+    public Dictionary<string, byte[]> PackageAssets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public JsonElement? SmartBadgeV2Manifest { get; set; }
+
     private Dictionary<string, RendererTrack>? _tracks;
     private RendererTrack? FindTrack(string target)
     {
