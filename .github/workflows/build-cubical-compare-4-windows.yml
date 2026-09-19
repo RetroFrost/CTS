@@ -47,12 +47,21 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1"
-          $assemblyVersion = "$version.0"
+          $version = "4.2.1.1"
+          $assemblyVersion = $version
+
+          # Cubical Compare exposes a four-part Windows revision. Velopack itself only
+          # accepts SemVer-compatible three-part package versions, so the visible app
+          # stays 4.2.1.1 while the private setup payload uses the next internal package
+          # revision. The public update path for this release is the versioned portable ZIP.
+          $velopackVersion = "4.2.2"
+
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CC_VELOPACK_VERSION=$velopackVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_TAG=v$version-windows" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Cubical Compare Windows version: $version (.NET 10)"
+          Write-Host "Installer payload version: $velopackVersion (Velopack compatibility only)"
 
       - name: Restore
         run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
@@ -143,7 +152,7 @@ jobs:
 
           vpk pack `
             --packId CubicalCompare `
-            --packVersion "$env:CC_VERSION" `
+            --packVersion "$env:CC_VELOPACK_VERSION" `
             --packDir artifacts/publish `
             --mainExe CubicalCompare.exe `
             --packTitle "Cubical Compare" `
@@ -261,7 +270,12 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $lines = Get-ChildItem artifacts/velopack -File | Sort-Object Name | ForEach-Object {
+          $public = Get-ChildItem artifacts/velopack -File | Where-Object {
+            $_.Name -Like '*-Setup.exe' -or
+            $_.Name -Like '*-Portable.zip'
+          } | Sort-Object Name
+          if ($public.Count -lt 2) { throw 'Expected public Setup.exe and Portable.zip before writing SHA256SUMS.txt.' }
+          $lines = $public | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
           }
@@ -286,17 +300,16 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - Migrated to .NET 10 and Windows App SDK 2.4.
-          - Certificate-free unpackaged WinUI 3 deployment.
-          - Open-source Velopack Setup.exe and update packages.
-          - Versioned portable Windows ZIP release asset; the app updater ignores GitHub's generated source-code archive.
-          - Real modular assemblies: Core, Renderer, MegaPack, Thumbnail and Updates.
-          - Developer Options are visible by default; bulk runtime C# source bundles are supported.
-          - Renderer Accuracy Pack 4.2.1 adds 20 implemented renderer capabilities: source-exact opening/outro overlays, verified opening/outro boundaries, verified 266-frame conveyor timing, source-region crops, native raster sizing, selectable raster filtering, deterministic pixel snapping, preserved subpixel transforms, clip anti-alias control, local-space clips, deterministic z-index ordering, local frame offsets, dense-track stride, explicit step/linear interpolation, deterministic alpha rounding, extended blend modes, and premultiplied-alpha source rasters.
-          - SourceLocked Types of Relationships renderer packages can load without a developer-only capability shim.
-          - Live update-download and video-export activity watcher with real-time progress.
-          - Dynamic Windows accent colouring, English regional variants, Mica surfaces and refreshed Settings.
-          - Public Setup.exe always shows Cubical Compare's own visible progress window, closes without a success acknowledgement dialog, and launches Cubical Compare after installation.
+          - Smart Features: new Smart Badge Animation support for Renderer v3.
+          - Transparent badge-only frame sequences use a bootanimation-style desc.txt and part folders.
+          - smart.json uses the exact marker token jsparse for replaceable header, value and unit fields.
+          - Per-frame field rectangles, alpha and rotation keep live project text aligned with reference-derived badge frames.
+          - Runtime badge frames must be clean/empty text plates with transparent backgrounds; reference text is never baked into project output.
+          - Built-in changelog added to Settings.
+          - Renderer Accuracy Pack 4.2.1 remains included with its 20 accuracy capabilities.
+          - Certificate-free unpackaged WinUI 3 deployment on .NET 10 and Windows App SDK 2.4.
+          - Public Setup.exe always shows Cubical Compare's visible progress UI and launches Cubical Compare after installation.
+          - Versioned portable Windows ZIP is the public update payload for this four-part revision.
           - Self-contained x64 build; no separate .NET or Windows App SDK runtime install is required.
 
           **Unsigned build note:** Windows SmartScreen may still warn on an unsigned download. No certificate is required to build, install or update Cubical Compare.
@@ -321,17 +334,11 @@ jobs:
             Get-ChildItem artifacts/velopack -File | Where-Object {
               $_.Name -Like '*-Setup.exe' -or
               $_.Name -Like '*-Portable.zip' -or
-              $_.Name -Like '*-full.nupkg' -or
-              $_.Name -Like '*-delta.nupkg' -or
-              $_.Name -Like 'releases.*.json' -or
               $_.Name -eq 'SHA256SUMS.txt'
             } | Sort-Object @{ Expression = {
               if ($_.Name -Like '*-Portable.zip') { 0 }
               elseif ($_.Name -Like '*-Setup.exe') { 1 }
-              elseif ($_.Name -Like '*-full.nupkg') { 2 }
-              elseif ($_.Name -Like '*-delta.nupkg') { 3 }
-              elseif ($_.Name -Like 'releases.*.json') { 4 }
-              else { 5 }
+              else { 2 }
             } }
           )
           if ($assets.Count -eq 0) { throw 'No release assets were selected for upload.' }
