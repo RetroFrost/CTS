@@ -105,7 +105,7 @@ internal static class Program
 
                 ExitCode = 0;
                 _allowClose = true;
-                await Task.Delay(600);
+                await Task.Delay(75);
                 Close();
             }
             catch (Exception ex)
