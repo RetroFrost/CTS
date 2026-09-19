@@ -197,6 +197,14 @@ public sealed class RendererEngine : IDisposable
     private void DrawRibbonBadge(SKCanvas canvas, StudioProject project, StudioCard card, int index, float cardX, int globalFrame, RendererSpec spec)
     {
         if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return;
+
+        // SmartBadge v2 badge packs are complete card-local bootanimations. Each card
+        // selects its own nested ZIP from smartbadge-v2.json, so the pack owns badge
+        // reveal/shape/shine/text geometry instead of being forced through one global
+        // procedural badge animation.
+        if (TryDrawRibbonSmartBadgeV2(canvas, project, card, index, cardX, globalFrame, spec))
+            return;
+
         var local = globalFrame - CardStart(spec, index);
         var visible = index < 4 ? spec.TrackWindowed($"ribbon.open.{index}.visible", local) ?? spec.Track($"ribbon.open.{index}.visible", local) : null;
         var affine = index < 4 && new[] { "m00", "m01", "m10", "m11", "tx", "ty" }.Any(c => spec.HasTrack($"ribbon.open.{index}.{c}"));
@@ -226,6 +234,129 @@ public sealed class RendererEngine : IDisposable
         canvas.Scale(scale, scale, spec.BadgeCenterX, spec.BadgeCenterY);
         DrawBadgeShape(canvas, project, card, index, local, spec);
         canvas.Restore();
+    }
+
+    private bool TryDrawRibbonSmartBadgeV2(
+        SKCanvas canvas,
+        StudioProject project,
+        StudioCard card,
+        int index,
+        float cardX,
+        int globalFrame,
+        RendererSpec spec)
+    {
+        if (spec.SmartBadgeV2Manifest is not JsonElement manifest ||
+            manifest.ValueKind != JsonValueKind.Object)
+            return false;
+
+        var defaultPack = manifest.String("defaultPack", "");
+        string packId = defaultPack;
+        int? explicitStart = null;
+        int sequenceOffset = 0;
+
+        if (manifest.TryGetProperty("cards", out var cards) && cards.ValueKind == JsonValueKind.Object)
+        {
+            if (cards.TryGetProperty(index.ToString(CultureInfo.InvariantCulture), out var cardSelection))
+            {
+                if (cardSelection.ValueKind == JsonValueKind.String)
+                {
+                    packId = cardSelection.GetString() ?? packId;
+                }
+                else if (cardSelection.ValueKind == JsonValueKind.Object)
+                {
+                    packId = cardSelection.String("pack", packId);
+                    if (cardSelection.TryGetProperty("startFrame", out var startElement) &&
+                        startElement.TryGetInt32(out var startFrame))
+                        explicitStart = startFrame;
+                    sequenceOffset = cardSelection.Int("sequenceOffset", 0);
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(packId) ||
+            !manifest.TryGetProperty("packs", out var packs) ||
+            packs.ValueKind != JsonValueKind.Object ||
+            !packs.TryGetProperty(packId, out var packSelection))
+            return false;
+
+        string asset;
+        float drawX = 0;
+        float drawY = 0;
+        float? drawWidth = null;
+        float? drawHeight = null;
+        if (packSelection.ValueKind == JsonValueKind.String)
+        {
+            asset = packSelection.GetString() ?? "";
+        }
+        else if (packSelection.ValueKind == JsonValueKind.Object)
+        {
+            asset = packSelection.String("asset", "");
+            drawX = (float)packSelection.Double("drawX", 0);
+            drawY = (float)packSelection.Double("drawY", 0);
+            var configuredWidth = packSelection.Double("drawWidth", 0);
+            var configuredHeight = packSelection.Double("drawHeight", 0);
+            if (configuredWidth > 0) drawWidth = (float)configuredWidth;
+            if (configuredHeight > 0) drawHeight = (float)configuredHeight;
+        }
+        else
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(asset))
+            return false;
+
+        SmartBadgeSequenceDefinition sequence;
+        try
+        {
+            sequence = SmartBadgeSequence.LoadArchive(spec, asset);
+        }
+        catch
+        {
+            // The compatibility report exposes the exact validation error. During a
+            // render we fail closed rather than falling back to a different badge and
+            // silently changing the authored renderer.
+            return true;
+        }
+
+        var start = explicitStart ?? CardStart(spec, index);
+        var sequenceFrame = globalFrame - start + sequenceOffset;
+        if (sequenceFrame < 0)
+            return true;
+
+        var selected = sequence.SelectFrame(sequenceFrame);
+        if (selected is null)
+            return true;
+
+        var bitmap = DecodeSequenceBitmap(sequence, selected.Asset);
+        if (bitmap is null)
+            return true;
+
+        var width = drawWidth ?? sequence.Width;
+        var height = drawHeight ?? sequence.Height;
+        if (width <= 0 || height <= 0)
+            return true;
+
+        canvas.Save();
+        canvas.Translate(cardX + drawX, drawY);
+        canvas.Scale(width / Math.Max(1, sequence.Width), height / Math.Max(1, sequence.Height));
+
+        using (var paint = new SKPaint
+        {
+            IsAntialias = true,
+            FilterQuality = SKFilterQuality.High,
+            Color = SKColors.White,
+            BlendMode = SKBlendMode.SrcOver,
+        })
+        {
+            canvas.DrawBitmap(bitmap, new SKRect(0, 0, sequence.Width, sequence.Height), paint);
+        }
+
+        foreach (var field in sequence.Fields)
+            DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, 1);
+
+        canvas.Restore();
+        return true;
     }
 
     private void DrawBadgeShape(SKCanvas canvas, StudioProject project, StudioCard card, int index, int local, RendererSpec spec)
@@ -874,7 +1005,7 @@ public sealed class RendererEngine : IDisposable
         var selected = sequence.SelectFrame(sequenceFrame);
         if (selected is null) return;
 
-        var plate = DecodeSceneBitmap(spec.SceneV3!, selected.Asset);
+        var plate = DecodeSequenceBitmap(sequence, selected.Asset);
         if (plate is null) return;
 
         var pitch = (float)resource.Double("slotPitch", 480);
@@ -1002,7 +1133,7 @@ public sealed class RendererEngine : IDisposable
 
         var selected = sequence.SelectFrame(sequenceFrame);
         if (selected is null) return;
-        var bitmap = DecodeSceneBitmap(spec.SceneV3!, selected.Asset);
+        var bitmap = DecodeSequenceBitmap(sequence, selected.Asset);
         if (bitmap is null) return;
 
         var drawX = (float)Number(Get(props, "drawX"), resource.Double("drawX", 0));
@@ -1402,6 +1533,29 @@ public sealed class RendererEngine : IDisposable
     private SKBitmap? DecodeSceneBitmap(RendererSceneV3 scene, string source)
     {
         if (string.IsNullOrWhiteSpace(source)) return null; var normalized = source.Replace('\\', '/').TrimStart('.', '/'); var pair = scene.Assets.FirstOrDefault(x => x.Key.Equals(normalized, StringComparison.OrdinalIgnoreCase) || x.Key.EndsWith('/' + normalized, StringComparison.OrdinalIgnoreCase)); if (pair.Value == null) return null; var cacheKey = "asset:" + pair.Key; if (_imageCache.TryGetValue(cacheKey, out var cached)) return cached; try { var bitmap = SKBitmap.Decode(pair.Value); if (bitmap != null) _imageCache[cacheKey] = bitmap; return bitmap; } catch { return null; }
+    }
+
+    private SKBitmap? DecodeSequenceBitmap(SmartBadgeSequenceDefinition sequence, string source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return null;
+        var normalized = source.Replace('\\', '/').TrimStart('.', '/');
+        var pair = sequence.Assets.FirstOrDefault(x =>
+            x.Key.Equals(normalized, StringComparison.OrdinalIgnoreCase) ||
+            x.Key.EndsWith('/' + normalized, StringComparison.OrdinalIgnoreCase));
+        if (pair.Value is null) return null;
+
+        var cacheKey = "sequence:" + sequence.Root + ":" + pair.Key;
+        if (_imageCache.TryGetValue(cacheKey, out var cached)) return cached;
+        try
+        {
+            var bitmap = SKBitmap.Decode(pair.Value);
+            if (bitmap != null) _imageCache[cacheKey] = bitmap;
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private SKPaint TextPaint(StudioProject project, float size, SKColor color, bool bold)
