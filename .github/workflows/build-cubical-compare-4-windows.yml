@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.3"
+          $version = "4.2.1.4"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.1.2 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.4"
+          $velopackVersion = "4.2.5"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -207,47 +207,40 @@ jobs:
             Write-Warning 'No delta package was generated; clients will automatically use the full package for this transition.'
           }
 
-          # Build the public interactive bootstrap. The embedded Velopack installer
-          # runs with its normal visible progress UI and launches Cubical Compare when done.
-          Remove-Item artifacts/bootstrap -Recurse -Force -ErrorAction SilentlyContinue
-          dotnet publish windows/CubicalCompare.InstallerBootstrap/CubicalCompare.InstallerBootstrap.csproj `
-            -c Release `
-            -r win-x64 `
-            --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:PublishTrimmed=false `
-            -p:VelopackSetupPath="$($setup.FullName)" `
-            -o artifacts/bootstrap
-          if ($LASTEXITCODE -ne 0) { throw "Installer bootstrap publish failed with exit code $LASTEXITCODE." }
-
-          $bootstrap = Get-ChildItem artifacts/bootstrap -File -Filter 'CubicalCompare.Setup.exe' | Select-Object -First 1
-          if (-not $bootstrap) { throw 'Installer bootstrap did not produce CubicalCompare.Setup.exe.' }
-
+          # Publish Velopack's native Setup.exe directly. The previous public setup
+          # wrapped this installer inside a self-contained .NET single-file WinForms app,
+          # doubling the payload and forcing a large extraction before the first window
+          # appeared. The native Velopack setup already provides visible one-click
+          # progress and launches Cubical Compare when installation completes.
           $versionedSetup = "artifacts/velopack/CubicalCompare-$env:CC_VERSION-Windows-x64-Setup.exe"
           $versionedPortable = "artifacts/velopack/CubicalCompare-$env:CC_VERSION-Windows-x64-Portable.zip"
-          Copy-Item $bootstrap.FullName $versionedSetup -Force
+          Copy-Item $setup.FullName $versionedSetup -Force
           Move-Item $portable.FullName $versionedPortable -Force
-          Remove-Item $setup.FullName -Force
+          if ($setup.FullName -ne (Resolve-Path $versionedSetup).Path) {
+            Remove-Item $setup.FullName -Force
+          }
           Remove-Item artifacts/velopack/RELEASES -Force -ErrorAction SilentlyContinue
 
           "CC_SETUP=$((Resolve-Path $versionedSetup).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_PORTABLE=$versionedPortable" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Visible interactive setup: $(Split-Path $versionedSetup -Leaf)"
+          Write-Host "Native Velopack setup: $(Split-Path $versionedSetup -Leaf)"
           Write-Host "Portable release asset: $(Split-Path $versionedPortable -Leaf)"
 
-      - name: Verify public setup has visible UI
+      - name: Verify public setup is native and not double-wrapped
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $project = Get-Content 'windows/CubicalCompare.InstallerBootstrap/CubicalCompare.InstallerBootstrap.csproj' -Raw
-          $source = Get-Content 'windows/CubicalCompare.InstallerBootstrap/Program.cs' -Raw
-          if ($project -notmatch '<UseWindowsForms>true</UseWindowsForms>') {
-            throw 'Public Cubical Compare Setup must use a visible Windows UI.'
+          $setup = Get-Item "$env:CC_SETUP"
+          $full = Get-ChildItem artifacts/velopack -File | Where-Object Name -EQ "CubicalCompare-$env:CC_VELOPACK_VERSION-full.nupkg" | Select-Object -First 1
+          if (-not $full) { throw 'Current full package is missing.' }
+
+          # A self-contained .NET wrapper previously made Setup.exe roughly the
+          # installer size plus another full runtime. The public setup should now
+          # stay close to the native Velopack payload instead.
+          if ($setup.Length -gt ($full.Length + 35MB)) {
+            throw "Public Setup.exe is unexpectedly large ($([math]::Round($setup.Length / 1MB, 2)) MiB); it looks double-wrapped again."
           }
-          if ($source -notmatch 'ShowInTaskbar\s*=\s*true') {
-            throw 'Public Cubical Compare Setup must remain visible in the taskbar while installing.'
-          }
-          Write-Host 'Public setup source declares a visible installer window.'
+          Write-Host "Native setup size verified: $([math]::Round($setup.Length / 1MB, 2)) MiB."
 
       - name: Smoke test visible Cubical Compare installer
         shell: pwsh
@@ -259,8 +252,9 @@ jobs:
           $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -PassThru
 
           $visible = $false
-          for ($i = 0; $i -lt 15; $i++) {
-            Start-Sleep -Seconds 1
+          $launchTimer = [System.Diagnostics.Stopwatch]::StartNew()
+          for ($i = 0; $i -lt 40; $i++) {
+            Start-Sleep -Milliseconds 125
             $setupProcess.Refresh()
             if ($setupProcess.HasExited) { break }
             if ($setupProcess.MainWindowHandle -ne 0) {
@@ -268,11 +262,12 @@ jobs:
               break
             }
           }
+          $launchTimer.Stop()
           if (-not $visible) {
             if (-not $setupProcess.HasExited) { Stop-Process -Id $setupProcess.Id -Force -ErrorAction SilentlyContinue }
-            throw 'Public Setup.exe never exposed a visible installer window.'
+            throw 'Public Setup.exe did not expose a visible installer window within five seconds.'
           }
-          Write-Host "Visible Setup window detected (PID $($setupProcess.Id), HWND $($setupProcess.MainWindowHandle))."
+          Write-Host "Visible native Setup window detected after $([math]::Round($launchTimer.Elapsed.TotalMilliseconds)) ms (PID $($setupProcess.Id), HWND $($setupProcess.MainWindowHandle))."
 
           if (-not $setupProcess.WaitForExit(120000)) {
             Stop-Process -Id $setupProcess.Id -Force -ErrorAction SilentlyContinue
@@ -311,11 +306,11 @@ jobs:
           $public = Get-ChildItem artifacts/velopack -File | Where-Object {
             $_.Name -Like '*-Setup.exe' -or
             $_.Name -Like '*-Portable.zip' -or
-            $_.Name -Like '*-full.nupkg' -or
-            $_.Name -Like '*-delta.nupkg' -or
+            $_.Name -EQ "CubicalCompare-$env:CC_VELOPACK_VERSION-full.nupkg" -or
+            $_.Name -EQ "CubicalCompare-$env:CC_VELOPACK_VERSION-delta.nupkg" -or
             $_.Name -Like 'releases.*.json'
           } | Sort-Object Name
-          if ($public.Count -lt 4) { throw 'Expected Setup.exe, Portable.zip, full nupkg and release index before writing SHA256SUMS.txt.' }
+          if ($public.Count -lt 4) { throw 'Expected Setup.exe, Portable.zip, current full nupkg and release index before writing SHA256SUMS.txt.' }
           $lines = $public | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
@@ -341,6 +336,8 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Initial Setup.exe is now the native Velopack one-click installer directly, removing the huge self-contained .NET wrapper that delayed first launch and could invoke the wrong shell fallback.
+          - The native setup is smoke-tested to expose its installer window within five seconds and launch the installed app automatically.
           - In-app package updates no longer stop on Velopack's final OK acknowledgement; Cubical Compare shows its own progress, then performs the file-swap handoff without a blocking completion dialog and restarts automatically.
           - CI now downloads the previous Velopack release before packing and generates BestSpeed delta packages when possible, so routine updates avoid re-downloading/re-preparing the full self-contained app.
           - The updater reports whether it selected a fast delta package or a full package.
@@ -377,8 +374,8 @@ jobs:
             Get-ChildItem artifacts/velopack -File | Where-Object {
               $_.Name -Like '*-Setup.exe' -or
               $_.Name -Like '*-Portable.zip' -or
-              $_.Name -Like '*-full.nupkg' -or
-              $_.Name -Like '*-delta.nupkg' -or
+              $_.Name -EQ "CubicalCompare-$env:CC_VELOPACK_VERSION-full.nupkg" -or
+              $_.Name -EQ "CubicalCompare-$env:CC_VELOPACK_VERSION-delta.nupkg" -or
               $_.Name -Like 'releases.*.json' -or
               $_.Name -eq 'SHA256SUMS.txt'
             } | Sort-Object @{ Expression = {
