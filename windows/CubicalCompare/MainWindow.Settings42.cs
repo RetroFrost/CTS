@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.9 · SmartCard layered animation",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• SmartCard now renders base shell → live artwork → live title/description → overlay shine\n• shine/glass overlays finally affect the live artwork and text instead of sitting underneath them\n• smart-card-layered-compositing-v1 validates synchronized overlay frames\n• SmartCard authoring uses base/ + overlay/ frame folders with exact contiguous frame validation",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.7 · SmartBadge v2",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
