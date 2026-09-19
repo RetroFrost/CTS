@@ -364,7 +364,7 @@ public sealed class RendererEngine : IDisposable
         var bound = props.ToDictionary(x => x.Key, x => BindProjectValue(x.Value, project, obj), StringComparer.Ordinal);
         var opacity = Math.Clamp(Number(Get(bound, "opacity", "material.alpha"), 1), 0, 1);
         if (opacity <= 0.0001) return;
-        var ownsTransform = type is "relationships-card" or "relationships-badge";
+        var ownsTransform = type is "relationships-card" or "relationships-badge" or "smart-card-animation";
         canvas.Save();
         if (!ownsTransform)
         {
@@ -394,6 +394,7 @@ public sealed class RendererEngine : IDisposable
             {
                 case "relationships-card": DrawV3RelationshipsCard(canvas, project, obj, resource, bound, (float)opacity); break;
                 case "relationships-badge": DrawV3RelationshipsBadge(canvas, project, obj, resource, bound, (float)opacity); break;
+                case "smart-card-animation": DrawV3SmartCardAnimation(canvas, project, spec, obj, resource, bound, frame, (float)opacity); break;
                 case "smart-badge-animation": DrawV3SmartBadgeAnimation(canvas, project, spec, obj, resource, bound, frame, (float)opacity); break;
                 case "rect": DrawV3Rect(canvas, resource, bound, (float)opacity); break;
                 case "ellipse": DrawV3Ellipse(canvas, resource, bound, (float)opacity); break;
@@ -819,6 +820,134 @@ public sealed class RendererEngine : IDisposable
         canvas.Restore();
     }
 
+    private void DrawV3SmartCardAnimation(
+        SKCanvas canvas,
+        StudioProject project,
+        RendererSpec spec,
+        RendererObjectV3 obj,
+        JsonElement resource,
+        Dictionary<string, object?> props,
+        int frame,
+        float opacity)
+    {
+        var index = CardIndex(obj);
+        if (index is null || index < 0 || index >= project.Cards.Count) return;
+        var card = project.Cards[index.Value];
+
+        var sequenceRoot = StringValue(Get(props, "sequenceRoot")) ?? resource.String("sequenceRoot", "");
+        if (string.IsNullOrWhiteSpace(sequenceRoot)) return;
+
+        SmartBadgeSequenceDefinition sequence;
+        try
+        {
+            sequence = SmartBadgeSequence.Load(spec.SceneV3!, sequenceRoot);
+        }
+        catch
+        {
+            return;
+        }
+
+        var explicitFrame = Get(props, "sequenceFrame");
+        var frameLocked = Truthy(
+            Get(props, "frameLock", "frameLocked"),
+            resource.Bool("frameLock", resource.Bool("frameLocked", true)));
+
+        int sequenceFrame;
+        if (explicitFrame is not null)
+        {
+            sequenceFrame = (int)Math.Round(Number(explicitFrame), MidpointRounding.AwayFromZero);
+        }
+        else if (frameLocked && sequence.Fps == spec.ReferenceFps)
+        {
+            sequenceFrame = frame - obj.Frame;
+        }
+        else
+        {
+            sequenceFrame = (int)Math.Floor(
+                (frame - obj.Frame) * sequence.Fps / (double)Math.Max(1, spec.ReferenceFps));
+        }
+
+        sequenceFrame += (int)Math.Round(
+            Number(Get(props, "sequenceOffset"), resource.Int("sequenceOffset", 0)),
+            MidpointRounding.AwayFromZero);
+
+        var selected = sequence.SelectFrame(sequenceFrame);
+        if (selected is null) return;
+
+        var plate = DecodeSceneBitmap(spec.SceneV3!, selected.Asset);
+        if (plate is null) return;
+
+        var pitch = (float)resource.Double("slotPitch", 480);
+        var scroll = (float)Number(Get(props, "scroll"), 0);
+        var baseX = (float)Number(Get(props, "baseX"), index.Value * pitch);
+        var offsetX = (float)Number(Get(props, "offsetX"), 0);
+        var offsetY = (float)Number(Get(props, "offsetY"), 0);
+        var localX = (float)Number(Get(props, "drawX"), resource.Double("drawX", 0));
+        var localY = (float)Number(Get(props, "drawY"), resource.Double("drawY", 0));
+        var drawWidth = (float)Number(Get(props, "drawWidth"), resource.Double("drawWidth", sequence.Width));
+        var drawHeight = (float)Number(Get(props, "drawHeight"), resource.Double("drawHeight", sequence.Height));
+        if (drawWidth <= 0 || drawHeight <= 0) return;
+
+        var x = baseX - scroll + offsetX;
+        if (x + localX + drawWidth < -4 || x + localX > spec.ReferenceWidth + 4) return;
+
+        canvas.Save();
+        canvas.Translate(x + localX, offsetY + localY);
+        canvas.Scale(drawWidth / Math.Max(1, sequence.Width), drawHeight / Math.Max(1, sequence.Height));
+
+        if (sequence.Artwork is not null && !string.IsNullOrWhiteSpace(card.Image))
+        {
+            var dest = sequence.Artwork.DestAt(selected.TemplateFrame);
+            var clip = sequence.Artwork.ClipAt(selected.TemplateFrame);
+            var alpha = Math.Clamp(sequence.Artwork.AlphaAt(selected.TemplateFrame) * opacity, 0, 1);
+            if (dest is not null && clip is not null && alpha > 0.0001f)
+            {
+                canvas.Save();
+                canvas.ClipRect(
+                    new SKRect(clip.X, clip.Y, clip.Right, clip.Bottom),
+                    SKClipOperation.Intersect,
+                    false);
+
+                if (alpha < 0.9999f)
+                {
+                    using var layer = new SKPaint
+                    {
+                        Color = new SKColor(255, 255, 255, AlphaByte(alpha)),
+                    };
+                    canvas.SaveLayer(layer);
+                    DrawImageCover(canvas, card, new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom));
+                    canvas.Restore();
+                }
+                else
+                {
+                    DrawImageCover(canvas, card, new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom));
+                }
+
+                canvas.Restore();
+            }
+        }
+
+        using (var platePaint = new SKPaint
+        {
+            IsAntialias = true,
+            FilterQuality = FilterQuality(
+                StringValue(Get(props, "sampling", "filterMode")) ?? resource.String("sampling", "high")),
+            Color = new SKColor(255, 255, 255, AlphaByte(opacity)),
+            BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
+        })
+        {
+            canvas.DrawBitmap(
+                plate,
+                new SKRect(0, 0, sequence.Width, sequence.Height),
+                platePaint);
+        }
+
+        foreach (var field in sequence.Fields)
+            DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, opacity);
+
+        canvas.Restore();
+    }
+
     private void DrawV3SmartBadgeAnimation(
         SKCanvas canvas,
         StudioProject project,
@@ -918,6 +1047,24 @@ public sealed class RendererEngine : IDisposable
         if (string.IsNullOrWhiteSpace(text)) return;
 
         var color = WithAlpha(ParseColor(field.Color, SKColors.White), fieldOpacity);
+
+        if (field.Source.Trim().Equals("description", StringComparison.OrdinalIgnoreCase))
+        {
+            canvas.Save();
+            var rotation = field.RotationAt(templateFrame);
+            if (Math.Abs(rotation) > 0.001f)
+                canvas.RotateDegrees(rotation, rect.MidX, rect.MidY);
+
+            DrawRelationshipsDescription(
+                canvas,
+                project,
+                text,
+                new SKRect(rect.X, rect.Y, rect.Right, rect.Bottom),
+                color,
+                field.FontSize);
+            canvas.Restore();
+            return;
+        }
         using var paint = TextPaint(project, field.FontSize, color, field.Bold);
         paint.TextAlign = field.Align.Trim().ToLowerInvariant() switch
         {
@@ -996,6 +1143,7 @@ public sealed class RendererEngine : IDisposable
             "unit" or "suffix" => unit,
             "fullvalue" or "full-value" or "raw" => card.Value.Trim(),
             "title" => card.Title.Trim(),
+            "description" or "desc" => card.Description.Trim(),
             _ => source.Equals("jsparse", StringComparison.Ordinal) ? primary : primary,
         };
     }
