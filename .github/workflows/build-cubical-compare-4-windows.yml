@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.0"
+          $version = "4.2.1"
           $assemblyVersion = "$version.0"
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -292,6 +292,8 @@ jobs:
           - Versioned portable Windows ZIP release asset; the app updater ignores GitHub's generated source-code archive.
           - Real modular assemblies: Core, Renderer, MegaPack, Thumbnail and Updates.
           - Developer Options are visible by default; bulk runtime C# source bundles are supported.
+          - Renderer Accuracy Pack 4.2.1 adds 20 implemented renderer capabilities: source-exact opening/outro overlays, verified opening/outro boundaries, verified 266-frame conveyor timing, source-region crops, native raster sizing, selectable raster filtering, deterministic pixel snapping, preserved subpixel transforms, clip anti-alias control, local-space clips, deterministic z-index ordering, local frame offsets, dense-track stride, explicit step/linear interpolation, deterministic alpha rounding, extended blend modes, and premultiplied-alpha source rasters.
+          - SourceLocked Types of Relationships renderer packages can load without a developer-only capability shim.
           - Live update-download and video-export activity watcher with real-time progress.
           - Dynamic Windows accent colouring, English regional variants, Mica surfaces and refreshed Settings.
           - Public Setup.exe always shows Cubical Compare's own visible progress window, closes without a success acknowledgement dialog, and launches Cubical Compare after installation.
