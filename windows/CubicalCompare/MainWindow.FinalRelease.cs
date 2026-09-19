@@ -325,8 +325,8 @@ public sealed partial class MainWindow
             if (exitRequired)
             {
                 if (_updateStatusText is not null)
-                    _updateStatusText.Text = "Update staged. Restarting into the new files…";
-                CompleteActivityWatcher("Windows update", "Update staged. Restarting Cubical Compare…");
+                    _updateStatusText.Text = "Update ready. Restarting Cubical Compare automatically…";
+                CompleteActivityWatcher("Windows update", "Update ready. Restarting Cubical Compare automatically…");
                 Application.Current.Exit();
                 return;
             }
@@ -364,7 +364,7 @@ public sealed partial class MainWindow
     }
 
     private static Version GetCurrentAppVersion()
-        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 2);
+        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 3);
 
     private static Version NormalizeVersion(Version version) => new(
         Math.Max(0, version.Major),
