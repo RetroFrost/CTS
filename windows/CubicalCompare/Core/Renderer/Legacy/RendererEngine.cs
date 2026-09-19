@@ -330,7 +330,7 @@ public sealed class RendererEngine : IDisposable
         if (obj.Kind is "endingOverlay" or "fade") return false;
         var index = CardIndex(obj);
         if (index is int i && (i < 0 || i >= project.Cards.Count)) return false;
-        if (index is int b && obj.Kind is "openingBadge" or "badge" or "laterBadge" or "openingText" or "badgeText" or "laterText" or "openingShine" or "shineBroad" or "shineCore" or "shadow")
+        if (index is int b && obj.Kind is "openingBadge" or "badge" or "laterBadge" or "openingText" or "badgeText" or "laterText" or "openingShine" or "shineBroad" or "shineCore" or "shadow" or "relationshipsBadge")
         {
             var card = project.Cards[b];
             if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return false;
@@ -358,17 +358,21 @@ public sealed class RendererEngine : IDisposable
         var bound = props.ToDictionary(x => x.Key, x => BindProjectValue(x.Value, project, obj), StringComparer.Ordinal);
         var opacity = Math.Clamp(Number(Get(bound, "opacity", "material.alpha"), 1), 0, 1);
         if (opacity <= 0.0001) return;
+        var ownsTransform = type is "relationships-card" or "relationships-badge";
         canvas.Save();
-        var localClip = Truthy(Get(bound, "clip.local", "clip.afterTransform"), false);
-        if (localClip)
+        if (!ownsTransform)
         {
-            ApplyTransform(canvas, bound);
-            ApplyClip(canvas, bound);
-        }
-        else
-        {
-            ApplyClip(canvas, bound);
-            ApplyTransform(canvas, bound);
+            var localClip = Truthy(Get(bound, "clip.local", "clip.afterTransform"), false);
+            if (localClip)
+            {
+                ApplyTransform(canvas, bound);
+                ApplyClip(canvas, bound);
+            }
+            else
+            {
+                ApplyClip(canvas, bound);
+                ApplyTransform(canvas, bound);
+            }
         }
         try
         {
@@ -376,6 +380,8 @@ public sealed class RendererEngine : IDisposable
             if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) && obj.Kind is "openingText" or "badgeText" or "laterText") { DrawV3ProjectBadgeText(canvas, project, obj, resource, bound, (float)opacity); return; }
             switch (type)
             {
+                case "relationships-card": DrawV3RelationshipsCard(canvas, project, obj, resource, bound, (float)opacity); break;
+                case "relationships-badge": DrawV3RelationshipsBadge(canvas, project, obj, resource, bound, (float)opacity); break;
                 case "rect": DrawV3Rect(canvas, resource, bound, (float)opacity); break;
                 case "ellipse": DrawV3Ellipse(canvas, resource, bound, (float)opacity); break;
                 case "image": DrawV3Image(canvas, scene, resource, bound, (float)opacity); break;
@@ -394,6 +400,305 @@ public sealed class RendererEngine : IDisposable
             }
         }
         finally { canvas.Restore(); }
+    }
+
+    private void DrawV3RelationshipsCard(
+        SKCanvas canvas,
+        StudioProject project,
+        RendererObjectV3 obj,
+        JsonElement resource,
+        Dictionary<string, object?> props,
+        float opacity)
+    {
+        var index = CardIndex(obj);
+        if (index is null || index < 0 || index >= project.Cards.Count) return;
+        var card = project.Cards[index.Value];
+
+        var pitch = (float)resource.Double("slotPitch", 480);
+        var width = (float)resource.Double("width", 474);
+        var height = (float)resource.Double("height", 1080);
+        var imageHeight = (float)resource.Double("imageHeight", 789);
+        var titleHeight = (float)resource.Double("titleHeight", 117);
+        var dividerHeight = (float)resource.Double("dividerHeight", 8);
+        var pivotY = (float)resource.Double("pivotY", height / 2f);
+        var scroll = (float)Number(Get(props, "scroll"), 0);
+        var baseX = (float)Number(Get(props, "baseX"), index.Value * pitch);
+        var offsetX = (float)Number(Get(props, "offsetX"), 0);
+        var scale = (float)Math.Clamp(Number(Get(props, "cardScale", "scale"), 1), 0, 2.5);
+        var artworkReveal = (float)Math.Clamp(Number(Get(props, "artworkReveal"), 1), 0, 1);
+        var titleReveal = (float)Math.Clamp(Number(Get(props, "titleReveal"), 1), 0, 1);
+        var descriptionReveal = (float)Math.Clamp(Number(Get(props, "descriptionReveal"), 1), 0, 1);
+        var x = baseX - scroll + offsetX;
+
+        canvas.Save();
+        canvas.Translate(x, 0);
+        canvas.Scale(scale, scale, width / 2f, pivotY);
+
+        var topColor = ParseColor(resource.String("topBackground", "#252525"), new SKColor(37, 37, 37));
+        var titleColor = ParseColor(resource.String("titleBackground", "#f4f2f0"), new SKColor(244, 242, 240));
+        var dividerColor = ParseColor(resource.String("dividerColor", "#d57e00"), new SKColor(213, 126, 0));
+        var descriptionColor = ParseColor(resource.String("descriptionBackground", "#1b1b1b"), new SKColor(27, 27, 27));
+        using var fill = new SKPaint { IsAntialias = false, Style = SKPaintStyle.Fill };
+
+        fill.Color = WithAlpha(topColor, opacity);
+        canvas.DrawRect(0, 0, width, imageHeight, fill);
+
+        if (!string.IsNullOrWhiteSpace(card.Image) && artworkReveal > 0)
+        {
+            canvas.Save();
+            canvas.ClipRect(new SKRect(0, 0, width, imageHeight * artworkReveal), SKClipOperation.Intersect, false);
+            DrawImageCover(canvas, card, new SKRect(0, 0, width, imageHeight));
+            canvas.Restore();
+        }
+
+        var titleTop = imageHeight;
+        fill.Color = WithAlpha(titleColor, opacity);
+        canvas.DrawRect(0, titleTop, width, titleHeight, fill);
+
+        var dividerTop = titleTop + titleHeight;
+        fill.Color = WithAlpha(dividerColor, opacity);
+        canvas.DrawRect(0, dividerTop, width, dividerHeight, fill);
+
+        var descriptionTop = dividerTop + dividerHeight;
+        fill.Color = WithAlpha(descriptionColor, opacity);
+        canvas.DrawRect(0, descriptionTop, width, Math.Max(0, height - descriptionTop), fill);
+
+        if (!string.IsNullOrWhiteSpace(card.Title) && titleReveal > 0)
+        {
+            canvas.Save();
+            canvas.ClipRect(new SKRect(0, titleTop, width, titleTop + titleHeight * titleReveal), SKClipOperation.Intersect, false);
+            using var title = TextPaint(project, (float)resource.Double("titleTextSize", 49), WithAlpha(ParseColor(resource.String("titleText", "#111111"), new SKColor(17, 17, 17)), opacity), true);
+            DrawCentered(canvas, card.Title, width / 2f, titleTop + titleHeight * 0.69f, title, width - 24);
+            canvas.Restore();
+        }
+
+        if (!string.IsNullOrWhiteSpace(card.Description) && descriptionReveal > 0)
+        {
+            canvas.Save();
+            var revealBottom = descriptionTop + (height - descriptionTop) * descriptionReveal;
+            canvas.ClipRect(new SKRect(0, descriptionTop, width, revealBottom), SKClipOperation.Intersect, false);
+            DrawRelationshipsDescription(
+                canvas,
+                project,
+                card.Description,
+                new SKRect(16, descriptionTop + 10, width - 16, height - 10),
+                WithAlpha(ParseColor(resource.String("descriptionText", "#f5f5f5"), new SKColor(245, 245, 245)), opacity),
+                (float)resource.Double("descriptionTextSize", 28));
+            canvas.Restore();
+        }
+
+        canvas.Restore();
+    }
+
+    private void DrawRelationshipsDescription(SKCanvas canvas, StudioProject project, string text, SKRect box, SKColor color, float preferred)
+    {
+        if (string.IsNullOrWhiteSpace(text) || box.Width < 2 || box.Height < 2) return;
+        using var paint = TextPaint(project, preferred, color, false);
+        paint.TextAlign = SKTextAlign.Center;
+        var size = preferred;
+        List<string> lines = [];
+        while (size >= 12)
+        {
+            paint.TextSize = size;
+            lines = Wrap(text, paint, box.Width);
+            if (lines.Count <= 4 && lines.Count * size * 1.08f <= box.Height) break;
+            size -= 1;
+        }
+        paint.TextSize = size;
+        var lineHeight = size * 1.08f;
+        var total = lines.Take(4).Count() * lineHeight;
+        var y = box.MidY - total / 2f + size;
+        foreach (var line in lines.Take(4))
+        {
+            canvas.DrawText(line, box.MidX, y, paint);
+            y += lineHeight;
+        }
+    }
+
+    private void DrawV3RelationshipsBadge(
+        SKCanvas canvas,
+        StudioProject project,
+        RendererObjectV3 obj,
+        JsonElement resource,
+        Dictionary<string, object?> props,
+        float opacity)
+    {
+        var index = CardIndex(obj);
+        if (index is null || index < 0 || index >= project.Cards.Count) return;
+        var card = project.Cards[index.Value];
+        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return;
+
+        var pitch = (float)resource.Double("slotPitch", 480);
+        var width = (float)resource.Double("cardWidth", 474);
+        var cx = (float)resource.Double("centerX", 237);
+        var cy = (float)resource.Double("centerY", 192);
+        var rx = (float)resource.Double("radiusX", 176);
+        var ry = (float)resource.Double("radiusY", 172);
+        var scroll = (float)Number(Get(props, "scroll"), 0);
+        var baseX = (float)Number(Get(props, "baseX"), index.Value * pitch);
+        var offsetX = (float)Number(Get(props, "offsetX"), 0);
+        var offsetY = (float)Number(Get(props, "offsetY"), 0);
+        var scale = (float)Math.Clamp(Number(Get(props, "badgeScale", "scale"), 1), 0, 2.5);
+        var textReveal = (float)Math.Clamp(Number(Get(props, "textReveal"), 1), 0, 1);
+        var shineProgress = Number(Get(props, "shineProgress"), -1);
+        var shineMode = StringValue(Get(props, "shineMode")) ?? resource.String("shineMode", "none");
+        var x = baseX - scroll + offsetX;
+
+        using var path = RelationshipsBadgePath(cx, cy, rx, ry);
+        canvas.Save();
+        canvas.Translate(x, offsetY);
+        canvas.Scale(scale, scale, cx, cy);
+
+        using (var shadow = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(0, 0, 0, AlphaByte(opacity * 0.46)),
+            ImageFilter = SKImageFilter.CreateBlur(7, 7),
+        })
+        {
+            canvas.Save();
+            canvas.Translate(5, 8);
+            canvas.DrawPath(path, shadow);
+            canvas.Restore();
+        }
+
+        using (var fill = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(211, 15, 14, AlphaByte(opacity)),
+        })
+            canvas.DrawPath(path, fill);
+
+        using (var border = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = (float)resource.Double("borderWidth", 2),
+            Color = WithAlpha(ParseColor(resource.String("borderColor", "#d1aa54"), new SKColor(209, 170, 84)), opacity),
+        })
+            canvas.DrawPath(path, border);
+
+        if (textReveal > 0)
+        {
+            canvas.Save();
+            var textTop = cy - ry + 16;
+            var textBottom = cy + ry - 18;
+            var revealTop = textBottom - (textBottom - textTop) * textReveal;
+            canvas.ClipRect(new SKRect(cx - rx - 8, revealTop, cx + rx + 8, textBottom + 4), SKClipOperation.Intersect, false);
+            DrawRelationshipsBadgeText(canvas, project, card, cx, cy, opacity);
+            canvas.Restore();
+        }
+
+        if (shineProgress >= 0 && shineProgress <= 1)
+            DrawRelationshipsBadgeShine(canvas, path, cx, cy, rx, ry, (float)shineProgress, shineMode, opacity);
+
+        canvas.Restore();
+    }
+
+    private static SKPath RelationshipsBadgePath(float cx, float cy, float rx, float ry)
+    {
+        var shoulder = rx * 0.50f;
+        var cut = ry * 0.50f;
+        var points = new[]
+        {
+            new SKPoint(cx - shoulder, cy - ry),
+            new SKPoint(cx + shoulder, cy - ry),
+            new SKPoint(cx + rx, cy - cut),
+            new SKPoint(cx + rx, cy + cut),
+            new SKPoint(cx + shoulder, cy + ry),
+            new SKPoint(cx - shoulder, cy + ry),
+            new SKPoint(cx - rx, cy + cut),
+            new SKPoint(cx - rx, cy - cut),
+        };
+        var path = new SKPath();
+        path.MoveTo(points[0]);
+        foreach (var point in points.Skip(1)) path.LineTo(point);
+        path.Close();
+        return path;
+    }
+
+    private void DrawRelationshipsBadgeText(SKCanvas canvas, StudioProject project, StudioCard card, float cx, float cy, float opacity)
+    {
+        var words = Regex.Split(card.Value.Trim(), "\\s+").Where(x => x.Length > 0).ToArray();
+        var primary = words.FirstOrDefault() ?? "";
+        var unit = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "People";
+        var header = string.IsNullOrWhiteSpace(card.BadgeHeader) ? "1 in" : card.BadgeHeader.Trim();
+
+        void DrawLine(string value, float y, float size, float maxWidth)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            using var shadow = TextPaint(project, size, new SKColor(0, 0, 0, AlphaByte(opacity * 0.72)), false);
+            DrawCentered(canvas, value, cx + 2, y + 3, shadow, maxWidth);
+            using var text = TextPaint(project, size, new SKColor(255, 255, 255, AlphaByte(opacity)), false);
+            DrawCentered(canvas, value, cx, y, text, maxWidth);
+        }
+
+        DrawLine(header, cy - 95, 39, 230);
+        DrawLine(primary, cy + 30, 91, 285);
+        DrawLine(unit, cy + 91, 39, 250);
+    }
+
+    private static void DrawRelationshipsBadgeShine(
+        SKCanvas canvas,
+        SKPath path,
+        float cx,
+        float cy,
+        float rx,
+        float ry,
+        float progress,
+        string mode,
+        float opacity)
+    {
+        canvas.Save();
+        canvas.ClipPath(path, SKClipOperation.Intersect, true);
+
+        if (mode.Equals("opening", StringComparison.OrdinalIgnoreCase))
+        {
+            var y = Lerp(cy + ry + 62, cy - ry - 62, progress);
+            var alpha = AlphaByte(opacity * 0.86);
+            var colors = new[]
+            {
+                new SKColor(255, 255, 255, 0),
+                new SKColor(255, 255, 255, (byte)(alpha * 0.38)),
+                new SKColor(255, 255, 255, alpha),
+                new SKColor(255, 255, 255, (byte)(alpha * 0.38)),
+                new SKColor(255, 255, 255, 0),
+            };
+            var stops = new[] { 0f, 0.24f, 0.50f, 0.76f, 1f };
+            using var shader = SKShader.CreateLinearGradient(
+                new SKPoint(0, y - 66),
+                new SKPoint(0, y + 66),
+                colors,
+                stops,
+                SKShaderTileMode.Clamp);
+            using var shine = new SKPaint { IsAntialias = true, Shader = shader };
+            canvas.DrawRect(cx - rx - 30, y - 70, rx * 2 + 60, 140, shine);
+        }
+        else
+        {
+            canvas.RotateDegrees(-22, cx, cy);
+            var x = Lerp(cx - rx - 92, cx + rx + 92, progress);
+            var alpha = AlphaByte(opacity * 0.78);
+            var colors = new[]
+            {
+                new SKColor(255, 255, 255, 0),
+                new SKColor(255, 255, 255, (byte)(alpha * 0.30)),
+                new SKColor(255, 255, 255, alpha),
+                new SKColor(255, 255, 255, (byte)(alpha * 0.30)),
+                new SKColor(255, 255, 255, 0),
+            };
+            var stops = new[] { 0f, 0.22f, 0.50f, 0.78f, 1f };
+            using var shader = SKShader.CreateLinearGradient(
+                new SKPoint(x - 54, 0),
+                new SKPoint(x + 54, 0),
+                colors,
+                stops,
+                SKShaderTileMode.Clamp);
+            using var shine = new SKPaint { IsAntialias = true, Shader = shader };
+            canvas.DrawRect(x - 58, cy - ry - 100, 116, ry * 2 + 200, shine);
+        }
+
+        canvas.Restore();
     }
 
     private void DrawV3ProjectCard(SKCanvas canvas, StudioProject project, RendererObjectV3 obj, JsonElement resource, float opacity)
