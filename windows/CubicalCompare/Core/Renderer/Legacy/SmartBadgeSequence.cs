@@ -124,13 +124,34 @@ internal static class SmartBadgeSequence
         if (fields.Count == 0)
             throw new InvalidDataException($"Smart badge manifest '{smartPath}' has no usable jsparse fields.");
 
+        SmartSequenceArtworkDefinition? artwork = null;
+        if (smart.TryGetProperty("artwork", out var artworkElement) &&
+            artworkElement.ValueKind == JsonValueKind.Object)
+        {
+            var dest = ReadRect(artworkElement, "dest");
+            var destRects = ReadRectTrack(artworkElement, "destRects");
+            if (dest is null && destRects.Count == 0)
+                throw new InvalidDataException(
+                    $"Smart sequence artwork in '{smartPath}' needs dest or destRects geometry.");
+
+            var clip = ReadRect(artworkElement, "clip");
+            var clipRects = ReadRectTrack(artworkElement, "clipRects");
+            artwork = new SmartSequenceArtworkDefinition(
+                dest,
+                destRects,
+                clip,
+                clipRects,
+                ReadNumberTrack(artworkElement, "alphas"));
+        }
+
         return new SmartBadgeSequenceDefinition(
             root,
             descriptor.Width,
             descriptor.Height,
             descriptor.Fps,
             descriptor.Parts,
-            fields);
+            fields,
+            artwork);
     }
 
     private static SmartBadgeDescriptor ParseDescriptor(RendererSceneV3 scene, string root, string text)
@@ -394,6 +415,36 @@ internal sealed record SmartBadgeFieldDefinition(
     }
 }
 
+internal sealed record SmartSequenceArtworkDefinition(
+    SmartBadgeRect? Dest,
+    IReadOnlyList<SmartBadgeRect?> DestRects,
+    SmartBadgeRect? Clip,
+    IReadOnlyList<SmartBadgeRect?> ClipRects,
+    IReadOnlyList<float?> Alphas)
+{
+    public SmartBadgeRect? DestAt(int templateFrame)
+    {
+        if (DestRects.Count == 0) return Dest;
+        if (templateFrame < 0) return null;
+        return templateFrame < DestRects.Count ? DestRects[templateFrame] : DestRects[^1];
+    }
+
+    public SmartBadgeRect? ClipAt(int templateFrame)
+    {
+        if (ClipRects.Count == 0) return Clip ?? DestAt(templateFrame);
+        if (templateFrame < 0) return null;
+        return templateFrame < ClipRects.Count ? ClipRects[templateFrame] : ClipRects[^1];
+    }
+
+    public float AlphaAt(int templateFrame)
+    {
+        if (Alphas.Count == 0) return 1;
+        if (templateFrame < 0) return 0;
+        var value = templateFrame < Alphas.Count ? Alphas[templateFrame] : Alphas[^1];
+        return Math.Clamp(value ?? 0, 0, 1);
+    }
+}
+
 internal sealed record SmartBadgeFrameSelection(string Asset, int TemplateFrame);
 
 internal sealed record SmartBadgeSequenceDefinition(
@@ -402,7 +453,8 @@ internal sealed record SmartBadgeSequenceDefinition(
     int Height,
     int Fps,
     IReadOnlyList<SmartBadgePartDefinition> Parts,
-    IReadOnlyList<SmartBadgeFieldDefinition> Fields)
+    IReadOnlyList<SmartBadgeFieldDefinition> Fields,
+    SmartSequenceArtworkDefinition? Artwork)
 {
     public SmartBadgeFrameSelection? SelectFrame(int frame)
     {
