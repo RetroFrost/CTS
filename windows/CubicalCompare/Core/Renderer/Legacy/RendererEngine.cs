@@ -797,18 +797,18 @@ internal static class V3Evaluator
                     if (interpolation is "linear" or "smoothstep" or "cubic-in" or "cubic-out" or "cubic-in-out")
                     {
                         var next = Math.Min(index + 1, values.GetArrayLength() - 1);
-                        if (values[index].TryGetDouble(out var lv) && values[next].TryGetDouble(out var rv))
+                        if (values[index].TryGetDouble(out var denseLeft) && values[next].TryGetDouble(out var denseRight))
                         {
-                            var p = (relative % stride) / (double)stride;
-                            p = interpolation switch
+                            var denseProgress = (relative % stride) / (double)stride;
+                            denseProgress = interpolation switch
                             {
-                                "smoothstep" => p * p * (3 - 2 * p),
-                                "cubic-in" => p * p * p,
-                                "cubic-out" => 1 - Math.Pow(1 - p, 3),
-                                "cubic-in-out" => p < .5 ? 4 * p * p * p : 1 - Math.Pow(-2 * p + 2, 3) / 2,
-                                _ => p,
+                                "smoothstep" => denseProgress * denseProgress * (3 - 2 * denseProgress),
+                                "cubic-in" => denseProgress * denseProgress * denseProgress,
+                                "cubic-out" => 1 - Math.Pow(1 - denseProgress, 3),
+                                "cubic-in-out" => denseProgress < .5 ? 4 * denseProgress * denseProgress * denseProgress : 1 - Math.Pow(-2 * denseProgress + 2, 3) / 2,
+                                _ => denseProgress,
                             };
-                            return lv + (rv - lv) * p;
+                            return denseLeft + (denseRight - denseLeft) * denseProgress;
                         }
                     }
                     if (interpolation != "raw") return JsonValue(values[index]);
