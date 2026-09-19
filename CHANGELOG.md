@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.2.1.1 — 2026-09-19
+
+- Added **Smart Features** to Settings and added an in-app built-in changelog.
+- Added **Smart Badge Animation** for Renderer v3.
+- Added transparent badge-only frame sequences using a bootanimation-style `desc.txt` plus `part0`, `part1`, etc. frame folders.
+- Added `smart.json` sidecars that identify every replaceable badge text field with the literal marker `jsparse`.
+- Added live replacement of `jsparse` fields from project data, including badge header, primary value and unit/suffix.
+- Added per-frame field rectangles, opacity tracks and rotation tracks so live text can stay aligned to reference-derived badge animation frames.
+- Smart badge runtime frames must be clean/empty text plates with transparent backgrounds; calibration/reference marker frames are not composited into exports.
+- Added native validation for Smart Badge sequence packages and the new `smart-badge-animation-v1`, `smart-badge-jsparse-v1`, and `bootanimation-frame-sequence-v1` renderer capabilities.
+- Kept the public Windows installer visible and non-silent.
+
+
 ## 4.2.1 — 2026-09-19
 
 - Added a 20-feature Renderer Accuracy Pack for Renderer v3.
