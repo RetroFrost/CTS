@@ -47,14 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.1"
+          $version = "4.2.1.2"
           $assemblyVersion = $version
 
-          # Cubical Compare exposes a four-part Windows revision. Velopack itself only
-          # accepts SemVer-compatible three-part package versions, so the visible app
-          # stays 4.2.1.1 while the private setup payload uses the next internal package
-          # revision. The public update path for this release is the versioned portable ZIP.
-          $velopackVersion = "4.2.2"
+          # Velopack uses SemVer2 and does not support four-part app versions.
+          # Keep the visible Cubical Compare version at 4.2.1.2 and advance the
+          # package/feed version independently.
+          $velopackVersion = "4.2.3"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -272,9 +271,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $public = Get-ChildItem artifacts/velopack -File | Where-Object {
             $_.Name -Like '*-Setup.exe' -or
-            $_.Name -Like '*-Portable.zip'
+            $_.Name -Like '*-Portable.zip' -or
+            $_.Name -Like '*-full.nupkg' -or
+            $_.Name -Like 'releases.*.json'
           } | Sort-Object Name
-          if ($public.Count -lt 2) { throw 'Expected public Setup.exe and Portable.zip before writing SHA256SUMS.txt.' }
+          if ($public.Count -lt 4) { throw 'Expected Setup.exe, Portable.zip, full nupkg and release index before writing SHA256SUMS.txt.' }
           $lines = $public | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
@@ -300,16 +301,15 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - Smart Features: new Smart Badge Animation support for Renderer v3.
-          - Transparent badge-only frame sequences use a bootanimation-style desc.txt and part folders.
-          - smart.json uses the exact marker token jsparse for replaceable header, value and unit fields.
-          - Per-frame field rectangles, alpha and rotation keep live project text aligned with reference-derived badge frames.
-          - Runtime badge frames must be clean/empty text plates with transparent backgrounds; reference text is never baked into project output.
-          - Built-in changelog added to Settings.
-          - Renderer Accuracy Pack 4.2.1 remains included with its 20 accuracy capabilities.
-          - Certificate-free unpackaged WinUI 3 deployment on .NET 10 and Windows App SDK 2.4.
-          - Public Setup.exe always shows Cubical Compare's visible progress UI and launches Cubical Compare after installation.
-          - Versioned portable Windows ZIP is the public update payload for this four-part revision.
+          - Reliability-first automatic updater replaces the old fixed Update from ZIP path.
+          - Real Velopack-managed installs prefer the verified full .nupkg + releases.win.json feed automatically.
+          - Installed copies fall back to the visible Setup.exe if the package feed is unavailable or does not resolve safely.
+          - Raw/portable copies use the versioned portable ZIP when that is the safer path.
+          - Portable ZIP updates retry downloads, verify GitHub SHA-256 digests, fully stage before app exit and roll back if file replacement fails.
+          - The Updates UI now exposes one Install update action and reports the method selected automatically.
+          - Full nupkg and releases.win.json assets are published again so package-based updates can actually work.
+          - Smart Badge Animation and the 4.2.1 Renderer Accuracy Pack remain included.
+          - Public Setup.exe remains visible/non-silent and launches Cubical Compare after installation.
           - Self-contained x64 build; no separate .NET or Windows App SDK runtime install is required.
 
           **Unsigned build note:** Windows SmartScreen may still warn on an unsigned download. No certificate is required to build, install or update Cubical Compare.
@@ -334,11 +334,15 @@ jobs:
             Get-ChildItem artifacts/velopack -File | Where-Object {
               $_.Name -Like '*-Setup.exe' -or
               $_.Name -Like '*-Portable.zip' -or
+              $_.Name -Like '*-full.nupkg' -or
+              $_.Name -Like 'releases.*.json' -or
               $_.Name -eq 'SHA256SUMS.txt'
             } | Sort-Object @{ Expression = {
-              if ($_.Name -Like '*-Portable.zip') { 0 }
-              elseif ($_.Name -Like '*-Setup.exe') { 1 }
-              else { 2 }
+              if ($_.Name -Like '*-full.nupkg') { 0 }
+              elseif ($_.Name -Like 'releases.*.json') { 1 }
+              elseif ($_.Name -Like '*-Portable.zip') { 2 }
+              elseif ($_.Name -Like '*-Setup.exe') { 3 }
+              else { 4 }
             } }
           )
           if ($assets.Count -eq 0) { throw 'No release assets were selected for upload.' }
