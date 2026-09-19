@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.2.1.9 — 2026-09-19
+
+- Promoted **SmartCard** to the real split-layer card-animation path.
+- SmartCard rendering now composites in the strict source-style order: base/card shell → live artwork → live title/description → overlay/glass/shine.
+- This fixes shine passes that previously sat underneath live card content; overlay shine now travels across both artwork and text.
+- Added the `smart-card-layered-compositing-v1` capability. Renderers that require it must provide a synchronized `overlayFolder` frame sequence.
+- SmartCard overlay frame counts are validated against the exact base/template frame count, with the existing missing/duplicate numeric-frame guard retained.
+- Updated the SmartCard authoring contract to use `base/` + `overlay/` frame folders and corrected the `desc.txt` header order to width, height, FPS.
+
+
 ## 4.2.1.8 — 2026-09-19
 
 - Fixed SmartBadge v2 renderer packages that wrapped an exact legacy/ribbon renderer without a real `renderer.renderer3` scene file.
