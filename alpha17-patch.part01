@@ -1,0 +1,188 @@
+kWidget* preview_time{};
++    GtkWidget* play_button{};
++    GtkWidget* seek{};
++    GtkWidget* time_label{};
+     GtkWidget* sheet_rows{};
+     GtkWidget* sheet_columns{};
+     GtkWidget* sheet_start{};
+@@ -43,6 +49,23 @@
+     std::vector<GtkWidget*> font_fields;
+     fs::path working_ccx;
+     fs::path preview_path;
++    bool playing{false};
++    bool preview_rendering{false};
++    bool preview_pending{false};
++    bool updating_seek{false};
++    double current_time{0.0};
++    double duration{0.0};
++    double pending_time{0.0};
++    double play_anchor_time{0.0};
++    std::chrono::steady_clock::time_point play_anchor{};
++};
++
++struct PreviewResult {
++    AppState* state{};
++    fs::path image_path;
++    fs::path project_snapshot;
++    double time{0.0};
++    std::string error;
+ };
+ 
+ enum class PickAction { OpenProject, SaveProject, ImportData, ImportSheet, CardImage, Soundtrack, FontTitle, FontDescription, FontBadge, FontCredits, ExportVideo };
+@@ -184,6 +207,8 @@
+     return entry;
+ }
+ 
++void reset_player(AppState* s);
++
+ GtkWidget* spin(GtkWidget* grid, int row, const char* label, double min, double max, double step) {
+     GtkWidget* l = gtk_label_new(label); gtk_label_set_xalign(GTK_LABEL(l), 0.0f);
+     gtk_grid_attach(GTK_GRID(grid), l, 0, row, 1, 1);
+@@ -195,55 +220,182 @@
+ void add_card(GtkButton*, gpointer data) {
+     auto* s = static_cast<AppState*>(data); sync_project_from_ui(s);
+     s->project.cards.push_back({"New card", "", "", ""}); s->selected = static_cast<int>(s->project.cards.size()) - 1;
+-    rebuild_card_list(s); load_selected_card(s);
++    rebuild_card_list(s); load_selected_card(s); reset_player(s);
+ }
+ void remove_card(GtkButton*, gpointer data) {
+     auto* s = static_cast<AppState*>(data); sync_project_from_ui(s);
+     if (s->project.cards.size() <= 1) return;
+     s->project.cards.erase(s->project.cards.begin() + s->selected);
+-    s->selected = std::max(0, s->selected - 1); rebuild_card_list(s); load_selected_card(s);
++    s->selected = std::max(0, s->selected - 1); rebuild_card_list(s); load_selected_card(s); reset_player(s);
+ }
+ void trim_cards(GtkButton*, gpointer data) {
+     auto* s = static_cast<AppState*>(data); sync_project_from_ui(s);
+     int keep = s->selected + 1;
+     if (keep > 0 && keep < static_cast<int>(s->project.cards.size())) {
+         s->project.cards.resize(static_cast<std::size_t>(keep)); rebuild_card_list(s); load_selected_card(s);
++        reset_player(s);
+         set_status(s, "Trimmed project to " + std::to_string(keep) + " cards");
+     }
+ }
+ 
+-void render_preview(AppState* s) {
+-    if (!write_working(s)) return;
+-    const double t = gtk_spin_button_get_value(GTK_SPIN_BUTTON(s->preview_time));
+-    const auto next_preview = cubical::temporary_path("cubical-create-preview", ".png");
+-    const auto result = cubical::run_engine({
+-        "render-preview", s->working_ccx.string(), next_preview.string(),
+-        "--time", std::to_string(t), "--width", "960", "--height", "540"
+-    });
+-    if (result.exit_code != 0 || !fs::exists(next_preview)) {
+-        set_status(s, result.output.empty() ? "Preview rendering failed." : result.output);
+-        std::error_code ignored; fs::remove(next_preview, ignored);
++std::string format_time(double seconds) {
++    seconds = std::max(0.0, seconds);
++    const int total = static_cast<int>(seconds);
++    const int minutes = total / 60;
++    const int secs = total % 60;
++    const int tenths = static_cast<int>((seconds - total) * 10.0 + 0.5) % 10;
++    std::ostringstream out;
++    out << std::setfill('0') << std::setw(2) << minutes << ':' << std::setw(2) << secs << '.' << tenths;
++    return out.str();
++}
++
++void update_player_ui(AppState* s) {
++    s->current_time = std::clamp(s->current_time, 0.0, std::max(0.0, s->duration));
++    s->updating_seek = true;
++    gtk_range_set_range(GTK_RANGE(s->seek), 0.0, std::max(0.01, s->duration));
++    gtk_range_set_value(GTK_RANGE(s->seek), s->current_time);
++    s->updating_seek = false;
++    const std::string label = format_time(s->current_time) + " / " + format_time(s->duration);
++    gtk_label_set_text(GTK_LABEL(s->time_label), label.c_str());
++    gtk_button_set_label(GTK_BUTTON(s->play_button), s->playing ? "Pause" : "Play");
++}
++
++void start_preview_render(AppState* s, double requested_time);
++
++static gboolean preview_ready(gpointer data) {
++    std::unique_ptr<PreviewResult> payload(static_cast<PreviewResult*>(data));
++    AppState* s = payload->state;
++    s->preview_rendering = false;
++
++    if (payload->error.empty() && fs::exists(payload->image_path)) {
++        GError* error = nullptr;
++        GdkTexture* texture = gdk_texture_new_from_filename(payload->image_path.string().c_str(), &error);
++        if (texture) {
++            gtk_picture_set_paintable(GTK_PICTURE(s->preview), GDK_PAINTABLE(texture));
++            g_object_unref(texture);
++            std::error_code ignored;
++            if (!s->preview_path.empty()) fs::remove(s->preview_path, ignored);
++            s->preview_path = payload->image_path;
++        } else {
++            payload->error = error ? error->message : "GTK could not decode the rendered preview.";
++            if (error) g_error_free(error);
++        }
++    }
++
++    std::error_code ignored;
++    fs::remove(payload->project_snapshot, ignored);
++    if (!payload->error.empty()) {
++        fs::remove(payload->image_path, ignored);
++        set_status(s, payload->error);
++    } else if (!s->playing) {
++        set_status(s, "Preview frame matches exported output at " + format_time(payload->time));
++    }
++
++    if (s->preview_pending) {
++        const double next = s->pending_time;
++        s->preview_pending = false;
++        start_preview_render(s, next);
++    }
++    return G_SOURCE_REMOVE;
++}
++
++void start_preview_render(AppState* s, double requested_time) {
++    if (s->preview_rendering) {
++        s->preview_pending = true;
++        s->pending_time = requested_time;
++        return;
++    }
++    s->preview_rendering = true;
++    const auto snapshot = cubical::temporary_path("cubical-create-preview-project", ".ccx");
++    const auto output = cubical::temporary_path("cubical-create-preview", ".png");
++    std::error_code copy_error;
++    fs::copy_file(s->working_ccx, snapshot, fs::copy_options::overwrite_existing, copy_error);
++    if (copy_error) {
++        s->preview_rendering = false;
++        set_status(s, "Could not prepare preview project: " + copy_error.message());
+         return;
+     }
+ 
+-    GError* error = nullptr;
+-    GdkTexture* texture = gdk_texture_new_from_filename(next_preview.string().c_str(), &error);
+-    if (!texture) {
+-        const std::string message = error ? error->message : "GTK could not decode the rendered preview.";
+-        if (error) g_error_free(error);
+-        set_status(s, message);
+-        std::error_code ignored; fs::remove(next_preview, ignored);
++    std::thread([s, snapshot, output, requested_time]() {
++        const auto result = cubical::run_engine({
++            "render-preview", snapshot.string(), output.string(),
++            "--time", std::to_string(requested_time)
++        });
++        auto* payload = new PreviewResult{
++            s, output, snapshot, requested_time,
++            result.exit_code == 0 && fs::exists(output)
++                ? std::string{}
++                : (result.output.empty() ? "Preview rendering failed." : result.output)
++        };
++        g_idle_add(preview_ready, payload);
++    }).detach();
++}
++
++void request_preview(AppState* s, double requested_time, bool sync_project = true) {
++    if (sync_project && !write_working(s)) return;
++    s->duration = cubical::timeline_duration(s->project);
++    s->current_time = std::clamp(requested_time, 0.0, std::max(0.0, s->duration));
++    update_player_ui(s);
++    start_preview_render(s, s->current_time);
++}
++
++void reset_player(AppState* s) {
++    s->playing = false;
++    s->duration = cubical::timeline_duration(s->project);
++    s->current_time = 0.0;
++    u

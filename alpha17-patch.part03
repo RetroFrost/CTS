@@ -1,0 +1,195 @@
+t_size_request(left, 300, -1);
+     s->card_list = gtk_list_box_new(); g_signal_connect(s->card_list, "row-selected", G_CALLBACK(card_selected), s);
+@@ -430,8 +595,9 @@
+ 
+     load_project_ui(s);
+     gtk_window_present(GTK_WINDOW(s->window));
++    g_timeout_add(100, playback_tick, s);
+     g_idle_add([](gpointer data) -> gboolean {
+-        render_preview(static_cast<AppState*>(data));
++        reset_player(static_cast<AppState*>(data));
+         return G_SOURCE_REMOVE;
+     }, s);
+ }
+@@ -439,6 +605,9 @@
+ 
+ int main(int argc, char** argv) {
+     if (argc > 1 && std::string(argv[1]) == "--self-test") {
++        cubical::Project timing_project;
++        timing_project.cards.assign(8, {"Card", "1", "", ""});
++        if (std::abs(cubical::timeline_duration(timing_project) - 28.75) > 1e-9) return 3;
+         const auto directory = cubical::temporary_path("cubical-create-native-self-test", "");
+         const auto result = cubical::run_engine({"self-test", "--directory", directory.string()});
+         std::cout << result.output;
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/native/windows/main.cpp /mnt/data/alpha16fix/native/windows/main.cpp
+--- /mnt/data/alpha16orig/native/windows/main.cpp	2026-07-24 21:20:14.000000000 +0000
++++ /mnt/data/alpha16fix/native/windows/main.cpp	2026-07-24 23:13:47.625739568 +0000
+@@ -6,6 +6,10 @@
+ #include <shobjidl.h>
+ #include <shellapi.h>
+ #include <algorithm>
++#include <chrono>
++#include <cmath>
++#include <iomanip>
++#include <sstream>
+ #include <filesystem>
+ #include <memory>
+ #include <string>
+@@ -24,17 +28,19 @@
+ constexpr wchar_t kMainClass[] = L"CubicalCreateMainWindow";
+ constexpr wchar_t kControlsClass[] = L"CubicalCreateControlsWindow";
+ constexpr UINT WM_EXPORT_DONE = WM_APP + 42;
++constexpr UINT WM_PREVIEW_READY = WM_APP + 43;
++constexpr UINT PLAYER_TIMER = 7;
+ 
+ enum Id {
+     ID_NEW=100, ID_OPEN, ID_SAVE, ID_INSERT, ID_SHEET, ID_PREVIEW, ID_EXPORT, ID_CONTROLS,
+     ID_CARD_LIST, ID_TITLE, ID_VALUE, ID_DESCRIPTION, ID_IMAGE, ID_CHOOSE_IMAGE, ID_ADD, ID_REMOVE, ID_TRIM,
+-    ID_PREVIEW_TIME, ID_STATUS, ID_PREVIEW_BITMAP,
++    ID_PLAY, ID_RESTART, ID_SEEK, ID_TIME_LABEL, ID_STATUS, ID_PREVIEW_BITMAP,
+     ID_TAB=500, ID_APPLY_CONTROLS,
+ };
+ 
+ struct AppState {
+     HINSTANCE instance{};
+-    HWND window{}, status{}, card_list{}, preview{}, preview_time{};
++    HWND window{}, status{}, card_list{}, preview{}, play_button{}, seek{}, time_label{};
+     HWND sheet_rows{}, sheet_columns{}, sheet_start{};
+     HWND title{}, value{}, description{}, image{};
+     HFONT ui_font{};
+@@ -44,6 +50,23 @@
+     bool loading{false};
+     fs::path working_ccx;
+     fs::path preview_path;
++    bool playing{false};
++    bool preview_rendering{false};
++    bool preview_pending{false};
++    bool updating_seek{false};
++    double current_time{0.0};
++    double duration{0.0};
++    double pending_time{0.0};
++    double play_anchor_time{0.0};
++    std::chrono::steady_clock::time_point play_anchor{};
++};
++
++struct PreviewResult {
++    AppState* state{};
++    fs::path image_path;
++    fs::path project_snapshot;
++    double time{0.0};
++    std::string error;
+ };
+ 
+ struct ControlsState {
+@@ -116,26 +139,131 @@
+ }
+ void load_project(AppState* s) { rebuild_cards(s); load_card(s); set_status(s,cubical::summary(s->project)); }
+ 
+-void update_preview(AppState* s) {
++std::wstring format_time(double seconds) {
++    seconds = std::max(0.0, seconds);
++    const int total = static_cast<int>(seconds);
++    const int minutes = total / 60;
++    const int secs = total % 60;
++    const int tenths = static_cast<int>((seconds - total) * 10.0 + 0.5) % 10;
++    std::wostringstream out;
++    out << std::setfill(L'0') << std::setw(2) << minutes << L':' << std::setw(2) << secs << L'.' << tenths;
++    return out.str();
++}
++
++HBITMAP load_scaled_bitmap(const fs::path& path, int target_width, int target_height) {
++    HBITMAP source = static_cast<HBITMAP>(LoadImageW(nullptr, path.wstring().c_str(), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_CREATEDIBSECTION));
++    if (!source) return nullptr;
++    BITMAP info{};
++    GetObjectW(source, sizeof(info), &info);
++    HDC screen = GetDC(nullptr);
++    HDC source_dc = CreateCompatibleDC(screen);
++    HDC target_dc = CreateCompatibleDC(screen);
++    HBITMAP target = CreateCompatibleBitmap(screen, target_width, target_height);
++    HGDIOBJ old_source = SelectObject(source_dc, source);
++    HGDIOBJ old_target = SelectObject(target_dc, target);
++    SetStretchBltMode(target_dc, HALFTONE);
++    SetBrushOrgEx(target_dc, 0, 0, nullptr);
++    const BOOL ok = StretchBlt(target_dc, 0, 0, target_width, target_height, source_dc, 0, 0, info.bmWidth, info.bmHeight, SRCCOPY);
++    SelectObject(source_dc, old_source);
++    SelectObject(target_dc, old_target);
++    DeleteDC(source_dc);
++    DeleteDC(target_dc);
++    ReleaseDC(nullptr, screen);
++    DeleteObject(source);
++    if (!ok) { DeleteObject(target); return nullptr; }
++    return target;
++}
++
++void update_player_ui(AppState* s) {
++    s->current_time = std::clamp(s->current_time, 0.0, std::max(0.0, s->duration));
++    s->updating_seek = true;
++    const int position = s->duration > 0.0 ? static_cast<int>(std::round(s->current_time * 10000.0 / s->duration)) : 0;
++    SendMessageW(s->seek, TBM_SETPOS, TRUE, std::clamp(position, 0, 10000));
++    s->updating_seek = false;
++    const std::wstring label = format_time(s->current_time) + L" / " + format_time(s->duration);
++    SetWindowTextW(s->time_label, label.c_str());
++    SetWindowTextW(s->play_button, s->playing ? L"Pause" : L"Play");
++}
++
++void start_preview_render(AppState* s, double requested_time);
++
++void request_preview(AppState* s, double requested_time, bool sync_project = true) {
++    if (sync_project && !write_working(s)) return;
++    s->duration = cubical::timeline_duration(s->project);
++    s->current_time = std::clamp(requested_time, 0.0, std::max(0.0, s->duration));
++    update_player_ui(s);
++    start_preview_render(s, s->current_time);
++}
++
++void start_preview_render(AppState* s, double requested_time) {
++    if (s->preview_rendering) {
++        s->preview_pending = true;
++        s->pending_time = requested_time;
++        return;
++    }
++    s->preview_rendering = true;
++    const auto snapshot = cubical::temporary_path("cubical-create-preview-project", ".ccx");
++    const auto output = cubical::temporary_path("cubical-create-preview", ".bmp");
++    std::error_code copy_error;
++    fs::copy_file(s->working_ccx, snapshot, fs::copy_options::overwrite_existing, copy_error);
++    if (copy_error) {
++        s->preview_rendering = false;
++        set_status(s, "Could not prepare preview project: " + copy_error.message());
++        return;
++    }
++    HWND window = s->window;
++    std::thread([s, window, snapshot, output, requested_time]() {
++        const auto result = cubical::run_engine({
++            "render-preview", snapshot.string(), output.string(), "--time", std::to_string(requested_time)
++        });
++        auto* payload = new PreviewResult{
++            s, output, snapshot, requested_time,
++            result.exit_code == 0 && fs::exists(output)
++                ? std::string{}
++                : (result.output.empty() ? "Preview rendering failed." : result.output)
++        };
++        if (!IsWindow(window) || !PostMessageW(window, WM_PREVIEW_READY, 0, reinterpret_cast<LPARAM>(payload))) {
++            std::error_code ignored;
++            fs::remove(output, ignored); fs::remove(snapshot, ignored);
++            delete payload;
++        }
++    }).detach();
++}
++
++void reset_player(AppState* s) {
++    s->playing = false;
++    s->duration = cubical::timeline_duration(s->project);
++    s->current_time = 0.0;
++    update_player_ui(s);
++    if (write_working(s)) start_preview_render(s, 0.0);
++}
++
++void toggle_play(AppState* s) {
++    if (s->playing) {
++        s->playing = false;
++        update_player_ui(s);
++        return;
++    }
+     if (!write_working(s)) return;
+-    double t

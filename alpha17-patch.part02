@@ -1,0 +1,149 @@
+pdate_player_ui(s);
++    if (write_working(s)) start_preview_render(s, 0.0);
++}
++
++void play_clicked(GtkButton*, gpointer data) {
++    auto* s = static_cast<AppState*>(data);
++    if (s->playing) {
++        s->playing = false;
++        update_player_ui(s);
+         return;
+     }
++    if (!write_working(s)) return;
++    s->duration = cubical::timeline_duration(s->project);
++    if (s->current_time >= s->duration) s->current_time = 0.0;
++    s->playing = true;
++    s->play_anchor_time = s->current_time;
++    s->play_anchor = std::chrono::steady_clock::now();
++    update_player_ui(s);
++    start_preview_render(s, s->current_time);
++}
+ 
+-    gtk_picture_set_paintable(GTK_PICTURE(s->preview), GDK_PAINTABLE(texture));
+-    g_object_unref(texture);
+-    std::error_code ignored;
+-    if (!s->preview_path.empty()) fs::remove(s->preview_path, ignored);
+-    s->preview_path = next_preview;
+-    set_status(s, "Preview updated");
++void restart_clicked(GtkButton*, gpointer data) {
++    auto* s = static_cast<AppState*>(data);
++    s->playing = false;
++    request_preview(s, 0.0, true);
++}
++
++void seek_changed(GtkRange* range, gpointer data) {
++    auto* s = static_cast<AppState*>(data);
++    if (s->updating_seek) return;
++    const double value = gtk_range_get_value(range);
++    s->current_time = value;
++    if (s->playing) {
++        s->play_anchor_time = value;
++        s->play_anchor = std::chrono::steady_clock::now();
++    }
++    request_preview(s, value, true);
++}
++
++static gboolean playback_tick(gpointer data) {
++    auto* s = static_cast<AppState*>(data);
++    if (!s->playing) return G_SOURCE_CONTINUE;
++    const auto now = std::chrono::steady_clock::now();
++    const double elapsed = std::chrono::duration<double>(now - s->play_anchor).count();
++    s->current_time = s->play_anchor_time + elapsed;
++    if (s->current_time >= s->duration) {
++        s->current_time = s->duration;
++        s->playing = false;
++    }
++    update_player_ui(s);
++    start_preview_render(s, s->current_time);
++    return G_SOURCE_CONTINUE;
+ }
+-void preview_clicked(GtkButton*, gpointer data) { render_preview(static_cast<AppState*>(data)); }
+ 
+ void pick_response(GtkNativeDialog* dialog, int response, gpointer data) {
+     std::unique_ptr<PickContext> ctx(static_cast<PickContext*>(data));
+@@ -255,7 +407,7 @@
+     if (raw) g_free(raw); if (file) g_object_unref(file); g_object_unref(dialog);
+     if (path.empty()) return;
+ 
+-    if (ctx->action == PickAction::CardImage) { set_entry(s->image, path); sync_project_from_ui(s); render_preview(s); return; }
++    if (ctx->action == PickAction::CardImage) { set_entry(s->image, path); sync_project_from_ui(s); request_preview(s, s->current_time); return; }
+     if (ctx->action == PickAction::Soundtrack) { set_entry(s->soundtrack, path); sync_project_from_ui(s); set_status(s, "Soundtrack replaced: " + path); return; }
+     if (ctx->action >= PickAction::FontTitle && ctx->action <= PickAction::FontCredits) {
+         int i = static_cast<int>(ctx->action) - static_cast<int>(PickAction::FontTitle); set_entry(s->font_fields[i], path); return;
+@@ -275,7 +427,7 @@
+         }
+         if (loaded) {
+             s->project.project_path = selected_path; s->selected = 0;
+-            load_project_ui(s); write_working(s); render_preview(s);
++            load_project_ui(s); reset_player(s);
+         } else set_status(s, load_error.empty() ? "Could not open the selected project." : load_error);
+     } else if (ctx->action == PickAction::SaveProject) {
+         const fs::path selected_path(path);
+@@ -292,7 +444,7 @@
+     } else if (ctx->action == PickAction::ImportData) {
+         auto out = cubical::temporary_path("cubical-import", ".ccx");
+         auto result = cubical::run_engine({"import-data", s->working_ccx.string(), path, out.string()});
+-        if (result.exit_code == 0 && cubical::load_ccx(s->project, out)) { s->selected = 0; load_project_ui(s); render_preview(s); }
++        if (result.exit_code == 0 && cubical::load_ccx(s->project, out)) { s->selected = 0; load_project_ui(s); reset_player(s); }
+         else set_status(s, result.output);
+         std::error_code ec; fs::remove(out, ec);
+     } else if (ctx->action == PickAction::ImportSheet) {
+@@ -304,7 +456,7 @@
+         std::vector<std::string> command = {"import-sheet", s->working_ccx.string(), path, out.string(), assets.string(), "--expected", std::to_string(s->project.cards.size()), "--start", std::to_string(start), "--fit", "cts_card"};
+         if (rows > 0 && columns > 0) { command.insert(command.end(), {"--rows", std::to_string(rows), "--columns", std::to_string(columns)}); }
+         auto result = cubical::run_engine(command);
+-        if (result.exit_code == 0 && cubical::load_ccx(s->project, out)) { s->selected = 0; load_project_ui(s); render_preview(s); set_status(s, result.output); }
++        if (result.exit_code == 0 && cubical::load_ccx(s->project, out)) { s->selected = 0; load_project_ui(s); reset_player(s); set_status(s, result.output); }
+         else set_status(s, result.output);
+         std::error_code ec; fs::remove(out, ec);
+     } else if (ctx->action == PickAction::ExportVideo) {
+@@ -340,7 +492,7 @@
+     s->project.project_path.clear();
+     s->selected = 0;
+     load_project_ui(s);
+-    if (write_working(s)) render_preview(s);
++    reset_player(s);
+ }
+ 
+ GtkWidget* make_scrolled(GtkWidget* child) {
+@@ -364,7 +516,7 @@
+     struct Button { const char* label; GCallback cb; } buttons[] = {
+         {"New", G_CALLBACK(new_project)}, {"Open", G_CALLBACK(choose_open)}, {"Save", G_CALLBACK(choose_save)},
+         {"Click to Insert Data", G_CALLBACK(choose_data)}, {"Image Sheet", G_CALLBACK(choose_sheet)},
+-        {"Refresh Preview", G_CALLBACK(preview_clicked)}, {"Export MP4", G_CALLBACK(choose_export)},
++        {"Export MP4", G_CALLBACK(choose_export)},
+     };
+     for (auto& b : buttons) { GtkWidget* w = gtk_button_new_with_label(b.label); g_signal_connect(w, "clicked", b.cb, s); gtk_box_append(GTK_BOX(toolbar), w); }
+     gtk_box_append(GTK_BOX(root), toolbar);
+@@ -374,9 +526,6 @@
+     gtk_widget_set_size_request(s->preview, 640, 360); gtk_widget_set_hexpand(s->preview, TRUE);
+     gtk_box_append(GTK_BOX(preview_row), s->preview);
+     GtkWidget* time_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+-    gtk_box_append(GTK_BOX(time_box), gtk_label_new("Preview time (seconds)"));
+-    s->preview_time = gtk_spin_button_new_with_range(0, 86400, 0.1);
+-    gtk_box_append(GTK_BOX(time_box), s->preview_time);
+     gtk_box_append(GTK_BOX(time_box), gtk_label_new("Sheet rows (0 = auto)"));
+     s->sheet_rows = gtk_spin_button_new_with_range(0, 20, 1); gtk_box_append(GTK_BOX(time_box), s->sheet_rows);
+     gtk_box_append(GTK_BOX(time_box), gtk_label_new("Sheet columns (0 = auto)"));
+@@ -386,6 +535,22 @@
+     gtk_box_append(GTK_BOX(preview_row), time_box);
+     gtk_box_append(GTK_BOX(root), preview_row);
+ 
++    GtkWidget* player = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
++    s->play_button = gtk_button_new_with_label("Play");
++    GtkWidget* restart = gtk_button_new_with_label("Restart");
++    s->seek = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.01);
++    gtk_scale_set_draw_value(GTK_SCALE(s->seek), FALSE);
++    gtk_widget_set_hexpand(s->seek, TRUE);
++    s->time_label = gtk_label_new("00:00.0 / 00:00.0");
++    g_signal_connect(s->play_button, "clicked", G_CALLBACK(play_clicked), s);
++    g_signal_connect(restart, "clicked", G_CALLBACK(restart_clicked), s);
++    g_signal_connect(s->seek, "value-changed", G_CALLBACK(seek_changed), s);
++    gtk_box_append(GTK_BOX(player), s->play_button);
++    gtk_box_append(GTK_BOX(player), restart);
++    gtk_box_append(GTK_BOX(player), s->seek);
++    gtk_box_append(GTK_BOX(player), s->time_label);
++    gtk_box_append(GTK_BOX(root), player);
++
+     GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL); gtk_widget_set_vexpand(paned, TRUE);
+     GtkWidget* left = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); gtk_widget_se

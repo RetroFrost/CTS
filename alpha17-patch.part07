@@ -1,0 +1,62 @@
+WM_DESTROY:KillTimer(hwnd,PLAYER_TIMER);if(s->preview_bitmap)DeleteObject(s->preview_bitmap);PostQuitMessage(0);return 0;}return DefWindowProcW(hwnd,msg,wp,lp);}
+ }
+ 
+ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){
+-int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);if(argv&&argc>1&&std::wstring(argv[1])==L"--self-test"){const auto directory=cubical::temporary_path("cubical-create-native-self-test","");const auto result=cubical::run_engine({"self-test","--directory",directory.string()});std::error_code ignored;fs::remove_all(directory,ignored);LocalFree(argv);return result.exit_code;}if(argv)LocalFree(argv);
+-CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);INITCOMMONCONTROLSEX cc{sizeof(cc),ICC_STANDARD_CLASSES|ICC_TAB_CLASSES|ICC_LISTVIEW_CLASSES};InitCommonControlsEx(&cc);AppState state;state.instance=instance;state.ui_font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");state.working_ccx=cubical::temporary_path("cubical-create",".ccx");state.preview_path.clear();WNDCLASSW wc{};wc.lpfnWndProc=MainProc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);wc.lpszClassName=kMainClass;RegisterClassW(&wc);WNDCLASSW cw{};cw.lpfnWndProc=ControlsProc;cw.hInstance=instance;cw.hCursor=LoadCursorW(nullptr,IDC_ARROW);cw.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);cw.lpszClassName=kControlsClass;RegisterClassW(&cw);HWND window=CreateWindowExW(0,kMainClass,L"Cubical Create",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,1240,710,nullptr,nullptr,instance,&state);ShowWindow(window,show);UpdateWindow(window);MSG m{};while(GetMessageW(&m,nullptr,0,0)>0){TranslateMessage(&m);DispatchMessageW(&m);}std::error_code ec;fs::remove(state.working_ccx,ec);fs::remove(state.preview_path,ec);DeleteObject(state.ui_font);CoUninitialize();return static_cast<int>(m.wParam);}
++int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);if(argv&&argc>1&&std::wstring(argv[1])==L"--self-test"){cubical::Project timing_project;timing_project.cards.assign(8,{"Card","1","",""});if(std::abs(cubical::timeline_duration(timing_project)-28.75)>1e-9){LocalFree(argv);return 3;}const auto directory=cubical::temporary_path("cubical-create-native-self-test","");const auto result=cubical::run_engine({"self-test","--directory",directory.string()});std::error_code ignored;fs::remove_all(directory,ignored);LocalFree(argv);return result.exit_code;}if(argv)LocalFree(argv);
++CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);INITCOMMONCONTROLSEX cc{sizeof(cc),ICC_STANDARD_CLASSES|ICC_TAB_CLASSES|ICC_LISTVIEW_CLASSES|ICC_BAR_CLASSES};InitCommonControlsEx(&cc);AppState state;state.instance=instance;state.ui_font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");state.working_ccx=cubical::temporary_path("cubical-create",".ccx");state.preview_path.clear();WNDCLASSW wc{};wc.lpfnWndProc=MainProc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);wc.lpszClassName=kMainClass;RegisterClassW(&wc);WNDCLASSW cw{};cw.lpfnWndProc=ControlsProc;cw.hInstance=instance;cw.hCursor=LoadCursorW(nullptr,IDC_ARROW);cw.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);cw.lpszClassName=kControlsClass;RegisterClassW(&cw);HWND window=CreateWindowExW(0,kMainClass,L"Cubical Create",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,1240,710,nullptr,nullptr,instance,&state);ShowWindow(window,show);UpdateWindow(window);MSG m{};while(GetMessageW(&m,nullptr,0,0)>0){TranslateMessage(&m);DispatchMessageW(&m);}std::error_code ec;fs::remove(state.working_ccx,ec);fs::remove(state.preview_path,ec);DeleteObject(state.ui_font);CoUninitialize();return static_cast<int>(m.wParam);}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/packaging/linux/control /mnt/data/alpha16fix/packaging/linux/control
+--- /mnt/data/alpha16orig/packaging/linux/control	2026-07-24 21:20:32.000000000 +0000
++++ /mnt/data/alpha16fix/packaging/linux/control	2026-07-24 23:12:27.925740465 +0000
+@@ -1,5 +1,5 @@
+ Package: cubical-create
+-Version: 0.2.1~alpha16
++Version: 0.2.2~alpha17
+ Section: video
+ Priority: optional
+ Architecture: amd64
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/tests/test_wysiwyg_preview.py /mnt/data/alpha16fix/tests/test_wysiwyg_preview.py
+--- /mnt/data/alpha16orig/tests/test_wysiwyg_preview.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/alpha16fix/tests/test_wysiwyg_preview.py	2026-07-24 23:11:42.921740972 +0000
+@@ -0,0 +1,40 @@
++from __future__ import annotations
++
++from argparse import Namespace
++from pathlib import Path
++
++from PIL import Image, ImageChops
++
++from ccengine.models import Card, Project
++from ccengine.renderer import FrameRenderer
++from engine_cli import command_render_preview, write_ccx
++
++
++def test_preview_uses_exact_export_frame_path(tmp_path: Path) -> None:
++    project = Project(cards=[
++        Card("One", "1", "First", ""),
++        Card("Two", "2", "Second", ""),
++        Card("Three", "3", "", ""),
++        Card("Four", "4", "Fourth", ""),
++        Card("Five", "5", "Continuous", ""),
++    ])
++    project.settings.width = 1280
++    project.settings.height = 720
++
++    source = tmp_path / "project.ccx"
++    preview = tmp_path / "preview.png"
++    write_ccx(project, source)
++
++    command_render_preview(Namespace(
++        input=str(source),
++        output=str(preview),
++        time=9.75,
++        width=0,
++        height=0,
++    ))
++
++    expected = FrameRenderer().render_output_frame(project, 9.75)
++    with Image.open(preview) as actual:
++        actual = actual.convert("RGB")
++        assert actual.size == (1280, 720)
++        assert ImageChops.difference(actual, expected).getbbox() is None
