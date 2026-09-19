@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.2.1.8 — 2026-09-19
+
+- Fixed SmartBadge v2 renderer packages that wrapped an exact legacy/ribbon renderer without a real `renderer.renderer3` scene file.
+- Renderer v3 ZIPs can now include a valid proxy scene whose `wrappedRenderer` points at the exact `.renderer` payload inside the same package.
+- Package probing now sees a real Renderer v3 scene while rendering still uses the proven exact ribbon/card/scroll engine and SmartBadge v2 nested badge ZIPs.
+- This fixes the Puberty SmartBadge v2 package structure without replacing its source-measured timeline.
+
+
 ## 4.2.1.7 — 2026-09-19
 
 - Added **SmartBadge v2**: one renderer can embed multiple bootanimation-style badge ZIPs and select a different badge pack for every card.
