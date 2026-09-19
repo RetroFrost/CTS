@@ -332,7 +332,11 @@ public sealed class RendererEngine : IDisposable
         if (obj.Kind is "endingOverlay" or "fade") return false;
         var index = CardIndex(obj);
         if (index is int i && (i < 0 || i >= project.Cards.Count)) return false;
-        if (index is int b && obj.Kind is "openingBadge" or "badge" or "laterBadge" or "openingText" or "badgeText" or "laterText" or "openingShine" or "shineBroad" or "shineCore" or "shadow" or "relationshipsBadge")
+        var smartBadge = obj.Resource is not null &&
+            spec.SceneV3 is not null &&
+            spec.SceneV3.Resources.TryGetValue(obj.Resource, out var badgeResource) &&
+            badgeResource.String("type", "").Equals("smart-badge-animation", StringComparison.OrdinalIgnoreCase);
+        if (index is int b && (smartBadge || obj.Kind is "openingBadge" or "badge" or "laterBadge" or "openingText" or "badgeText" or "laterText" or "openingShine" or "shineBroad" or "shineCore" or "shadow" or "relationshipsBadge"))
         {
             var card = project.Cards[b];
             if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return false;
@@ -390,6 +394,7 @@ public sealed class RendererEngine : IDisposable
             {
                 case "relationships-card": DrawV3RelationshipsCard(canvas, project, obj, resource, bound, (float)opacity); break;
                 case "relationships-badge": DrawV3RelationshipsBadge(canvas, project, obj, resource, bound, (float)opacity); break;
+                case "smart-badge-animation": DrawV3SmartBadgeAnimation(canvas, project, spec, obj, resource, bound, frame, (float)opacity); break;
                 case "rect": DrawV3Rect(canvas, resource, bound, (float)opacity); break;
                 case "ellipse": DrawV3Ellipse(canvas, resource, bound, (float)opacity); break;
                 case "image": DrawV3Image(canvas, scene, resource, bound, (float)opacity); break;
@@ -713,6 +718,169 @@ public sealed class RendererEngine : IDisposable
         }
 
         canvas.Restore();
+    }
+
+    private void DrawV3SmartBadgeAnimation(
+        SKCanvas canvas,
+        StudioProject project,
+        RendererSpec spec,
+        RendererObjectV3 obj,
+        JsonElement resource,
+        Dictionary<string, object?> props,
+        int frame,
+        float opacity)
+    {
+        var index = CardIndex(obj);
+        if (index is null || index < 0 || index >= project.Cards.Count) return;
+        var card = project.Cards[index.Value];
+        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return;
+
+        var sequenceRoot = StringValue(Get(props, "sequenceRoot")) ?? resource.String("sequenceRoot", "");
+        if (string.IsNullOrWhiteSpace(sequenceRoot)) return;
+
+        SmartBadgeSequenceDefinition sequence;
+        try
+        {
+            sequence = SmartBadgeSequence.Load(spec.SceneV3!, sequenceRoot);
+        }
+        catch
+        {
+            return;
+        }
+
+        var explicitFrame = Get(props, "sequenceFrame");
+        var sequenceFrame = explicitFrame is null
+            ? (int)Math.Floor((frame - obj.Frame) * sequence.Fps / (double)Math.Max(1, spec.ReferenceFps))
+            : (int)Math.Round(Number(explicitFrame), MidpointRounding.AwayFromZero);
+        sequenceFrame += (int)Math.Round(Number(Get(props, "sequenceOffset"), resource.Int("sequenceOffset", 0)), MidpointRounding.AwayFromZero);
+
+        var selected = sequence.SelectFrame(sequenceFrame);
+        if (selected is null) return;
+        var bitmap = DecodeSceneBitmap(spec.SceneV3!, selected.Asset);
+        if (bitmap is null) return;
+
+        var drawX = (float)Number(Get(props, "drawX"), resource.Double("drawX", 0));
+        var drawY = (float)Number(Get(props, "drawY"), resource.Double("drawY", 0));
+        var drawWidth = (float)Number(Get(props, "drawWidth"), resource.Double("drawWidth", sequence.Width));
+        var drawHeight = (float)Number(Get(props, "drawHeight"), resource.Double("drawHeight", sequence.Height));
+        if (drawWidth <= 0 || drawHeight <= 0) return;
+
+        using (var paint = new SKPaint
+        {
+            IsAntialias = true,
+            FilterQuality = FilterQuality(StringValue(Get(props, "sampling", "filterMode")) ?? resource.String("sampling", "high")),
+            Color = new SKColor(255, 255, 255, AlphaByte(opacity)),
+            BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
+        })
+        {
+            canvas.DrawBitmap(bitmap, new SKRect(drawX, drawY, drawX + drawWidth, drawY + drawHeight), paint);
+        }
+
+        canvas.Save();
+        canvas.Translate(drawX, drawY);
+        canvas.Scale(drawWidth / Math.Max(1, sequence.Width), drawHeight / Math.Max(1, sequence.Height));
+        foreach (var field in sequence.Fields)
+            DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, opacity);
+        canvas.Restore();
+    }
+
+    private void DrawSmartBadgeField(
+        SKCanvas canvas,
+        StudioProject project,
+        StudioCard card,
+        SmartBadgeFieldDefinition field,
+        int templateFrame,
+        float parentOpacity)
+    {
+        var rect = field.RectAt(templateFrame);
+        if (rect is null) return;
+        var fieldOpacity = Math.Clamp(field.AlphaAt(templateFrame) * parentOpacity, 0, 1);
+        if (fieldOpacity <= 0.0001f) return;
+
+        var text = SmartBadgeFieldValue(card, field.Source);
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        var color = WithAlpha(ParseColor(field.Color, SKColors.White), fieldOpacity);
+        using var paint = TextPaint(project, field.FontSize, color, field.Bold);
+        paint.TextAlign = field.Align.Trim().ToLowerInvariant() switch
+        {
+            "left" => SKTextAlign.Left,
+            "right" => SKTextAlign.Right,
+            _ => SKTextAlign.Center,
+        };
+
+        var size = field.FontSize;
+        while (size > field.MinFontSize)
+        {
+            paint.TextSize = size;
+            var metrics = paint.FontMetrics;
+            var textHeight = metrics.Descent - metrics.Ascent;
+            if (paint.MeasureText(text) <= rect.Width && textHeight <= rect.Height)
+                break;
+            size = Math.Max(field.MinFontSize, size - 1);
+        }
+        paint.TextSize = size;
+
+        var fontMetrics = paint.FontMetrics;
+        var x = paint.TextAlign switch
+        {
+            SKTextAlign.Left => rect.X,
+            SKTextAlign.Right => rect.Right,
+            _ => rect.MidX,
+        };
+        var y = field.VerticalAlign.Trim().ToLowerInvariant() switch
+        {
+            "top" => rect.Y - fontMetrics.Ascent,
+            "bottom" => rect.Bottom - fontMetrics.Descent,
+            _ => rect.MidY - (fontMetrics.Ascent + fontMetrics.Descent) / 2f,
+        };
+
+        canvas.Save();
+        var rotation = field.RotationAt(templateFrame);
+        if (Math.Abs(rotation) > 0.001f)
+            canvas.RotateDegrees(rotation, rect.MidX, rect.MidY);
+
+        if (field.Shadow)
+        {
+            using var shadow = TextPaint(project, size, WithAlpha(ParseColor(field.ShadowColor, new SKColor(0, 0, 0, 170)), fieldOpacity), field.Bold);
+            shadow.TextAlign = paint.TextAlign;
+            if (field.ShadowBlur > 0)
+                shadow.ImageFilter = SKImageFilter.CreateBlur(field.ShadowBlur, field.ShadowBlur);
+            canvas.DrawText(text, x + field.ShadowX, y + field.ShadowY, shadow);
+        }
+
+        if (field.StrokeWidth > 0)
+        {
+            using var stroke = TextPaint(project, size, WithAlpha(ParseColor(field.StrokeColor, SKColors.Transparent), fieldOpacity), field.Bold);
+            stroke.TextAlign = paint.TextAlign;
+            stroke.Style = SKPaintStyle.Stroke;
+            stroke.StrokeWidth = field.StrokeWidth;
+            stroke.StrokeJoin = SKStrokeJoin.Round;
+            canvas.DrawText(text, x, y, stroke);
+        }
+
+        canvas.DrawText(text, x, y, paint);
+        canvas.Restore();
+    }
+
+    private static string SmartBadgeFieldValue(StudioCard card, string source)
+    {
+        var words = Regex.Split(card.Value.Trim(), "\\s+", RegexOptions.CultureInvariant)
+            .Where(value => value.Length > 0)
+            .ToArray();
+        var primary = words.FirstOrDefault() ?? "";
+        var unit = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "People";
+
+        return source.Trim().ToLowerInvariant() switch
+        {
+            "header" or "badgeheader" or "badge-header" =>
+                string.IsNullOrWhiteSpace(card.BadgeHeader) ? "1 in" : card.BadgeHeader.Trim(),
+            "value" or "primary" or "number" => primary,
+            "unit" or "suffix" => unit,
+            "fullvalue" or "full-value" or "raw" => card.Value.Trim(),
+            "title" => card.Title.Trim(),
+            _ => source.Equals("jsparse", StringComparison.Ordinal) ? primary : primary,
+        };
     }
 
     private void DrawV3ProjectCard(SKCanvas canvas, StudioProject project, RendererObjectV3 obj, JsonElement resource, float opacity)
