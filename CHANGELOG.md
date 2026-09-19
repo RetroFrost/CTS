@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.2.1.4 — 2026-09-19
+
+- Replaced the oversized self-contained .NET installer wrapper with Velopack's native one-click `Setup.exe` directly.
+- This removes the double extraction/startup penalty that made first setup take far too long to appear.
+- The public setup is now smoke-tested to expose a visible installer window within five seconds and to launch Cubical Compare after installation.
+- Setup fallbacks are started with direct process creation instead of Windows shell resolution, preventing unexpected Microsoft Store/app-association fallbacks.
+- Kept fast delta `.nupkg` updates, automatic method selection, silent file-swap/restart, full-package fallback, portable rollback, and the no-OK-button update flow.
+- Release publishing now excludes stale previous full packages from the new release asset set.
+
+
 ## 4.2.1.3 — 2026-09-19
 
 - Removed the blocking Velopack **OK** acknowledgement from in-app package updates.
