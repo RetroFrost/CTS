@@ -441,6 +441,17 @@ public sealed class RendererEngine : IDisposable
         var artworkReveal = (float)Math.Clamp(Number(Get(props, "artworkReveal"), 1), 0, 1);
         var titleReveal = (float)Math.Clamp(Number(Get(props, "titleReveal"), 1), 0, 1);
         var descriptionReveal = (float)Math.Clamp(Number(Get(props, "descriptionReveal"), 1), 0, 1);
+        var cornerRadius = (float)Math.Max(0, resource.Double("cornerRadius", 8));
+        var revealShineEnabled = resource.Bool("artworkRevealShine", true);
+        var revealShineProgress = (float)Math.Clamp(
+            Number(Get(props, "artworkRevealShineProgress", "revealShineProgress"), artworkReveal),
+            0,
+            1);
+        var revealShineOpacity = (float)Math.Clamp(
+            Number(Get(props, "artworkRevealShineOpacity", "revealShineOpacity"),
+                resource.Double("artworkRevealShineOpacity", 1)),
+            0,
+            1);
         var x = baseX - scroll + offsetX;
         var scaledHalfWidth = width * scale * 0.5f;
         var scaledCenterX = x + width * 0.5f;
@@ -449,6 +460,27 @@ public sealed class RendererEngine : IDisposable
         canvas.Save();
         canvas.Translate(x, 0);
         canvas.Scale(scale, scale, width / 2f, pivotY);
+
+        var outerRect = new SKRect(0, 0, width, height);
+        using var outerRound = new SKRoundRect(outerRect, cornerRadius, cornerRadius);
+        var shadowOpacity = (float)Math.Clamp(resource.Double("shadowOpacity", 0.30), 0, 1);
+        var shadowBlur = (float)Math.Max(0, resource.Double("shadowBlur", 6));
+        var shadowOffsetY = (float)resource.Double("shadowOffsetY", 4);
+        if (shadowOpacity > 0 && shadowBlur > 0)
+        {
+            using var cardShadow = new SKPaint
+            {
+                IsAntialias = true,
+                Color = new SKColor(0, 0, 0, AlphaByte(opacity * shadowOpacity)),
+                ImageFilter = SKImageFilter.CreateBlur(shadowBlur, shadowBlur),
+            };
+            canvas.Save();
+            canvas.Translate(0, shadowOffsetY);
+            canvas.DrawRoundRect(outerRound, cardShadow);
+            canvas.Restore();
+        }
+
+        canvas.ClipRoundRect(outerRound, SKClipOperation.Intersect, true);
 
         var topColor = ParseColor(resource.String("topBackground", "#252525"), new SKColor(37, 37, 37));
         var titleColor = ParseColor(resource.String("titleBackground", "#f4f2f0"), new SKColor(244, 242, 240));
@@ -467,9 +499,36 @@ public sealed class RendererEngine : IDisposable
             canvas.Restore();
         }
 
+        if (revealShineEnabled &&
+            revealShineOpacity > 0 &&
+            revealShineProgress > 0.0001f &&
+            revealShineProgress < 0.9999f)
+        {
+            DrawRelationshipsCardRevealShine(
+                canvas,
+                width,
+                imageHeight,
+                revealShineProgress,
+                revealShineOpacity * opacity,
+                resource);
+        }
+
         var titleTop = imageHeight;
         fill.Color = WithAlpha(titleColor, opacity);
-        canvas.DrawRect(0, titleTop, width, titleHeight, fill);
+        if (cornerRadius > 0)
+        {
+            using var titleRound = new SKRoundRect(
+                new SKRect(0, titleTop, width, titleTop + titleHeight),
+                cornerRadius,
+                cornerRadius);
+            canvas.DrawRoundRect(titleRound, fill);
+            // Reference cards only round the top of this white band.
+            canvas.DrawRect(0, titleTop + cornerRadius, width, Math.Max(0, titleHeight - cornerRadius), fill);
+        }
+        else
+        {
+            canvas.DrawRect(0, titleTop, width, titleHeight, fill);
+        }
 
         var dividerTop = titleTop + titleHeight;
         fill.Color = WithAlpha(dividerColor, opacity);
@@ -504,6 +563,46 @@ public sealed class RendererEngine : IDisposable
         }
 
         canvas.Restore();
+    }
+
+    private static void DrawRelationshipsCardRevealShine(
+        SKCanvas canvas,
+        float width,
+        float imageHeight,
+        float progress,
+        float opacity,
+        JsonElement resource)
+    {
+        var edgeY = imageHeight * Math.Clamp(progress, 0, 1);
+        var tailHeight = (float)Math.Max(1, resource.Double("artworkRevealShineTail", 32));
+        var coreHeight = (float)Math.Max(1, resource.Double("artworkRevealShineCore", 4));
+        var coreAlpha = (float)Math.Clamp(resource.Double("artworkRevealShineCoreAlpha", 0.055), 0, 1);
+        var tailAlpha = (float)Math.Clamp(resource.Double("artworkRevealShineTailAlpha", 0.050), 0, 1);
+        var finalOpacity = Math.Clamp(opacity, 0, 1);
+
+        // Measured from the reference: a narrow bright edge rides the artwork
+        // reveal boundary, followed by a soft ~30 px tail over the unrevealed
+        // dark card body. It spans the full card width rather than the badge.
+        var colors = new[]
+        {
+            new SKColor(255, 255, 255, AlphaByte(finalOpacity * coreAlpha)),
+            new SKColor(255, 255, 255, AlphaByte(finalOpacity * tailAlpha)),
+            new SKColor(255, 255, 255, 0),
+        };
+        var stops = new[] { 0f, Math.Min(0.35f, coreHeight / (coreHeight + tailHeight)), 1f };
+        using var shader = SKShader.CreateLinearGradient(
+            new SKPoint(0, edgeY - coreHeight),
+            new SKPoint(0, edgeY + tailHeight),
+            colors,
+            stops,
+            SKShaderTileMode.Clamp);
+        using var shine = new SKPaint
+        {
+            IsAntialias = false,
+            Shader = shader,
+            BlendMode = SKBlendMode.SrcOver,
+        };
+        canvas.DrawRect(0, edgeY - coreHeight, width, coreHeight + tailHeight, shine);
     }
 
     private void DrawRelationshipsDescription(SKCanvas canvas, StudioProject project, string text, SKRect box, SKColor color, float preferred)
@@ -749,10 +848,28 @@ public sealed class RendererEngine : IDisposable
         }
 
         var explicitFrame = Get(props, "sequenceFrame");
-        var sequenceFrame = explicitFrame is null
-            ? (int)Math.Floor((frame - obj.Frame) * sequence.Fps / (double)Math.Max(1, spec.ReferenceFps))
-            : (int)Math.Round(Number(explicitFrame), MidpointRounding.AwayFromZero);
-        sequenceFrame += (int)Math.Round(Number(Get(props, "sequenceOffset"), resource.Int("sequenceOffset", 0)), MidpointRounding.AwayFromZero);
+        var frameLocked = Truthy(
+            Get(props, "frameLock", "frameLocked"),
+            resource.Bool("frameLock", resource.Bool("frameLocked", true)));
+        int sequenceFrame;
+        if (explicitFrame is not null)
+        {
+            sequenceFrame = (int)Math.Round(Number(explicitFrame), MidpointRounding.AwayFromZero);
+        }
+        else if (frameLocked && sequence.Fps == spec.ReferenceFps)
+        {
+            // Source-exact mode: one renderer frame selects exactly one sequence frame.
+            // No timer interpolation, resampling, or skipped frame indexes.
+            sequenceFrame = frame - obj.Frame;
+        }
+        else
+        {
+            sequenceFrame = (int)Math.Floor(
+                (frame - obj.Frame) * sequence.Fps / (double)Math.Max(1, spec.ReferenceFps));
+        }
+        sequenceFrame += (int)Math.Round(
+            Number(Get(props, "sequenceOffset"), resource.Int("sequenceOffset", 0)),
+            MidpointRounding.AwayFromZero);
 
         var selected = sequence.SelectFrame(sequenceFrame);
         if (selected is null) return;
