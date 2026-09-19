@@ -121,6 +121,42 @@ public static class RendererBundleReader
             var assets = entries
                 .Where(x => !x.Key.Equals(sceneEntry.Key, StringComparison.OrdinalIgnoreCase))
                 .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+
+            // A Renderer v3 package may use a real scene file as a compatibility
+            // proxy for an exact legacy/ribbon renderer carried in the same ZIP.
+            // This keeps package probing honest (there is always renderer.renderer3)
+            // while preserving the proven exact engine and allowing SmartBadge v2
+            // sidecars/nested badge ZIPs to ride alongside it.
+            var sceneJson = ReadContainerJson(sceneEntry.Value, "CCRNDR03", "Renderer v3");
+            using (var sceneDocument = JsonDocument.Parse(sceneJson))
+            {
+                var sceneRoot = sceneDocument.RootElement;
+                var wrappedRenderer = sceneRoot.String("wrappedRenderer", "");
+                if (!string.IsNullOrWhiteSpace(wrappedRenderer))
+                {
+                    var normalizedWrapped = SafeEntryName(wrappedRenderer);
+                    if (!assets.TryGetValue(normalizedWrapped, out var wrappedBytes))
+                        throw new InvalidDataException($"Renderer v3 proxy scene references missing wrapped renderer '{normalizedWrapped}'.");
+
+                    var wrappedSpec = ReadLegacy(wrappedBytes);
+                    wrappedSpec.Id = sceneRoot.String("id", wrappedSpec.Id);
+                    wrappedSpec.Name = sceneRoot.String("name", wrappedSpec.Name);
+                    wrappedSpec.Author = sceneRoot.String("author", wrappedSpec.Author);
+                    wrappedSpec.MinAppVersion = sceneRoot.String("minAppVersion", wrappedSpec.MinAppVersion);
+
+                    var proxyFeatures = StringArray(sceneRoot, "features")
+                        .Concat(StringArray(sceneRoot, "requiredFeatures"))
+                        .Where(x => !string.IsNullOrWhiteSpace(x));
+                    wrappedSpec.RequiredFeatures = wrappedSpec.RequiredFeatures
+                        .Concat(proxyFeatures)
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
+                    wrappedSpec.PackageAssets = assets;
+                    AttachSmartBadgeV2Manifest(wrappedSpec, assets);
+                    return wrappedSpec;
+                }
+            }
+
             var spec = ReadV3Container(sceneEntry.Value, assets, packageBytes);
             spec.PackageAssets = assets;
             AttachSmartBadgeV2Manifest(spec, assets);
