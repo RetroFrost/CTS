@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.5"
+          $version = "4.2.1.6"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.1.2 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.6"
+          $velopackVersion = "4.2.7"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -327,7 +327,8 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - Renderer 4.2.1.5 adds source-frame-locked Smart Badge playback, contiguous-frame validation, rounded Relationships cards and the measured full-width artwork reveal shine.
+          - Renderer 4.2.1.6 adds Smart Card Animation: frame-addressed transparent card plates, dynamic artwork geometry, live jsparse title/description fields, and final-frame reuse for steady conveyor cards.
+          - Smart Card and Smart Badge sequences both remain source-frame-locked and reject missing numbered frames.
           - Initial Setup.exe uses a tiny native Win32 bootstrap with no .NET runtime dependency. It shows progress immediately, runs Velopack silently, closes automatically and launches Cubical Compare.
           - The bootstrap cannot redirect to Microsoft Store for a missing runtime and avoids Velopack's final OK acknowledgement.
           - Setup is smoke-tested to show its own window within five seconds, finish unattended and launch the installed app automatically.
