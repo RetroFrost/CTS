@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.2.1.2 — 2026-09-19
+
+- Replaced the fixed **Update from ZIP** behaviour with an automatic reliability-first updater.
+- When a release includes a valid full `.nupkg` and `releases.win.json`, real Velopack-managed installs automatically prefer the package updater.
+- Installed copies automatically fall back to the visible Setup.exe when the package feed cannot be used safely.
+- Raw/portable copies use the portable ZIP path instead of pretending they are Velopack installs.
+- Portable ZIP updates are downloaded with retry handling, SHA-256 checked when GitHub supplies a digest, fully extracted and validated before the running app exits, and protected by a full rollback copy.
+- Restored publication of the Velopack full `.nupkg` and `releases.win.json` assets so future installed updates can actually use the package path.
+- The Updates UI now always exposes one **Install update** action and reports which method was selected automatically.
+- Visible/non-silent Setup behaviour remains unchanged.
+
+
 ## 4.2.1.1 — 2026-09-19
 
 - Added **Smart Features** to Settings and added an in-app built-in changelog.
