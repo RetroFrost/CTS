@@ -1028,6 +1028,28 @@ public sealed class RendererEngine : IDisposable
         canvas.Translate(x + localX, offsetY + localY);
         canvas.Scale(drawWidth / Math.Max(1, sequence.Width), drawHeight / Math.Max(1, sequence.Height));
 
+        // SmartCard compositing order is strict:
+        //   1. base/card-shell plate
+        //   2. live project artwork
+        //   3. live jsparse title/description fields
+        //   4. overlay/glass/shine plate
+        // Keeping the shine last is what makes it travel across both the artwork
+        // and the live text exactly like the source instead of sitting underneath.
+        using (var platePaint = new SKPaint
+        {
+            IsAntialias = true,
+            FilterQuality = FilterQuality(
+                StringValue(Get(props, "sampling", "filterMode")) ?? resource.String("sampling", "high")),
+            Color = new SKColor(255, 255, 255, AlphaByte(opacity)),
+            BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
+        })
+        {
+            canvas.DrawBitmap(
+                plate,
+                new SKRect(0, 0, sequence.Width, sequence.Height),
+                platePaint);
+        }
+
         if (sequence.Artwork is not null && !string.IsNullOrWhiteSpace(card.Image))
         {
             var dest = sequence.Artwork.DestAt(selected.TemplateFrame);
@@ -1060,26 +1082,9 @@ public sealed class RendererEngine : IDisposable
             }
         }
 
-        using (var platePaint = new SKPaint
-        {
-            IsAntialias = true,
-            FilterQuality = FilterQuality(
-                StringValue(Get(props, "sampling", "filterMode")) ?? resource.String("sampling", "high")),
-            Color = new SKColor(255, 255, 255, AlphaByte(opacity)),
-            BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
-        })
-        {
-            canvas.DrawBitmap(
-                plate,
-                new SKRect(0, 0, sequence.Width, sequence.Height),
-                platePaint);
-        }
-
         foreach (var field in sequence.Fields)
             DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, opacity);
 
-        // Overlay frames are deliberately drawn after live artwork/text. This is
-        // required for reference shines/glass passes that brighten the content too.
         DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, opacity);
 
         canvas.Restore();
