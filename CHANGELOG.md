@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.2.1.5 — 2026-09-19
+
+- Smart Badge sequences now use one-to-one source-frame playback whenever their FPS matches the renderer reference FPS.
+- Numeric sequence folders are validated for missing or duplicate frame indexes; damaged exact animation packs are rejected instead of silently skipping frames.
+- Relationships cards now use rounded source-style geometry and a full-width reveal-edge shine tied to the measured artwork reveal position.
+- Card reveal shine exposes resource controls for edge/tail size and opacity while defaulting to the measured Relationships look.
+- Existing fast delta updates, native no-runtime Setup.exe, automatic restart and update fallbacks remain enabled.
+
+
 ## 4.2.1.4 — 2026-09-19
 
 - Replaced the oversized self-contained .NET installer wrapper with Velopack's native one-click `Setup.exe` directly.
