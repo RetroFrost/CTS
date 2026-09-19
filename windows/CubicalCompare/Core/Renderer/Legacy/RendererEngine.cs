@@ -62,7 +62,9 @@ public sealed class RendererEngine : IDisposable
         if (spec.Engine == "scene-v3" && spec.SceneV3 != null && spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal))
         {
             var lastIndex = Math.Max(0, project.Cards.Count - 1);
-            var lastCard = spec.SceneV3.Objects.FirstOrDefault(obj => obj.Kind == "card" && CardIndex(obj) == lastIndex);
+            var lastCard = spec.SceneV3.Objects.FirstOrDefault(obj =>
+                obj.Kind is "card" or "relationshipsCard" &&
+                CardIndex(obj) == lastIndex);
             if (lastCard != null) return Math.Clamp(lastCard.LifespanEnd + 1, 1, spec.SceneV3.Frames);
         }
         if (spec.CanonicalFrameCount > 0) return spec.CanonicalFrameCount;
@@ -376,7 +378,13 @@ public sealed class RendererEngine : IDisposable
         }
         try
         {
-            if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) && obj.Kind is "openingCard" or "card") { DrawV3ProjectCard(canvas, project, obj, resource, (float)opacity); return; }
+            if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) &&
+                obj.Kind is "openingCard" or "card" &&
+                type != "relationships-card")
+            {
+                DrawV3ProjectCard(canvas, project, obj, resource, (float)opacity);
+                return;
+            }
             if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) && obj.Kind is "openingText" or "badgeText" or "laterText") { DrawV3ProjectBadgeText(canvas, project, obj, resource, bound, (float)opacity); return; }
             switch (type)
             {
@@ -429,6 +437,9 @@ public sealed class RendererEngine : IDisposable
         var titleReveal = (float)Math.Clamp(Number(Get(props, "titleReveal"), 1), 0, 1);
         var descriptionReveal = (float)Math.Clamp(Number(Get(props, "descriptionReveal"), 1), 0, 1);
         var x = baseX - scroll + offsetX;
+        var scaledHalfWidth = width * scale * 0.5f;
+        var scaledCenterX = x + width * 0.5f;
+        if (scaledCenterX + scaledHalfWidth < -4 || scaledCenterX - scaledHalfWidth > 1924) return;
 
         canvas.Save();
         canvas.Translate(x, 0);
@@ -543,6 +554,9 @@ public sealed class RendererEngine : IDisposable
         var shineProgress = Number(Get(props, "shineProgress"), -1);
         var shineMode = StringValue(Get(props, "shineMode")) ?? resource.String("shineMode", "none");
         var x = baseX - scroll + offsetX;
+        var scaledHalfWidth = rx * scale + 12;
+        var badgeCenterX = x + cx;
+        if (badgeCenterX + scaledHalfWidth < -4 || badgeCenterX - scaledHalfWidth > 1924) return;
 
         using var path = RelationshipsBadgePath(cx, cy, rx, ry);
         canvas.Save();
