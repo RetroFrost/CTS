@@ -143,3 +143,20 @@ When a package declares any of these features:
 - `bootanimation-frame-sequence-v1`
 
 Cubical Compare validates that a smart-badge resource exists, `desc.txt` and `smart.json` are present, the sequence has actual frame images, the background/text flags are safe, every replaceable field uses the literal `jsparse` marker, and each Smart Badge object can be mapped to project data.
+
+## Frame-exact playback
+
+For source-exact sequences, use zero-padded numeric frame names such as `0000.png`, `0001.png`, and so on. Cubical Compare 4.2.1.5+ sorts numeric sequence frames by their numeric index and rejects missing or duplicate indexes instead of silently skipping them.
+
+When the sequence FPS matches the renderer reference FPS, Smart Badge Animation is frame-locked by default: renderer frame N selects sequence frame N directly. Set `"frameLock": false` only when intentional FPS conversion is required. A 60 FPS reference contains one unique source frame every 16.667 ms; Cubical Compare reproduces every source frame rather than inventing intermediate millisecond states.
+
+A Smart Badge resource can state this explicitly:
+
+```json
+{
+  "type": "smart-badge-animation",
+  "sequenceRoot": "smart-badges/opening",
+  "frameLock": true,
+  "sampling": "high"
+}
+```
