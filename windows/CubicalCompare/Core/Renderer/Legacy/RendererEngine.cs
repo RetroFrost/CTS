@@ -307,7 +307,12 @@ public sealed class RendererEngine : IDisposable
         var background = scene.Root.String("background", "#000000");
         canvas.Clear(ParseColor(background, SKColors.Black));
         var rank = scene.Layers.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i, StringComparer.Ordinal);
-        var objects = scene.Objects.Select((obj, i) => (obj, i)).OrderBy(x => rank.TryGetValue(x.obj.Id, out var r) ? r : int.MaxValue).ThenBy(x => x.i).Select(x => x.obj);
+        var objects = scene.Objects
+            .Select((obj, i) => (obj, i, z: ObjectZIndex(obj)))
+            .OrderBy(x => rank.TryGetValue(x.obj.Id, out var r) ? r : int.MaxValue)
+            .ThenBy(x => x.z)
+            .ThenBy(x => x.i)
+            .Select(x => x.obj);
         foreach (var obj in objects)
         {
             if (frame < obj.LifespanStart || frame > obj.LifespanEnd) continue;
@@ -354,8 +359,17 @@ public sealed class RendererEngine : IDisposable
         var opacity = Math.Clamp(Number(Get(bound, "opacity", "material.alpha"), 1), 0, 1);
         if (opacity <= 0.0001) return;
         canvas.Save();
-        ApplyClip(canvas, bound);
-        ApplyTransform(canvas, bound);
+        var localClip = Truthy(Get(bound, "clip.local", "clip.afterTransform"), false);
+        if (localClip)
+        {
+            ApplyTransform(canvas, bound);
+            ApplyClip(canvas, bound);
+        }
+        else
+        {
+            ApplyClip(canvas, bound);
+            ApplyTransform(canvas, bound);
+        }
         try
         {
             if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) && obj.Kind is "openingCard" or "card") { DrawV3ProjectCard(canvas, project, obj, resource, (float)opacity); return; }
@@ -367,7 +381,13 @@ public sealed class RendererEngine : IDisposable
                 case "image": DrawV3Image(canvas, scene, resource, bound, (float)opacity); break;
                 case "text": DrawV3Text(canvas, project, resource, bound, (float)opacity); break;
                 case "text-raster": case "source-text-raster": DrawV3Raster(canvas, scene, resource, bound, (float)opacity); break;
-                case "outro-overlay": case "exact-outro-overlay": DrawV3Outro(canvas, scene, resource, bound, frame, (float)opacity); break;
+                case "outro-overlay":
+                case "exact-outro-overlay":
+                case "source-exact-outro-overlay":
+                case "exact-opening-overlay":
+                case "source-exact-opening-overlay":
+                    DrawV3Outro(canvas, scene, resource, bound, frame, (float)opacity);
+                    break;
                 case "independent-shadow": DrawV3IndependentShadow(canvas, project, spec, resource, bound, frame, (float)opacity); break;
                 case "group": DrawV3Group(canvas, project, spec, obj, resource, bound, frame, (float)opacity); break;
                 default: DrawV3Polygon(canvas, resource, bound, (float)opacity); break;
@@ -438,10 +458,42 @@ public sealed class RendererEngine : IDisposable
     {
         var source = StringValue(Get(props, "source", "asset", "relativeAsset")) ?? resource.String("source", resource.String("asset", resource.String("relativeAsset", "")));
         var bitmap = DecodeSceneBitmap(scene, source); if (bitmap == null) return;
-        var x = (float)Number(Get(props, "x"), resource.Double("x", 0)); var y = (float)Number(Get(props, "y"), resource.Double("y", 0));
-        var w = (float)Number(Get(props, "width"), resource.Double("width", bitmap.Width)); var h = (float)Number(Get(props, "height"), resource.Double("height", bitmap.Height));
-        using var paint = new SKPaint { IsAntialias = true, FilterQuality = SKFilterQuality.High, Color = WithAlpha(SKColors.White, opacity), BlendMode = BlendMode(Get(props, "blendMode", "material.blend")) };
-        canvas.DrawBitmap(bitmap, new SKRect(x, y, x + w, y + h), paint);
+
+        var srcLeft = (float)Number(Get(props, "source.left", "crop.left"), resource.Double("sourceLeft", 0));
+        var srcTop = (float)Number(Get(props, "source.top", "crop.top"), resource.Double("sourceTop", 0));
+        var srcRight = (float)Number(Get(props, "source.right", "crop.right"), resource.Double("sourceRight", bitmap.Width));
+        var srcBottom = (float)Number(Get(props, "source.bottom", "crop.bottom"), resource.Double("sourceBottom", bitmap.Height));
+        srcLeft = Math.Clamp(srcLeft, 0, bitmap.Width);
+        srcTop = Math.Clamp(srcTop, 0, bitmap.Height);
+        srcRight = Math.Clamp(srcRight, srcLeft, bitmap.Width);
+        srcBottom = Math.Clamp(srcBottom, srcTop, bitmap.Height);
+        var src = new SKRect(srcLeft, srcTop, srcRight, srcBottom);
+        if (src.Width <= 0 || src.Height <= 0) return;
+
+        var x = (float)Number(Get(props, "x"), resource.Double("x", 0));
+        var y = (float)Number(Get(props, "y"), resource.Double("y", 0));
+        var w = (float)Number(Get(props, "width"), resource.Double("width", src.Width));
+        var h = (float)Number(Get(props, "height"), resource.Double("height", src.Height));
+        var snap = Truthy(Get(props, "pixelSnap", "transform.pixelSnap"), resource.Bool("pixelSnap", false));
+        if (snap)
+        {
+            var right = MathF.Round(x + w);
+            var bottom = MathF.Round(y + h);
+            x = MathF.Round(x);
+            y = MathF.Round(y);
+            w = right - x;
+            h = bottom - y;
+        }
+
+        var filter = FilterQuality(StringValue(Get(props, "sampling", "filterMode")) ?? resource.String("sampling", "high"));
+        using var paint = new SKPaint
+        {
+            IsAntialias = filter != SKFilterQuality.None,
+            FilterQuality = filter,
+            Color = new SKColor(255, 255, 255, AlphaByte(opacity)),
+            BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
+        };
+        canvas.DrawBitmap(bitmap, src, new SKRect(x, y, x + w, y + h), paint);
     }
     private void DrawV3Raster(SKCanvas canvas, RendererSceneV3 scene, JsonElement resource, Dictionary<string, object?> props, float opacity) => DrawV3Image(canvas, scene, resource, props, opacity);
     private void DrawV3Text(SKCanvas canvas, StudioProject project, JsonElement resource, Dictionary<string, object?> props, float opacity)
@@ -463,7 +515,7 @@ public sealed class RendererEngine : IDisposable
         }
         asset ??= resource.String("assetPattern", "").Replace("{frame}", frame.ToString(CultureInfo.InvariantCulture)).Replace("{local}", local.ToString(CultureInfo.InvariantCulture));
         var bitmap = DecodeSceneBitmap(scene, asset ?? ""); if (bitmap == null) return;
-        using var paint = new SKPaint { Color = WithAlpha(SKColors.White, opacity), FilterQuality = SKFilterQuality.High };
+        using var paint = new SKPaint { Color = new SKColor(255, 255, 255, AlphaByte(opacity)), FilterQuality = FilterQuality(StringValue(Get(props, "sampling", "filterMode")) ?? resource.String("sampling", "high")) };
         var x = (float)Number(Get(props, "x"), resource.Double("x", 0)); var y = (float)Number(Get(props, "y"), resource.Double("y", 0));
         var w = (float)Number(Get(props, "width"), resource.Double("width", bitmap.Width)); var h = (float)Number(Get(props, "height"), resource.Double("height", bitmap.Height));
         canvas.DrawBitmap(bitmap, new SKRect(x, y, x + w, y + h), paint);
@@ -496,7 +548,7 @@ public sealed class RendererEngine : IDisposable
         var fade = spec.SceneV3!.Objects.FirstOrDefault(x => x.Kind == "fade"); if (fade == null) return;
         var total = FrameCount(project, spec); var length = Math.Max(1, fade.LifespanEnd - fade.LifespanStart + 1); var start = Math.Max(0, total - length); if (frame < start || frame >= total) return;
         var sourceFrame = fade.LifespanStart + (frame - start); var props = V3Evaluator.Properties(spec.SceneV3!, fade, sourceFrame); var opacity = Math.Clamp(Number(Get(props, "opacity"), 0), 0, 1);
-        using var paint = new SKPaint { Color = new SKColor(0, 0, 0, (byte)Math.Round(opacity * 255)) }; canvas.DrawRect(0, 0, spec.ReferenceWidth, spec.ReferenceHeight, paint);
+        using var paint = new SKPaint { Color = new SKColor(0, 0, 0, AlphaByte(opacity)) }; canvas.DrawRect(0, 0, spec.ReferenceWidth, spec.ReferenceHeight, paint);
     }
 
     private SKPaint V3Paint(JsonElement resource, Dictionary<string, object?> props, float opacity)
@@ -506,10 +558,10 @@ public sealed class RendererEngine : IDisposable
         var blur = (float)Number(Get(props, "blur", "filter.blur"), resource.Double("blur", 0));
         return new SKPaint
         {
-            IsAntialias = true,
+            IsAntialias = Truthy(Get(props, "antialias", "geometry.antialias"), true),
             Style = stroke ? SKPaintStyle.Stroke : SKPaintStyle.Fill,
             StrokeWidth = (float)Number(Get(props, "strokeWidth"), resource.Double("strokeWidth", 1)),
-            Color = WithAlpha(color, opacity),
+            Color = new SKColor(color.Red, color.Green, color.Blue, AlphaByte(opacity * (color.Alpha / 255f))),
             BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
             ImageFilter = blur > 0 ? SKImageFilter.CreateBlur(blur, blur) : null,
         };
@@ -519,21 +571,58 @@ public sealed class RendererEngine : IDisposable
     {
         if (props.ContainsKey("matrix.m00") || props.ContainsKey("m00"))
         {
-            var m = new SKMatrix { ScaleX = (float)Number(Get(props, "matrix.m00", "m00"), 1), SkewX = (float)Number(Get(props, "matrix.m01", "m01"), 0), TransX = (float)Number(Get(props, "matrix.tx", "tx"), 0), SkewY = (float)Number(Get(props, "matrix.m10", "m10"), 0), ScaleY = (float)Number(Get(props, "matrix.m11", "m11"), 1), TransY = (float)Number(Get(props, "matrix.ty", "ty"), 0), Persp2 = 1 };
+            var tx = (float)Number(Get(props, "matrix.tx", "tx"), 0);
+            var ty = (float)Number(Get(props, "matrix.ty", "ty"), 0);
+            if (Truthy(Get(props, "pixelSnap", "transform.pixelSnap"), false))
+            {
+                tx = MathF.Round(tx);
+                ty = MathF.Round(ty);
+            }
+            var m = new SKMatrix { ScaleX = (float)Number(Get(props, "matrix.m00", "m00"), 1), SkewX = (float)Number(Get(props, "matrix.m01", "m01"), 0), TransX = tx, SkewY = (float)Number(Get(props, "matrix.m10", "m10"), 0), ScaleY = (float)Number(Get(props, "matrix.m11", "m11"), 1), TransY = ty, Persp2 = 1 };
             canvas.Concat(ref m); return;
         }
         var x = (float)Number(Get(props, "x", "transform.x", "translateX"), 0); var y = (float)Number(Get(props, "y", "transform.y", "translateY"), 0);
+        if (Truthy(Get(props, "pixelSnap", "transform.pixelSnap"), false))
+        {
+            x = MathF.Round(x);
+            y = MathF.Round(y);
+        }
         var sx = (float)Number(Get(props, "scaleX", "transform.scaleX", "scale"), 1); var sy = (float)Number(Get(props, "scaleY", "transform.scaleY", "scale"), 1); var rotation = (float)Number(Get(props, "rotation", "transform.rotation"), 0);
         canvas.Translate(x, y); if (rotation != 0) canvas.RotateDegrees(rotation); if (sx != 1 || sy != 1) canvas.Scale(sx, sy);
     }
     private void ApplyClip(SKCanvas canvas, Dictionary<string, object?> props)
     {
-        var points = Points(Get(props, "clip.points", "mask.points")); if (points != null && points.Count >= 3) { using var path = new SKPath(); path.MoveTo(points[0]); foreach (var p in points.Skip(1)) path.LineTo(p); path.Close(); canvas.ClipPath(path, SKClipOperation.Intersect, true); return; }
+        var antialias = Truthy(Get(props, "clip.antialias", "mask.antialias"), false);
+        var points = Points(Get(props, "clip.points", "mask.points")); if (points != null && points.Count >= 3) { using var path = new SKPath(); path.MoveTo(points[0]); foreach (var p in points.Skip(1)) path.LineTo(p); path.Close(); canvas.ClipPath(path, SKClipOperation.Intersect, antialias); return; }
         if (Get(props, "clip.left") is not null || Get(props, "clip.right") is not null)
         {
-            var left = (float)Number(Get(props, "clip.left"), 0); var top = (float)Number(Get(props, "clip.top"), 0); var right = (float)Number(Get(props, "clip.right"), 1920); var bottom = (float)Number(Get(props, "clip.bottom"), 1080); canvas.ClipRect(new SKRect(left, top, right, bottom), SKClipOperation.Intersect, false);
+            var left = (float)Number(Get(props, "clip.left"), 0); var top = (float)Number(Get(props, "clip.top"), 0); var right = (float)Number(Get(props, "clip.right"), 1920); var bottom = (float)Number(Get(props, "clip.bottom"), 1080); canvas.ClipRect(new SKRect(left, top, right, bottom), SKClipOperation.Intersect, antialias);
         }
     }
+
+    private static int ObjectZIndex(RendererObjectV3 obj)
+    {
+        if (obj.Properties.ValueKind == JsonValueKind.Object &&
+            obj.Properties.TryGetProperty("zIndex", out var z) &&
+            z.TryGetInt32(out var value))
+            return value;
+        if (obj.Raw.ValueKind == JsonValueKind.Object &&
+            obj.Raw.TryGetProperty("zIndex", out z) &&
+            z.TryGetInt32(out value))
+            return value;
+        return 0;
+    }
+
+    private static SKFilterQuality FilterQuality(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "nearest" or "none" or "point" => SKFilterQuality.None,
+        "low" => SKFilterQuality.Low,
+        "medium" => SKFilterQuality.Medium,
+        _ => SKFilterQuality.High,
+    };
+
+    private static byte AlphaByte(double opacity) =>
+        (byte)Math.Clamp((int)Math.Round(Math.Clamp(opacity, 0d, 1d) * 255d, MidpointRounding.AwayFromZero), 0, 255);
 
     private object? BindProjectValue(object? value, StudioProject project, RendererObjectV3 obj)
     {
@@ -590,7 +679,34 @@ public sealed class RendererEngine : IDisposable
     {
         if (string.IsNullOrWhiteSpace(value)) return fallback; if (SKColor.TryParse(value, out var parsed)) return parsed; if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) && uint.TryParse(value[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var n)) return ToSkColor(n); return fallback;
     }
-    private static SKBlendMode BlendMode(object? value) => StringValue(value)?.ToLowerInvariant() switch { "multiply" => SKBlendMode.Multiply, "screen" => SKBlendMode.Screen, "add" or "plus" => SKBlendMode.Plus, "src" or "source" => SKBlendMode.Src, "dstover" or "destination-over" => SKBlendMode.DstOver, _ => SKBlendMode.SrcOver };
+    private static SKBlendMode BlendMode(object? value) => StringValue(value)?.Trim().ToLowerInvariant() switch
+    {
+        "clear" => SKBlendMode.Clear,
+        "src" or "source" => SKBlendMode.Src,
+        "dst" or "destination" => SKBlendMode.Dst,
+        "srcover" or "source-over" => SKBlendMode.SrcOver,
+        "dstover" or "destination-over" => SKBlendMode.DstOver,
+        "srcin" or "source-in" => SKBlendMode.SrcIn,
+        "dstin" or "destination-in" => SKBlendMode.DstIn,
+        "srcout" or "source-out" => SKBlendMode.SrcOut,
+        "dstout" or "destination-out" => SKBlendMode.DstOut,
+        "srcatop" or "source-atop" => SKBlendMode.SrcATop,
+        "dstatop" or "destination-atop" => SKBlendMode.DstATop,
+        "xor" => SKBlendMode.Xor,
+        "multiply" => SKBlendMode.Multiply,
+        "screen" => SKBlendMode.Screen,
+        "overlay" => SKBlendMode.Overlay,
+        "darken" => SKBlendMode.Darken,
+        "lighten" => SKBlendMode.Lighten,
+        "colordodge" or "color-dodge" => SKBlendMode.ColorDodge,
+        "colorburn" or "color-burn" => SKBlendMode.ColorBurn,
+        "hardlight" or "hard-light" => SKBlendMode.HardLight,
+        "softlight" or "soft-light" => SKBlendMode.SoftLight,
+        "difference" => SKBlendMode.Difference,
+        "exclusion" => SKBlendMode.Exclusion,
+        "add" or "plus" => SKBlendMode.Plus,
+        _ => SKBlendMode.SrcOver,
+    };
     private static float Lerp(float a, float b, float p) => a + (b - a) * p;
     private static object? Get(Dictionary<string, object?> props, params string[] keys) { foreach (var key in keys) if (props.TryGetValue(key, out var value)) return value; return null; }
     private static double Number(object? value, double fallback = 0)
@@ -657,14 +773,52 @@ internal static class V3Evaluator
         if (raw is not JsonElement value) return raw; if (value.ValueKind != JsonValueKind.Object) return JsonValue(value);
         if (value.TryGetProperty("value", out var staticValue) && !value.TryGetProperty("track", out _) && !value.TryGetProperty("dense", out _)) return JsonValue(staticValue);
         if (!value.TryGetProperty("track", out var track) && !value.TryGetProperty("dense", out var dense)) return value.Clone();
-        var timeline = value.String("timeline", defaultTimeline); var frame = timeline == "relative" ? globalFrame - anchorFrame : globalFrame; var extrapolate = value.String("extrapolate", "none"); var interpolation = value.String("interpolation", "raw");
+        var timeline = value.String("timeline", defaultTimeline);
+        var frame = timeline == "relative" ? globalFrame - anchorFrame : globalFrame;
+        frame += value.Int("frameOffset", 0);
+        var extrapolate = value.String("extrapolate", "none");
+        var interpolation = value.String("interpolation", "raw");
         if (value.TryGetProperty("dense", out dense))
         {
-            int start; JsonElement values; if (dense.ValueKind == JsonValueKind.Array) { start = value.Int("start", 0); values = dense; } else if (dense.ValueKind == JsonValueKind.Object && dense.TryGetProperty("values", out values)) start = dense.Int("start", 0); else return UnsetValue.Instance;
-            var index = frame - start; if (index >= 0 && index < values.GetArrayLength()) return JsonValue(values[index]); if (extrapolate == "hold" && values.GetArrayLength() > 0) return JsonValue(values[index < 0 ? 0 : values.GetArrayLength() - 1]); return UnsetValue.Instance;
+            int start; JsonElement values;
+            if (dense.ValueKind == JsonValueKind.Array) { start = value.Int("start", 0); values = dense; }
+            else if (dense.ValueKind == JsonValueKind.Object && dense.TryGetProperty("values", out values)) start = dense.Int("start", value.Int("start", 0));
+            else return UnsetValue.Instance;
+            var stride = Math.Max(1, value.Int("stride", dense.ValueKind == JsonValueKind.Object ? dense.Int("stride", 1) : 1));
+            var relative = frame - start;
+            if (relative >= 0)
+            {
+                var index = relative / stride;
+                var exactSample = relative % stride == 0;
+                if (index >= 0 && index < values.GetArrayLength())
+                {
+                    if (stride == 1 || exactSample || interpolation is "hold" or "step")
+                        return JsonValue(values[index]);
+                    if (interpolation is "linear" or "smoothstep" or "cubic-in" or "cubic-out" or "cubic-in-out")
+                    {
+                        var next = Math.Min(index + 1, values.GetArrayLength() - 1);
+                        if (values[index].TryGetDouble(out var lv) && values[next].TryGetDouble(out var rv))
+                        {
+                            var p = (relative % stride) / (double)stride;
+                            p = interpolation switch
+                            {
+                                "smoothstep" => p * p * (3 - 2 * p),
+                                "cubic-in" => p * p * p,
+                                "cubic-out" => 1 - Math.Pow(1 - p, 3),
+                                "cubic-in-out" => p < .5 ? 4 * p * p * p : 1 - Math.Pow(-2 * p + 2, 3) / 2,
+                                _ => p,
+                            };
+                            return lv + (rv - lv) * p;
+                        }
+                    }
+                    if (interpolation != "raw") return JsonValue(values[index]);
+                }
+            }
+            if (extrapolate == "hold" && values.GetArrayLength() > 0) return JsonValue(values[relative < 0 ? 0 : values.GetArrayLength() - 1]);
+            return UnsetValue.Instance;
         }
         if (track.ValueKind != JsonValueKind.Array || track.GetArrayLength() == 0) return UnsetValue.Instance; var keys = new List<(int Frame, JsonElement Value)>(); foreach (var item in track.EnumerateArray()) if (item.ValueKind == JsonValueKind.Array && item.GetArrayLength() >= 2) keys.Add((item[0].GetInt32(), item[1].Clone())); keys.Sort((a, b) => a.Frame.CompareTo(b.Frame)); if (keys.Count == 0) return UnsetValue.Instance;
-        if (frame < keys[0].Frame) return extrapolate == "hold" ? JsonValue(keys[0].Value) : UnsetValue.Instance; if (frame > keys[^1].Frame) return extrapolate == "hold" ? JsonValue(keys[^1].Value) : UnsetValue.Instance; var exact = keys.FirstOrDefault(k => k.Frame == frame); if (exact.Value.ValueKind != JsonValueKind.Undefined) return JsonValue(exact.Value); if (interpolation == "raw") return UnsetValue.Instance; var right = keys.FindIndex(k => k.Frame > frame); if (right <= 0) return UnsetValue.Instance; var leftKey = keys[right - 1]; var rightKey = keys[right]; if (interpolation == "hold") return JsonValue(leftKey.Value); if (!leftKey.Value.TryGetDouble(out var lv) || !rightKey.Value.TryGetDouble(out var rv)) return UnsetValue.Instance; var p = (frame - leftKey.Frame) / (double)Math.Max(1, rightKey.Frame - leftKey.Frame); p = interpolation switch { "smoothstep" => p * p * (3 - 2 * p), "cubic-in" => p * p * p, "cubic-out" => 1 - Math.Pow(1 - p, 3), "cubic-in-out" => p < .5 ? 4 * p * p * p : 1 - Math.Pow(-2 * p + 2, 3) / 2, _ => p }; return lv + (rv - lv) * p;
+        if (frame < keys[0].Frame) return extrapolate == "hold" ? JsonValue(keys[0].Value) : UnsetValue.Instance; if (frame > keys[^1].Frame) return extrapolate == "hold" ? JsonValue(keys[^1].Value) : UnsetValue.Instance; var exact = keys.FirstOrDefault(k => k.Frame == frame); if (exact.Value.ValueKind != JsonValueKind.Undefined) return JsonValue(exact.Value); if (interpolation == "raw") return UnsetValue.Instance; var right = keys.FindIndex(k => k.Frame > frame); if (right <= 0) return UnsetValue.Instance; var leftKey = keys[right - 1]; var rightKey = keys[right]; if (interpolation is "hold" or "step") return JsonValue(leftKey.Value); if (!leftKey.Value.TryGetDouble(out var lv) || !rightKey.Value.TryGetDouble(out var rv)) return UnsetValue.Instance; var p = (frame - leftKey.Frame) / (double)Math.Max(1, rightKey.Frame - leftKey.Frame); p = interpolation switch { "smoothstep" => p * p * (3 - 2 * p), "cubic-in" => p * p * p, "cubic-out" => 1 - Math.Pow(1 - p, 3), "cubic-in-out" => p < .5 ? 4 * p * p * p : 1 - Math.Pow(-2 * p + 2, 3) / 2, _ => p }; return lv + (rv - lv) * p;
     }
 
     private static bool Matches(RendererSelectorV3 selector, RendererObjectV3 obj)
