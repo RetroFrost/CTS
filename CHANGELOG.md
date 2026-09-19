@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.1.7 — 2026-09-19
+
+- Added **SmartBadge v2**: one renderer can embed multiple bootanimation-style badge ZIPs and select a different badge pack for every card.
+- Renderer v3 ZIP packages can wrap an existing exact ribbon renderer while carrying SmartBadge v2 sidecars, preserving proven source-measured card/scroll tracks.
+- Nested badge packs use the existing `desc.txt + smart.json + part folders` contract with live `jsparse` text.
+- Added post-text `overlayFolder` frames so badge/card shine and glass passes composite above live text/artwork instead of underneath it.
+- Added validation for SmartBadge v2 pack maps, per-card selections, nested ZIP safety limits and contiguous numbered frames.
+- Invalid selected v2 badge packs fail closed instead of silently falling back to a different procedural badge.
+- Existing Smart Card Animation, native no-runtime Setup.exe, fast delta updates and automatic restart remain enabled.
+
+
 ## 4.2.1.6 — 2026-09-19
 
 - Added **Smart Card Animation** for frame-addressed card-shell animation instead of relying only on procedural card reconstruction.
