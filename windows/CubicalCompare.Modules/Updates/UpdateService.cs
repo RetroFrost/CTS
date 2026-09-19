@@ -82,6 +82,11 @@ public sealed class CubicalUpdateService
                     release.MatchesPackage(targetName))
                 {
                     var fallback = BestInstalledFallback(release);
+                    var hasFastDelta = update.DeltasToTarget is { Length: > 0 };
+                    var reason = hasFastDelta
+                        ? $"Automatic choice: fast Velopack delta path is available ({update.DeltasToTarget.Length} delta package{(update.DeltasToTarget.Length == 1 ? "" : "s")})."
+                        : "Automatic choice: verified Velopack full package is available; no compatible delta exists for this installed version.";
+
                     return new CubicalUpdateCandidate(
                         CubicalUpdateDelivery.Velopack,
                         release.Version,
@@ -89,7 +94,7 @@ public sealed class CubicalUpdateService
                         targetName,
                         null,
                         release.ReleaseUri,
-                        "Automatic choice: verified Velopack package feed is available for this installed copy.",
+                        reason,
                         null,
                         fallback?.Delivery,
                         fallback?.Asset.Name,
@@ -150,11 +155,16 @@ public sealed class CubicalUpdateService
                 if (update is null)
                     throw new InvalidOperationException("The Velopack update feed no longer contains the selected update.");
 
-                progress?.Report(new CubicalUpdateProgress("Using verified package update", 0, 0, null));
+                var usingDelta = update.DeltasToTarget is { Length: > 0 };
+                progress?.Report(new CubicalUpdateProgress(
+                    usingDelta ? "Using fast delta package update" : "Using verified full package update",
+                    0,
+                    0,
+                    null));
                 await manager.DownloadUpdatesAsync(
                     update,
                     value => progress?.Report(new CubicalUpdateProgress(
-                        "Downloading verified package",
+                        usingDelta ? "Downloading and preparing delta update" : "Downloading verified full package",
                         Math.Clamp(value, 0, 100),
                         0,
                         null)),
