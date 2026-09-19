@@ -93,8 +93,21 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.5 · Renderer frame accuracy",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• Smart Badge sequences are frame-locked one-to-one when sequence FPS matches the renderer FPS\n• missing or duplicate numbered animation frames are rejected instead of silently skipped\n• Relationships cards now have source-style rounded geometry\n• artwork reveal gets the full-width measured reveal-edge shine rather than treating the effect as badge-only",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.4 · Fast native setup",
             FontSize = 14,
+            Margin = new Thickness(0, 4, 0, 0),
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
         });
         changelogPanel.Children.Add(new TextBlock
