@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.4"
+          $version = "4.2.1.5"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.1.2 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.5"
+          $velopackVersion = "4.2.6"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -327,7 +327,8 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - Initial Setup.exe now uses a tiny native Win32 bootstrap with no .NET runtime dependency. It shows progress immediately, runs Velopack silently, closes automatically and launches Cubical Compare.
+          - Renderer 4.2.1.5 adds source-frame-locked Smart Badge playback, contiguous-frame validation, rounded Relationships cards and the measured full-width artwork reveal shine.
+          - Initial Setup.exe uses a tiny native Win32 bootstrap with no .NET runtime dependency. It shows progress immediately, runs Velopack silently, closes automatically and launches Cubical Compare.
           - The bootstrap cannot redirect to Microsoft Store for a missing runtime and avoids Velopack's final OK acknowledgement.
           - Setup is smoke-tested to show its own window within five seconds, finish unattended and launch the installed app automatically.
           - In-app package updates no longer stop on Velopack's final OK acknowledgement; Cubical Compare shows its own progress, then performs the file-swap handoff without a blocking completion dialog and restarts automatically.
