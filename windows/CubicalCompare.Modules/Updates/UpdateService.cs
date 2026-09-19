@@ -277,7 +277,11 @@ public sealed class CubicalUpdateService
             _ = Process.Start(new ProcessStartInfo
             {
                 FileName = setupPath,
-                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(setupPath)!,
+                // Launch the executable directly instead of asking the Windows shell
+                // to resolve it. This prevents app-association / Microsoft Store
+                // fallbacks from being invoked for the installer.
+                UseShellExecute = false,
                 WindowStyle = ProcessWindowStyle.Normal,
             }) ?? throw new InvalidOperationException("Windows could not start the Cubical Compare installer.");
 
