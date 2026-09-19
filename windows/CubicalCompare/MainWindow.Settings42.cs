@@ -99,7 +99,7 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
-            Text = "• removed the blocking Velopack OK button from in-app package updates\n• Cubical Compare owns the visible download/staging progress\n• package apply runs without an acknowledgement dialog and restarts the app automatically\n• internal package version is no longer shown as the app version during the update flow",
+            Text = "• removed the blocking Velopack OK button from in-app package updates\n• Cubical Compare owns the visible download/staging progress\n• package apply runs without an acknowledgement dialog and restarts the app automatically\n• routine installed updates use BestSpeed delta packages when available, avoiding a full package download/rebuild\n• internal package version is no longer shown as the app version during the update flow",
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
         });
