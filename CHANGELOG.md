@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.2.1 — 2026-09-19
+
+- Added a 20-feature Renderer Accuracy Pack for Renderer v3.
+- Added native support for source-exact opening and outro overlay sequences.
+- Added validation for verified opening/outro boundaries and the 266-frame Relationships conveyor cadence.
+- Added source-region raster cropping, native-size raster drawing, selectable filter quality, premultiplied-alpha source raster handling, deterministic alpha rounding, and extended Skia blend modes.
+- Added optional deterministic pixel snapping while preserving subpixel transforms by default.
+- Added clip anti-alias control, local-space clipping, and deterministic per-object z-index ordering.
+- Added local frame offsets, dense-track stride support, explicit step interpolation, and explicit linear interpolation.
+- Kept preview/export on the same Renderer v3 evaluator path and retained visible, non-silent Windows setup behaviour.
+- SourceLocked **Types of Relationships** packages no longer need the temporary developer capability shim for their source-verification feature flags.
+
+
 ## 0.4.5 — 2026-07-14
 
 - Promoted the redesigned editing workspace to the CTS 0.4.5 release line.
