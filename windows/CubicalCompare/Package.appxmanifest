@@ -8,7 +8,7 @@
   <Identity
     Name="RetroFrost.CubicalCompare"
     Publisher="CN=RetroFrost Development"
-    Version="4.2.1.2" />
+    Version="4.2.1.3" />
 
   <Properties>
     <DisplayName>Cubical Compare</DisplayName>
