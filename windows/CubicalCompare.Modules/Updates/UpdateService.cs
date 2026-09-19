@@ -160,9 +160,19 @@ public sealed class CubicalUpdateService
                         null)),
                     cancellationToken);
 
-                progress?.Report(new CubicalUpdateProgress("Applying verified package", 100, 0, null));
-                manager.ApplyUpdatesAndRestart(update);
-                return false;
+                // Keep all visible progress inside Cubical Compare itself, then hand off
+                // to Velopack only for the short file-swap/restart phase. Velopack's
+                // non-silent Windows update dialog ends with an acknowledgement OK button,
+                // so use its documented silent apply path here to avoid blocking restart.
+                // The main app remains visibly in "Restarting to install update..." until
+                // the caller exits, and Velopack automatically relaunches Cubical Compare.
+                progress?.Report(new CubicalUpdateProgress("Ready to install - restarting Cubical Compare", 100, 0, null));
+                manager.WaitExitThenApplyUpdates(
+                    update.TargetFullRelease,
+                    silent: true,
+                    restart: true,
+                    restartArgs: null);
+                return true;
             }
             catch (OperationCanceledException)
             {
