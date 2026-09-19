@@ -355,6 +355,8 @@ public sealed class RendererEngine : IDisposable
         foreach (var field in sequence.Fields)
             DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, 1);
 
+        DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, 1);
+
         canvas.Restore();
         return true;
     }
@@ -1076,6 +1078,10 @@ public sealed class RendererEngine : IDisposable
         foreach (var field in sequence.Fields)
             DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, opacity);
 
+        // Overlay frames are deliberately drawn after live artwork/text. This is
+        // required for reference shines/glass passes that brighten the content too.
+        DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, opacity);
+
         canvas.Restore();
     }
 
@@ -1158,7 +1164,32 @@ public sealed class RendererEngine : IDisposable
         canvas.Scale(drawWidth / Math.Max(1, sequence.Width), drawHeight / Math.Max(1, sequence.Height));
         foreach (var field in sequence.Fields)
             DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, opacity);
+        DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, opacity);
         canvas.Restore();
+    }
+
+    private void DrawSmartSequenceOverlay(
+        SKCanvas canvas,
+        SmartBadgeSequenceDefinition sequence,
+        int templateFrame,
+        float opacity)
+    {
+        var overlayAsset = sequence.OverlayAssetAt(templateFrame);
+        if (string.IsNullOrWhiteSpace(overlayAsset)) return;
+        var overlay = DecodeSequenceBitmap(sequence, overlayAsset);
+        if (overlay is null) return;
+
+        using var paint = new SKPaint
+        {
+            IsAntialias = true,
+            FilterQuality = SKFilterQuality.High,
+            Color = new SKColor(255, 255, 255, AlphaByte(opacity)),
+            BlendMode = SKBlendMode.SrcOver,
+        };
+        canvas.DrawBitmap(
+            overlay,
+            new SKRect(0, 0, sequence.Width, sequence.Height),
+            paint);
     }
 
     private void DrawSmartBadgeField(
