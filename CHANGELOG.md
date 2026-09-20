@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.1.11 — 2026-09-20
+
+- Restored a visible **Update from ZIP** action in Windows Settings for local portable release bundles.
+- Local ZIP updates are copied to an isolated staging area, validated, extracted with progress, swapped after Cubical Compare exits, rolled back on failure and restarted automatically.
+- Portable ZIP extraction now enforces the same path and expanded-size safety checks before writing files instead of relying on an unbounded bulk extract.
+- Renderer v3 packages can now contain up to **65,536 file assets** instead of the old 2,048-entry ceiling, allowing large SmartCard/SmartBadge frame sets.
+- Renderer package probing uses the same Smart Feature entry allowance as the actual loader, so valid packages are no longer rejected before import.
+- Nested Smart Feature ZIP packs now support up to **65,536 frame files** with duplicate-path, per-entry and expanded-size guards.
+- Smart Feature package limits remain bounded by compressed renderer size and expanded-data safety limits rather than an obsolete low file-count cap.
+
+
 ## 4.2.1.10 — 2026-09-20
 
 - Renderer v3 proxy scenes can now keep their SmartCard scene graph while delegating movement/scroll timing to a wrapped exact `ribbon-exact` renderer.
