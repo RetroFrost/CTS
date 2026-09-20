@@ -950,6 +950,8 @@ public sealed class LegacyRendererAdapter : IDisposable
                     ArtworkWidth: width,
                     ArtworkHeight: imageHeight,
                     ArtworkCover: true,
+                    ImageCoordinateScaleX: 1,
+                    ImageCoordinateScaleY: 1,
                     TitleX: x,
                     TitleY: imageHeight,
                     TitleWidth: width,
