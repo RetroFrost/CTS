@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.19 · Renderer load preview fix",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• loading a valid Renderer v3 no longer always forces the preview to frame 0\n• scene renderers now open on their first authored visible/checkpoint frame, so blank intro frames do not look like a failed renderer load\n• the current timeline position and renderer status now show which initial frame was selected",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.18 · Renderer version compatibility fix",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
