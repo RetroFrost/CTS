@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.13 · Direct preview editing",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• click visible title, description, badge header or badge value text in the rendered preview to edit it in place with a real caret\n• click artwork itself to select and drag it immediately; corner handles resize and the rotate handle transforms it directly\n• Apply to all images is available beside the selected preview artwork and copies position, scale, rotation, crop and layer to every card\n• preview hit-testing now follows the renderer's measured visible card positions instead of requiring a hidden right-click mode",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.12 · Source-exact track scaling",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
