@@ -473,7 +473,7 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    public const string AppVersion = "4.2.1.9";
+    public const string AppVersion = "4.2.1.10";
     public const int RendererApi = 3;
 
     private static readonly HashSet<string> Engines = new(StringComparer.Ordinal)
@@ -515,6 +515,7 @@ public static class RendererCapabilities
         // Smart Features.
         "smart-badge-animation-v1", "smart-badge-jsparse-v1", "bootanimation-frame-sequence-v1",
         "smart-card-animation-v1", "smart-card-jsparse-v1", "smart-card-layered-compositing-v1",
+        "smart-card-ribbon-proxy-v1",
         "smart-badge-animation-v2", "embedded-badge-bootanimation-zips-v1",
         "per-card-badge-pack-selection-v1",
     };
