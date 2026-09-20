@@ -98,6 +98,47 @@ public sealed class LegacyRendererAdapter : IDisposable
         return _engine.FrameCount(ToLegacyProject(project), _spec);
     }
 
+    public int InitialPreviewFrame(ComparisonProject project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        var frameCount = Math.Max(1, FrameCount(project));
+        var lastFrame = frameCount - 1;
+
+        // Scene-v3 renderers can intentionally start with a blank intro. Loading
+        // them at frame 0 made a valid renderer look as if it had failed to load.
+        // Prefer the first authored checkpoint that actually overlaps scene content,
+        // otherwise use the first object's lifespan start.
+        if (_spec.SceneV3 is { } scene && scene.Objects.Count > 0)
+        {
+            var firstObjectFrame = scene.Objects
+                .Select(obj => obj.LifespanStart)
+                .Where(frame => frame >= 0 && frame <= lastFrame)
+                .DefaultIfEmpty(0)
+                .Min();
+
+            var checkpoint = _spec.PreviewFrames
+                .Where(frame => frame >= firstObjectFrame && frame <= lastFrame)
+                .OrderBy(frame => frame)
+                .Cast<int?>()
+                .FirstOrDefault();
+
+            return Math.Clamp(checkpoint ?? firstObjectFrame, 0, lastFrame);
+        }
+
+        if (_spec.PreviewFrames.Count > 0)
+        {
+            var checkpoint = _spec.PreviewFrames
+                .Where(frame => frame >= 0 && frame <= lastFrame)
+                .OrderBy(frame => frame)
+                .Cast<int?>()
+                .FirstOrDefault();
+            if (checkpoint is not null)
+                return checkpoint.Value;
+        }
+
+        return 0;
+    }
+
     /// <summary>
     /// Returns a representative timeline frame for a project card. The editor uses this when the
     /// user changes card selection so a loaded renderer does not leave the preview parked on the

@@ -257,10 +257,14 @@ public sealed partial class MainWindow : Window
                 _legacyRenderer?.Dispose();
                 _legacyRenderer = replacement;
                 RendererCompatibilityText.Text = $"Renderer v{replacement.Api} compatibility evaluator active.";
-                TimelineStatusText.Text = $"Renderer v{replacement.Api} · {replacement.Name}";
                 RefreshTimelineRange();
                 RefreshSoundtrackUi();
-                ProjectFrameSlider.Value = 0;
+
+                var initialFrame = replacement.InitialPreviewFrame(BuildProject());
+                ProjectFrameSlider.Value = initialFrame;
+                TimelineStatusText.Text = initialFrame > 0
+                    ? $"Renderer v{replacement.Api} · {replacement.Name} · previewing first visible frame {initialFrame}"
+                    : $"Renderer v{replacement.Api} · {replacement.Name}";
                 await RenderCurrentFrameAsync();
             }
             else

@@ -1,4 +1,11 @@
 # Changelog
+## 4.2.1.19 — Renderer load preview fix
+
+- Valid Renderer v3 packages no longer appear broken just because frame 0 is intentionally blank.
+- Scene-v3 renderer loading now seeks to the first authored checkpoint that overlaps active scene content, falling back to the first object lifespan start.
+- The renderer status reports the selected initial preview frame.
+- Existing renderers that actually have content at frame 0 continue to open at frame 0.
+
 ## 4.2.1.18 — Renderer version compatibility fix
 
 - Removed the stale hardcoded renderer compatibility app version.
