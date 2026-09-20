@@ -308,7 +308,7 @@ public sealed partial class MainWindow : Window
 
         var revision = Interlocked.Increment(ref _renderRevision);
         var frame = (int)Math.Round(ProjectFrameSlider.Value);
-        var project = BuildProject();
+        var project = PrepareProjectForImmersivePreviewRender(BuildProject());
 
         try
         {
@@ -399,6 +399,16 @@ public sealed partial class MainWindow : Window
     private async void ProjectCard_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_legacyRenderer is null) return;
+
+        // Inline immersive editing changes the live card model on every keystroke.
+        // Do not rebuild the timeline or start overlapping renders for each character;
+        // the preview editor owns a latest-state render loop for that interaction.
+        if (_immersivePreviewMutationDepth > 0)
+        {
+            QueuePreviewInteractionRender();
+            return;
+        }
+
         RefreshTimelineRange();
         await RenderCurrentFrameAsync();
     }
