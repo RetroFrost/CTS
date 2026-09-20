@@ -3,7 +3,9 @@ using CubicalCompare.Updates;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.Storage.Pickers;
 using Windows.System;
+using WinRT.Interop;
 
 namespace CubicalCompare;
 
@@ -16,6 +18,7 @@ public sealed partial class MainWindow
     private TextBlock? _updateStatusText;
     private Button? _checkUpdatesButton;
     private Button? _installUpdateButton;
+    private Button? _updateFromZipButton;
     private Button? _openReleaseButton;
     private CubicalUpdateCandidate? _availableUpdate;
     private bool _settingsAutoChecked;
@@ -122,6 +125,13 @@ public sealed partial class MainWindow
         };
         _installUpdateButton.Click += InstallUpdate_Click;
 
+        _updateFromZipButton = new Button
+        {
+            Content = "Update from ZIP",
+            Padding = new Thickness(16, 7, 16, 7),
+        };
+        _updateFromZipButton.Click += UpdateFromZip_Click;
+
         _openReleaseButton = new Button
         {
             Content = "Open GitHub Releases",
@@ -136,6 +146,7 @@ public sealed partial class MainWindow
         };
         updateButtons.Children.Add(_checkUpdatesButton);
         updateButtons.Children.Add(_installUpdateButton);
+        updateButtons.Children.Add(_updateFromZipButton);
         updateButtons.Children.Add(_openReleaseButton);
 
         var updatesPanel = new StackPanel { Spacing = 10 };
@@ -352,6 +363,76 @@ public sealed partial class MainWindow
             if (_installUpdateButton is not null)
                 _installUpdateButton.IsEnabled = true;
             FailActivityWatcher("Windows update failed", ex.Message);
+        }
+    }
+
+    private async void UpdateFromZip_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.Downloads,
+            ViewMode = PickerViewMode.List,
+        };
+        picker.FileTypeFilter.Add(".zip");
+
+        var hwnd = WindowNative.GetWindowHandle(this);
+        InitializeWithWindow.Initialize(picker, hwnd);
+        var file = await picker.PickSingleFileAsync();
+        if (file is null)
+            return;
+
+        if (_updateFromZipButton is not null)
+            _updateFromZipButton.IsEnabled = false;
+        if (_installUpdateButton is not null)
+            _installUpdateButton.IsEnabled = false;
+        if (_checkUpdatesButton is not null)
+            _checkUpdatesButton.IsEnabled = false;
+
+        try
+        {
+            _updateStatusText!.Text = $"Preparing local update · {file.Name}";
+            ShowActivityWatcher("Windows ZIP update", $"Preparing {file.Name}…", 0);
+
+            var progress = new Progress<CubicalUpdateProgress>(state =>
+            {
+                var detail = state.TotalBytes is > 0
+                    ? $"{state.Phase} · {FormatByteCount(state.BytesReceived)} / {FormatByteCount(state.TotalBytes.Value)} · {state.Percent}%"
+                    : $"{state.Phase} · {state.Percent}%";
+                if (_updateStatusText is not null) _updateStatusText.Text = detail;
+                UpdateActivityWatcher("Windows ZIP update", detail, state.Percent);
+            });
+
+            var exitRequired = await _updateService.ApplyPortableZipFileAsync(
+                file.Path,
+                AppContext.BaseDirectory,
+                "CubicalCompare.exe",
+                progress);
+
+            if (exitRequired)
+            {
+                if (_updateStatusText is not null)
+                    _updateStatusText.Text = "ZIP update staged. Restarting Cubical Compare automatically…";
+                CompleteActivityWatcher("Windows ZIP update", "Update staged. Restarting Cubical Compare automatically…");
+                Application.Current.Exit();
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("Could not apply local ZIP update", ex);
+            if (_updateStatusText is not null)
+                _updateStatusText.Text = $"ZIP update failed: {ex.Message}";
+            FailActivityWatcher("Windows ZIP update failed", ex.Message);
+            await ShowErrorAsync("Could not update from ZIP", ex.Message);
+        }
+        finally
+        {
+            if (_updateFromZipButton is not null)
+                _updateFromZipButton.IsEnabled = true;
+            if (_installUpdateButton is not null)
+                _installUpdateButton.IsEnabled = true;
+            if (_checkUpdatesButton is not null)
+                _checkUpdatesButton.IsEnabled = true;
         }
     }
 
