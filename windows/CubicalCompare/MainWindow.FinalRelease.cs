@@ -13,6 +13,7 @@ public sealed partial class MainWindow
 {
     private readonly CubicalUpdateService _updateService = new();
     private Grid? _settingsPage;
+    private Grid? _finalAudioPage;
     private TextBlock? _currentVersionText;
     private TextBlock? _latestVersionText;
     private TextBlock? _updateStatusText;
@@ -31,6 +32,7 @@ public sealed partial class MainWindow
         BuildFinalNavigation();
         RemovePrototypeInspectorTabs();
         BuildSettingsPage();
+        BuildFinalAudioPage();
         Initialize42SettingsEnhancements();
         RootNavigation.SelectionChanged += FinalNavigation_SelectionChanged;
 
@@ -44,6 +46,7 @@ public sealed partial class MainWindow
         RootNavigation.MenuItems.Add(CreateNavigationItem("Workspace", "project", Symbol.Home));
         RootNavigation.MenuItems.Add(CreateNavigationItem("MegaPacks", "assets", Symbol.Library));
         RootNavigation.MenuItems.Add(CreateNavigationItem("Thumbnail", "thumbnail", Symbol.Pictures));
+        RootNavigation.MenuItems.Add(CreateNavigationItem("Audio", "audio", Symbol.Audio));
         RootNavigation.MenuItems.Add(CreateNavigationItem("Style & Model", "renderer", Symbol.Setting));
 
         RootNavigation.FooterMenuItems.Clear();
@@ -220,6 +223,18 @@ public sealed partial class MainWindow
         contentHost.Children.Add(_settingsPage);
     }
 
+    private void BuildFinalAudioPage()
+    {
+        if (_finalAudioPage is not null)
+            return;
+        if (RootNavigation.Content is not Grid contentHost)
+            throw new InvalidOperationException("The NavigationView content host is unavailable.");
+
+        _finalAudioPage = BuildAudioPage();
+        Canvas.SetZIndex(_finalAudioPage, 100);
+        contentHost.Children.Add(_finalAudioPage);
+    }
+
     private static Border CreateSettingsCard(UIElement content) => new()
     {
         Background = (Brush)Application.Current.Resources["EditorSurfaceRaisedBrush"],
@@ -238,7 +253,12 @@ public sealed partial class MainWindow
         var tag = args.SelectedItemContainer?.Tag as string
             ?? (args.SelectedItem as NavigationViewItem)?.Tag as string;
         var isSettings = string.Equals(tag, "settings", StringComparison.Ordinal);
+        var isAudio = string.Equals(tag, "audio", StringComparison.Ordinal);
         _settingsPage.Visibility = isSettings ? Visibility.Visible : Visibility.Collapsed;
+        if (_finalAudioPage is not null)
+            _finalAudioPage.Visibility = isAudio ? Visibility.Visible : Visibility.Collapsed;
+        if (isAudio)
+            RefreshSoundtrackUi();
 
         if (isSettings && !_settingsAutoChecked)
         {
