@@ -65,7 +65,9 @@ public partial class App : Application
             {
                 try
                 {
-                    mainWindow.InitializeDirectArtworkManipulator();
+                    // Artwork drag/resize/rotate now lives directly on the full rendered
+                    // preview. Keep the inspector's numeric precision controls, but do not
+                    // create the old isolated 471×872 mini-canvas that hid surrounding cards.
                     mainWindow.InitializeSoundtrackEditor();
                     mainWindow.InitializeFontSelector();
                     mainWindow.InitializeReliablePreviewTransformEditor();

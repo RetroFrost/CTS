@@ -1,4 +1,5 @@
 using Microsoft.UI;
+using CubicalCompare.Core.Project;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -29,7 +30,10 @@ public sealed partial class MainWindow
         Value,
     }
 
-    private sealed record PreviewTextHit(int CardIndex, InlinePreviewTextField Field, Rect Bounds);
+    private sealed record PreviewTextHit(
+        int CardIndex,
+        InlinePreviewTextField Field,
+        CubicalCompare.Core.Renderer.PreviewTextRegion Region);
 
     private const double ReliablePreviewWidth = 960.0;
     private const double ReliablePreviewHeight = 540.0;
@@ -61,7 +65,9 @@ public sealed partial class MainWindow
     private double _reliableWorkRotation;
     private double _reliableStartDistance;
     private double _reliableRotationOffset;
-    private bool _previewInteractionRenderQueued;
+    private bool _previewInteractionRenderRunning;
+    private bool _previewInteractionRenderPending;
+    private int _immersivePreviewMutationDepth;
 
     internal void InitializeReliablePreviewTransformEditor()
     {
@@ -110,7 +116,7 @@ public sealed partial class MainWindow
         _reliablePreviewArtworkGhost = new Image
         {
             Stretch = Stretch.Fill,
-            Opacity = 0.72,
+            Opacity = 0,
             IsHitTestVisible = false,
         };
         _reliablePreviewAdorner.Children.Add(_reliablePreviewArtworkGhost);
@@ -154,7 +160,7 @@ public sealed partial class MainWindow
 
         _reliablePreviewApplyAllButton = new Button
         {
-            Content = "Apply to all images",
+            Content = "Apply all",
             Visibility = Visibility.Collapsed,
             Padding = new Thickness(12, 6, 12, 6),
             Background = new SolidColorBrush(ColorHelper.FromArgb(238, 20, 20, 20)),
@@ -171,6 +177,8 @@ public sealed partial class MainWindow
         {
             Visibility = Visibility.Collapsed,
             Padding = new Thickness(0),
+            MinWidth = 0,
+            MinHeight = 0,
             BorderThickness = new Thickness(0),
             BorderBrush = transparentTextBrush,
             Background = transparentTextBrush,
@@ -368,19 +376,36 @@ public sealed partial class MainWindow
 
         var point = e.GetCurrentPoint(_reliablePreviewCanvas).Position;
         var (sx, sy) = ReliablePreviewScale();
+        var geometry = ReliablePreviewGeometry(_reliablePreviewCardIndex);
+        if (geometry is null)
+            return;
+
+        var g = geometry.Value;
         var center = ReliablePreviewImageCenter(_reliablePreviewCardIndex, _reliableStartX, _reliableStartY);
 
         switch (_reliablePreviewDragMode)
         {
             case ReliablePreviewDragMode.Move:
-                _reliableWorkX = Math.Clamp(_reliableStartX + (point.X - _reliablePreviewPointerStart.X) / sx, -4000, 4000);
-                _reliableWorkY = Math.Clamp(_reliableStartY + (point.Y - _reliablePreviewPointerStart.Y) / sy, -4000, 4000);
+                var refDx = (point.X - _reliablePreviewPointerStart.X) / sx;
+                var refDy = (point.Y - _reliablePreviewPointerStart.Y) / sy;
+                _reliableWorkX = Math.Clamp(
+                    _reliableStartX + refDx / Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleX)),
+                    -4000,
+                    4000);
+                _reliableWorkY = Math.Clamp(
+                    _reliableStartY + refDy / Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleY)),
+                    -4000,
+                    4000);
                 break;
             case ReliablePreviewDragMode.Scale:
-                _reliableWorkScale = Math.Clamp(_reliableStartScale * ReliableDistance(point, center) / _reliableStartDistance, 0.05, 12.0);
+                _reliableWorkScale = Math.Clamp(
+                    _reliableStartScale * ReliableDistance(point, center) / _reliableStartDistance,
+                    0.05,
+                    12.0);
                 break;
             case ReliablePreviewDragMode.Rotate:
-                _reliableWorkRotation = NormalizeReliablePreviewDegrees(ReliableAngle(point, center) + _reliableRotationOffset);
+                _reliableWorkRotation = NormalizeReliablePreviewDegrees(
+                    ReliableAngle(point, center) + _reliableRotationOffset);
                 break;
         }
 
@@ -403,8 +428,13 @@ public sealed partial class MainWindow
         if (_reliablePreviewDragMode == ReliablePreviewDragMode.None || e.Pointer.PointerId != _reliablePreviewPointerId)
             return;
 
-        _reliablePreviewCanvas?.ReleasePointerCapture(e.Pointer);
+        // Mark the drag complete BEFORE releasing capture. WinUI can raise
+        // PointerCaptureLost synchronously from ReleasePointerCapture; the old
+        // order treated a normal mouse-up as a cancellation and restored the
+        // starting transform.
         _reliablePreviewDragMode = ReliablePreviewDragMode.None;
+        _reliablePreviewPointerId = 0;
+        _reliablePreviewCanvas?.ReleasePointerCapture(e.Pointer);
 
         if (_reliablePreviewCardIndex >= 0 && _reliablePreviewCardIndex < Cards.Count)
         {
@@ -417,9 +447,10 @@ public sealed partial class MainWindow
             SyncPrecisionTransformBoxes(card);
             ScheduleThumbnailRefresh();
             ScheduleWorkspaceSave();
+            _previewInteractionRenderPending = true;
             await RenderCurrentFrameAsync();
             RefreshReliablePreviewTransformOverlay();
-            TimelineStatusText.Text = $"Artwork selected · {card.Title} · drag, resize, rotate or apply to all images";
+            TimelineStatusText.Text = $"Artwork selected · {card.Title} · drag, resize or rotate directly on the frame";
         }
 
         e.Handled = true;
@@ -430,6 +461,9 @@ public sealed partial class MainWindow
 
     private void CancelReliablePreviewDrag()
     {
+        if (_reliablePreviewDragMode == ReliablePreviewDragMode.None)
+            return;
+
         if (_reliablePreviewCardIndex >= 0 && _reliablePreviewCardIndex < Cards.Count)
         {
             var card = Cards[_reliablePreviewCardIndex];
@@ -443,6 +477,7 @@ public sealed partial class MainWindow
         }
 
         _reliablePreviewDragMode = ReliablePreviewDragMode.None;
+        _reliablePreviewPointerId = 0;
         _reliableWorkX = _reliableStartX;
         _reliableWorkY = _reliableStartY;
         _reliableWorkScale = _reliableStartScale;
@@ -464,7 +499,7 @@ public sealed partial class MainWindow
         _reliablePreviewActive = true;
         _reliablePreviewCardIndex = cardIndex;
         if (_reliablePreviewHint is not null)
-            _reliablePreviewHint.Visibility = Visibility.Visible;
+            _reliablePreviewHint.Visibility = Visibility.Collapsed;
         if (_reliablePreviewApplyAllButton is not null)
         {
             _reliablePreviewApplyAllButton.Visibility = Visibility.Visible;
@@ -505,15 +540,15 @@ public sealed partial class MainWindow
 
         foreach (var item in candidates)
         {
-            var geometry = item.Geometry!.Value;
+            var g = item.Geometry!.Value;
             var card = Cards[item.Index];
             if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
                 continue;
 
-            if (referencePoint.X < geometry.ArtworkX ||
-                referencePoint.X > geometry.ArtworkX + geometry.ArtworkWidth ||
-                referencePoint.Y < geometry.ArtworkY ||
-                referencePoint.Y > geometry.ArtworkY + geometry.ArtworkHeight)
+            if (referencePoint.X < g.ArtworkX ||
+                referencePoint.X > g.ArtworkX + g.ArtworkWidth ||
+                referencePoint.Y < g.ArtworkY ||
+                referencePoint.Y > g.ArtworkY + g.ArtworkHeight)
                 continue;
 
             try
@@ -524,14 +559,20 @@ public sealed partial class MainWindow
 
                 var cropWidth = bitmap.Width * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropLeft, 0, .95) - Math.Clamp(card.ImageCropRight, 0, .95));
                 var cropHeight = bitmap.Height * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropTop, 0, .95) - Math.Clamp(card.ImageCropBottom, 0, .95));
-                var baseScale = geometry.ArtworkCover
-                    ? Math.Max(geometry.ArtworkWidth / cropWidth, geometry.ArtworkHeight / cropHeight)
-                    : Math.Min(geometry.ArtworkWidth / cropWidth, geometry.ArtworkHeight / cropHeight);
-                var scale = baseScale * Math.Clamp(card.ImageScale, .05, 12);
-                var halfWidth = cropWidth * scale / 2.0;
-                var halfHeight = cropHeight * scale / 2.0;
-                var centerX = geometry.ArtworkX + geometry.ArtworkWidth / 2.0 + card.ImageX;
-                var centerY = geometry.ArtworkY + geometry.ArtworkHeight / 2.0 + card.ImageY;
+
+                var localScaleX = Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleX));
+                var localScaleY = Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleY));
+                var localSlotWidth = g.ArtworkWidth / localScaleX;
+                var localSlotHeight = g.ArtworkHeight / localScaleY;
+                var baseScale = g.ArtworkCover
+                    ? Math.Max(localSlotWidth / cropWidth, localSlotHeight / cropHeight)
+                    : Math.Min(localSlotWidth / cropWidth, localSlotHeight / cropHeight);
+
+                var imageScale = Math.Clamp(card.ImageScale, .05, 12);
+                var halfWidth = cropWidth * baseScale * imageScale * localScaleX / 2.0;
+                var halfHeight = cropHeight * baseScale * imageScale * localScaleY / 2.0;
+                var centerX = g.ArtworkX + g.ArtworkWidth / 2.0 + card.ImageX * g.ImageCoordinateScaleX;
+                var centerY = g.ArtworkY + g.ArtworkHeight / 2.0 + card.ImageY * g.ImageCoordinateScaleY;
 
                 var dx = referencePoint.X - centerX;
                 var dy = referencePoint.Y - centerY;
@@ -543,7 +584,7 @@ public sealed partial class MainWindow
             }
             catch (Exception ex)
             {
-                App.WriteLog("Could not hit-test preview artwork", ex);
+                App.WriteLog("Could not hit-test immersive preview artwork", ex);
             }
         }
 
@@ -562,68 +603,19 @@ public sealed partial class MainWindow
         var x = point.X / sx;
         var y = point.Y / sy;
 
-        var candidates = Enumerable.Range(0, Cards.Count)
-            .Select(index => renderer.TryGetPreviewCardGeometry(project, frame, index, out var geometry)
-                ? (Index: index, Geometry: (CubicalCompare.Core.Renderer.PreviewCardGeometry?)geometry)
-                : (Index: index, Geometry: (CubicalCompare.Core.Renderer.PreviewCardGeometry?)null))
-            .Where(item => item.Geometry is not null)
-            .OrderBy(item => Math.Abs(x - (item.Geometry!.Value.ArtworkX + item.Geometry.Value.ArtworkWidth / 2.0)));
-
-        foreach (var item in candidates)
+        foreach (var region in renderer.PreviewTextRegions(project, frame)
+                     .OrderBy(region => region.Width * region.Height))
         {
-            var geometry = item.Geometry!.Value;
-            var card = Cards[item.Index];
+            if (region.CardIndex < 0 || region.CardIndex >= Cards.Count)
+                continue;
 
-            if (!string.IsNullOrWhiteSpace(card.Title) && geometry.TitleHeight > 0)
-            {
-                var title = new Rect(geometry.TitleX, geometry.TitleY, geometry.TitleWidth, geometry.TitleHeight);
-                if (Contains(title, x, y))
-                    return new PreviewTextHit(item.Index, InlinePreviewTextField.Title, title);
-            }
+            var field = ParseInlinePreviewField(region.Field);
+            if (field == InlinePreviewTextField.None)
+                continue;
 
-            if (!string.IsNullOrWhiteSpace(card.Description) && geometry.DescriptionHeight > 0)
-            {
-                var description = ReliableDescriptionTextBounds(
-                    card.Description,
-                    geometry.DescriptionX,
-                    geometry.DescriptionY,
-                    geometry.DescriptionWidth,
-                    geometry.DescriptionHeight,
-                    renderer.DescriptionTextSize);
-
-                if (Contains(description, x, y))
-                    return new PreviewTextHit(item.Index, InlinePreviewTextField.Description, description);
-            }
-
-            if (_projectShowBadges &&
-                (!string.IsNullOrWhiteSpace(card.BadgeHeader) || !string.IsNullOrWhiteSpace(card.Value)) &&
-                geometry.BadgeWidth > 0 && geometry.BadgeHeight > 0)
-            {
-                var badge = new Rect(geometry.BadgeX, geometry.BadgeY, geometry.BadgeWidth, geometry.BadgeHeight);
-                if (Contains(badge, x, y))
-                {
-                    var headerBoundary = badge.Y + badge.Height * 0.42;
-                    if (!string.IsNullOrWhiteSpace(card.BadgeHeader) && y < headerBoundary)
-                    {
-                        var header = new Rect(
-                            badge.X + badge.Width * 0.12,
-                            badge.Y + badge.Height * 0.12,
-                            badge.Width * 0.76,
-                            Math.Max(34, badge.Height * 0.25));
-                        return new PreviewTextHit(item.Index, InlinePreviewTextField.BadgeHeader, header);
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(card.Value))
-                    {
-                        var value = new Rect(
-                            badge.X + badge.Width * 0.12,
-                            badge.Y + badge.Height * 0.34,
-                            badge.Width * 0.76,
-                            Math.Max(50, badge.Height * 0.42));
-                        return new PreviewTextHit(item.Index, InlinePreviewTextField.Value, value);
-                    }
-                }
-            }
+            var bounds = new Rect(region.X, region.Y, region.Width, region.Height);
+            if (ContainsRotated(bounds, region.Rotation, x, y))
+                return new PreviewTextHit(region.CardIndex, field, region);
         }
 
         return null;
@@ -719,6 +711,21 @@ public sealed partial class MainWindow
     private static bool Contains(Rect rect, double x, double y) =>
         x >= rect.X && x <= rect.X + rect.Width && y >= rect.Y && y <= rect.Y + rect.Height;
 
+    private static bool ContainsRotated(Rect rect, double rotation, double x, double y)
+    {
+        if (Math.Abs(rotation) <= .001)
+            return Contains(rect, x, y);
+
+        var cx = rect.X + rect.Width / 2;
+        var cy = rect.Y + rect.Height / 2;
+        var radians = -rotation * Math.PI / 180.0;
+        var dx = x - cx;
+        var dy = y - cy;
+        var localX = dx * Math.Cos(radians) - dy * Math.Sin(radians) + cx;
+        var localY = dx * Math.Sin(radians) + dy * Math.Cos(radians) + cy;
+        return Contains(rect, localX, localY);
+    }
+
     private CubicalCompare.Core.Renderer.PreviewCardGeometry? ReliablePreviewGeometry(int cardIndex)
     {
         var renderer = _legacyRenderer;
@@ -741,9 +748,8 @@ public sealed partial class MainWindow
             _reliablePreviewCardIndex >= Cards.Count)
             return;
 
-        var renderer = _legacyRenderer;
         var geometry = ReliablePreviewGeometry(_reliablePreviewCardIndex);
-        if (renderer is null || geometry is null)
+        if (_legacyRenderer is null || geometry is null)
         {
             _reliablePreviewSlot.Visibility = Visibility.Collapsed;
             _reliablePreviewAdorner.Visibility = Visibility.Collapsed;
@@ -767,8 +773,8 @@ public sealed partial class MainWindow
         {
             _reliablePreviewApplyAllButton.Visibility = Visibility.Visible;
             _reliablePreviewApplyAllButton.IsEnabled = Cards.Count > 1;
-            Canvas.SetLeft(_reliablePreviewApplyAllButton, Math.Clamp(g.ArtworkX * sx + 8, 8, ReliablePreviewWidth - 160));
-            Canvas.SetTop(_reliablePreviewApplyAllButton, Math.Clamp((g.ArtworkY + g.ArtworkHeight) * sy - 43, 8, ReliablePreviewHeight - 48));
+            Canvas.SetLeft(_reliablePreviewApplyAllButton, Math.Clamp((g.ArtworkX + g.ArtworkWidth) * sx - 88, 8, ReliablePreviewWidth - 96));
+            Canvas.SetTop(_reliablePreviewApplyAllButton, Math.Clamp(g.ArtworkY * sy + 8, 8, ReliablePreviewHeight - 42));
         }
 
         if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
@@ -793,16 +799,22 @@ public sealed partial class MainWindow
 
             var cropWidth = bitmap.Width * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropLeft, 0, .95) - Math.Clamp(card.ImageCropRight, 0, .95));
             var cropHeight = bitmap.Height * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropTop, 0, .95) - Math.Clamp(card.ImageCropBottom, 0, .95));
+            var coordX = Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleX));
+            var coordY = Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleY));
+            var localSlotWidth = g.ArtworkWidth / coordX;
+            var localSlotHeight = g.ArtworkHeight / coordY;
             var baseScale = g.ArtworkCover
-                ? Math.Max(g.ArtworkWidth / cropWidth, g.ArtworkHeight / cropHeight)
-                : Math.Min(g.ArtworkWidth / cropWidth, g.ArtworkHeight / cropHeight);
-            var scale = baseScale * Math.Clamp(imageScale, .05, 12);
-            var width = Math.Max(1, cropWidth * scale * sx);
-            var height = Math.Max(1, cropHeight * scale * sy);
-            var centerX = (g.ArtworkX + g.ArtworkWidth / 2 + imageX) * sx;
-            var centerY = (g.ArtworkY + g.ArtworkHeight / 2 + imageY) * sy;
+                ? Math.Max(localSlotWidth / cropWidth, localSlotHeight / cropHeight)
+                : Math.Min(localSlotWidth / cropWidth, localSlotHeight / cropHeight);
+            var effective = baseScale * Math.Clamp(imageScale, .05, 12);
 
-            _reliablePreviewArtworkGhost!.Source = card.Preview;
+            var width = Math.Max(1, cropWidth * effective * coordX * sx);
+            var height = Math.Max(1, cropHeight * effective * coordY * sy);
+            var centerX = (g.ArtworkX + g.ArtworkWidth / 2 + imageX * g.ImageCoordinateScaleX) * sx;
+            var centerY = (g.ArtworkY + g.ArtworkHeight / 2 + imageY * g.ImageCoordinateScaleY) * sy;
+
+            // Border/handles only. The rendered frame remains fully visible beneath them.
+            _reliablePreviewArtworkGhost!.Source = null;
             _reliablePreviewAdorner.Visibility = Visibility.Visible;
             _reliablePreviewAdorner.Width = width;
             _reliablePreviewAdorner.Height = height;
@@ -812,7 +824,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
-            App.WriteLog("Could not draw reliable preview transform handles", ex);
+            App.WriteLog("Could not draw immersive preview transform handles", ex);
             _reliablePreviewAdorner.Visibility = Visibility.Collapsed;
         }
     }
@@ -828,12 +840,20 @@ public sealed partial class MainWindow
 
     private void OpenInlinePreviewTextEditor(PreviewTextHit hit)
     {
-        if (_inlinePreviewTextEditor is null || _legacyRenderer is null || hit.CardIndex < 0 || hit.CardIndex >= Cards.Count)
+        if (_inlinePreviewTextEditor is null ||
+            _legacyRenderer is null ||
+            hit.CardIndex < 0 ||
+            hit.CardIndex >= Cards.Count)
             return;
 
         var card = Cards[hit.CardIndex];
+        var region = hit.Region;
         var (sx, sy) = ReliablePreviewScale();
-        var bounds = new Rect(hit.Bounds.X * sx, hit.Bounds.Y * sy, hit.Bounds.Width * sx, hit.Bounds.Height * sy);
+        var bounds = new Rect(
+            region.X * sx,
+            region.Y * sy,
+            Math.Max(1, region.Width * sx),
+            Math.Max(1, region.Height * sy));
 
         _inlinePreviewTextCardIndex = hit.CardIndex;
         _inlinePreviewTextField = hit.Field;
@@ -842,45 +862,78 @@ public sealed partial class MainWindow
         _inlinePreviewTextLoading = true;
         _inlinePreviewTextEditor.Text = _inlinePreviewTextOriginal;
         _inlinePreviewTextEditor.AcceptsReturn = hit.Field == InlinePreviewTextField.Description;
-        _inlinePreviewTextEditor.TextWrapping = hit.Field == InlinePreviewTextField.Description ? TextWrapping.Wrap : TextWrapping.NoWrap;
-        _inlinePreviewTextEditor.HorizontalTextAlignment = hit.Field == InlinePreviewTextField.Description ? TextAlignment.Left : TextAlignment.Center;
-        _inlinePreviewTextEditor.VerticalContentAlignment = hit.Field == InlinePreviewTextField.Description ? VerticalAlignment.Top : VerticalAlignment.Center;
-        _inlinePreviewTextEditor.FontSize = hit.Field switch
+        _inlinePreviewTextEditor.TextWrapping = region.Wrap ? TextWrapping.Wrap : TextWrapping.NoWrap;
+        _inlinePreviewTextEditor.HorizontalTextAlignment = region.HorizontalAlignment switch
         {
-            InlinePreviewTextField.Title => Math.Max(12, _legacyRenderer.TitleTextSize * sy),
-            InlinePreviewTextField.Description => Math.Max(11, _legacyRenderer.DescriptionTextSize * sy),
-            InlinePreviewTextField.BadgeHeader => Math.Max(12, 30 * sy),
-            InlinePreviewTextField.Value => Math.Max(16, 66 * sy),
-            _ => 14,
+            "left" => TextAlignment.Left,
+            "right" => TextAlignment.Right,
+            _ => TextAlignment.Center,
         };
-        _inlinePreviewTextEditor.Foreground = new SolidColorBrush(
-            hit.Field == InlinePreviewTextField.Title ? Colors.Black : Colors.White);
+        _inlinePreviewTextEditor.VerticalContentAlignment = region.VerticalAlignment switch
+        {
+            "top" => VerticalAlignment.Top,
+            "bottom" => VerticalAlignment.Bottom,
+            _ => VerticalAlignment.Center,
+        };
+        _inlinePreviewTextEditor.FontSize = Math.Max(8, region.FontSize * sy);
+        _inlinePreviewTextEditor.FontWeight = new global::Windows.UI.Text.FontWeight
+        {
+            Weight = region.Bold ? (ushort)700 : (ushort)400,
+        };
+        if (!string.IsNullOrWhiteSpace(RenderFontSelection.CurrentFamily))
+            _inlinePreviewTextEditor.FontFamily = new FontFamily(RenderFontSelection.CurrentFamily);
+
+        _inlinePreviewTextEditor.Foreground = new SolidColorBrush(ArgbColor(region.Argb));
         _inlinePreviewTextEditor.Background = new SolidColorBrush(Colors.Transparent);
         _inlinePreviewTextEditor.BorderBrush = new SolidColorBrush(Colors.Transparent);
         _inlinePreviewTextEditor.BorderThickness = new Thickness(0);
         _inlinePreviewTextEditor.Padding = new Thickness(0);
-        _inlinePreviewTextEditor.Width = Math.Max(36, bounds.Width);
-        _inlinePreviewTextEditor.Height = Math.Max(24, bounds.Height);
+        _inlinePreviewTextEditor.Margin = new Thickness(0);
+        _inlinePreviewTextEditor.Width = Math.Max(18, bounds.Width);
+        _inlinePreviewTextEditor.Height = Math.Max(18, bounds.Height);
+        _inlinePreviewTextEditor.RenderTransformOrigin = new Point(.5, .5);
+        _inlinePreviewTextEditor.RenderTransform = Math.Abs(region.Rotation) > .001
+            ? new RotateTransform { Angle = region.Rotation }
+            : null;
+
         Canvas.SetLeft(_inlinePreviewTextEditor, Math.Clamp(bounds.X, 0, ReliablePreviewWidth - _inlinePreviewTextEditor.Width));
         Canvas.SetTop(_inlinePreviewTextEditor, Math.Clamp(bounds.Y, 0, ReliablePreviewHeight - _inlinePreviewTextEditor.Height));
         _inlinePreviewTextEditor.Visibility = Visibility.Visible;
         _inlinePreviewTextLoading = false;
 
+        // Re-render once with an invisible placeholder in this exact field so the
+        // caret/edit text replaces, rather than doubles over, the rendered glyphs.
+        QueuePreviewInteractionRender();
+
         _inlinePreviewTextEditor.Focus(FocusState.Programmatic);
         _inlinePreviewTextEditor.SelectionStart = _inlinePreviewTextEditor.Text.Length;
         _inlinePreviewTextEditor.SelectionLength = 0;
-        TimelineStatusText.Text = $"Editing {InlinePreviewFieldLabel(hit.Field)} in place · Esc cancels";
+        TimelineStatusText.Text = $"Editing {InlinePreviewFieldLabel(hit.Field)} directly on the rendered frame · Esc cancels";
     }
 
     private void InlinePreviewTextEditor_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_inlinePreviewTextLoading || _inlinePreviewTextCardIndex < 0 || _inlinePreviewTextCardIndex >= Cards.Count)
+        if (_inlinePreviewTextLoading ||
+            _inlinePreviewTextCardIndex < 0 ||
+            _inlinePreviewTextCardIndex >= Cards.Count)
             return;
 
-        var card = Cards[_inlinePreviewTextCardIndex];
-        SetInlinePreviewFieldValue(card, _inlinePreviewTextField, _inlinePreviewTextEditor?.Text ?? string.Empty);
+        _immersivePreviewMutationDepth++;
+        try
+        {
+            SetInlinePreviewFieldValue(
+                Cards[_inlinePreviewTextCardIndex],
+                _inlinePreviewTextField,
+                _inlinePreviewTextEditor?.Text ?? string.Empty);
+        }
+        finally
+        {
+            _immersivePreviewMutationDepth--;
+        }
+
         ScheduleThumbnailRefresh();
         ScheduleWorkspaceSave();
+        QueuePreviewInteractionRender();
     }
 
     private void InlinePreviewTextEditor_LostFocus(object sender, RoutedEventArgs e)
@@ -920,12 +973,19 @@ public sealed partial class MainWindow
 
     private void CloseInlinePreviewTextEditor()
     {
+        var wasVisible = _inlinePreviewTextEditor?.Visibility == Visibility.Visible;
         if (_inlinePreviewTextEditor is not null)
+        {
             _inlinePreviewTextEditor.Visibility = Visibility.Collapsed;
+            _inlinePreviewTextEditor.RenderTransform = null;
+        }
 
         _inlinePreviewTextCardIndex = -1;
         _inlinePreviewTextField = InlinePreviewTextField.None;
         _inlinePreviewTextOriginal = string.Empty;
+
+        if (wasVisible)
+            QueuePreviewInteractionRender();
     }
 
     private static string GetInlinePreviewFieldValue(ProjectCardViewModel card, InlinePreviewTextField field) => field switch
@@ -964,6 +1024,55 @@ public sealed partial class MainWindow
         InlinePreviewTextField.Value => "badge value",
         _ => "text",
     };
+
+    private static InlinePreviewTextField ParseInlinePreviewField(string field) => field switch
+    {
+        "title" => InlinePreviewTextField.Title,
+        "description" => InlinePreviewTextField.Description,
+        "badgeHeader" => InlinePreviewTextField.BadgeHeader,
+        "value" => InlinePreviewTextField.Value,
+        _ => InlinePreviewTextField.None,
+    };
+
+    private static global::Windows.UI.Color ArgbColor(uint argb) => ColorHelper.FromArgb(
+        (byte)(argb >> 24),
+        (byte)(argb >> 16),
+        (byte)(argb >> 8),
+        (byte)argb);
+
+    private ComparisonProject PrepareProjectForImmersivePreviewRender(ComparisonProject project)
+    {
+        if (_inlinePreviewTextEditor?.Visibility != Visibility.Visible ||
+            _inlinePreviewTextCardIndex < 0 ||
+            _inlinePreviewTextCardIndex >= project.Cards.Count)
+            return project;
+
+        // U+200B is intentionally non-whitespace to renderer layout checks, but has
+        // no visible glyph. It preserves title/description/badge geometry while the
+        // transparent TextBox supplies the live editable text over the same field.
+        const string invisibleLayoutText = "\u200B";
+        var card = project.Cards[_inlinePreviewTextCardIndex];
+        switch (_inlinePreviewTextField)
+        {
+            case InlinePreviewTextField.Title:
+                card.Title = invisibleLayoutText;
+                break;
+            case InlinePreviewTextField.Description:
+                card.Description = invisibleLayoutText;
+                break;
+            case InlinePreviewTextField.BadgeHeader:
+                card.BadgeHeader = invisibleLayoutText;
+                break;
+            case InlinePreviewTextField.Value:
+                // Keep both primary and unit jsparse fields present while rendering
+                // neither glyph. One zero-width token would make SmartBadge's unit
+                // fallback render "People"; two invisible tokens suppress both.
+                card.Value = invisibleLayoutText + " " + invisibleLayoutText;
+                break;
+        }
+
+        return project;
+    }
 
     private bool IsPreviewEditorChild(DependencyObject? source)
     {
@@ -1007,8 +1116,8 @@ public sealed partial class MainWindow
         var g = geometry.Value;
         var (sx, sy) = ReliablePreviewScale();
         return new Point(
-            (g.ArtworkX + g.ArtworkWidth / 2 + imageX) * sx,
-            (g.ArtworkY + g.ArtworkHeight / 2 + imageY) * sy);
+            (g.ArtworkX + g.ArtworkWidth / 2 + imageX * g.ImageCoordinateScaleX) * sx,
+            (g.ArtworkY + g.ArtworkHeight / 2 + imageY * g.ImageCoordinateScaleY) * sy);
     }
 
     private (double X, double Y) ReliablePreviewScale()
@@ -1021,19 +1130,26 @@ public sealed partial class MainWindow
 
     private void QueuePreviewInteractionRender()
     {
-        if (_previewInteractionRenderQueued)
+        _previewInteractionRenderPending = true;
+        if (_previewInteractionRenderRunning)
             return;
 
-        _previewInteractionRenderQueued = true;
+        _previewInteractionRenderRunning = true;
         DispatcherQueue.TryEnqueue(async () =>
         {
             try
             {
-                await RenderCurrentFrameAsync();
+                while (_previewInteractionRenderPending)
+                {
+                    _previewInteractionRenderPending = false;
+                    await RenderCurrentFrameAsync();
+                }
             }
             finally
             {
-                _previewInteractionRenderQueued = false;
+                _previewInteractionRenderRunning = false;
+                if (_previewInteractionRenderPending)
+                    QueuePreviewInteractionRender();
             }
         });
     }
