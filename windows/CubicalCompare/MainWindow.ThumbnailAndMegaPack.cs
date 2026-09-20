@@ -45,6 +45,12 @@ public sealed partial class MainWindow
 
     private async void CardsList_SelectionChangedForRendererPreview(object sender, SelectionChangedEventArgs e)
     {
+        // Direct selection from the rendered preview must not seek the timeline.
+        // Keep automatic representative-frame seeking only for intentional list
+        // selection, where it is useful for navigation.
+        if (_suppressCardSelectionPreviewSeek)
+            return;
+
         var renderer = _legacyRenderer;
         if (renderer is null || CardsList.SelectedItem is not ProjectCardViewModel selected) return;
 
