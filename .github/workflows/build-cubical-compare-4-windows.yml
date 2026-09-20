@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.13"
+          $version = "4.2.1.14"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.13 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.14 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.14"
+          $velopackVersion = "4.2.15"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -73,8 +73,12 @@ jobs:
           if ($preview -notmatch 'Apply to all images') { throw 'Preview apply-all image action is missing.' }
           if ($preview -notmatch 'OpenInlinePreviewTextEditor') { throw 'Inline preview text editor is missing.' }
           if ($preview -notmatch 'ReliableHitTestPreviewArtwork') { throw 'Direct artwork hit-testing is missing.' }
+          if ($preview -notmatch 'ReliableDescriptionTextBounds') { throw 'Description text-sized hit testing is missing.' }
+          if ($preview -match 'new Rect\(bodyLeft, descriptionTop, renderer\.BodyWidth, Math\.Max\(1, renderer\.ReferenceHeight - descriptionTop\)\)') {
+            throw 'Description editor still claims the full remaining card block.'
+          }
           if ($preview -match 'Right-click a visible card · drag to move') { throw 'Legacy right-click-only preview instructions are still active.' }
-          Write-Host 'Direct preview text/artwork editing contract verified.'
+          Write-Host 'Direct preview text/artwork editing and compact description hitbox contract verified.'
 
       - name: Publish certificate-free portable app
         shell: pwsh
@@ -338,6 +342,8 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Description editing now targets only the actual wrapped text lines instead of covering the entire remaining card block.
+          - Empty description-area space no longer steals clicks from artwork, so transformed images stay directly movable.
           - Direct preview editing: click visible title, description, badge header or badge value text and edit it in place with a real caret.
           - Click rendered artwork itself to select and drag it; use corner handles to resize and the rotate handle to rotate.
           - A visible Apply to all images button beside the selected artwork copies its transform, crop and layer settings to every card.
