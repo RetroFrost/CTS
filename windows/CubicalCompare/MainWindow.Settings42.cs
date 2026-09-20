@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.14 · Description block fix",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• description direct-edit hit testing now follows the actual wrapped text lines instead of the entire remaining card block\n• the inline description editor only covers the text itself, so empty space no longer steals artwork clicks\n• transformed artwork remains selectable around the description text region",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.13 · Direct preview editing",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
