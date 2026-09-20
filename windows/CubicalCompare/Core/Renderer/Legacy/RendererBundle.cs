@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -498,7 +499,15 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    public const string AppVersion = "4.2.1.12";
+    private static readonly Lazy<string> RuntimeAppVersion = new(ResolveRuntimeAppVersion);
+
+    /// <summary>
+    /// Cubical Compare's actual running product version. This must never be hardcoded:
+    /// renderer compatibility is evaluated by the Renderer module, while the version
+    /// users install belongs to the entry application assembly.
+    /// </summary>
+    public static string AppVersion => RuntimeAppVersion.Value;
+
     public const int RendererApi = 3;
 
     private static readonly HashSet<string> Engines = new(StringComparer.Ordinal)
@@ -553,7 +562,8 @@ public static class RendererCapabilities
         if (!Engines.Contains(spec.Engine)) errors.Add($"Renderer engine '{spec.Engine}' is not available in this build.");
         var missing = spec.RequiredFeatures.Where(x => !Features.Contains(x)).ToArray();
         if (missing.Length > 0) errors.Add("Unsupported renderer features: " + string.Join(", ", missing));
-        if (CompareVersions(AppVersion, spec.MinAppVersion) < 0) errors.Add($"Requires Cubical Compare {spec.MinAppVersion} or newer.");
+        if (CompareVersions(AppVersion, spec.MinAppVersion) < 0)
+            errors.Add($"Requires Cubical Compare {spec.MinAppVersion} or newer; this running build is {AppVersion}.");
         if (spec.ReferenceWidth != 1920 || spec.ReferenceHeight != 1080) warnings.Add($"Reference canvas is {spec.ReferenceWidth}×{spec.ReferenceHeight}; exports may be scaled.");
         if (spec.ReferenceFps != 60) warnings.Add($"Reference frame rate is {spec.ReferenceFps} fps.");
         if (spec.PrecisionMode == "frame-exact" && spec.TimelineUnit != "frames") errors.Add("Frame-exact renderers must use frame timeline units.");
@@ -862,6 +872,65 @@ public static class RendererCapabilities
 
         if (spec.PackageAssets.Count == 0)
             errors.Add("SmartBadge v2 requires renderer package sidecar assets.");
+    }
+
+    private static string ResolveRuntimeAppVersion()
+    {
+        // RendererCapabilities lives in CubicalCompare.Renderer.dll, whose assembly
+        // version is not the product identity users install. Prefer the actual entry
+        // assembly (CubicalCompare.exe / CubicalCompare.dll) so portable, setup, and
+        // updated builds all compare renderer minAppVersion against the real app.
+        var assemblies = new[]
+        {
+            Assembly.GetEntryAssembly(),
+            typeof(RendererCapabilities).Assembly,
+        };
+
+        foreach (var assembly in assemblies.Where(value => value is not null).Distinct())
+        {
+            var informational = assembly!.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            var normalized = NormalizeRuntimeVersion(informational);
+            if (normalized is not null)
+                return normalized;
+
+            var fileVersion = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+            normalized = NormalizeRuntimeVersion(fileVersion);
+            if (normalized is not null)
+                return normalized;
+
+            normalized = NormalizeRuntimeVersion(assembly.GetName().Version?.ToString());
+            if (normalized is not null)
+                return normalized;
+        }
+
+        // Failing closed here is safer than pretending a stale hardcoded build is
+        // installed. A renderer with a minimum version will then produce an explicit
+        // compatibility error instead of being accepted under false version metadata.
+        return "0.0.0.0";
+    }
+
+    private static string? NormalizeRuntimeVersion(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        // .NET 8+ commonly appends Source Link commit metadata to
+        // AssemblyInformationalVersion (for example 4.2.1.18+abcdef). Renderer
+        // compatibility needs only the numeric product version.
+        var match = Regex.Match(
+            value,
+            @"^\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?",
+            RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return null;
+
+        var parts = match.Groups
+            .Cast<Group>()
+            .Skip(1)
+            .Where(group => group.Success)
+            .Select(group => group.Value)
+            .ToArray();
+        return parts.Length == 0 ? null : string.Join('.', parts);
     }
 
     public static int CompareVersions(string a, string b)
