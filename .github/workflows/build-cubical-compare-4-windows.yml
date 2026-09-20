@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.17"
+          $version = "4.2.1.18"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.17 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.18 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.18"
+          $velopackVersion = "4.2.19"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -85,6 +85,17 @@ jobs:
           if ($thumb -notmatch 'if \(_suppressCardSelectionPreviewSeek\)') { throw 'Renderer preview selection handler can still seek after direct frame clicks.' }
           if ($preview -notmatch 'TextControlBackgroundFocused') { throw 'Transparent in-place text editor styling is missing.' }
           if ($preview -notmatch 'Opacity = 0,') { throw 'Artwork ghost must stay invisible so the real rendered frame remains visible.' }
+
+          $rendererBundle = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererBundle.cs' -Raw
+          if ($rendererBundle -match 'public const string AppVersion\s*=') {
+            throw 'Renderer compatibility app version is still hardcoded.'
+          }
+          if ($rendererBundle -notmatch 'Assembly\.GetEntryAssembly\(\)') {
+            throw 'Renderer compatibility does not resolve the running entry-assembly version.'
+          }
+          if ($rendererBundle -notmatch 'AssemblyInformationalVersionAttribute') {
+            throw 'Renderer compatibility is not using the product informational version.'
+          }
 
           $adapter = Get-Content 'windows/CubicalCompare/Core/Renderer/LegacyRendererAdapter.cs' -Raw
           if ($adapter -notmatch 'PreviewTextRegions') { throw 'Renderer-authored editable text regions are missing.' }
@@ -185,7 +196,11 @@ jobs:
           if ($text -notmatch 'Post-activation editor controls initialised') {
             throw ("Full-window smoke did not reach completed editor initialisation. " + $text)
           }
-          Write-Host "Full MainWindow/XAML smoke passed (PID $($process.Id))."
+          $expectedRendererVersion = [regex]::Escape($env:CC_VERSION)
+          if ($text -notmatch "Renderer compatibility app version: $expectedRendererVersion\.") {
+            throw ("Renderer compatibility version is not the published app version $env:CC_VERSION. " + $text)
+          }
+          Write-Host "Full MainWindow/XAML smoke passed with renderer compatibility version $env:CC_VERSION (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
 
       - name: Install Velopack CLI
@@ -363,6 +378,8 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Renderer minAppVersion checks now use the actual running Cubical Compare product version instead of the stale hardcoded 4.2.1.12 compatibility value.
+          - CI launches the published app and verifies the renderer subsystem sees exactly $env:CC_VERSION, preventing version drift from returning.
           - Preview interaction hotfix: normal artwork clicks are Move; resize/rotate activate only inside their visible handles.
           - Clicking an already-visible card in the rendered frame no longer seeks the timeline backward; list clicks retain intentional jump-to-card navigation.
           - Immersive preview editor: normal mouse-up no longer resets artwork to its pre-drag transform.
