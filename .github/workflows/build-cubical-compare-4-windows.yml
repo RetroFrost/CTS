@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.9"
+          $version = "4.2.1.10"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.1.2 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.10"
+          $velopackVersion = "4.2.11"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -331,7 +331,7 @@ jobs:
           - Nested badge packs keep value/unit/header live through jsparse while their shell, reveal, shadow and shine stay frame-addressed.
           - Smart animation overlay frames now composite after live text/artwork, so glass/shine passes affect the live content instead of sitting underneath it.
           - Renderer v3 ZIPs may wrap the proven exact ribbon renderer while carrying SmartBadge v2 sidecars, preserving existing source-measured card/scroll tracks.
-          - SmartCard now uses strict split-layer compositing: base shell, live artwork, live title/description, then overlay shine/glass above all live content.\n          - smart-card-layered-compositing-v1 validates synchronized overlay frames so card shine cannot silently disappear or render underneath the content.\n          - Renderer v3 packages can contain a real renderer.renderer3 proxy scene that delegates to an exact wrapped ribbon renderer while keeping SmartBadge v2 nested ZIPs.\n          - Initial Setup.exe uses a tiny native Win32 bootstrap with no .NET runtime dependency. It shows progress immediately, runs Velopack silently, closes automatically and launches Cubical Compare.
+          - Renderer v3 proxy scenes can now combine SmartCards with the wrapped source-measured ribbon engine, preserving exact movement/scroll timing while replacing card visuals with live SmartCard content.\n          - SmartCard now uses strict split-layer compositing: base shell, live artwork, live title/description, then overlay shine/glass above all live content.\n          - smart-card-layered-compositing-v1 validates synchronized overlay frames so card shine cannot silently disappear or render underneath the content.\n          - Renderer v3 packages can contain a real renderer.renderer3 proxy scene that delegates to an exact wrapped ribbon renderer while keeping SmartBadge v2 nested ZIPs.\n          - Initial Setup.exe uses a tiny native Win32 bootstrap with no .NET runtime dependency. It shows progress immediately, runs Velopack silently, closes automatically and launches Cubical Compare.
           - The bootstrap cannot redirect to Microsoft Store for a missing runtime and avoids Velopack's final OK acknowledgement.
           - Setup is smoke-tested to show its own window within five seconds, finish unattended and launch the installed app automatically.
           - In-app package updates no longer stop on Velopack's final OK acknowledgement; Cubical Compare shows its own progress, then performs the file-swap handoff without a blocking completion dialog and restarts automatically.
