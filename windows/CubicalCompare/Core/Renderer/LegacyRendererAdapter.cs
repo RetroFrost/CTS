@@ -924,10 +924,77 @@ public sealed class LegacyRendererAdapter : IDisposable
                 continue;
 
             var type = JsonString(resource, "type", obj.Kind).ToLowerInvariant();
-            if (type != "relationships-card" && obj.Kind is not "card" and not "openingCard")
-                continue;
-
             var props = Legacy.V3Evaluator.Properties(scene, obj, frame);
+
+            if (type == "smart-card-animation")
+            {
+                var sequenceRoot = SceneString(props, "sequenceRoot", JsonString(resource, "sequenceRoot", ""));
+                if (string.IsNullOrWhiteSpace(sequenceRoot))
+                    continue;
+
+                Legacy.SmartBadgeSequenceDefinition sequence;
+                try { sequence = Legacy.SmartBadgeSequence.Load(scene, sequenceRoot); }
+                catch { continue; }
+
+                var selected = SelectSmartSequenceFrame(
+                    sequence,
+                    props,
+                    resource,
+                    frame,
+                    obj.Frame,
+                    _spec.ReferenceFps);
+                if (selected is null || sequence.Artwork is null)
+                    continue;
+
+                var artwork = sequence.Artwork.DestAt(selected.TemplateFrame);
+                if (artwork is null)
+                    continue;
+
+                var pitch = JsonDouble(resource, "slotPitch", 480);
+                var scroll = SceneNumber(props, "scroll", 0);
+                var baseX = SceneNumber(props, "baseX", cardIndex * pitch);
+                var offsetX = SceneNumber(props, "offsetX", 0);
+                var offsetY = SceneNumber(props, "offsetY", 0);
+                var localX = SceneNumber(props, "drawX", JsonDouble(resource, "drawX", 0));
+                var localY = SceneNumber(props, "drawY", JsonDouble(resource, "drawY", 0));
+                var drawWidth = SceneNumber(props, "drawWidth", JsonDouble(resource, "drawWidth", sequence.Width));
+                var drawHeight = SceneNumber(props, "drawHeight", JsonDouble(resource, "drawHeight", sequence.Height));
+                if (drawWidth <= 0 || drawHeight <= 0)
+                    continue;
+
+                var cardX = baseX - scroll + offsetX;
+                var originX = cardX + localX;
+                var originY = offsetY + localY;
+                var scaleX = drawWidth / Math.Max(1, sequence.Width);
+                var scaleY = drawHeight / Math.Max(1, sequence.Height);
+                var title = SmartFieldBounds(sequence, selected.TemplateFrame, "title");
+                var description = SmartFieldBounds(sequence, selected.TemplateFrame, "description", "desc");
+                var fallback = StandardPreviewGeometry(project.Cards[cardIndex], cardX);
+
+                geometry = new PreviewCardGeometry(
+                    SlotX: cardX,
+                    ArtworkX: originX + artwork.X * scaleX,
+                    ArtworkY: originY + artwork.Y * scaleY,
+                    ArtworkWidth: artwork.Width * scaleX,
+                    ArtworkHeight: artwork.Height * scaleY,
+                    ArtworkCover: true,
+                    ImageCoordinateScaleX: scaleX,
+                    ImageCoordinateScaleY: scaleY,
+                    TitleX: title is null ? fallback.TitleX : originX + title.X * scaleX,
+                    TitleY: title is null ? fallback.TitleY : originY + title.Y * scaleY,
+                    TitleWidth: title is null ? fallback.TitleWidth : title.Width * scaleX,
+                    TitleHeight: title is null ? fallback.TitleHeight : title.Height * scaleY,
+                    DescriptionX: description is null ? fallback.DescriptionX : originX + description.X * scaleX,
+                    DescriptionY: description is null ? fallback.DescriptionY : originY + description.Y * scaleY,
+                    DescriptionWidth: description is null ? fallback.DescriptionWidth : description.Width * scaleX,
+                    DescriptionHeight: description is null ? fallback.DescriptionHeight : description.Height * scaleY,
+                    BadgeX: fallback.BadgeX,
+                    BadgeY: fallback.BadgeY,
+                    BadgeWidth: fallback.BadgeWidth,
+                    BadgeHeight: fallback.BadgeHeight);
+                return true;
+            }
+
             if (type == "relationships-card")
             {
                 var pitch = JsonDouble(resource, "slotPitch", 480);
@@ -936,36 +1003,55 @@ public sealed class LegacyRendererAdapter : IDisposable
                 var imageHeight = JsonDouble(resource, "imageHeight", 789);
                 var titleHeight = JsonDouble(resource, "titleHeight", 117);
                 var dividerHeight = JsonDouble(resource, "dividerHeight", 8);
+                var pivotY = JsonDouble(resource, "pivotY", height / 2);
                 var scroll = SceneNumber(props, "scroll", 0);
                 var baseX = SceneNumber(props, "baseX", cardIndex * pitch);
                 var offsetX = SceneNumber(props, "offsetX", 0);
+                var scale = Math.Clamp(
+                    SceneNumber(props, "cardScale", SceneNumber(props, "scale", 1)),
+                    0,
+                    2.5);
                 var x = baseX - scroll + offsetX;
-                if (x + width < 0 || x > _spec.ReferenceWidth)
+                var centerX = x + width / 2;
+                var imageX = centerX - width * scale / 2;
+                var imageY = pivotY + (0 - pivotY) * scale;
+                var imageWidth = width * scale;
+                var imageHeightScaled = imageHeight * scale;
+                if (imageX + imageWidth < 0 || imageX > _spec.ReferenceWidth)
                     continue;
+
+                var titleY = pivotY + (imageHeight - pivotY) * scale;
+                var titleHeightScaled = titleHeight * scale;
                 var descriptionTop = imageHeight + titleHeight + dividerHeight;
+                var descriptionY = pivotY + (descriptionTop - pivotY) * scale;
+                var descriptionHeight = Math.Max(0, (height - descriptionTop) * scale);
+
                 geometry = new PreviewCardGeometry(
                     SlotX: x,
-                    ArtworkX: x,
-                    ArtworkY: 0,
-                    ArtworkWidth: width,
-                    ArtworkHeight: imageHeight,
+                    ArtworkX: imageX,
+                    ArtworkY: imageY,
+                    ArtworkWidth: imageWidth,
+                    ArtworkHeight: imageHeightScaled,
                     ArtworkCover: true,
-                    ImageCoordinateScaleX: 1,
-                    ImageCoordinateScaleY: 1,
-                    TitleX: x,
-                    TitleY: imageHeight,
-                    TitleWidth: width,
-                    TitleHeight: titleHeight,
-                    DescriptionX: x,
-                    DescriptionY: descriptionTop,
-                    DescriptionWidth: width,
-                    DescriptionHeight: Math.Max(0, height - descriptionTop),
+                    ImageCoordinateScaleX: scale,
+                    ImageCoordinateScaleY: scale,
+                    TitleX: imageX,
+                    TitleY: titleY,
+                    TitleWidth: imageWidth,
+                    TitleHeight: titleHeightScaled,
+                    DescriptionX: imageX,
+                    DescriptionY: descriptionY,
+                    DescriptionWidth: imageWidth,
+                    DescriptionHeight: descriptionHeight,
                     BadgeX: x + JsonDouble(resource, "centerX", width / 2) - JsonDouble(resource, "radiusX", 176),
                     BadgeY: JsonDouble(resource, "centerY", 192) - JsonDouble(resource, "radiusY", 172),
                     BadgeWidth: JsonDouble(resource, "radiusX", 176) * 2,
                     BadgeHeight: JsonDouble(resource, "radiusY", 172) * 2);
                 return true;
             }
+
+            if (obj.Kind is not "card" and not "openingCard")
+                continue;
 
             var xValue = SceneNumber(props, "x", SceneNumber(props, "translateX", cardIndex * _spec.SlotPitch));
             geometry = StandardPreviewGeometry(project.Cards[cardIndex], xValue);
