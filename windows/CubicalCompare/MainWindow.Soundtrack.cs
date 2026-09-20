@@ -15,6 +15,11 @@ public sealed partial class MainWindow
     private CheckBox? _soundtrackLoopCheckBox;
     private bool _soundtrackUiUpdating;
     private Zipack2ImportResult? _appliedMegaPackSoundtrack;
+    private Grid? _audioPage;
+    private TextBlock? _audioPagePathText;
+    private TextBlock? _audioRendererAudioText;
+    private Slider? _audioPageVolumeSlider;
+    private CheckBox? _audioPageLoopCheckBox;
 
     internal void InitializeSoundtrackEditor()
     {
@@ -92,6 +97,149 @@ public sealed partial class MainWindow
         ApplyPendingMegaPackSoundtrackIfProjectMatches();
         RefreshSoundtrackUi();
     }
+
+    internal Grid BuildAudioPage()
+    {
+        if (_audioPage is not null)
+            return _audioPage;
+
+        _audioPagePathText = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        };
+        _audioRendererAudioText = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        };
+
+        var chooseButton = new Button
+        {
+            Content = "Choose audio…",
+            Padding = new Thickness(16, 7, 16, 7),
+        };
+        chooseButton.Click += ChooseSoundtrack_Click;
+
+        var clearButton = new Button
+        {
+            Content = "Clear soundtrack",
+            Padding = new Thickness(16, 7, 16, 7),
+        };
+        clearButton.Click += ClearSoundtrack_Click;
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+        };
+        buttons.Children.Add(chooseButton);
+        buttons.Children.Add(clearButton);
+
+        _audioPageVolumeSlider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 100,
+            StepFrequency = 1,
+            Width = 420,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        _audioPageVolumeSlider.ValueChanged += (_, args) =>
+        {
+            if (_soundtrackUiUpdating) return;
+            _soundtrackVolume = Math.Clamp(args.NewValue / 100.0, 0, 1);
+            RefreshSoundtrackUi();
+            ScheduleWorkspaceSave();
+        };
+
+        _audioPageLoopCheckBox = new CheckBox
+        {
+            Content = "Loop soundtrack to video length",
+        };
+        _audioPageLoopCheckBox.Checked += (_, _) =>
+        {
+            if (_soundtrackUiUpdating) return;
+            _soundtrackLoop = true;
+            RefreshSoundtrackUi();
+            ScheduleWorkspaceSave();
+        };
+        _audioPageLoopCheckBox.Unchecked += (_, _) =>
+        {
+            if (_soundtrackUiUpdating) return;
+            _soundtrackLoop = false;
+            RefreshSoundtrackUi();
+            ScheduleWorkspaceSave();
+        };
+
+        var soundtrackPanel = new StackPanel { Spacing = 10 };
+        soundtrackPanel.Children.Add(new TextBlock
+        {
+            Text = "Soundtrack",
+            FontSize = 18,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        soundtrackPanel.Children.Add(_audioPagePathText);
+        soundtrackPanel.Children.Add(buttons);
+        soundtrackPanel.Children.Add(new TextBlock
+        {
+            Text = "Volume",
+            FontSize = 12,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        soundtrackPanel.Children.Add(_audioPageVolumeSlider);
+        soundtrackPanel.Children.Add(_audioPageLoopCheckBox);
+
+        var rendererAudioPanel = new StackPanel { Spacing = 8 };
+        rendererAudioPanel.Children.Add(new TextBlock
+        {
+            Text = "Renderer audio",
+            FontSize = 18,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        rendererAudioPanel.Children.Add(_audioRendererAudioText);
+
+        var stack = new StackPanel
+        {
+            Spacing = 14,
+            MaxWidth = 900,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Audio",
+            FontSize = 30,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Choose the soundtrack used for preview/export. Renderer-embedded audio is shown separately so it is never hidden inside the inspector.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        stack.Children.Add(CreateAudioCard(soundtrackPanel));
+        stack.Children.Add(CreateAudioCard(rendererAudioPanel));
+
+        _audioPage = new Grid { Visibility = Visibility.Collapsed };
+        _audioPage.Children.Add(new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = stack,
+        });
+
+        RefreshSoundtrackUi();
+        return _audioPage;
+    }
+
+    private static Border CreateAudioCard(UIElement content) => new()
+    {
+        Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EditorSurfaceRaisedBrush"],
+        BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EditorBorderBrush"],
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(14),
+        Padding = new Thickness(18),
+        Child = content,
+    };
 
     private async void ChooseSoundtrack_Click(object sender, RoutedEventArgs e)
     {
@@ -174,6 +322,25 @@ public sealed partial class MainWindow
                 _soundtrackVolumeSlider.Value = Math.Clamp(_soundtrackVolume * 100.0, 0, 100);
             if (_soundtrackLoopCheckBox is not null)
                 _soundtrackLoopCheckBox.IsChecked = _soundtrackLoop;
+
+            if (_audioPagePathText is not null)
+                _audioPagePathText.Text = string.IsNullOrWhiteSpace(_soundtrackPath)
+                    ? "No soundtrack selected. Export will contain renderer audio only when the loaded renderer provides it."
+                    : File.Exists(_soundtrackPath)
+                        ? _soundtrackPath
+                        : $"Missing audio file: {_soundtrackPath}";
+            if (_audioPageVolumeSlider is not null)
+                _audioPageVolumeSlider.Value = Math.Clamp(_soundtrackVolume * 100.0, 0, 100);
+            if (_audioPageLoopCheckBox is not null)
+                _audioPageLoopCheckBox.IsChecked = _soundtrackLoop;
+
+            if (_audioRendererAudioText is not null)
+            {
+                var embedded = _legacyRenderer?.EmbeddedAudio;
+                _audioRendererAudioText.Text = embedded is null
+                    ? "The loaded renderer does not provide embedded audio."
+                    : $"Embedded renderer audio: {embedded.AssetName} · {embedded.MimeType}. A selected project soundtrack remains independently controllable here.";
+            }
         }
         finally
         {
