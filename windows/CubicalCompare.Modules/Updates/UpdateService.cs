@@ -224,6 +224,61 @@ public sealed class CubicalUpdateService
         };
     }
 
+    public async Task<bool> ApplyPortableZipFileAsync(
+        string zipPath,
+        string applicationDirectory,
+        string executableName,
+        IProgress<CubicalUpdateProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(zipPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(executableName);
+
+        var source = Path.GetFullPath(zipPath);
+        if (!File.Exists(source))
+            throw new FileNotFoundException("The selected update ZIP no longer exists.", source);
+
+        var updateRoot = Path.Combine(
+            Path.GetTempPath(),
+            "CubicalCompare",
+            "Updates",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(updateRoot);
+        var stagedZip = Path.Combine(updateRoot, "CubicalCompare-local-update.zip");
+
+        try
+        {
+            var sourceLength = new FileInfo(source).Length;
+            progress?.Report(new CubicalUpdateProgress(
+                "Copying selected update ZIP",
+                0,
+                0,
+                sourceLength));
+
+            await CopyLocalFileAsync(
+                source,
+                stagedZip,
+                progress,
+                "Copying selected update ZIP",
+                cancellationToken);
+
+            return await StagePortableZipAndLaunchAsync(
+                stagedZip,
+                updateRoot,
+                applicationDirectory,
+                executableName,
+                progress,
+                cancellationToken);
+        }
+        catch
+        {
+            try { Directory.Delete(updateRoot, recursive: true); }
+            catch { }
+            throw;
+        }
+    }
+
     private static async Task<bool> ApplyFallbackAsync(
         CubicalUpdateCandidate candidate,
         string applicationDirectory,
@@ -309,22 +364,60 @@ public sealed class CubicalUpdateService
         var updateRoot = Path.Combine(Path.GetTempPath(), "CubicalCompare", "Updates", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(updateRoot);
         var zipPath = Path.Combine(updateRoot, "CubicalCompare-update.zip");
-        var stagePath = Path.Combine(updateRoot, "stage");
-        var scriptPath = Path.Combine(updateRoot, "Apply-CubicalCompareUpdate.ps1");
-        var helperStarted = false;
 
         try
         {
             await DownloadWithRetriesAsync(uri, zipPath, progress, "Downloading portable update", cancellationToken);
             VerifySha256(zipPath, expectedSha256);
 
-            var downloadedBytes = new FileInfo(zipPath).Length;
-            progress?.Report(new CubicalUpdateProgress("Validating portable update", 100, downloadedBytes, downloadedBytes));
+            return await StagePortableZipAndLaunchAsync(
+                zipPath,
+                updateRoot,
+                applicationDirectory,
+                executableName,
+                progress,
+                cancellationToken);
+        }
+        catch
+        {
+            try { Directory.Delete(updateRoot, recursive: true); }
+            catch { }
+            throw;
+        }
+    }
+
+    private static async Task<bool> StagePortableZipAndLaunchAsync(
+        string zipPath,
+        string updateRoot,
+        string applicationDirectory,
+        string executableName,
+        IProgress<CubicalUpdateProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var stagePath = Path.Combine(updateRoot, "stage");
+        var scriptPath = Path.Combine(updateRoot, "Apply-CubicalCompareUpdate.ps1");
+        var helperStarted = false;
+
+        try
+        {
+            var zipBytes = new FileInfo(zipPath).Length;
+            progress?.Report(new CubicalUpdateProgress(
+                "Validating portable update",
+                100,
+                zipBytes,
+                zipBytes));
             ValidatePortableArchive(zipPath, executableName);
 
             if (Directory.Exists(stagePath))
                 Directory.Delete(stagePath, recursive: true);
-            ZipFile.ExtractToDirectory(zipPath, stagePath);
+
+            progress?.Report(new CubicalUpdateProgress(
+                "Extracting portable update",
+                0,
+                0,
+                null));
+            await ExtractPortableArchiveAsync(zipPath, stagePath, progress, cancellationToken);
+
             var stagedRoot = ResolveApplicationRoot(stagePath, executableName);
             if (!File.Exists(Path.Combine(stagedRoot, executableName)))
                 throw new InvalidDataException($"The staged update does not contain {executableName}.");
@@ -338,6 +431,14 @@ public sealed class CubicalUpdateService
                        $"-ProcessId {process.Id} -StageDirectory \"{Escape(stagePath)}\" " +
                        $"-TargetDirectory \"{Escape(target)}\" -ExecutableName \"{Escape(executableName)}\" " +
                        $"-WorkRoot \"{Escape(updateRoot)}\"";
+
+            progress?.Report(new CubicalUpdateProgress(
+                requiresElevation
+                    ? "Update staged - requesting permission to replace app files"
+                    : "Update staged - restarting Cubical Compare",
+                100,
+                zipBytes,
+                zipBytes));
 
             var info = new ProcessStartInfo
             {
@@ -360,6 +461,101 @@ public sealed class CubicalUpdateService
             {
                 try { Directory.Delete(updateRoot, recursive: true); }
                 catch { }
+            }
+        }
+    }
+
+    private static async Task CopyLocalFileAsync(
+        string source,
+        string destination,
+        IProgress<CubicalUpdateProgress>? progress,
+        string phase,
+        CancellationToken cancellationToken)
+    {
+        await using var input = new FileStream(
+            source,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            256 * 1024,
+            useAsync: true);
+        await using var output = new FileStream(
+            destination,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.Read,
+            256 * 1024,
+            useAsync: true);
+
+        var total = input.Length;
+        var buffer = new byte[256 * 1024];
+        long copied = 0;
+        while (true)
+        {
+            var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+            if (read <= 0) break;
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            copied += read;
+            var percent = total > 0
+                ? (int)Math.Clamp(Math.Round(copied * 100d / total), 0, 100)
+                : 0;
+            progress?.Report(new CubicalUpdateProgress(phase, percent, copied, total));
+        }
+        await output.FlushAsync(cancellationToken);
+    }
+
+    private static async Task ExtractPortableArchiveAsync(
+        string zipPath,
+        string stagePath,
+        IProgress<CubicalUpdateProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(stagePath);
+        var stageRoot = Path.GetFullPath(stagePath) + Path.DirectorySeparatorChar;
+
+        using var archive = ZipFile.OpenRead(zipPath);
+        var files = archive.Entries.Where(entry => !string.IsNullOrEmpty(entry.Name)).ToArray();
+        long totalBytes = files.Sum(entry => entry.Length);
+        long extractedBytes = 0;
+
+        foreach (var entry in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var relative = entry.FullName.Replace('/', Path.DirectorySeparatorChar)
+                                         .Replace('\\', Path.DirectorySeparatorChar);
+            var destination = Path.GetFullPath(Path.Combine(stagePath, relative));
+            if (!destination.StartsWith(stageRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Unsafe path in update ZIP: {entry.FullName}");
+
+            var directory = Path.GetDirectoryName(destination);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            await using var input = entry.Open();
+            await using var output = new FileStream(
+                destination,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                128 * 1024,
+                useAsync: true);
+
+            var buffer = new byte[128 * 1024];
+            while (true)
+            {
+                var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+                if (read <= 0) break;
+                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                extractedBytes += read;
+                var percent = totalBytes > 0
+                    ? (int)Math.Clamp(Math.Round(extractedBytes * 100d / totalBytes), 0, 100)
+                    : 100;
+                progress?.Report(new CubicalUpdateProgress(
+                    "Extracting portable update",
+                    percent,
+                    extractedBytes,
+                    totalBytes));
             }
         }
     }
