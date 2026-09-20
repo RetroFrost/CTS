@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -499,14 +498,10 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    private static readonly Lazy<string> RuntimeAppVersion = new(ResolveRuntimeAppVersion);
-
     /// <summary>
-    /// Cubical Compare's actual running product version. This must never be hardcoded:
-    /// renderer compatibility is evaluated by the Renderer module, while the version
-    /// users install belongs to the entry application assembly.
+    /// Cubical Compare's actual running product version.
     /// </summary>
-    public static string AppVersion => RuntimeAppVersion.Value;
+    public static string AppVersion => RendererRuntimeVersion.Current;
 
     public const int RendererApi = 3;
 
@@ -872,65 +867,6 @@ public static class RendererCapabilities
 
         if (spec.PackageAssets.Count == 0)
             errors.Add("SmartBadge v2 requires renderer package sidecar assets.");
-    }
-
-    private static string ResolveRuntimeAppVersion()
-    {
-        // RendererCapabilities lives in CubicalCompare.Renderer.dll, whose assembly
-        // version is not the product identity users install. Prefer the actual entry
-        // assembly (CubicalCompare.exe / CubicalCompare.dll) so portable, setup, and
-        // updated builds all compare renderer minAppVersion against the real app.
-        var assemblies = new[]
-        {
-            Assembly.GetEntryAssembly(),
-            typeof(RendererCapabilities).Assembly,
-        };
-
-        foreach (var assembly in assemblies.Where(value => value is not null).Distinct())
-        {
-            var informational = assembly!.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            var normalized = NormalizeRuntimeVersion(informational);
-            if (normalized is not null)
-                return normalized;
-
-            var fileVersion = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
-            normalized = NormalizeRuntimeVersion(fileVersion);
-            if (normalized is not null)
-                return normalized;
-
-            normalized = NormalizeRuntimeVersion(assembly.GetName().Version?.ToString());
-            if (normalized is not null)
-                return normalized;
-        }
-
-        // Failing closed here is safer than pretending a stale hardcoded build is
-        // installed. A renderer with a minimum version will then produce an explicit
-        // compatibility error instead of being accepted under false version metadata.
-        return "0.0.0.0";
-    }
-
-    private static string? NormalizeRuntimeVersion(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        // .NET 8+ commonly appends Source Link commit metadata to
-        // AssemblyInformationalVersion (for example 4.2.1.18+abcdef). Renderer
-        // compatibility needs only the numeric product version.
-        var match = Regex.Match(
-            value,
-            @"^\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?",
-            RegexOptions.CultureInvariant);
-        if (!match.Success)
-            return null;
-
-        var parts = match.Groups
-            .Cast<Group>()
-            .Skip(1)
-            .Where(group => group.Success)
-            .Select(group => group.Value)
-            .ToArray();
-        return parts.Length == 0 ? null : string.Join('.', parts);
     }
 
     public static int CompareVersions(string a, string b)
