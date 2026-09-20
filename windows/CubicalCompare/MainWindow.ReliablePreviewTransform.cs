@@ -876,9 +876,10 @@ public sealed partial class MainWindow
             _ => VerticalAlignment.Center,
         };
         _inlinePreviewTextEditor.FontSize = Math.Max(8, region.FontSize * sy);
-        _inlinePreviewTextEditor.FontWeight = region.Bold
-            ? global::Windows.UI.Text.FontWeights.Bold
-            : global::Windows.UI.Text.FontWeights.Normal;
+        _inlinePreviewTextEditor.FontWeight = new global::Windows.UI.Text.FontWeight
+        {
+            Weight = region.Bold ? (ushort)700 : (ushort)400,
+        };
         if (!string.IsNullOrWhiteSpace(RenderFontSelection.CurrentFamily))
             _inlinePreviewTextEditor.FontFamily = new FontFamily(RenderFontSelection.CurrentFamily);
 
