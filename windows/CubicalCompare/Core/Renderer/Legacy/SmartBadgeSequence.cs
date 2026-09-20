@@ -21,9 +21,12 @@ internal static class SmartBadgeSequence
 {
     private static readonly ConditionalWeakTable<RendererSceneV3, Dictionary<string, SmartBadgeSequenceDefinition>> Cache = new();
     private static readonly ConditionalWeakTable<RendererSpec, Dictionary<string, SmartBadgeSequenceDefinition>> ArchiveCache = new();
-    private const int MaxArchiveEntries = 1024;
-    private const long MaxArchiveEntryBytes = 16L * 1024 * 1024;
-    private const long MaxArchiveExpandedBytes = 64L * 1024 * 1024;
+    // SmartBadge v2 / SmartCard packs can contain thousands of source-locked frames.
+    // Keep the count high enough for real bootanimation-style packs, while bounding
+    // per-file and total expanded data to retain zip-bomb protection.
+    private const int MaxArchiveEntries = 65_536;
+    private const long MaxArchiveEntryBytes = 32L * 1024 * 1024;
+    private const long MaxArchiveExpandedBytes = 512L * 1024 * 1024;
 
     public static SmartBadgeSequenceDefinition Load(RendererSceneV3 scene, string sequenceRoot)
     {
@@ -83,21 +86,29 @@ internal static class SmartBadgeSequence
             using (var memory = new MemoryStream(pair.Value, writable: false))
             using (var zip = new ZipArchive(memory, ZipArchiveMode.Read, leaveOpen: false))
             {
-                if (zip.Entries.Count > MaxArchiveEntries)
-                    throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' contains too many files.");
+                var fileEntries = zip.Entries.Where(entry => !string.IsNullOrEmpty(entry.Name)).ToArray();
+                if (fileEntries.Length == 0)
+                    throw new InvalidDataException($"Smart Feature pack '{archiveAsset}' contains no files.");
+                if (fileEntries.Length > MaxArchiveEntries)
+                    throw new InvalidDataException(
+                        $"Smart Feature pack '{archiveAsset}' contains {fileEntries.Length:N0} files; this build supports up to {MaxArchiveEntries:N0} frame assets per pack.");
 
-                foreach (var entry in zip.Entries)
+                foreach (var entry in fileEntries)
                 {
-                    if (string.IsNullOrEmpty(entry.Name)) continue;
                     var name = Normalize(entry.FullName);
                     if (name.Length == 0 || name.Contains("..", StringComparison.Ordinal))
-                        throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' contains an unsafe path.");
+                        throw new InvalidDataException($"Smart Feature pack '{archiveAsset}' contains an unsafe path.");
                     if (entry.Length < 0 || entry.Length > MaxArchiveEntryBytes)
-                        throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' contains an oversized file '{name}'.");
+                        throw new InvalidDataException($"Smart Feature pack '{archiveAsset}' contains an oversized file '{name}'.");
 
-                    expanded += entry.Length;
+                    checked { expanded += entry.Length; }
                     if (expanded > MaxArchiveExpandedBytes)
-                        throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' expands beyond the supported size.");
+                        throw new InvalidDataException(
+                            $"Smart Feature pack '{archiveAsset}' expands beyond the {MaxArchiveExpandedBytes / (1024 * 1024)} MiB safety limit.");
+
+                    var assetPath = "pack/" + name.TrimStart('/');
+                    if (assets.ContainsKey(assetPath))
+                        throw new InvalidDataException($"Smart Feature pack '{archiveAsset}' contains a duplicate path '{name}'.");
 
                     using var input = entry.Open();
                     using var output = new MemoryStream();
@@ -109,10 +120,10 @@ internal static class SmartBadgeSequence
                         if (read <= 0) break;
                         copied += read;
                         if (copied > MaxArchiveEntryBytes)
-                            throw new InvalidDataException($"SmartBadge v2 pack '{archiveAsset}' contains an oversized file '{name}'.");
+                            throw new InvalidDataException($"Smart Feature pack '{archiveAsset}' contains an oversized file '{name}'.");
                         output.Write(buffer, 0, read);
                     }
-                    assets["pack/" + name.TrimStart('/')] = output.ToArray();
+                    assets.Add(assetPath, output.ToArray());
                 }
             }
 
