@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.18 · Renderer version compatibility fix",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• renderer minAppVersion checks now use the version of the running Cubical Compare application instead of a stale hardcoded compatibility constant\n• the renderer module reads the entry application's informational/file/assembly version at runtime, so Setup, portable and updated builds stay in sync automatically\n• compatibility errors now report the detected running app version",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.17 · Preview interaction hotfix",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
