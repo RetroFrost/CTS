@@ -90,11 +90,19 @@ jobs:
           if ($rendererBundle -match 'public const string AppVersion\s*=') {
             throw 'Renderer compatibility app version is still hardcoded.'
           }
-          if ($rendererBundle -notmatch 'Assembly\.GetEntryAssembly\(\)') {
-            throw 'Renderer compatibility does not resolve the running entry-assembly version.'
+          if ($rendererBundle -notmatch 'RendererRuntimeVersion\.Current') {
+            throw 'RendererCapabilities is not using the runtime version provider.'
           }
-          if ($rendererBundle -notmatch 'AssemblyInformationalVersionAttribute') {
-            throw 'Renderer compatibility is not using the product informational version.'
+
+          $runtimeVersion = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererRuntimeVersion.cs' -Raw
+          if ($runtimeVersion -notmatch 'Assembly\.GetEntryAssembly\(\)') {
+            throw 'Renderer runtime version provider does not resolve the running entry assembly.'
+          }
+          if ($runtimeVersion -notmatch 'AssemblyInformationalVersionAttribute') {
+            throw 'Renderer runtime version provider is not using the product informational version.'
+          }
+          if ($runtimeVersion -match '4\.2\.1\.\d+') {
+            throw 'Renderer runtime version provider contains a hardcoded Cubical Compare release version.'
           }
 
           $adapter = Get-Content 'windows/CubicalCompare/Core/Renderer/LegacyRendererAdapter.cs' -Raw
