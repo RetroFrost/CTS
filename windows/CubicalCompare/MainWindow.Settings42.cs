@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.16 · Immersive preview editor",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• normal mouse-up no longer falls through PointerCaptureLost and restores the old image transform\n• drag/resize/rotate use a latest-state render loop, so the real full renderer frame stays visible and catches up continuously while editing\n• SmartCard and SmartBadge fields expose their authored frame geometry to the editor instead of using generic guessed rectangles\n• inline text editing is borderless/transparent, inherits renderer alignment/rotation/size, and temporarily hides only the rendered glyphs underneath\n• SmartCard-local image coordinates are converted correctly, so movement no longer jumps when a renderer scales its live artwork area",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.15 · Audio + universal direct editing",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
