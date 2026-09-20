@@ -259,6 +259,7 @@ public sealed partial class MainWindow : Window
                 RendererCompatibilityText.Text = $"Renderer v{replacement.Api} compatibility evaluator active.";
                 TimelineStatusText.Text = $"Renderer v{replacement.Api} · {replacement.Name}";
                 RefreshTimelineRange();
+                RefreshSoundtrackUi();
                 ProjectFrameSlider.Value = 0;
                 await RenderCurrentFrameAsync();
             }
