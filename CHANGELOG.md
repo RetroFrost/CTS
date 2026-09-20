@@ -1,4 +1,11 @@
 # Changelog
+## 4.2.1.15 — Audio + universal direct editing
+
+- Added a first-class **Audio** navigation tab with soundtrack selection, volume, looping, and renderer-embedded-audio status.
+- Direct preview editing now uses renderer-aware card/artwork geometry across ribbon, Infinite Timeline, Relationships, and Renderer v3 layouts.
+- Artwork move, scale, and rotation are applied to the live renderer while dragging, with precision controls kept in sync.
+- In-place text editing is transparent and borderless, preserving the rendered preview beneath the caret.
+
 ## 4.2.1.14 — Description block fix
 
 - Description direct-edit hit testing now follows the wrapped text itself instead of claiming the entire remaining card area.

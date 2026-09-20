@@ -61,6 +61,7 @@ public sealed partial class MainWindow
     private double _reliableWorkRotation;
     private double _reliableStartDistance;
     private double _reliableRotationOffset;
+    private bool _previewInteractionRenderQueued;
 
     internal void InitializeReliablePreviewTransformEditor()
     {
@@ -109,7 +110,7 @@ public sealed partial class MainWindow
         _reliablePreviewArtworkGhost = new Image
         {
             Stretch = Stretch.Fill,
-            Opacity = 0.28,
+            Opacity = 0.72,
             IsHitTestVisible = false,
         };
         _reliablePreviewAdorner.Children.Add(_reliablePreviewArtworkGhost);
@@ -165,15 +166,26 @@ public sealed partial class MainWindow
         canvas.Children.Add(_reliablePreviewApplyAllButton);
         Canvas.SetZIndex(_reliablePreviewApplyAllButton, 240);
 
+        var transparentTextBrush = new SolidColorBrush(Colors.Transparent);
         _inlinePreviewTextEditor = new TextBox
         {
             Visibility = Visibility.Collapsed,
-            Padding = new Thickness(6, 2, 6, 2),
-            BorderThickness = new Thickness(2),
-            BorderBrush = new SolidColorBrush(Colors.DeepSkyBlue),
-            SelectionHighlightColor = new SolidColorBrush(ColorHelper.FromArgb(160, 0, 120, 215)),
+            Padding = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            BorderBrush = transparentTextBrush,
+            Background = transparentTextBrush,
+            SelectionHighlightColor = new SolidColorBrush(ColorHelper.FromArgb(90, 0, 120, 215)),
             TextWrapping = TextWrapping.Wrap,
+            UseSystemFocusVisuals = false,
         };
+        // WinUI TextBox templates use state resources for hover/focus. Override all of
+        // them so direct text editing remains visually part of the rendered preview.
+        _inlinePreviewTextEditor.Resources["TextControlBackground"] = transparentTextBrush;
+        _inlinePreviewTextEditor.Resources["TextControlBackgroundPointerOver"] = transparentTextBrush;
+        _inlinePreviewTextEditor.Resources["TextControlBackgroundFocused"] = transparentTextBrush;
+        _inlinePreviewTextEditor.Resources["TextControlBorderBrush"] = transparentTextBrush;
+        _inlinePreviewTextEditor.Resources["TextControlBorderBrushPointerOver"] = transparentTextBrush;
+        _inlinePreviewTextEditor.Resources["TextControlBorderBrushFocused"] = transparentTextBrush;
         _inlinePreviewTextEditor.TextChanged += InlinePreviewTextEditor_TextChanged;
         _inlinePreviewTextEditor.LostFocus += InlinePreviewTextEditor_LostFocus;
         _inlinePreviewTextEditor.KeyDown += InlinePreviewTextEditor_KeyDown;
@@ -347,7 +359,11 @@ public sealed partial class MainWindow
 
     private void ReliablePreviewTransform_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (_reliablePreviewDragMode == ReliablePreviewDragMode.None || _reliablePreviewCanvas is null || e.Pointer.PointerId != _reliablePreviewPointerId)
+        if (_reliablePreviewDragMode == ReliablePreviewDragMode.None ||
+            _reliablePreviewCanvas is null ||
+            e.Pointer.PointerId != _reliablePreviewPointerId ||
+            _reliablePreviewCardIndex < 0 ||
+            _reliablePreviewCardIndex >= Cards.Count)
             return;
 
         var point = e.GetCurrentPoint(_reliablePreviewCanvas).Position;
@@ -368,7 +384,17 @@ public sealed partial class MainWindow
                 break;
         }
 
+        var card = Cards[_reliablePreviewCardIndex];
+        card.ImageX = _reliableWorkX;
+        card.ImageY = _reliableWorkY;
+        card.ImageScale = _reliableWorkScale;
+        card.ImageRotation = _reliableWorkRotation;
+
+        RefreshArtworkManipulator();
+        SyncPrecisionTransformBoxes(card);
         RefreshReliablePreviewTransformOverlay(useWorkingValues: true);
+        ScheduleWorkspaceSave();
+        QueuePreviewInteractionRender();
         e.Handled = true;
     }
 
@@ -404,6 +430,18 @@ public sealed partial class MainWindow
 
     private void CancelReliablePreviewDrag()
     {
+        if (_reliablePreviewCardIndex >= 0 && _reliablePreviewCardIndex < Cards.Count)
+        {
+            var card = Cards[_reliablePreviewCardIndex];
+            card.ImageX = _reliableStartX;
+            card.ImageY = _reliableStartY;
+            card.ImageScale = _reliableStartScale;
+            card.ImageRotation = _reliableStartRotation;
+            SyncPrecisionTransformBoxes(card);
+            RefreshArtworkManipulator();
+            QueuePreviewInteractionRender();
+        }
+
         _reliablePreviewDragMode = ReliablePreviewDragMode.None;
         _reliableWorkX = _reliableStartX;
         _reliableWorkY = _reliableStartY;
@@ -453,22 +491,29 @@ public sealed partial class MainWindow
         if (renderer is null || Cards.Count == 0)
             return -1;
 
+        var project = BuildProject();
+        var frame = (int)Math.Round(ProjectFrameSlider.Value);
         var (sx, sy) = ReliablePreviewScale();
         var referencePoint = new Point(point.X / sx, point.Y / sy);
-        var positions = renderer.VisibleCardSlotXs(BuildProject(), (int)Math.Round(ProjectFrameSlider.Value));
 
-        foreach (var pair in positions.OrderBy(pair => Math.Abs(referencePoint.X - (pair.Value + renderer.BodyInset + renderer.BodyWidth / 2.0))))
+        var candidates = Enumerable.Range(0, Cards.Count)
+            .Select(index => renderer.TryGetPreviewCardGeometry(project, frame, index, out var geometry)
+                ? (Index: index, Geometry: (CubicalCompare.Core.Renderer.PreviewCardGeometry?)geometry)
+                : (Index: index, Geometry: (CubicalCompare.Core.Renderer.PreviewCardGeometry?)null))
+            .Where(item => item.Geometry is not null)
+            .OrderBy(item => Math.Abs(referencePoint.X - (item.Geometry!.Value.ArtworkX + item.Geometry.Value.ArtworkWidth / 2.0)));
+
+        foreach (var item in candidates)
         {
-            if (pair.Key < 0 || pair.Key >= Cards.Count)
-                continue;
-
-            var card = Cards[pair.Key];
+            var geometry = item.Geometry!.Value;
+            var card = Cards[item.Index];
             if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
                 continue;
 
-            var bodyLeft = pair.Value + renderer.BodyInset;
-            if (referencePoint.X < bodyLeft || referencePoint.X > bodyLeft + renderer.BodyWidth ||
-                referencePoint.Y < 0 || referencePoint.Y > renderer.ImageHeight)
+            if (referencePoint.X < geometry.ArtworkX ||
+                referencePoint.X > geometry.ArtworkX + geometry.ArtworkWidth ||
+                referencePoint.Y < geometry.ArtworkY ||
+                referencePoint.Y > geometry.ArtworkY + geometry.ArtworkHeight)
                 continue;
 
             try
@@ -479,12 +524,14 @@ public sealed partial class MainWindow
 
                 var cropWidth = bitmap.Width * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropLeft, 0, .95) - Math.Clamp(card.ImageCropRight, 0, .95));
                 var cropHeight = bitmap.Height * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropTop, 0, .95) - Math.Clamp(card.ImageCropBottom, 0, .95));
-                var baseScale = Math.Max(renderer.BodyWidth / cropWidth, renderer.ImageHeight / cropHeight);
+                var baseScale = geometry.ArtworkCover
+                    ? Math.Max(geometry.ArtworkWidth / cropWidth, geometry.ArtworkHeight / cropHeight)
+                    : Math.Min(geometry.ArtworkWidth / cropWidth, geometry.ArtworkHeight / cropHeight);
                 var scale = baseScale * Math.Clamp(card.ImageScale, .05, 12);
                 var halfWidth = cropWidth * scale / 2.0;
                 var halfHeight = cropHeight * scale / 2.0;
-                var centerX = bodyLeft + renderer.BodyWidth / 2.0 + card.ImageX;
-                var centerY = renderer.ImageHeight / 2.0 + card.ImageY;
+                var centerX = geometry.ArtworkX + geometry.ArtworkWidth / 2.0 + card.ImageX;
+                var centerY = geometry.ArtworkY + geometry.ArtworkHeight / 2.0 + card.ImageY;
 
                 var dx = referencePoint.X - centerX;
                 var dy = referencePoint.Y - centerY;
@@ -492,7 +539,7 @@ public sealed partial class MainWindow
                 var localX = dx * Math.Cos(radians) - dy * Math.Sin(radians);
                 var localY = dx * Math.Sin(radians) + dy * Math.Cos(radians);
                 if (Math.Abs(localX) <= halfWidth && Math.Abs(localY) <= halfHeight)
-                    return pair.Key;
+                    return item.Index;
             }
             catch (Exception ex)
             {
@@ -509,65 +556,71 @@ public sealed partial class MainWindow
         if (renderer is null || Cards.Count == 0)
             return null;
 
+        var project = BuildProject();
+        var frame = (int)Math.Round(ProjectFrameSlider.Value);
         var (sx, sy) = ReliablePreviewScale();
         var x = point.X / sx;
         var y = point.Y / sy;
-        var positions = renderer.VisibleCardSlotXs(BuildProject(), (int)Math.Round(ProjectFrameSlider.Value));
 
-        foreach (var pair in positions.OrderBy(pair => Math.Abs(x - (pair.Value + renderer.BodyInset + renderer.BodyWidth / 2.0))))
+        var candidates = Enumerable.Range(0, Cards.Count)
+            .Select(index => renderer.TryGetPreviewCardGeometry(project, frame, index, out var geometry)
+                ? (Index: index, Geometry: (CubicalCompare.Core.Renderer.PreviewCardGeometry?)geometry)
+                : (Index: index, Geometry: (CubicalCompare.Core.Renderer.PreviewCardGeometry?)null))
+            .Where(item => item.Geometry is not null)
+            .OrderBy(item => Math.Abs(x - (item.Geometry!.Value.ArtworkX + item.Geometry.Value.ArtworkWidth / 2.0)));
+
+        foreach (var item in candidates)
         {
-            if (pair.Key < 0 || pair.Key >= Cards.Count)
-                continue;
+            var geometry = item.Geometry!.Value;
+            var card = Cards[item.Index];
 
-            var card = Cards[pair.Key];
-            var bodyLeft = pair.Value + renderer.BodyInset;
-            var bodyRight = bodyLeft + renderer.BodyWidth;
-            if (x < bodyLeft || x > bodyRight)
-                continue;
-
-            if (!string.IsNullOrWhiteSpace(card.Title))
+            if (!string.IsNullOrWhiteSpace(card.Title) && geometry.TitleHeight > 0)
             {
-                var title = new Rect(bodyLeft, renderer.ImageHeight, renderer.BodyWidth, renderer.TitleHeight);
+                var title = new Rect(geometry.TitleX, geometry.TitleY, geometry.TitleWidth, geometry.TitleHeight);
                 if (Contains(title, x, y))
-                    return new PreviewTextHit(pair.Key, InlinePreviewTextField.Title, title);
+                    return new PreviewTextHit(item.Index, InlinePreviewTextField.Title, title);
             }
 
-            if (!string.IsNullOrWhiteSpace(card.Description))
+            if (!string.IsNullOrWhiteSpace(card.Description) && geometry.DescriptionHeight > 0)
             {
-                var descriptionTop = renderer.ImageHeight + (string.IsNullOrWhiteSpace(card.Title) ? 0 : renderer.TitleHeight);
                 var description = ReliableDescriptionTextBounds(
                     card.Description,
-                    bodyLeft,
-                    descriptionTop,
-                    renderer.BodyWidth,
-                    Math.Max(1, renderer.ReferenceHeight - descriptionTop),
+                    geometry.DescriptionX,
+                    geometry.DescriptionY,
+                    geometry.DescriptionWidth,
+                    geometry.DescriptionHeight,
                     renderer.DescriptionTextSize);
 
                 if (Contains(description, x, y))
-                    return new PreviewTextHit(pair.Key, InlinePreviewTextField.Description, description);
+                    return new PreviewTextHit(item.Index, InlinePreviewTextField.Description, description);
             }
 
-            if (_projectShowBadges && (!string.IsNullOrWhiteSpace(card.BadgeHeader) || !string.IsNullOrWhiteSpace(card.Value)))
+            if (_projectShowBadges &&
+                (!string.IsNullOrWhiteSpace(card.BadgeHeader) || !string.IsNullOrWhiteSpace(card.Value)) &&
+                geometry.BadgeWidth > 0 && geometry.BadgeHeight > 0)
             {
-                var badgeSize = 380.0 * Math.Max(0.25, renderer.BadgeScale);
-                var badge = new Rect(
-                    pair.Value + renderer.BadgeCenterX - badgeSize / 2,
-                    renderer.BadgeCenterY - badgeSize / 2,
-                    badgeSize,
-                    badgeSize);
+                var badge = new Rect(geometry.BadgeX, geometry.BadgeY, geometry.BadgeWidth, geometry.BadgeHeight);
                 if (Contains(badge, x, y))
                 {
-                    var headerBoundary = renderer.BadgeCenterY - 12;
+                    var headerBoundary = badge.Y + badge.Height * 0.42;
                     if (!string.IsNullOrWhiteSpace(card.BadgeHeader) && y < headerBoundary)
                     {
-                        var header = new Rect(badge.X + 45, badge.Y + 55, Math.Max(1, badge.Width - 90), Math.Max(52, badge.Height * 0.28));
-                        return new PreviewTextHit(pair.Key, InlinePreviewTextField.BadgeHeader, header);
+                        var header = new Rect(
+                            badge.X + badge.Width * 0.12,
+                            badge.Y + badge.Height * 0.12,
+                            badge.Width * 0.76,
+                            Math.Max(34, badge.Height * 0.25));
+                        return new PreviewTextHit(item.Index, InlinePreviewTextField.BadgeHeader, header);
                     }
 
                     if (!string.IsNullOrWhiteSpace(card.Value))
                     {
-                        var value = new Rect(badge.X + 45, badge.Y + badge.Height * 0.32, Math.Max(1, badge.Width - 90), Math.Max(80, badge.Height * 0.46));
-                        return new PreviewTextHit(pair.Key, InlinePreviewTextField.Value, value);
+                        var value = new Rect(
+                            badge.X + badge.Width * 0.12,
+                            badge.Y + badge.Height * 0.34,
+                            badge.Width * 0.76,
+                            Math.Max(50, badge.Height * 0.42));
+                        return new PreviewTextHit(item.Index, InlinePreviewTextField.Value, value);
                     }
                 }
             }
@@ -666,56 +719,56 @@ public sealed partial class MainWindow
     private static bool Contains(Rect rect, double x, double y) =>
         x >= rect.X && x <= rect.X + rect.Width && y >= rect.Y && y <= rect.Y + rect.Height;
 
-    private double? ReliableSlotX(int cardIndex)
+    private CubicalCompare.Core.Renderer.PreviewCardGeometry? ReliablePreviewGeometry(int cardIndex)
     {
         var renderer = _legacyRenderer;
         if (renderer is null)
             return null;
 
-        var positions = renderer.VisibleCardSlotXs(BuildProject(), (int)Math.Round(ProjectFrameSlider.Value));
-        return positions.TryGetValue(cardIndex, out var x) ? x : null;
+        var project = BuildProject();
+        var frame = (int)Math.Round(ProjectFrameSlider.Value);
+        return renderer.TryGetPreviewCardGeometry(project, frame, cardIndex, out var geometry)
+            ? geometry
+            : null;
     }
 
     private void RefreshReliablePreviewTransformOverlay(bool useWorkingValues = false)
     {
-        if (!_reliablePreviewActive || _reliablePreviewSlot is null || _reliablePreviewAdorner is null || _reliablePreviewCardIndex < 0 || _reliablePreviewCardIndex >= Cards.Count)
+        if (!_reliablePreviewActive ||
+            _reliablePreviewSlot is null ||
+            _reliablePreviewAdorner is null ||
+            _reliablePreviewCardIndex < 0 ||
+            _reliablePreviewCardIndex >= Cards.Count)
             return;
 
         var renderer = _legacyRenderer;
-        if (renderer is null)
+        var geometry = ReliablePreviewGeometry(_reliablePreviewCardIndex);
+        if (renderer is null || geometry is null)
         {
             _reliablePreviewSlot.Visibility = Visibility.Collapsed;
             _reliablePreviewAdorner.Visibility = Visibility.Collapsed;
-            if (_reliablePreviewApplyAllButton is not null) _reliablePreviewApplyAllButton.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var slotX = ReliableSlotX(_reliablePreviewCardIndex);
-        if (slotX is null)
-        {
-            _reliablePreviewSlot.Visibility = Visibility.Collapsed;
-            _reliablePreviewAdorner.Visibility = Visibility.Collapsed;
-            if (_reliablePreviewApplyAllButton is not null) _reliablePreviewApplyAllButton.Visibility = Visibility.Collapsed;
+            if (_reliablePreviewApplyAllButton is not null)
+                _reliablePreviewApplyAllButton.Visibility = Visibility.Collapsed;
             TimelineStatusText.Text = "Selected card is not visible at this frame";
             return;
         }
 
+        var g = geometry.Value;
         var (sx, sy) = ReliablePreviewScale();
-        var bodyLeft = slotX.Value + renderer.BodyInset;
         var card = Cards[_reliablePreviewCardIndex];
 
         _reliablePreviewSlot.Visibility = Visibility.Visible;
-        _reliablePreviewSlot.Width = renderer.BodyWidth * sx;
-        _reliablePreviewSlot.Height = renderer.ImageHeight * sy;
-        Canvas.SetLeft(_reliablePreviewSlot, bodyLeft * sx);
-        Canvas.SetTop(_reliablePreviewSlot, 0);
+        _reliablePreviewSlot.Width = g.ArtworkWidth * sx;
+        _reliablePreviewSlot.Height = g.ArtworkHeight * sy;
+        Canvas.SetLeft(_reliablePreviewSlot, g.ArtworkX * sx);
+        Canvas.SetTop(_reliablePreviewSlot, g.ArtworkY * sy);
 
         if (_reliablePreviewApplyAllButton is not null)
         {
             _reliablePreviewApplyAllButton.Visibility = Visibility.Visible;
             _reliablePreviewApplyAllButton.IsEnabled = Cards.Count > 1;
-            Canvas.SetLeft(_reliablePreviewApplyAllButton, Math.Clamp(bodyLeft * sx + 8, 8, ReliablePreviewWidth - 160));
-            Canvas.SetTop(_reliablePreviewApplyAllButton, Math.Clamp(renderer.ImageHeight * sy - 43, 8, ReliablePreviewHeight - 48));
+            Canvas.SetLeft(_reliablePreviewApplyAllButton, Math.Clamp(g.ArtworkX * sx + 8, 8, ReliablePreviewWidth - 160));
+            Canvas.SetTop(_reliablePreviewApplyAllButton, Math.Clamp((g.ArtworkY + g.ArtworkHeight) * sy - 43, 8, ReliablePreviewHeight - 48));
         }
 
         if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
@@ -740,12 +793,14 @@ public sealed partial class MainWindow
 
             var cropWidth = bitmap.Width * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropLeft, 0, .95) - Math.Clamp(card.ImageCropRight, 0, .95));
             var cropHeight = bitmap.Height * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropTop, 0, .95) - Math.Clamp(card.ImageCropBottom, 0, .95));
-            var baseScale = Math.Max(renderer.BodyWidth / cropWidth, renderer.ImageHeight / cropHeight);
+            var baseScale = g.ArtworkCover
+                ? Math.Max(g.ArtworkWidth / cropWidth, g.ArtworkHeight / cropHeight)
+                : Math.Min(g.ArtworkWidth / cropWidth, g.ArtworkHeight / cropHeight);
             var scale = baseScale * Math.Clamp(imageScale, .05, 12);
             var width = Math.Max(1, cropWidth * scale * sx);
             var height = Math.Max(1, cropHeight * scale * sy);
-            var centerX = (bodyLeft + renderer.BodyWidth / 2 + imageX) * sx;
-            var centerY = (renderer.ImageHeight / 2 + imageY) * sy;
+            var centerX = (g.ArtworkX + g.ArtworkWidth / 2 + imageX) * sx;
+            var centerY = (g.ArtworkY + g.ArtworkHeight / 2 + imageY) * sy;
 
             _reliablePreviewArtworkGhost!.Source = card.Preview;
             _reliablePreviewAdorner.Visibility = Visibility.Visible;
@@ -800,12 +855,12 @@ public sealed partial class MainWindow
         };
         _inlinePreviewTextEditor.Foreground = new SolidColorBrush(
             hit.Field == InlinePreviewTextField.Title ? Colors.Black : Colors.White);
-        _inlinePreviewTextEditor.Background = new SolidColorBrush(
-            hit.Field == InlinePreviewTextField.Title
-                ? ColorHelper.FromArgb(238, 255, 255, 255)
-                : ColorHelper.FromArgb(220, 20, 24, 30));
-        _inlinePreviewTextEditor.Width = Math.Max(70, bounds.Width);
-        _inlinePreviewTextEditor.Height = Math.Max(36, bounds.Height);
+        _inlinePreviewTextEditor.Background = new SolidColorBrush(Colors.Transparent);
+        _inlinePreviewTextEditor.BorderBrush = new SolidColorBrush(Colors.Transparent);
+        _inlinePreviewTextEditor.BorderThickness = new Thickness(0);
+        _inlinePreviewTextEditor.Padding = new Thickness(0);
+        _inlinePreviewTextEditor.Width = Math.Max(36, bounds.Width);
+        _inlinePreviewTextEditor.Height = Math.Max(24, bounds.Height);
         Canvas.SetLeft(_inlinePreviewTextEditor, Math.Clamp(bounds.X, 0, ReliablePreviewWidth - _inlinePreviewTextEditor.Width));
         Canvas.SetTop(_inlinePreviewTextEditor, Math.Clamp(bounds.Y, 0, ReliablePreviewHeight - _inlinePreviewTextEditor.Height));
         _inlinePreviewTextEditor.Visibility = Visibility.Visible;
@@ -814,7 +869,7 @@ public sealed partial class MainWindow
         _inlinePreviewTextEditor.Focus(FocusState.Programmatic);
         _inlinePreviewTextEditor.SelectionStart = _inlinePreviewTextEditor.Text.Length;
         _inlinePreviewTextEditor.SelectionLength = 0;
-        TimelineStatusText.Text = $"Editing {InlinePreviewFieldLabel(hit.Field)} directly in preview · Esc cancels";
+        TimelineStatusText.Text = $"Editing {InlinePreviewFieldLabel(hit.Field)} in place · Esc cancels";
     }
 
     private void InlinePreviewTextEditor_TextChanged(object sender, TextChangedEventArgs e)
@@ -945,16 +1000,15 @@ public sealed partial class MainWindow
 
     private Point ReliablePreviewImageCenter(int cardIndex, double imageX, double imageY)
     {
-        var renderer = _legacyRenderer;
-        var slotX = ReliableSlotX(cardIndex);
-        if (renderer is null || slotX is null)
+        var geometry = ReliablePreviewGeometry(cardIndex);
+        if (geometry is null)
             return new Point(ReliablePreviewWidth / 2, ReliablePreviewHeight / 2);
 
+        var g = geometry.Value;
         var (sx, sy) = ReliablePreviewScale();
-        var bodyLeft = slotX.Value + renderer.BodyInset;
         return new Point(
-            (bodyLeft + renderer.BodyWidth / 2 + imageX) * sx,
-            (renderer.ImageHeight / 2 + imageY) * sy);
+            (g.ArtworkX + g.ArtworkWidth / 2 + imageX) * sx,
+            (g.ArtworkY + g.ArtworkHeight / 2 + imageY) * sy);
     }
 
     private (double X, double Y) ReliablePreviewScale()
@@ -963,6 +1017,25 @@ public sealed partial class MainWindow
         return renderer is null
             ? (0.5, 0.5)
             : (ReliablePreviewWidth / Math.Max(1.0, renderer.ReferenceWidth), ReliablePreviewHeight / Math.Max(1.0, renderer.ReferenceHeight));
+    }
+
+    private void QueuePreviewInteractionRender()
+    {
+        if (_previewInteractionRenderQueued)
+            return;
+
+        _previewInteractionRenderQueued = true;
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                await RenderCurrentFrameAsync();
+            }
+            finally
+            {
+                _previewInteractionRenderQueued = false;
+            }
+        });
     }
 
     private static double ReliableDistance(Point a, Point b)

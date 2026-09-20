@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.15 · Audio + universal direct editing",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• Audio is now a real primary navigation tab with soundtrack selection, volume, looping and renderer-audio status\n• direct preview hit testing uses renderer-specific geometry for ribbon, Infinite Timeline, Relationships and Renderer v3 cards\n• move, resize and rotate update the live rendered preview while dragging instead of only moving a ghost overlay\n• in-place text editing uses a transparent borderless editor so the preview remains visible underneath",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.14 · Description block fix",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
