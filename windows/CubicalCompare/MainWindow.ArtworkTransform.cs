@@ -143,9 +143,14 @@ public sealed partial class MainWindow
         if (CardsList.SelectedItem is not ProjectCardViewModel source)
             return;
 
+        await ApplyArtworkTransformToAllAsync(source);
+    }
+
+    private async Task ApplyArtworkTransformToAllAsync(ProjectCardViewModel source)
+    {
         if (Cards.Count <= 1)
         {
-            TimelineStatusText.Text = "There are no other cards to update.";
+            TimelineStatusText.Text = "There are no other images to update.";
             return;
         }
 
@@ -165,7 +170,7 @@ public sealed partial class MainWindow
             card.ImageLayer = source.ImageLayer;
         }
 
-        TimelineStatusText.Text = $"Applied artwork transform to all {Cards.Count} cards.";
+        TimelineStatusText.Text = $"Applied the selected image transform to all {Cards.Count} images.";
         await ApplyArtworkTransformAsync();
     }
 
