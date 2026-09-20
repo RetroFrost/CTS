@@ -87,6 +87,11 @@ jobs:
           if ($adapter -notmatch 'TryGetRibbonSmartCardGeometry') { throw 'SmartCard authored artwork geometry is missing.' }
           if ($adapter -notmatch 'TryGetRibbonSmartBadgeTextRegions') { throw 'SmartBadge authored text geometry is missing.' }
 
+          $app = Get-Content 'windows/CubicalCompare/App.xaml.cs' -Raw
+          if ($app -match 'mainWindow\.InitializeDirectArtworkManipulator\(\)') {
+            throw 'The isolated inspector artwork mini-canvas is still being initialised; the full renderer preview must be the transform surface.'
+          }
+
           $finalUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
           if ($finalUi -notmatch 'CreateNavigationItem\("Audio", "audio"') { throw 'Primary Audio navigation tab is missing.' }
           Write-Host 'Immersive preview editing, Audio tab and renderer-authored geometry contracts verified.'
