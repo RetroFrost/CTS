@@ -13,6 +13,8 @@ public static class RendererBundleReader
     private const int MaxManifestBytes = 64 * 1024 * 1024;
     private const int MaxPackageFileEntries = 65_536;
     private const long MaxPackageExpandedBytes = 512L * 1024 * 1024;
+    private const int MaxRendererTracks = 65_536;
+    private const int MaxTrackKeyframes = 65_536;
 
     public static RendererCandidate Inspect(string path)
     {
@@ -352,12 +354,18 @@ public static class RendererBundleReader
         if (spec.TimelineUnit is not ("frames" or "milliseconds" or "normalized")) errors.Add("Invalid timeline unit.");
         if (spec.ReferenceWidth is < 1 or > 16384 || spec.ReferenceHeight is < 1 or > 16384) errors.Add("Invalid reference resolution.");
         if (spec.ReferenceFps is < 1 or > 240) errors.Add("Invalid reference FPS.");
-        if (spec.Tracks.Count > 256) errors.Add("Too many renderer tracks.");
+        // Source-exact renderers legitimately carry hundreds or thousands of
+        // independent card/badge/shine tracks and dense frame data. The old 256-track /
+        // 4096-keyframe limits predated Renderer v3 Smart Features and rejected valid
+        // source-measured packages such as Puberty before the evaluator saw them.
+        if (spec.Tracks.Count > MaxRendererTracks)
+            errors.Add($"Renderer declares {spec.Tracks.Count:N0} tracks; this build supports up to {MaxRendererTracks:N0}.");
         var targets = new HashSet<string>(StringComparer.Ordinal);
         foreach (var track in spec.Tracks)
         {
             if (!targets.Add(track.Target)) errors.Add($"Duplicate renderer track '{track.Target}'.");
-            if (track.Keyframes.Count is < 1 or > 4096) errors.Add($"Invalid keyframe count for '{track.Target}'.");
+            if (track.Keyframes.Count is < 1 or > MaxTrackKeyframes)
+                errors.Add($"Renderer track '{track.Target}' has {track.Keyframes.Count:N0} keyframes; supported range is 1–{MaxTrackKeyframes:N0}.");
             var previous = -1;
             foreach (var key in track.Keyframes)
             {
@@ -490,7 +498,7 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    public const string AppVersion = "4.2.1.11";
+    public const string AppVersion = "4.2.1.12";
     public const int RendererApi = 3;
 
     private static readonly HashSet<string> Engines = new(StringComparer.Ordinal)
