@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.2.1.12 — 2026-09-20
+
+- Fixed **Too many renderer tracks** for source-exact Renderer v3 / Smart Feature packages.
+- Replaced the obsolete 256-track ceiling with a **65,536-track** bounded limit.
+- Raised the per-track dense keyframe allowance from **4,096** to **65,536**, allowing full-frame source measurements across long comparison timelines.
+- Track targets remain duplicate-checked and every keyframe is still validated for ordering and finite values.
+- Keeps the 4.2.1.11 large-package, SmartCard/SmartBadge ZIP and local **Update from ZIP** fixes.
+
+
 ## 4.2.1.11 — 2026-09-20
 
 - Restored a visible **Update from ZIP** action in Windows Settings for local portable release bundles.
