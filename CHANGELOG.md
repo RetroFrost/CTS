@@ -1,4 +1,11 @@
 # Changelog
+## 4.2.1.13 — Direct preview editing
+
+- Click visible title, description, badge header, or badge value text directly in the Windows renderer preview to edit it in place with a caret.
+- Click rendered artwork to select and drag it immediately; corner handles resize and the rotate handle changes rotation.
+- Added a visible **Apply to all images** action next to the selected preview artwork, copying transform, crop, and layer settings across cards.
+- Direct-edit hit testing follows renderer-provided visible card positions instead of requiring the previous right-click activation workflow.
+
 
 ## 4.2.1.12 — 2026-09-20
 
