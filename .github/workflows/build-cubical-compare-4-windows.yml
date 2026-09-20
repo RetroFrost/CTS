@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.12"
+          $version = "4.2.1.13"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.2 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.13 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.13"
+          $velopackVersion = "4.2.14"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -64,6 +64,17 @@ jobs:
 
       - name: Restore
         run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
+
+      - name: Verify direct preview editing contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $preview = Get-Content 'windows/CubicalCompare/MainWindow.ReliablePreviewTransform.cs' -Raw
+          if ($preview -notmatch 'Apply to all images') { throw 'Preview apply-all image action is missing.' }
+          if ($preview -notmatch 'OpenInlinePreviewTextEditor') { throw 'Inline preview text editor is missing.' }
+          if ($preview -notmatch 'ReliableHitTestPreviewArtwork') { throw 'Direct artwork hit-testing is missing.' }
+          if ($preview -match 'Right-click a visible card · drag to move') { throw 'Legacy right-click-only preview instructions are still active.' }
+          Write-Host 'Direct preview text/artwork editing contract verified.'
 
       - name: Publish certificate-free portable app
         shell: pwsh
@@ -327,6 +338,9 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Direct preview editing: click visible title, description, badge header or badge value text and edit it in place with a real caret.
+          - Click rendered artwork itself to select and drag it; use corner handles to resize and the rotate handle to rotate.
+          - A visible Apply to all images button beside the selected artwork copies its transform, crop and layer settings to every card.
           - SmartBadge v2 lets one renderer package embed multiple bootanimation-style badge ZIPs and map a different pack to every card.
           - Nested badge packs keep value/unit/header live through jsparse while their shell, reveal, shadow and shine stay frame-addressed.
           - Smart animation overlay frames now composite after live text/artwork, so glass/shine passes affect the live content instead of sitting underneath it.

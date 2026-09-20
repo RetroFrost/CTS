@@ -33,6 +33,13 @@ public sealed class LegacyRendererAdapter : IDisposable
     public double BodyInset => _spec.BodyInset;
     public double BodyWidth => _spec.BodyWidth;
     public double ImageHeight => _spec.ImageHeight;
+    public double TitleHeight => _spec.TitleHeight;
+    public double DescriptionTop => _spec.DescriptionTop;
+    public double TitleTextSize => _spec.TitleTextSize;
+    public double DescriptionTextSize => _spec.DescriptionTextSize;
+    public double BadgeCenterX => _spec.BadgeCenterX;
+    public double BadgeCenterY => _spec.BadgeCenterY;
+    public double BadgeScale => _spec.BadgeScale;
     public RendererEmbeddedAudio? EmbeddedAudio => RendererV3PackageCompatibility.EmbeddedAudio(_spec);
 
     public static LegacyRendererAdapter Load(string path)
