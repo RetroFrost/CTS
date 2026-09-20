@@ -139,10 +139,15 @@ public static class RendererBundleReader
                         throw new InvalidDataException($"Renderer v3 proxy scene references missing wrapped renderer '{normalizedWrapped}'.");
 
                     var wrappedSpec = ReadLegacy(wrappedBytes);
+                    var proxySpec = ReadV3Container(sceneEntry.Value, assets, packageBytes);
                     wrappedSpec.Id = sceneRoot.String("id", wrappedSpec.Id);
                     wrappedSpec.Name = sceneRoot.String("name", wrappedSpec.Name);
                     wrappedSpec.Author = sceneRoot.String("author", wrappedSpec.Author);
                     wrappedSpec.MinAppVersion = sceneRoot.String("minAppVersion", wrappedSpec.MinAppVersion);
+                    // Keep the proxy scene available even though the exact wrapped
+                    // engine remains ribbon-exact. SmartCard objects/resources in the
+                    // proxy are consumed by the ribbon draw path as card replacements.
+                    wrappedSpec.SceneV3 = proxySpec.SceneV3;
 
                     var proxyFeatures = StringArray(sceneRoot, "features")
                         .Concat(StringArray(sceneRoot, "requiredFeatures"))
