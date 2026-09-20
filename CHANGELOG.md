@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.2.1.10 — 2026-09-20
+
+- Renderer v3 proxy scenes can now keep their SmartCard scene graph while delegating movement/scroll timing to a wrapped exact `ribbon-exact` renderer.
+- The exact ribbon draw path can replace legacy card drawing with SmartCard sequences on a per-card basis while keeping SmartBadge v2 on top.
+- Added `smart-card-ribbon-proxy-v1` for packages that combine a real `renderer.renderer3` scene, SmartCards, nested SmartBadge v2 ZIPs and the proven wrapped ribbon timeline.
+- SmartCard proxy rendering keeps the strict order: base shell → live artwork → live title/description → overlay shine.
+- Live card content can be clipped by the source-measured reveal geometry while the overlay shine remains outside that clip and composites last.
+
+
 ## 4.2.1.9 — 2026-09-19
 
 - Promoted **SmartCard** to the real split-layer card-animation path.
