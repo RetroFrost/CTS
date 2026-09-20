@@ -490,7 +490,7 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    public const string AppVersion = "4.2.1.10";
+    public const string AppVersion = "4.2.1.11";
     public const int RendererApi = 3;
 
     private static readonly HashSet<string> Engines = new(StringComparer.Ordinal)
