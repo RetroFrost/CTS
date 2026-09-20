@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.10 · SmartCard exact-ribbon proxy",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• proxy renderer scenes can keep SmartCard objects while the wrapped ribbon engine owns exact card positions and scroll timing\n• ribbon cards can now be replaced by SmartCard base + live artwork/text + overlay shine\n• SmartBadge v2 remains layered above SmartCards\n• live content reveal can follow measured card clipping without clipping away the post-content shine",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.9 · SmartCard layered animation",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
