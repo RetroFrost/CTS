@@ -176,6 +176,8 @@ public sealed partial class MainWindow
         {
             Visibility = Visibility.Collapsed,
             Padding = new Thickness(0),
+            MinWidth = 0,
+            MinHeight = 0,
             BorderThickness = new Thickness(0),
             BorderBrush = transparentTextBrush,
             Background = transparentTextBrush,
@@ -611,7 +613,7 @@ public sealed partial class MainWindow
                 continue;
 
             var bounds = new Rect(region.X, region.Y, region.Width, region.Height);
-            if (Contains(bounds, x, y))
+            if (ContainsRotated(bounds, region.Rotation, x, y))
                 return new PreviewTextHit(region.CardIndex, field, region);
         }
 
@@ -707,6 +709,21 @@ public sealed partial class MainWindow
 
     private static bool Contains(Rect rect, double x, double y) =>
         x >= rect.X && x <= rect.X + rect.Width && y >= rect.Y && y <= rect.Y + rect.Height;
+
+    private static bool ContainsRotated(Rect rect, double rotation, double x, double y)
+    {
+        if (Math.Abs(rotation) <= .001)
+            return Contains(rect, x, y);
+
+        var cx = rect.X + rect.Width / 2;
+        var cy = rect.Y + rect.Height / 2;
+        var radians = -rotation * Math.PI / 180.0;
+        var dx = x - cx;
+        var dy = y - cy;
+        var localX = dx * Math.Cos(radians) - dy * Math.Sin(radians) + cx;
+        var localY = dx * Math.Sin(radians) + dy * Math.Cos(radians) + cy;
+        return Contains(rect, localX, localY);
+    }
 
     private CubicalCompare.Core.Renderer.PreviewCardGeometry? ReliablePreviewGeometry(int cardIndex)
     {
