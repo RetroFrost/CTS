@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.11 · ZIP updates + large Smart Features",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• Update from ZIP is back in Settings and stages local portable releases with rollback + automatic restart\n• portable ZIP extraction is validated and progress-aware\n• Renderer v3 packages and Smart Feature packs now allow up to 65,536 file assets instead of the old 2,048/1,024 limits\n• duplicate paths and expanded-size limits still protect malformed ZIPs",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.10 · SmartCard exact-ribbon proxy",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
