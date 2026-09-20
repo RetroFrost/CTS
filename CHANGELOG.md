@@ -1,4 +1,13 @@
 # Changelog
+## 4.2.1.16 — Immersive preview editor
+
+- Fixed transform rollback caused by normal pointer release triggering the capture-lost cancellation path.
+- The real full renderer frame remains visible while editing; selection UI is now border/handles only rather than a duplicate artwork ghost.
+- Move, resize, and rotation use a latest-state render loop so intermediate renders cannot leave the preview stuck on stale transform values.
+- SmartCard and SmartBadge packages expose their authored per-frame text/artwork geometry to preview hit-testing and placement.
+- SmartCard-local coordinate scaling is respected when dragging transformed artwork.
+- Inline text editing uses the renderer field position, alignment, rotation, colour, and size with a transparent borderless editor; the rendered glyph beneath the active field is temporarily hidden without collapsing its layout.
+
 ## 4.2.1.15 — Audio + universal direct editing
 
 - Added a first-class **Audio** navigation tab with soundtrack selection, volume, looping, and renderer-embedded-audio status.
