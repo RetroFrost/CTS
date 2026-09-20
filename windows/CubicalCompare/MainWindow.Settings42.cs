@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.12 · Source-exact track scaling",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• removed the old 256-track ceiling that rejected large source-exact renderers\n• renderer tracks now support up to 65,536 independent targets\n• dense tracks can carry up to 65,536 keyframes per target\n• duplicate targets, frame ordering and finite-value validation remain enforced",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.11 · ZIP updates + large Smart Features",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
