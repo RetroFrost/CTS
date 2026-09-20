@@ -725,7 +725,7 @@ public sealed class LegacyRendererAdapter : IDisposable
                 props.TryGetValue("frameLock", out var lockValue) ? lockValue :
                 props.TryGetValue("frameLocked", out var lockedValue) ? lockedValue : null,
                 JsonBool(resource, "frameLock", JsonBool(resource, "frameLocked", true)));
-            sequenceFrame = frameLocked && sequence.Fps > 0
+            sequenceFrame = frameLocked && sequence.Fps == Math.Max(1, referenceFps)
                 ? globalFrame - anchorFrame
                 : (int)Math.Floor((globalFrame - anchorFrame) * sequence.Fps / (double)Math.Max(1, referenceFps));
         }
