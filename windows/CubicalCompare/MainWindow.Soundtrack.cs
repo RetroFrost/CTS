@@ -339,7 +339,7 @@ public sealed partial class MainWindow
                 var embedded = _legacyRenderer?.EmbeddedAudio;
                 _audioRendererAudioText.Text = embedded is null
                     ? "The loaded renderer does not provide embedded audio."
-                    : $"Embedded renderer audio: {embedded.AssetName} · {embedded.MimeType}. A selected project soundtrack remains independently controllable here.";
+                    : $"Embedded renderer audio: {embedded.FileName} · volume {embedded.Volume:P0} · {(embedded.Loop ? "looping" : "one-shot")}. A selected project soundtrack remains independently controllable here.";
             }
         }
         finally
