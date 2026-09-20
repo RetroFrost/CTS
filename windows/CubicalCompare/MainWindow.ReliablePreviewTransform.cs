@@ -1,4 +1,5 @@
 using Microsoft.UI;
+using CubicalCompare.Core.Project;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -1032,7 +1033,7 @@ public sealed partial class MainWindow
         _ => InlinePreviewTextField.None,
     };
 
-    private static Windows.UI.Color ArgbColor(uint argb) => Windows.UI.Color.FromArgb(
+    private static global::Windows.UI.Color ArgbColor(uint argb) => ColorHelper.FromArgb(
         (byte)(argb >> 24),
         (byte)(argb >> 16),
         (byte)(argb >> 8),
