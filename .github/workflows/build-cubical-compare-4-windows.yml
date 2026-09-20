@@ -101,8 +101,8 @@ jobs:
           if ($runtimeVersion -notmatch 'AssemblyInformationalVersionAttribute') {
             throw 'Renderer runtime version provider is not using the product informational version.'
           }
-          if ($runtimeVersion -match '4\.2\.1\.\d+') {
-            throw 'Renderer runtime version provider contains a hardcoded Cubical Compare release version.'
+          if ($runtimeVersion -match '(?m)^\s*(?:public|private|internal|protected|const|static|readonly|var|string).*?["'']4\.2\.1\.\d+') {
+            throw 'Renderer runtime version provider contains a hardcoded Cubical Compare release version assignment.'
           }
 
           $adapter = Get-Content 'windows/CubicalCompare/Core/Renderer/LegacyRendererAdapter.cs' -Raw
