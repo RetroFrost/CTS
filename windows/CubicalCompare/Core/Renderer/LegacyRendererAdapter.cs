@@ -247,7 +247,7 @@ public sealed class LegacyRendererAdapter : IDisposable
                 var segment = (frame - _spec.ContinuousStartFrame) / 4096;
                 var scroll = _spec.Track($"relationships.scroll.{segment}", frame)
                     ?? ((frame - _spec.ContinuousStartFrame) * 2f);
-                slotX = cardIndex * _spec.SlotPitch - scroll.Value;
+                slotX = cardIndex * _spec.SlotPitch - scroll;
                 if (slotX <= -_spec.SlotPitch || slotX >= _spec.ReferenceWidth + _spec.SlotPitch)
                     return false;
             }
@@ -392,7 +392,7 @@ public sealed class LegacyRendererAdapter : IDisposable
                 continue;
 
             var type = JsonString(resource, "type", obj.Kind).ToLowerInvariant();
-            if (type != "relationships-card" && obj.Kind is not ("card" or "openingCard"))
+            if (type != "relationships-card" && obj.Kind is not "card" and not "openingCard")
                 continue;
 
             var props = Legacy.V3Evaluator.Properties(scene, obj, frame);
@@ -468,8 +468,8 @@ public sealed class LegacyRendererAdapter : IDisposable
             return fallback;
         if (value.ValueKind == System.Text.Json.JsonValueKind.Number && value.TryGetDouble(out var number))
             return number;
-        return double.TryParse(value.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out number)
-            ? number
+        return double.TryParse(value.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsedText)
+            ? parsedText
             : fallback;
     }
 
