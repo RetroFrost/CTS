@@ -11,6 +11,8 @@ public static class RendererBundleReader
 {
     private const int MaxFileBytes = 128 * 1024 * 1024;
     private const int MaxManifestBytes = 64 * 1024 * 1024;
+    private const int MaxPackageFileEntries = 65_536;
+    private const long MaxPackageExpandedBytes = 512L * 1024 * 1024;
 
     public static RendererCandidate Inspect(string path)
     {
@@ -103,15 +105,30 @@ public static class RendererBundleReader
         var entries = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
         using var memory = new MemoryStream(packageBytes, writable: false);
         using var zip = new ZipArchive(memory, ZipArchiveMode.Read, leaveOpen: false);
-        if (zip.Entries.Count > 2048) throw new InvalidDataException("Renderer v3 package contains too many files.");
-        foreach (var entry in zip.Entries)
+
+        var fileEntries = zip.Entries.Where(entry => !string.IsNullOrEmpty(entry.Name)).ToArray();
+        if (fileEntries.Length == 0)
+            throw new InvalidDataException("Renderer v3 package contains no files.");
+        if (fileEntries.Length > MaxPackageFileEntries)
+            throw new InvalidDataException(
+                $"Renderer v3 package contains {fileEntries.Length:N0} files; this build supports up to {MaxPackageFileEntries:N0} Smart Feature assets per package.");
+
+        long expandedBytes = 0;
+        foreach (var entry in fileEntries)
         {
-            if (string.IsNullOrEmpty(entry.Name)) continue;
             var name = SafeEntryName(entry.FullName);
+            if (entries.ContainsKey(name))
+                throw new InvalidDataException($"Renderer v3 package contains a duplicate asset path: {name}");
+
+            checked { expandedBytes += entry.Length; }
+            if (expandedBytes > MaxPackageExpandedBytes)
+                throw new InvalidDataException(
+                    $"Renderer v3 package expands beyond the {MaxPackageExpandedBytes / (1024 * 1024)} MiB Smart Feature safety limit.");
+
             using var input = entry.Open();
             using var output = new MemoryStream();
             CopyLimited(input, output, MaxFileBytes);
-            entries[name] = output.ToArray();
+            entries.Add(name, output.ToArray());
         }
         var sceneEntry = entries.FirstOrDefault(x => x.Key.Equals("renderer.renderer3", StringComparison.OrdinalIgnoreCase));
         if (sceneEntry.Value == null) sceneEntry = entries.FirstOrDefault(x => x.Key.Equals("manifest.renderer3", StringComparison.OrdinalIgnoreCase));
