@@ -48,6 +48,8 @@ public readonly record struct PreviewTextRegion(
 /// </summary>
 public sealed class LegacyRendererAdapter : IDisposable
 {
+    public static string RuntimeCompatibilityAppVersion => Legacy.RendererCapabilities.AppVersion;
+
     private readonly Legacy.RendererEngine _engine = new();
     private readonly Legacy.RendererSpec _spec;
 

@@ -27,6 +27,7 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         WriteLog($"OnLaunched entered. Arguments: '{args.Arguments}'.");
+        WriteLog($"Renderer compatibility app version: {LegacyRendererAdapter.RuntimeCompatibilityAppVersion}.");
         try
         {
             if (string.Equals(args.Arguments, "--ci-shell-smoke", StringComparison.Ordinal))

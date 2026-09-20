@@ -498,7 +498,11 @@ public static class RendererBundleReader
 
 public static class RendererCapabilities
 {
-    public const string AppVersion = "4.2.1.12";
+    /// <summary>
+    /// Cubical Compare's actual running product version.
+    /// </summary>
+    public static string AppVersion => RendererRuntimeVersion.Current;
+
     public const int RendererApi = 3;
 
     private static readonly HashSet<string> Engines = new(StringComparer.Ordinal)
@@ -553,7 +557,8 @@ public static class RendererCapabilities
         if (!Engines.Contains(spec.Engine)) errors.Add($"Renderer engine '{spec.Engine}' is not available in this build.");
         var missing = spec.RequiredFeatures.Where(x => !Features.Contains(x)).ToArray();
         if (missing.Length > 0) errors.Add("Unsupported renderer features: " + string.Join(", ", missing));
-        if (CompareVersions(AppVersion, spec.MinAppVersion) < 0) errors.Add($"Requires Cubical Compare {spec.MinAppVersion} or newer.");
+        if (CompareVersions(AppVersion, spec.MinAppVersion) < 0)
+            errors.Add($"Requires Cubical Compare {spec.MinAppVersion} or newer; this running build is {AppVersion}.");
         if (spec.ReferenceWidth != 1920 || spec.ReferenceHeight != 1080) warnings.Add($"Reference canvas is {spec.ReferenceWidth}×{spec.ReferenceHeight}; exports may be scaled.");
         if (spec.ReferenceFps != 60) warnings.Add($"Reference frame rate is {spec.ReferenceFps} fps.");
         if (spec.PrecisionMode == "frame-exact" && spec.TimelineUnit != "frames") errors.Add("Frame-exact renderers must use frame timeline units.");
