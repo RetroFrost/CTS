@@ -68,6 +68,7 @@ public sealed partial class MainWindow
     private bool _previewInteractionRenderRunning;
     private bool _previewInteractionRenderPending;
     private int _immersivePreviewMutationDepth;
+    private bool _suppressCardSelectionPreviewSeek;
 
     internal void InitializeReliablePreviewTransformEditor()
     {
@@ -275,7 +276,6 @@ public sealed partial class MainWindow
             return;
 
         var point = e.GetCurrentPoint(_reliablePreviewCanvas);
-        var tag = FindPreviewTag(e.OriginalSource as DependencyObject);
 
         if (point.Properties.IsRightButtonPressed)
         {
@@ -301,12 +301,15 @@ public sealed partial class MainWindow
 
         if (_reliablePreviewActive &&
             _reliablePreviewCardIndex >= 0 &&
-            _reliablePreviewCardIndex < Cards.Count &&
-            tag is "reliable-rotate" or "reliable-resize-nw" or "reliable-resize-ne" or "reliable-resize-sw" or "reliable-resize-se")
+            _reliablePreviewCardIndex < Cards.Count)
         {
-            CloseInlinePreviewTextEditor();
-            BeginReliablePreviewDrag(e, point.Position, _reliablePreviewCardIndex, tag == "reliable-rotate" ? ReliablePreviewDragMode.Rotate : ReliablePreviewDragMode.Scale);
-            return;
+            var handleMode = ReliablePreviewHandleModeAt(point.Position);
+            if (handleMode != ReliablePreviewDragMode.None)
+            {
+                CloseInlinePreviewTextEditor();
+                BeginReliablePreviewDrag(e, point.Position, _reliablePreviewCardIndex, handleMode);
+                return;
+            }
         }
 
         var textHit = ReliableHitTestPreviewText(point.Position);
@@ -334,6 +337,60 @@ public sealed partial class MainWindow
         CloseInlinePreviewTextEditor();
         if (_reliablePreviewActive)
             DeactivateReliablePreviewTransform();
+    }
+
+    private ReliablePreviewDragMode ReliablePreviewHandleModeAt(Point point)
+    {
+        if (_reliablePreviewAdorner is null ||
+            _reliablePreviewAdorner.Visibility != Visibility.Visible ||
+            _reliablePreviewAdorner.Width <= 0 ||
+            _reliablePreviewAdorner.Height <= 0)
+            return ReliablePreviewDragMode.None;
+
+        var left = Canvas.GetLeft(_reliablePreviewAdorner);
+        var top = Canvas.GetTop(_reliablePreviewAdorner);
+        if (double.IsNaN(left) || double.IsNaN(top))
+            return ReliablePreviewDragMode.None;
+
+        var width = _reliablePreviewAdorner.Width;
+        var height = _reliablePreviewAdorner.Height;
+        var centerX = left + width / 2.0;
+        var centerY = top + height / 2.0;
+
+        // The entire adorner rotates with the artwork. Transform the pointer back
+        // into the unrotated adorner coordinate space before testing the handles.
+        var angle = _reliablePreviewAdorner.RenderTransform is RotateTransform rotate
+            ? rotate.Angle
+            : 0.0;
+        var radians = -angle * Math.PI / 180.0;
+        var dx = point.X - centerX;
+        var dy = point.Y - centerY;
+        var localX = dx * Math.Cos(radians) - dy * Math.Sin(radians) + width / 2.0;
+        var localY = dx * Math.Sin(radians) + dy * Math.Cos(radians) + height / 2.0;
+
+        static bool Near(double x, double y, double targetX, double targetY, double radius)
+        {
+            var hx = x - targetX;
+            var hy = y - targetY;
+            return hx * hx + hy * hy <= radius * radius;
+        }
+
+        // Use the actual small handle footprints. Never infer resize mode from
+        // RoutedEventArgs.OriginalSource: WinUI documents that OriginalSource can
+        // be a control-template part, which made ordinary artwork clicks inherit
+        // a resize-handle route in practice.
+        const double resizeRadius = 18.0;
+        if (Near(localX, localY, 0, 0, resizeRadius) ||
+            Near(localX, localY, width, 0, resizeRadius) ||
+            Near(localX, localY, 0, height, resizeRadius) ||
+            Near(localX, localY, width, height, resizeRadius))
+            return ReliablePreviewDragMode.Scale;
+
+        // Rotate handle is a 36 px circle centered 36 px below the top edge.
+        if (Near(localX, localY, width / 2.0, 36.0, 20.0))
+            return ReliablePreviewDragMode.Rotate;
+
+        return ReliablePreviewDragMode.None;
     }
 
     private void BeginReliablePreviewDrag(PointerRoutedEventArgs e, Point point, int cardIndex, ReliablePreviewDragMode mode)
@@ -490,8 +547,21 @@ public sealed partial class MainWindow
         if (cardIndex < 0 || cardIndex >= Cards.Count)
             return;
 
-        CardsList.SelectedIndex = cardIndex;
-        CardsList.ScrollIntoView(Cards[cardIndex]);
+        // Selecting a card from the rendered frame is an editor-selection action,
+        // not a timeline seek. The list's ordinary selection handler intentionally
+        // seeks to a representative frame, which is useful when clicking the list
+        // but disastrous when clicking a card that is already visible at the
+        // current timeline position.
+        _suppressCardSelectionPreviewSeek = true;
+        try
+        {
+            CardsList.SelectedIndex = cardIndex;
+            CardsList.ScrollIntoView(Cards[cardIndex]);
+        }
+        finally
+        {
+            _suppressCardSelectionPreviewSeek = false;
+        }
     }
 
     private void ActivateReliablePreviewTransform(int cardIndex)

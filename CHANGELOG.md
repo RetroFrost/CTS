@@ -1,4 +1,11 @@
 # Changelog
+## 4.2.1.17 — Preview interaction hotfix
+
+- Resize and rotate are selected only when the pointer is geometrically inside the visible handles; routed control-template ancestry is no longer used to choose transform mode.
+- Normal artwork clicks always enter Move mode.
+- Clicking a visible card in the rendered preview updates editor selection without seeking the timeline backward to the list-navigation preview frame.
+- Clicking a card in the timeline list still intentionally seeks to its representative preview frame.
+
 ## 4.2.1.16 — Immersive preview editor
 
 - Fixed transform rollback caused by normal pointer release triggering the capture-lost cancellation path.

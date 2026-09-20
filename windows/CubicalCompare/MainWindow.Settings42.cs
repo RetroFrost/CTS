@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.17 · Preview interaction hotfix",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• resize/rotate modes are now chosen from the visible handle geometry instead of routed OriginalSource/template ancestry\n• clicking normal artwork always starts Move, not Scale\n• selecting a card directly in the rendered frame no longer seeks backward to that card's representative timeline frame\n• list selection still keeps the intentional jump-to-card navigation behavior",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.16 · Immersive preview editor",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
