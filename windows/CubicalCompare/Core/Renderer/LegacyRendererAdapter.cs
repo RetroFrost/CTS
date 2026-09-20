@@ -391,19 +391,19 @@ public sealed class LegacyRendererAdapter : IDisposable
             if (index != cardIndex || obj.Resource is null || !scene.Resources.TryGetValue(obj.Resource, out var resource))
                 continue;
 
-            var type = resource.String("type", obj.Kind).ToLowerInvariant();
+            var type = JsonString(resource, "type", obj.Kind).ToLowerInvariant();
             if (type != "relationships-card" && obj.Kind is not ("card" or "openingCard"))
                 continue;
 
             var props = Legacy.V3Evaluator.Properties(scene, obj, frame);
             if (type == "relationships-card")
             {
-                var pitch = resource.Double("slotPitch", 480);
-                var width = resource.Double("width", 474);
-                var height = resource.Double("height", _spec.ReferenceHeight);
-                var imageHeight = resource.Double("imageHeight", 789);
-                var titleHeight = resource.Double("titleHeight", 117);
-                var dividerHeight = resource.Double("dividerHeight", 8);
+                var pitch = JsonDouble(resource, "slotPitch", 480);
+                var width = JsonDouble(resource, "width", 474);
+                var height = JsonDouble(resource, "height", _spec.ReferenceHeight);
+                var imageHeight = JsonDouble(resource, "imageHeight", 789);
+                var titleHeight = JsonDouble(resource, "titleHeight", 117);
+                var dividerHeight = JsonDouble(resource, "dividerHeight", 8);
                 var scroll = SceneNumber(props, "scroll", 0);
                 var baseX = SceneNumber(props, "baseX", cardIndex * pitch);
                 var offsetX = SceneNumber(props, "offsetX", 0);
@@ -426,10 +426,10 @@ public sealed class LegacyRendererAdapter : IDisposable
                     DescriptionY: descriptionTop,
                     DescriptionWidth: width,
                     DescriptionHeight: Math.Max(0, height - descriptionTop),
-                    BadgeX: x + resource.Double("centerX", width / 2) - resource.Double("radiusX", 176),
-                    BadgeY: resource.Double("centerY", 192) - resource.Double("radiusY", 172),
-                    BadgeWidth: resource.Double("radiusX", 176) * 2,
-                    BadgeHeight: resource.Double("radiusY", 172) * 2);
+                    BadgeX: x + JsonDouble(resource, "centerX", width / 2) - JsonDouble(resource, "radiusX", 176),
+                    BadgeY: JsonDouble(resource, "centerY", 192) - JsonDouble(resource, "radiusY", 172),
+                    BadgeWidth: JsonDouble(resource, "radiusX", 176) * 2,
+                    BadgeHeight: JsonDouble(resource, "radiusY", 172) * 2);
                 return true;
             }
 
@@ -450,6 +450,27 @@ public sealed class LegacyRendererAdapter : IDisposable
         }
         var at = obj.Id.LastIndexOf('@');
         return at >= 0 && int.TryParse(obj.Id[(at + 1)..], out var parsed) ? parsed : null;
+    }
+
+    private static string JsonString(System.Text.Json.JsonElement element, string key, string fallback)
+    {
+        if (element.ValueKind != System.Text.Json.JsonValueKind.Object ||
+            !element.TryGetProperty(key, out var value) ||
+            value.ValueKind != System.Text.Json.JsonValueKind.String)
+            return fallback;
+        return value.GetString() ?? fallback;
+    }
+
+    private static double JsonDouble(System.Text.Json.JsonElement element, string key, double fallback)
+    {
+        if (element.ValueKind != System.Text.Json.JsonValueKind.Object ||
+            !element.TryGetProperty(key, out var value))
+            return fallback;
+        if (value.ValueKind == System.Text.Json.JsonValueKind.Number && value.TryGetDouble(out var number))
+            return number;
+        return double.TryParse(value.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out number)
+            ? number
+            : fallback;
     }
 
     private static double SceneNumber(Dictionary<string, object?> props, string key, double fallback)
