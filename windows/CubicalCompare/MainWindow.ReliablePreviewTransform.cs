@@ -535,7 +535,14 @@ public sealed partial class MainWindow
             if (!string.IsNullOrWhiteSpace(card.Description))
             {
                 var descriptionTop = renderer.ImageHeight + (string.IsNullOrWhiteSpace(card.Title) ? 0 : renderer.TitleHeight);
-                var description = new Rect(bodyLeft, descriptionTop, renderer.BodyWidth, Math.Max(1, renderer.ReferenceHeight - descriptionTop));
+                var description = ReliableDescriptionTextBounds(
+                    card.Description,
+                    bodyLeft,
+                    descriptionTop,
+                    renderer.BodyWidth,
+                    Math.Max(1, renderer.ReferenceHeight - descriptionTop),
+                    renderer.DescriptionTextSize);
+
                 if (Contains(description, x, y))
                     return new PreviewTextHit(pair.Key, InlinePreviewTextField.Description, description);
             }
@@ -567,6 +574,93 @@ public sealed partial class MainWindow
         }
 
         return null;
+    }
+
+
+    private static Rect ReliableDescriptionTextBounds(
+        string text,
+        double bodyLeft,
+        double descriptionTop,
+        double bodyWidth,
+        double availableHeight,
+        double preferredTextSize)
+    {
+        // The renderer paints description text at the top of its available area.
+        // Do not treat the entire remaining card body as text: that made a huge
+        // invisible editor hit target which stole clicks from transformed artwork.
+        var leftInset = 17.0;
+        var topInset = 8.0;
+        var rightInset = 17.0;
+        var bottomInset = 8.0;
+        var textWidth = Math.Max(1.0, bodyWidth - leftInset - rightInset);
+        var textHeightLimit = Math.Max(1.0, availableHeight - topInset - bottomInset);
+
+        using var paint = new SKPaint
+        {
+            IsAntialias = true,
+            TextSize = (float)Math.Max(12.0, preferredTextSize),
+            Typeface = SKTypeface.Default,
+        };
+
+        var fontSize = (float)Math.Max(12.0, preferredTextSize);
+        List<string> lines = [];
+        while (fontSize >= 12)
+        {
+            paint.TextSize = fontSize;
+            lines = ReliableWrapPreviewText(text, paint, (float)textWidth);
+            if (lines.Count <= 5 && lines.Count * fontSize * 1.15f <= textHeightLimit)
+                break;
+            fontSize -= 1;
+        }
+
+        if (lines.Count == 0)
+            lines.Add(text);
+
+        var visibleLines = lines.Take(5).ToArray();
+        var measuredWidth = visibleLines.Length == 0
+            ? textWidth
+            : Math.Min(textWidth, Math.Max(1.0, visibleLines.Max(line => (double)paint.MeasureText(line))));
+
+        // Keep a small click/edit padding around the actual glyph lines only.
+        var horizontalPadding = 10.0;
+        var verticalPadding = 6.0;
+        var hitWidth = Math.Min(textWidth, measuredWidth + horizontalPadding * 2);
+        var hitHeight = Math.Min(
+            textHeightLimit,
+            Math.Max(fontSize * 1.35, visibleLines.Length * fontSize * 1.15 + verticalPadding * 2));
+
+        return new Rect(
+            bodyLeft + leftInset,
+            descriptionTop + topInset,
+            Math.Max(1, hitWidth),
+            Math.Max(1, hitHeight));
+    }
+
+    private static List<string> ReliableWrapPreviewText(string text, SKPaint paint, float width)
+    {
+        var output = new List<string>();
+        foreach (var paragraph in text.Replace("\r", "").Split('\n'))
+        {
+            var current = "";
+            foreach (var word in paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var candidate = current.Length == 0 ? word : current + " " + word;
+                if (paint.MeasureText(candidate) <= width || current.Length == 0)
+                {
+                    current = candidate;
+                }
+                else
+                {
+                    output.Add(current);
+                    current = word;
+                }
+            }
+
+            if (current.Length > 0)
+                output.Add(current);
+        }
+
+        return output;
     }
 
     private static bool Contains(Rect rect, double x, double y) =>
