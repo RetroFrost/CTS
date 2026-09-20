@@ -101,8 +101,156 @@ public sealed class RendererEngine : IDisposable
             return;
         }
         var positions = RibbonPositions(project, spec, frame);
-        foreach (var pair in positions.OrderBy(x => x.Key)) DrawLegacyCard(canvas, project, project.Cards[pair.Key], pair.Value, spec);
-        foreach (var pair in positions.OrderBy(x => x.Key)) DrawRibbonBadge(canvas, project, project.Cards[pair.Key], pair.Key, pair.Value, frame, spec);
+        foreach (var pair in positions.OrderBy(x => x.Key))
+        {
+            if (!TryDrawRibbonSmartCard(canvas, project, project.Cards[pair.Key], pair.Key, pair.Value, frame, spec))
+                DrawLegacyCard(canvas, project, project.Cards[pair.Key], pair.Value, spec);
+        }
+        foreach (var pair in positions.OrderBy(x => x.Key))
+            DrawRibbonBadge(canvas, project, project.Cards[pair.Key], pair.Key, pair.Value, frame, spec);
+    }
+
+    private bool TryDrawRibbonSmartCard(
+        SKCanvas canvas,
+        StudioProject project,
+        StudioCard card,
+        int index,
+        float cardX,
+        int globalFrame,
+        RendererSpec spec)
+    {
+        var scene = spec.SceneV3;
+        if (scene is null) return false;
+
+        var obj = scene.Objects.FirstOrDefault(candidate =>
+            CardIndex(candidate) == index &&
+            candidate.Resource is not null &&
+            scene.Resources.TryGetValue(candidate.Resource, out var candidateResource) &&
+            candidateResource.String("type", "").Equals("smart-card-animation", StringComparison.OrdinalIgnoreCase));
+        if (obj is null || globalFrame < obj.LifespanStart || globalFrame > obj.LifespanEnd)
+            return false;
+
+        if (obj.Resource is null || !scene.Resources.TryGetValue(obj.Resource, out var resource))
+            return false;
+
+        var props = V3Evaluator.Properties(scene, obj, globalFrame)
+            .ToDictionary(pair => pair.Key, pair => BindProjectValue(pair.Value, project, obj), StringComparer.Ordinal);
+
+        var sequenceRoot = StringValue(Get(props, "sequenceRoot")) ?? resource.String("sequenceRoot", "");
+        if (string.IsNullOrWhiteSpace(sequenceRoot))
+            return false;
+
+        SmartBadgeSequenceDefinition sequence;
+        try
+        {
+            sequence = SmartBadgeSequence.Load(scene, sequenceRoot);
+        }
+        catch
+        {
+            // A declared SmartCard is authoritative for this card. Fail closed
+            // rather than silently drawing a different legacy card underneath it.
+            return true;
+        }
+
+        var explicitFrame = Get(props, "sequenceFrame");
+        var frameLocked = Truthy(
+            Get(props, "frameLock", "frameLocked"),
+            resource.Bool("frameLock", resource.Bool("frameLocked", true)));
+        int sequenceFrame;
+        if (explicitFrame is not null)
+            sequenceFrame = (int)Math.Round(Number(explicitFrame), MidpointRounding.AwayFromZero);
+        else if (frameLocked && sequence.Fps == spec.ReferenceFps)
+            sequenceFrame = globalFrame - obj.Frame;
+        else
+            sequenceFrame = (int)Math.Floor(
+                (globalFrame - obj.Frame) * sequence.Fps / (double)Math.Max(1, spec.ReferenceFps));
+
+        sequenceFrame += (int)Math.Round(
+            Number(Get(props, "sequenceOffset"), resource.Int("sequenceOffset", 0)),
+            MidpointRounding.AwayFromZero);
+
+        var selected = sequence.SelectFrame(sequenceFrame);
+        if (selected is null) return true;
+        var basePlate = DecodeSequenceBitmap(sequence, selected.Asset);
+        if (basePlate is null) return true;
+
+        var drawX = (float)Number(Get(props, "drawX"), resource.Double("drawX", spec.BodyInset));
+        var drawY = (float)Number(Get(props, "drawY"), resource.Double("drawY", 0));
+        var drawWidth = (float)Number(Get(props, "drawWidth"), resource.Double("drawWidth", sequence.Width));
+        var drawHeight = (float)Number(Get(props, "drawHeight"), resource.Double("drawHeight", sequence.Height));
+        if (drawWidth <= 0 || drawHeight <= 0) return true;
+
+        canvas.Save();
+        canvas.Translate(cardX + drawX, drawY);
+        canvas.Scale(drawWidth / Math.Max(1, sequence.Width), drawHeight / Math.Max(1, sequence.Height));
+
+        using (var basePaint = new SKPaint
+        {
+            IsAntialias = true,
+            FilterQuality = FilterQuality(
+                StringValue(Get(props, "sampling", "filterMode")) ?? resource.String("sampling", "high")),
+            Color = SKColors.White,
+            BlendMode = SKBlendMode.SrcOver,
+        })
+        {
+            canvas.DrawBitmap(basePlate, new SKRect(0, 0, sequence.Width, sequence.Height), basePaint);
+        }
+
+        var clipLiveContent = Truthy(
+            Get(props, "clipLiveContent"),
+            resource.Bool("clipLiveContent", false));
+        var contentClip = sequence.Artwork?.ClipAt(selected.TemplateFrame);
+        if (clipLiveContent && contentClip is not null)
+        {
+            canvas.Save();
+            canvas.ClipRect(
+                new SKRect(contentClip.X, contentClip.Y, contentClip.Right, contentClip.Bottom),
+                SKClipOperation.Intersect,
+                false);
+        }
+
+        if (sequence.Artwork is not null && !string.IsNullOrWhiteSpace(card.Image))
+        {
+            var dest = sequence.Artwork.DestAt(selected.TemplateFrame);
+            var clip = sequence.Artwork.ClipAt(selected.TemplateFrame);
+            var alpha = Math.Clamp(sequence.Artwork.AlphaAt(selected.TemplateFrame), 0, 1);
+            if (dest is not null && clip is not null && alpha > 0.0001f)
+            {
+                canvas.Save();
+                canvas.ClipRect(
+                    new SKRect(clip.X, clip.Y, clip.Right, clip.Bottom),
+                    SKClipOperation.Intersect,
+                    false);
+                if (alpha < 0.9999f)
+                {
+                    using var layerPaint = new SKPaint
+                    {
+                        Color = new SKColor(255, 255, 255, AlphaByte(alpha)),
+                    };
+                    canvas.SaveLayer(layerPaint);
+                    DrawImageCover(canvas, card, new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom));
+                    canvas.Restore();
+                }
+                else
+                {
+                    DrawImageCover(canvas, card, new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom));
+                }
+                canvas.Restore();
+            }
+        }
+
+        foreach (var field in sequence.Fields)
+            DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, 1);
+
+        if (clipLiveContent && contentClip is not null)
+            canvas.Restore();
+
+        // Overlay/glass/shine is deliberately outside the live-content clip and
+        // composites last so it illuminates both text and artwork.
+        DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, 1);
+
+        canvas.Restore();
+        return true;
     }
 
     private SKColor RibbonBackground(RendererSpec spec, int frame)
