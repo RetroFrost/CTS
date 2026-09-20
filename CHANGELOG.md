@@ -1,4 +1,12 @@
 # Changelog
+## 4.2.1.18 — Renderer version compatibility fix
+
+- Removed the stale hardcoded renderer compatibility app version.
+- Renderer `minAppVersion` checks now resolve the actual running Cubical Compare entry-assembly product version at runtime.
+- Runtime version resolution prefers `AssemblyInformationalVersion`, then file/assembly version fallbacks, and strips Source Link commit metadata before comparison.
+- Compatibility errors now include the detected running build version so mismatches are diagnosable.
+- CI verifies the published app reports the same renderer-compatibility version as the release version, preventing this regression from returning.
+
 ## 4.2.1.17 — Preview interaction hotfix
 
 - Resize and rotate are selected only when the pointer is geometrically inside the visible handles; routed control-template ancestry is no longer used to choose transform mode.
