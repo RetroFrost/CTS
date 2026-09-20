@@ -1,4 +1,10 @@
 # Changelog
+## 4.2.1.14 — Description block fix
+
+- Description direct-edit hit testing now follows the wrapped text itself instead of claiming the entire remaining card area.
+- The inline description editor is sized to the visible text lines, so it no longer blocks artwork interaction in otherwise empty card space.
+- Artwork clicks around the description remain available for direct move/resize/rotate editing.
+
 ## 4.2.1.13 — Direct preview editing
 
 - Click visible title, description, badge header, or badge value text directly in the Windows renderer preview to edit it in place with a caret.
