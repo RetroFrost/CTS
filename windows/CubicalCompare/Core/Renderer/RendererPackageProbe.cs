@@ -29,6 +29,7 @@ public static class RendererPackageProbe
 {
     private const int MaxRendererBytes = 128 * 1024 * 1024;
     private const int MaxJsonBytes = 64 * 1024 * 1024;
+    private const int MaxPackageFileEntries = 65_536;
 
     public static async Task<RendererPackageInfo> InspectAsync(string path, CancellationToken cancellationToken = default)
     {
@@ -78,7 +79,12 @@ public static class RendererPackageProbe
     {
         using var memory = new MemoryStream(bytes, writable: false);
         using var zip = new ZipArchive(memory, ZipArchiveMode.Read, leaveOpen: false);
-        if (zip.Entries.Count > 2048) throw new InvalidDataException("Renderer package contains too many entries.");
+        var fileCount = zip.Entries.Count(entry => !string.IsNullOrEmpty(entry.Name));
+        if (fileCount == 0)
+            throw new InvalidDataException("Renderer package contains no files.");
+        if (fileCount > MaxPackageFileEntries)
+            throw new InvalidDataException(
+                $"Renderer package contains {fileCount:N0} files; this build supports up to {MaxPackageFileEntries:N0} Smart Feature assets.");
 
         var entry = zip.Entries.FirstOrDefault(x => x.FullName.EndsWith(".renderer4", StringComparison.OrdinalIgnoreCase))
             ?? zip.Entries.FirstOrDefault(x => x.FullName.EndsWith(".renderer3", StringComparison.OrdinalIgnoreCase))
