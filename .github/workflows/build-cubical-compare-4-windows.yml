@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.16"
+          $version = "4.2.1.17"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.16 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.17 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.17"
+          $velopackVersion = "4.2.18"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -78,6 +78,11 @@ jobs:
           if ($preview -match '_previewInteractionRenderQueued') { throw 'Stale one-shot preview render queue is still present.' }
           if ($preview -notmatch 'Mark the drag complete BEFORE releasing capture') { throw 'Normal pointer release can regress to capture-lost rollback.' }
           if ($preview -notmatch 'PrepareProjectForImmersivePreviewRender') { throw 'Inline glyph suppression for immersive editing is missing.' }
+          if ($preview -notmatch 'ReliablePreviewHandleModeAt') { throw 'Geometric resize/rotate handle hit-testing is missing.' }
+          if ($preview -match 'var tag = FindPreviewTag\(e\.OriginalSource') { throw 'Transform mode must not depend on routed OriginalSource ancestry.' }
+          if ($preview -notmatch '_suppressCardSelectionPreviewSeek') { throw 'Preview card selection seek suppression is missing.' }
+          $thumb = Get-Content 'windows/CubicalCompare/MainWindow.ThumbnailAndMegaPack.cs' -Raw
+          if ($thumb -notmatch 'if \(_suppressCardSelectionPreviewSeek\)') { throw 'Renderer preview selection handler can still seek after direct frame clicks.' }
           if ($preview -notmatch 'TextControlBackgroundFocused') { throw 'Transparent in-place text editor styling is missing.' }
           if ($preview -notmatch 'Opacity = 0,') { throw 'Artwork ghost must stay invisible so the real rendered frame remains visible.' }
 
@@ -358,6 +363,8 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Preview interaction hotfix: normal artwork clicks are Move; resize/rotate activate only inside their visible handles.
+          - Clicking an already-visible card in the rendered frame no longer seeks the timeline backward; list clicks retain intentional jump-to-card navigation.
           - Immersive preview editor: normal mouse-up no longer resets artwork to its pre-drag transform.
           - The real full renderer frame remains visible while dragging; selection UI is border/handles only and no duplicate artwork ghost covers the result.
           - Move, resize and rotation run through a latest-state render loop, so slow intermediate frames cannot leave the preview stuck on stale coordinates.
