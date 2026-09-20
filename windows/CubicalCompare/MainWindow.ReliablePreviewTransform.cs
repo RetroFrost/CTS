@@ -1063,7 +1063,10 @@ public sealed partial class MainWindow
                 card.BadgeHeader = invisibleLayoutText;
                 break;
             case InlinePreviewTextField.Value:
-                card.Value = invisibleLayoutText;
+                // Keep both primary and unit jsparse fields present while rendering
+                // neither glyph. One zero-width token would make SmartBadge's unit
+                // fallback render "People"; two invisible tokens suppress both.
+                card.Value = invisibleLayoutText + " " + invisibleLayoutText;
                 break;
         }
 
