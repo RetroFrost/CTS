@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.15"
+          $version = "4.2.1.16"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.15 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.16 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.16"
+          $velopackVersion = "4.2.17"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -70,20 +70,26 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $preview = Get-Content 'windows/CubicalCompare/MainWindow.ReliablePreviewTransform.cs' -Raw
-          if ($preview -notmatch 'Apply to all images') { throw 'Preview apply-all image action is missing.' }
+          if ($preview -notmatch 'ReliablePreviewApplyAll_Click') { throw 'Preview apply-all image action is missing.' }
           if ($preview -notmatch 'OpenInlinePreviewTextEditor') { throw 'Inline preview text editor is missing.' }
           if ($preview -notmatch 'ReliableHitTestPreviewArtwork') { throw 'Direct artwork hit-testing is missing.' }
-          if ($preview -notmatch 'ReliableDescriptionTextBounds') { throw 'Description text-sized hit testing is missing.' }
-          if ($preview -notmatch 'TryGetPreviewCardGeometry') { throw 'Renderer-aware preview geometry is missing.' }
           if ($preview -notmatch 'QueuePreviewInteractionRender') { throw 'Live transform preview rendering is missing.' }
+          if ($preview -notmatch 'while \(_previewInteractionRenderPending\)') { throw 'Latest-state preview render loop is missing.' }
+          if ($preview -match '_previewInteractionRenderQueued') { throw 'Stale one-shot preview render queue is still present.' }
+          if ($preview -notmatch 'Mark the drag complete BEFORE releasing capture') { throw 'Normal pointer release can regress to capture-lost rollback.' }
+          if ($preview -notmatch 'PrepareProjectForImmersivePreviewRender') { throw 'Inline glyph suppression for immersive editing is missing.' }
           if ($preview -notmatch 'TextControlBackgroundFocused') { throw 'Transparent in-place text editor styling is missing.' }
-          if ($preview -match 'new Rect\(bodyLeft, descriptionTop, renderer\.BodyWidth, Math\.Max\(1, renderer\.ReferenceHeight - descriptionTop\)\)') {
-            throw 'Description editor still claims the full remaining card block.'
-          }
-          if ($preview -match 'Right-click a visible card · drag to move') { throw 'Legacy right-click-only preview instructions are still active.' }
+          if ($preview -notmatch 'Opacity = 0,') { throw 'Artwork ghost must stay invisible so the real rendered frame remains visible.' }
+
+          $adapter = Get-Content 'windows/CubicalCompare/Core/Renderer/LegacyRendererAdapter.cs' -Raw
+          if ($adapter -notmatch 'PreviewTextRegions') { throw 'Renderer-authored editable text regions are missing.' }
+          if ($adapter -notmatch 'ImageCoordinateScaleX') { throw 'Renderer-local image coordinate scaling is missing.' }
+          if ($adapter -notmatch 'TryGetRibbonSmartCardGeometry') { throw 'SmartCard authored artwork geometry is missing.' }
+          if ($adapter -notmatch 'TryGetRibbonSmartBadgeTextRegions') { throw 'SmartBadge authored text geometry is missing.' }
+
           $finalUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
           if ($finalUi -notmatch 'CreateNavigationItem\("Audio", "audio"') { throw 'Primary Audio navigation tab is missing.' }
-          Write-Host 'Audio tab and renderer-aware direct preview editing contract verified.'
+          Write-Host 'Immersive preview editing, Audio tab and renderer-authored geometry contracts verified.'
 
       - name: Publish certificate-free portable app
         shell: pwsh
@@ -347,6 +353,11 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Immersive preview editor: normal mouse-up no longer resets artwork to its pre-drag transform.
+          - The real full renderer frame remains visible while dragging; selection UI is border/handles only and no duplicate artwork ghost covers the result.
+          - Move, resize and rotation run through a latest-state render loop, so slow intermediate frames cannot leave the preview stuck on stale coordinates.
+          - SmartCard and SmartBadge packages now expose their authored per-frame artwork/text geometry to the editor, including local coordinate scaling, alignment and rotation.
+          - Transparent inline text editing is positioned from the renderer field itself and hides only the underlying rendered glyph while editing.
           - Audio is now a primary navigation tab with soundtrack selection, volume, looping and renderer-embedded-audio status.
           - Direct preview editing now uses renderer-specific geometry across ribbon, Infinite Timeline, Relationships and Renderer v3 cards.
           - Moving, resizing and rotating artwork updates the live rendered preview while dragging.
