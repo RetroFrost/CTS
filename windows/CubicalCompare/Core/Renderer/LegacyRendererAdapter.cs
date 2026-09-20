@@ -476,7 +476,7 @@ public sealed class LegacyRendererAdapter : IDisposable
         try { sequence = Legacy.SmartBadgeSequence.Load(scene, sequenceRoot); }
         catch { return false; }
 
-        var selected = SelectSmartSequenceFrame(sequence, props, resource, frame, obj.Frame);
+        var selected = SelectSmartSequenceFrame(sequence, props, resource, frame, obj.Frame, _spec.ReferenceFps);
         if (selected is null) return false;
 
         var drawX = SceneNumber(props, "drawX", JsonDouble(resource, "drawX", _spec.BodyInset));
@@ -503,14 +503,14 @@ public sealed class LegacyRendererAdapter : IDisposable
             ArtworkCover: true,
             ImageCoordinateScaleX: scaleX,
             ImageCoordinateScaleY: scaleY,
-            TitleX: title is null ? fallback.TitleX : cardX + drawX + title.Value.X * scaleX,
-            TitleY: title is null ? fallback.TitleY : drawY + title.Value.Y * scaleY,
-            TitleWidth: title is null ? fallback.TitleWidth : title.Value.Width * scaleX,
-            TitleHeight: title is null ? fallback.TitleHeight : title.Value.Height * scaleY,
-            DescriptionX: description is null ? fallback.DescriptionX : cardX + drawX + description.Value.X * scaleX,
-            DescriptionY: description is null ? fallback.DescriptionY : drawY + description.Value.Y * scaleY,
-            DescriptionWidth: description is null ? fallback.DescriptionWidth : description.Value.Width * scaleX,
-            DescriptionHeight: description is null ? fallback.DescriptionHeight : description.Value.Height * scaleY,
+            TitleX: title is null ? fallback.TitleX : cardX + drawX + title.X * scaleX,
+            TitleY: title is null ? fallback.TitleY : drawY + title.Y * scaleY,
+            TitleWidth: title is null ? fallback.TitleWidth : title.Width * scaleX,
+            TitleHeight: title is null ? fallback.TitleHeight : title.Height * scaleY,
+            DescriptionX: description is null ? fallback.DescriptionX : cardX + drawX + description.X * scaleX,
+            DescriptionY: description is null ? fallback.DescriptionY : drawY + description.Y * scaleY,
+            DescriptionWidth: description is null ? fallback.DescriptionWidth : description.Width * scaleX,
+            DescriptionHeight: description is null ? fallback.DescriptionHeight : description.Height * scaleY,
             BadgeX: fallback.BadgeX,
             BadgeY: fallback.BadgeY,
             BadgeWidth: fallback.BadgeWidth,
@@ -546,7 +546,7 @@ public sealed class LegacyRendererAdapter : IDisposable
         try { sequence = Legacy.SmartBadgeSequence.Load(scene, sequenceRoot); }
         catch { return; }
 
-        var selected = SelectSmartSequenceFrame(sequence, props, resource, frame, obj.Frame);
+        var selected = SelectSmartSequenceFrame(sequence, props, resource, frame, obj.Frame, _spec.ReferenceFps);
         if (selected is null) return;
 
         var drawX = SceneNumber(props, "drawX", JsonDouble(resource, "drawX", _spec.BodyInset));
@@ -673,7 +673,7 @@ public sealed class LegacyRendererAdapter : IDisposable
             try { sequence = Legacy.SmartBadgeSequence.Load(scene, sequenceRoot); }
             catch { continue; }
 
-            var selected = SelectSmartSequenceFrame(sequence, props, resource, frame, obj.Frame);
+            var selected = SelectSmartSequenceFrame(sequence, props, resource, frame, obj.Frame, _spec.ReferenceFps);
             if (selected is null) continue;
 
             var drawX = SceneNumber(props, "drawX", JsonDouble(resource, "drawX", 0));
@@ -711,7 +711,8 @@ public sealed class LegacyRendererAdapter : IDisposable
         Dictionary<string, object?> props,
         System.Text.Json.JsonElement resource,
         int globalFrame,
-        int anchorFrame)
+        int anchorFrame,
+        int referenceFps)
     {
         int sequenceFrame;
         if (props.TryGetValue("sequenceFrame", out var explicitFrame) && explicitFrame is not null)
@@ -726,7 +727,7 @@ public sealed class LegacyRendererAdapter : IDisposable
                 JsonBool(resource, "frameLock", JsonBool(resource, "frameLocked", true)));
             sequenceFrame = frameLocked && sequence.Fps > 0
                 ? globalFrame - anchorFrame
-                : (int)Math.Floor((globalFrame - anchorFrame) * sequence.Fps / 60d);
+                : (int)Math.Floor((globalFrame - anchorFrame) * sequence.Fps / (double)Math.Max(1, referenceFps));
         }
 
         sequenceFrame += (int)Math.Round(
