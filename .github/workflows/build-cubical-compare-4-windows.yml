@@ -502,17 +502,17 @@ jobs:
           $lockerScript = Join-Path $env:RUNNER_TEMP 'cubical-compare-external-lock.ps1'
           $lockerReady = Join-Path $env:RUNNER_TEMP 'cubical-compare-external-lock.ready'
           Remove-Item $lockerReady -Force -ErrorAction SilentlyContinue
-          @'
-param([string]$Path, [string]$Ready)
-$stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-try {
-  'ready' | Set-Content $Ready -Encoding ASCII
-  Start-Sleep -Seconds 180
-}
-finally {
-  $stream.Dispose()
-}
-'@ | Set-Content $lockerScript -Encoding UTF8
+          @(
+            'param([string]$Path, [string]$Ready)',
+            '$stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)',
+            'try {',
+            "  'ready' | Set-Content $Ready -Encoding ASCII",
+            '  Start-Sleep -Seconds 180',
+            '}',
+            'finally {',
+            '  $stream.Dispose()',
+            '}'
+          ) | Set-Content $lockerScript -Encoding UTF8
 
           $locker = Start-Process -FilePath 'pwsh.exe' -ArgumentList @(
             '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
