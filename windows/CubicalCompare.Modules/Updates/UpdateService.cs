@@ -77,14 +77,17 @@ public sealed class CubicalUpdateService
         // topology: use the visible Setup.exe once to repair the canonical install.
         if (layout.NeedsRepair)
         {
-            var repair = BestInstalledFallback(release);
+            // Repair directly from the verified GitHub portable payload first.
+            // This avoids handing a damaged install to a freshly downloaded
+            // unsigned Setup.exe, which Windows/AV may hold in a safety scan.
+            var repair = BestPortableFallback(release);
             if (repair is not null)
                 return BuildDirectCandidate(
                     release,
                     repair.Value,
-                    repair.Value.Delivery == CubicalUpdateDelivery.SetupExe
-                        ? "Recovery choice: the install layout/Velopack metadata is damaged by an earlier ZIP update. The visible installer will repair the canonical install before normal updates resume."
-                        : "Recovery choice: the install layout is damaged and no Setup.exe is available, so Cubical Compare will use the portable payload repair path.");
+                    repair.Value.Delivery == CubicalUpdateDelivery.PortableZip
+                        ? "Recovery choice: the install layout/Velopack metadata is damaged by an earlier ZIP update. Cubical Compare will repair the canonical current directory directly from the verified GitHub portable ZIP."
+                        : "Recovery choice: no compatible portable ZIP is available, so the visible installer is the last-resort repair path.");
         }
 
         if (layout.CanUseVelopack &&
