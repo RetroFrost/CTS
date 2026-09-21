@@ -9,6 +9,7 @@ on:
       - 'windows/CubicalCompare/**'
       - 'windows/CubicalCompare.Modules/**'
       - 'windows/CubicalCompare.InstallerBootstrap/**'
+      - 'windows/CubicalCompare.UpdateSmoke/**'
       - 'Directory.Build.targets'
       - '.github/workflows/build-cubical-compare-4-windows.yml'
   pull_request:
@@ -18,6 +19,7 @@ on:
       - 'windows/CubicalCompare/**'
       - 'windows/CubicalCompare.Modules/**'
       - 'windows/CubicalCompare.InstallerBootstrap/**'
+      - 'windows/CubicalCompare.UpdateSmoke/**'
       - 'Directory.Build.targets'
       - '.github/workflows/build-cubical-compare-4-windows.yml'
   workflow_dispatch:
@@ -47,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.21"
+          $version = "4.2.1.22"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.21 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.22 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.22"
+          $velopackVersion = "4.2.23"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -114,6 +116,11 @@ jobs:
           $updateService = Get-Content 'windows/CubicalCompare.Modules/Updates/UpdateService.cs' -Raw
           if ($updateService -notmatch 'CheckForPortableZipUpdateAsync') { throw 'Direct GitHub portable ZIP resolver is missing.' }
           if ($updateService -notmatch 'release\.PortableZip') { throw 'GitHub ZIP update does not resolve a portable release asset.' }
+          if ($updateService -notmatch 'Path\.Combine\(stagePath, "current"\)') { throw 'ZIP updater does not prefer the real Velopack current/ payload.' }
+          if ($updateService -notmatch 'ResolveUpdateTargetDirectory') { throw 'ZIP updater cannot repair nested current/current layouts.' }
+          if ($updateService -notmatch 'sq\.version') { throw 'ZIP updater does not protect/restore Velopack install metadata.' }
+          if ($updateService -notmatch 'includeCurrentVersion:\s*true') { throw 'GitHub ZIP repair cannot re-apply the current release.' }
+          if ($updateService -notmatch 'layout\.NeedsRepair') { throw 'Normal updater does not detect damaged install topology.' }
 
           $finalReleaseUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
           if ($finalReleaseUi -notmatch 'Get latest from GitHub') { throw 'Update from ZIP does not expose GitHub fetching.' }
@@ -321,6 +328,49 @@ jobs:
           Write-Host "Native Cubical Compare setup: $(Split-Path $versionedSetup -Leaf)"
           Write-Host "Portable release asset: $(Split-Path $versionedPortable -Leaf)"
 
+      - name: Smoke test ZIP updater recovery and canonical replacement
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'cubical-compare-zip-recovery'
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+
+          # Reproduce the old broken topology:
+          # root\Update.exe
+          # root\current\Update.exe + .portable + current\CubicalCompare.exe
+          $outerCurrent = Join-Path $root 'current'
+          $nestedCurrent = Join-Path $outerCurrent 'current'
+          New-Item -ItemType Directory -Path $nestedCurrent -Force | Out-Null
+          'canonical updater sentinel' | Set-Content (Join-Path $root 'Update.exe') -Encoding ASCII
+          'bad nested updater' | Set-Content (Join-Path $outerCurrent 'Update.exe') -Encoding ASCII
+          'portable marker copied to wrong place' | Set-Content (Join-Path $outerCurrent '.portable') -Encoding ASCII
+          'stale outer file' | Set-Content (Join-Path $outerCurrent 'stale.txt') -Encoding ASCII
+          'stale nested exe' | Set-Content (Join-Path $nestedCurrent 'CubicalCompare.exe') -Encoding ASCII
+          'stale nested file' | Set-Content (Join-Path $nestedCurrent 'stale-nested.txt') -Encoding ASCII
+
+          dotnet run -c Release --project windows/CubicalCompare.UpdateSmoke/CubicalCompare.UpdateSmoke.csproj -- "$env:CC_PORTABLE" "$nestedCurrent"
+          if ($LASTEXITCODE -ne 0) { throw "ZIP updater smoke runner failed with exit code $LASTEXITCODE." }
+
+          $deadline = [DateTime]::UtcNow.AddSeconds(90)
+          do {
+            Start-Sleep -Milliseconds 500
+            $directExe = Join-Path $outerCurrent 'CubicalCompare.exe'
+            $manifest = Join-Path $outerCurrent 'sq.version'
+            $stillNested = Test-Path (Join-Path $outerCurrent 'current')
+            $stale = Test-Path (Join-Path $outerCurrent 'stale.txt')
+            if ((Test-Path $directExe) -and (Test-Path $manifest) -and -not $stillNested -and -not $stale) { break }
+          } while ([DateTime]::UtcNow -lt $deadline)
+
+          if (-not (Test-Path (Join-Path $outerCurrent 'CubicalCompare.exe'))) { throw 'ZIP recovery did not replace the canonical current directory with the real app payload.' }
+          if (-not (Test-Path (Join-Path $outerCurrent 'sq.version'))) { throw 'ZIP recovery lost the Velopack sq.version manifest.' }
+          if (Test-Path (Join-Path $outerCurrent 'current')) { throw 'ZIP recovery preserved the broken current/current nesting.' }
+          if (Test-Path (Join-Path $outerCurrent '.portable')) { throw 'ZIP recovery mirrored the portable bundle root into the installed current directory.' }
+          if (Test-Path (Join-Path $outerCurrent 'Update.exe')) { throw 'ZIP recovery copied the portable bundle Update.exe into the installed current directory.' }
+          if (Test-Path (Join-Path $outerCurrent 'stale.txt')) { throw 'ZIP recovery did not mirror-replace stale app files.' }
+          if ((Get-Content (Join-Path $root 'Update.exe') -Raw) -notmatch 'canonical updater sentinel') { throw 'ZIP recovery modified the install-root Update.exe instead of only replacing current/.' }
+
+          Write-Host 'ZIP updater recovery smoke passed: real current/ payload selected, nested layout flattened, sq.version restored, canonical root preserved.'
+
       - name: Verify public setup is native and self-contained
         shell: pwsh
         run: |
@@ -422,6 +472,11 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Update-system recovery: GitHub/local ZIP updates now select the real Velopack Portable.zip current/ payload instead of mirroring the outer bundle into the installed current directory.
+          - ZIP repair flattens the broken current/current topology created by 4.2.1.20/21, replaces the actual app files, restores sq.version, and preserves the canonical install-root Update.exe.
+          - Damaged installed copies now prefer the visible Setup.exe recovery route for normal automatic updates instead of repeatedly selecting a portable ZIP fallback.
+          - Manual Update from ZIP can re-apply the current GitHub release, so an already-up-to-date but damaged installation can repair itself.
+          - CI now reproduces the old nested-install failure and proves the ZIP updater repairs it end-to-end before a release can publish.
           - Renderer runtime compatibility: SmartCard text can stay outside artwork reveal clips, so title/description fields no longer disappear behind image masks.
           - SmartBadge v2 now supports top-to-final entry semantics with final-X anchoring; later badges are runtime-corrected against horizontal drift while preserving their authored vertical motion.
           - SmartBadge settledHold is recognized explicitly, and per-card placement/motion overrides can reuse one pack without duplicating assets.
