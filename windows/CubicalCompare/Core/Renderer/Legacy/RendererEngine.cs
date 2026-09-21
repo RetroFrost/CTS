@@ -1387,7 +1387,12 @@ public sealed class RendererEngine : IDisposable
             Number(Get(props, "sequenceOffset"), resource.Int("sequenceOffset", 0)),
             MidpointRounding.AwayFromZero);
 
+        var settledHold = Truthy(
+            Get(props, "settledHold"),
+            resource.Bool("settledHold", false));
         var selected = sequence.SelectFrame(sequenceFrame);
+        if (selected is null && settledHold)
+            selected = sequence.FinalFrame();
         if (selected is null) return;
         var bitmap = DecodeSequenceBitmap(sequence, selected.Asset);
         if (bitmap is null) return;
@@ -1398,6 +1403,29 @@ public sealed class RendererEngine : IDisposable
         var drawHeight = (float)Number(Get(props, "drawHeight"), resource.Double("drawHeight", sequence.Height));
         if (drawWidth <= 0 || drawHeight <= 0) return;
 
+        var entryMotion = StringValue(Get(props, "entryMotion")) ?? resource.String("entryMotion", "");
+        var entryAnchor = StringValue(Get(props, "entryAnchor")) ?? resource.String("entryAnchor", "");
+        var finalXCorrection = 0f;
+        var lockFinalX =
+            entryAnchor.Equals("final-x", StringComparison.OrdinalIgnoreCase) ||
+            entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase);
+        if (lockFinalX)
+        {
+            var final = sequence.FinalFrame();
+            if (final is not null)
+            {
+                var finalBitmap = DecodeSequenceBitmap(sequence, final.Asset);
+                if (finalBitmap is not null)
+                {
+                    var currentBounds = SequenceOpaqueBounds(sequence, selected.Asset, bitmap);
+                    var finalBounds = SequenceOpaqueBounds(sequence, final.Asset, finalBitmap);
+                    if (currentBounds is SKRect current && finalBounds is SKRect target)
+                        finalXCorrection = target.MidX - current.MidX;
+                }
+            }
+        }
+
+        var scaledXCorrection = finalXCorrection * drawWidth / Math.Max(1, sequence.Width);
         using (var paint = new SKPaint
         {
             IsAntialias = true,
@@ -1406,11 +1434,18 @@ public sealed class RendererEngine : IDisposable
             BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
         })
         {
-            canvas.DrawBitmap(bitmap, new SKRect(drawX, drawY, drawX + drawWidth, drawY + drawHeight), paint);
+            canvas.DrawBitmap(
+                bitmap,
+                new SKRect(
+                    drawX + scaledXCorrection,
+                    drawY,
+                    drawX + scaledXCorrection + drawWidth,
+                    drawY + drawHeight),
+                paint);
         }
 
         canvas.Save();
-        canvas.Translate(drawX, drawY);
+        canvas.Translate(drawX + scaledXCorrection, drawY);
         canvas.Scale(drawWidth / Math.Max(1, sequence.Width), drawHeight / Math.Max(1, sequence.Height));
         foreach (var field in sequence.Fields)
             DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, opacity);
