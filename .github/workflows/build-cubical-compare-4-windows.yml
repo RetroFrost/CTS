@@ -472,6 +472,11 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Update-system recovery: GitHub/local ZIP updates now select the real Velopack Portable.zip current/ payload instead of mirroring the outer bundle into the installed current directory.
+          - ZIP repair flattens the broken current/current topology created by 4.2.1.20/21, replaces the actual app files, restores sq.version, and preserves the canonical install-root Update.exe.
+          - Damaged installed copies now prefer the visible Setup.exe recovery route for normal automatic updates instead of repeatedly selecting a portable ZIP fallback.
+          - Manual Update from ZIP can re-apply the current GitHub release, so an already-up-to-date but damaged installation can repair itself.
+          - CI now reproduces the old nested-install failure and proves the ZIP updater repairs it end-to-end before a release can publish.
           - Renderer runtime compatibility: SmartCard text can stay outside artwork reveal clips, so title/description fields no longer disappear behind image masks.
           - SmartBadge v2 now supports top-to-final entry semantics with final-X anchoring; later badges are runtime-corrected against horizontal drift while preserving their authored vertical motion.
           - SmartBadge settledHold is recognized explicitly, and per-card placement/motion overrides can reuse one pack without duplicating assets.
