@@ -115,7 +115,12 @@ void ExtractPayload(const std::wstring& self, const std::wstring& destination) {
     SetProgress(25);
 }
 
-DWORD RunProcessAndWait(const std::wstring& executable, const std::wstring& arguments, const std::wstring& workingDirectory) {
+DWORD RunProcessAndWait(
+    const std::wstring& executable,
+    const std::wstring& arguments,
+    const std::wstring& workingDirectory,
+    int progressStart,
+    int progressCap) {
     std::wstring command = L"\"" + executable + L"\" " + arguments;
     std::vector<wchar_t> mutableCommand(command.begin(), command.end());
     mutableCommand.push_back(L'\0');
@@ -138,7 +143,7 @@ DWORD RunProcessAndWait(const std::wstring& executable, const std::wstring& argu
         throw std::runtime_error("Could not start the installer engine.");
     }
 
-    int installProgress = 45;
+    int installProgress = progressStart;
     SetProgress(installProgress);
 
     for (;;) {
@@ -146,9 +151,8 @@ DWORD RunProcessAndWait(const std::wstring& executable, const std::wstring& argu
         if (wait == WAIT_OBJECT_0)
             break;
         if (wait == WAIT_TIMEOUT) {
-            if (installProgress < 88) {
-                installProgress += installProgress < 70 ? 2 : 1;
-                installProgress = std::min(installProgress, 88);
+            if (installProgress < progressCap) {
+                ++installProgress;
                 SetProgress(installProgress);
             }
             continue;
@@ -163,16 +167,93 @@ DWORD RunProcessAndWait(const std::wstring& executable, const std::wstring& argu
     GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-    SetProgress(92);
+    SetProgress(progressCap);
     return exitCode;
 }
 
-std::filesystem::path LocalInstallRoot() {
+std::filesystem::path LocalAppDataRoot() {
     wchar_t localAppData[32768]{};
     DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, 32768);
     if (!len || len >= 32768)
         throw std::runtime_error("Could not resolve LOCALAPPDATA.");
-    return std::filesystem::path(localAppData) / L"CubicalCompare";
+    return std::filesystem::path(localAppData);
+}
+
+std::filesystem::path DefaultInstallRoot() {
+    return LocalAppDataRoot() / L"CubicalCompare";
+}
+
+std::filesystem::path InstallerStateRoot() {
+    return LocalAppDataRoot() / L"RetroFrost" / L"CubicalCompare" / L"Installer";
+}
+
+std::filesystem::path ActiveRootPointerPath() {
+    return InstallerStateRoot() / L"active-root.txt";
+}
+
+std::filesystem::path ReadPreferredInstallRoot() {
+    const auto pointer = ActiveRootPointerPath();
+    std::wifstream input(pointer);
+    std::wstring line;
+    if (input && std::getline(input, line) && !line.empty()) {
+        std::filesystem::path candidate(line);
+        std::error_code ec;
+        if (std::filesystem::exists(candidate / L"current" / L"CubicalCompare.exe", ec))
+            return candidate;
+    }
+    return DefaultInstallRoot();
+}
+
+void WritePreferredInstallRoot(const std::filesystem::path& root) {
+    std::error_code ec;
+    std::filesystem::create_directories(InstallerStateRoot(), ec);
+    if (ec) return;
+
+    std::wofstream output(ActiveRootPointerPath(), std::ios::trunc);
+    if (!output) return;
+    output << root.wstring();
+}
+
+std::filesystem::path NextRecoveryInstallRoot() {
+    const auto parent = LocalAppDataRoot();
+    for (int index = 1; index <= 99; ++index) {
+        const auto name = index == 1
+            ? std::wstring(L"CubicalCompare-Recovery")
+            : std::wstring(L"CubicalCompare-Recovery-") + std::to_wstring(index);
+        const auto candidate = parent / name;
+        std::error_code ec;
+        if (!std::filesystem::exists(candidate, ec))
+            return candidate;
+    }
+
+    GUID guid{};
+    if (FAILED(CoCreateGuid(&guid)))
+        throw std::runtime_error("Could not allocate a recovery install location.");
+    wchar_t token[64]{};
+    StringFromGUID2(guid, token, 64);
+    return parent / (std::wstring(L"CubicalCompare-Recovery-") + token);
+}
+
+std::vector<std::filesystem::path> KnownInstallRoots() {
+    std::vector<std::filesystem::path> roots;
+    roots.push_back(DefaultInstallRoot());
+    const auto preferred = ReadPreferredInstallRoot();
+    if (LowerPath(preferred.wstring()) != LowerPath(roots.front().wstring()))
+        roots.push_back(preferred);
+    return roots;
+}
+
+std::wstring QuoteCommandArgument(const std::filesystem::path& path) {
+    std::wstring value = path.wstring();
+    std::wstring escaped;
+    escaped.reserve(value.size() + 2);
+    escaped.push_back(L'"');
+    for (wchar_t ch : value) {
+        if (ch == L'"') escaped.push_back(L'\\');
+        escaped.push_back(ch);
+    }
+    escaped.push_back(L'"');
+    return escaped;
 }
 
 std::wstring VelopackLogPath() {
@@ -259,7 +340,7 @@ bool IsPathInside(const std::wstring& candidate, const std::filesystem::path& ro
 
 void StopConflictingCubicalCompareProcesses() {
     const DWORD currentPid = GetCurrentProcessId();
-    const auto installRoot = LocalInstallRoot();
+    const auto installRoots = KnownInstallRoots();
     const auto records = SnapshotProcesses();
     std::set<DWORD> targets;
 
@@ -268,8 +349,10 @@ void StopConflictingCubicalCompareProcesses() {
 
         const bool app =
             _wcsicmp(record.name.c_str(), L"CubicalCompare.exe") == 0;
-        const bool installResident =
-            IsPathInside(record.imagePath, installRoot);
+        const bool installResident = std::any_of(
+            installRoots.begin(),
+            installRoots.end(),
+            [&](const std::filesystem::path& root) { return IsPathInside(record.imagePath, root); });
         const bool staleEmbeddedSetup =
             _wcsicmp(record.name.c_str(), L"CubicalCompare-Velopack-Setup.exe") == 0;
         const auto lowerName = LowerPath(record.name);
@@ -374,34 +457,36 @@ void MoveDirectoryPreservingData(
     if (ec) throw std::runtime_error("Could not clear the damaged installation before repair.");
 }
 
-std::filesystem::path QuarantineBrokenInstall(const std::filesystem::path& workspace) {
-    const auto installRoot = LocalInstallRoot();
+std::filesystem::path TryQuarantineBrokenInstall(
+    const std::filesystem::path& installRoot,
+    const std::filesystem::path& workspace) {
     if (!IsLegacyBrokenInstall(installRoot)) return {};
 
     SetStatus(L"Repairing the previous Cubical Compare installation...");
     const auto current = installRoot / L"current";
     const auto backup = workspace / L"previous-broken-current";
-    MoveDirectoryPreservingData(current, backup);
-    return backup;
+    try {
+        MoveDirectoryPreservingData(current, backup);
+        return backup;
+    } catch (...) {
+        // A third-party process may still have a handle open. Do not fail here:
+        // the smart installer can fall back to a fresh install root instead.
+        return {};
+    }
 }
 
 void RestoreQuarantinedInstall(
-    const std::filesystem::path& backup,
-    const std::filesystem::path& workspace) {
+    const std::filesystem::path& installRoot,
+    const std::filesystem::path& backup) {
     if (backup.empty() || !std::filesystem::exists(backup)) return;
 
-    const auto current = LocalInstallRoot() / L"current";
+    const auto current = installRoot / L"current";
     std::error_code ec;
     std::filesystem::remove_all(current, ec);
     MoveDirectoryPreservingData(backup, current);
 }
 
-std::wstring FindInstalledExe() {
-    wchar_t localAppData[32768]{};
-    DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, 32768);
-    if (!len || len >= 32768) return L"";
-
-    std::filesystem::path root = std::filesystem::path(localAppData) / L"CubicalCompare";
+std::wstring FindInstalledExe(const std::filesystem::path& root) {
     std::filesystem::path expected = root / L"current" / L"CubicalCompare.exe";
     if (std::filesystem::exists(expected)) return expected.wstring();
 
@@ -445,63 +530,96 @@ void LaunchInstalledApp(const std::wstring& executable) {
 }
 
 DWORD WINAPI InstallWorker(void*) {
-    std::wstring root;
+    std::wstring workspace;
     std::filesystem::path quarantinedInstall;
+    std::filesystem::path primaryRoot;
+    std::filesystem::path installedRoot;
     gError.clear();
+
     try {
         MoveCurrentDirectoryOutsideInstall();
         SetProgress(1);
-        SetStatus(L"Preparing files...");
-        root = TempRoot();
-        const std::wstring payload = root + L"\\CubicalCompare-Velopack-Setup.exe";
+        SetStatus(L"Preparing smart installer...");
+        workspace = TempRoot();
+        const std::wstring payload = workspace + L"\\CubicalCompare-Velopack-Setup.exe";
         ExtractPayload(GetModulePath(), payload);
 
-        // A setup/update must not rely on the engine discovering and killing the
-        // foreground app correctly. Close Cubical Compare ourselves first so file
-        // replacement is deterministic on real user machines, not just clean CI.
         StopConflictingCubicalCompareProcesses();
 
-        // 4.2.1.20/21 could accidentally mirror the outer Portable.zip bundle into
-        // the installed current/ directory, producing current/current and removing
-        // sq.version. Velopack cannot reliably repair that topology by itself.
-        quarantinedInstall = QuarantineBrokenInstall(root);
+        primaryRoot = ReadPreferredInstallRoot();
+        quarantinedInstall = TryQuarantineBrokenInstall(primaryRoot, workspace);
         SetProgress(40);
 
         SetStatus(L"Installing Cubical Compare...");
-        SetProgress(45);
-        const DWORD exitCode = RunProcessAndWait(payload, L"--silent", root);
-        if (exitCode != 0) {
-            gError =
-                L"Installer engine failed (code " + std::to_wstring(exitCode) +
-                L"). Details: " + VelopackLogPath();
-            throw std::runtime_error("installer engine failed");
+        const std::wstring primaryArgs =
+            L"--silent --installto " + QuoteCommandArgument(primaryRoot);
+        const DWORD primaryExit = RunProcessAndWait(payload, primaryArgs, workspace, 45, 72);
+
+        if (primaryExit == 0) {
+            installedRoot = primaryRoot;
+            WritePreferredInstallRoot(installedRoot);
+        } else {
+            if (!quarantinedInstall.empty()) {
+                try {
+                    RestoreQuarantinedInstall(primaryRoot, quarantinedInstall);
+                    quarantinedInstall.clear();
+                } catch (...) {
+                    // The legacy root is no longer required for recovery installation.
+                }
+            }
+
+            // Unknown processes (Explorer extensions, scanners, shells, elevated
+            // helpers, etc.) may keep the old root locked. Do not make the user
+            // hunt the handle owner. Install a clean managed copy elsewhere and
+            // let Velopack update shortcuts/registry to that active location.
+            SetStatus(L"Existing install is locked. Switching to recovery location...");
+            SetProgress(75);
+            const auto recoveryRoot = NextRecoveryInstallRoot();
+            const std::wstring recoveryArgs =
+                L"--silent --installto " + QuoteCommandArgument(recoveryRoot);
+            const DWORD recoveryExit =
+                RunProcessAndWait(payload, recoveryArgs, workspace, 78, 94);
+
+            if (recoveryExit != 0) {
+                gError =
+                    L"Smart installer could not update the existing copy (code " +
+                    std::to_wstring(primaryExit) +
+                    L") or create a clean recovery copy (code " +
+                    std::to_wstring(recoveryExit) +
+                    L"). Details: " + VelopackLogPath();
+                throw std::runtime_error("smart installer exhausted both install paths");
+            }
+
+            installedRoot = recoveryRoot;
+            WritePreferredInstallRoot(installedRoot);
         }
 
         SetStatus(L"Starting Cubical Compare...");
         SetProgress(96);
-        const std::wstring installed = FindInstalledExe();
+        const std::wstring installed = FindInstalledExe(installedRoot);
         if (installed.empty())
             throw std::runtime_error("Installation finished, but CubicalCompare.exe was not found.");
 
         LaunchInstalledApp(installed);
         SetProgress(100);
+
         std::error_code ec;
-        std::filesystem::remove_all(root, ec);
+        std::filesystem::remove_all(workspace, ec);
         PostMessageW(gWindow, WM_INSTALL_DONE, 0, 0);
         return 0;
     } catch (const std::exception& ex) {
-        if (!quarantinedInstall.empty()) {
+        if (!quarantinedInstall.empty() && !primaryRoot.empty()) {
             try {
-                RestoreQuarantinedInstall(quarantinedInstall, root);
+                RestoreQuarantinedInstall(primaryRoot, quarantinedInstall);
             } catch (...) {
                 if (gError.empty())
                     gError = L"Installation failed and the previous install could not be restored automatically.";
             }
         }
 
-        if (!root.empty()) {
+        if (!workspace.empty()) {
             std::error_code ec;
-            std::filesystem::remove_all(root, ec);
+            std::filesystem::remove_all(workspace, ec);
         }
 
         if (gError.empty()) {
@@ -514,6 +632,7 @@ DWORD WINAPI InstallWorker(void*) {
                 gError = L"Installation failed.";
             }
         }
+
         PostMessageW(gWindow, WM_INSTALL_FAILED, 0, 0);
         return 1;
     }
