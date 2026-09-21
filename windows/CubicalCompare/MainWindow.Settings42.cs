@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.23 · ZIP recovery completion",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• damaged installs now repair from the verified GitHub portable ZIP first instead of depending on the installer fallback\n• keeps the canonical current/ payload and sq.version repair path from 4.2.1.22\n• Setup.exe remains available only when no compatible portable repair ZIP exists",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.22 · Update system recovery",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
