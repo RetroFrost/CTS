@@ -404,7 +404,7 @@ public sealed partial class MainWindow
             return;
 
         CubicalUpdateCandidate? githubZip = null;
-        Windows.Storage.StorageFile? localZip = null;
+        global::Windows.Storage.StorageFile? localZip = null;
 
         if (sourceChoice == ContentDialogResult.Primary)
         {
