@@ -525,7 +525,7 @@ public sealed partial class MainWindow
     }
 
     private static Version GetCurrentAppVersion()
-        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 25);
+        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 26);
 
     private static Version NormalizeVersion(Version version) => new(
         Math.Max(0, version.Major),
