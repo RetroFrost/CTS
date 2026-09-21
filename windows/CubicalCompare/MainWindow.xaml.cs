@@ -288,7 +288,7 @@ public sealed partial class MainWindow : Window
 
         // Playback owns its render loop. Programmatic slider updates from the
         // 60 FPS clock must not spawn another renderer task through ValueChanged.
-        if (_previewPlaying && _previewPlaybackSliderUpdate)
+        if (_previewPlaybackSliderUpdate)
             return;
 
         // A real user scrub while playback is active becomes a pause + direct render.
