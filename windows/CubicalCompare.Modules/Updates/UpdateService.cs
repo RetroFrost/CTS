@@ -64,12 +64,32 @@ public sealed class CubicalUpdateService
     {
         ArgumentNullException.ThrowIfNull(currentVersion);
         var current = Normalize(currentVersion);
+        var layout = InspectRuntimeLayout(AppContext.BaseDirectory, "CubicalCompare.exe");
 
         var release = await FindLatestReleaseAsync(current, cancellationToken);
         if (release is null)
             return null;
 
-        if (release.FullNupkg is not null && release.ReleaseIndex is not null)
+        // 4.2.1.20/21 could mirror the *outer* Velopack portable bundle into
+        // an installed "current" folder. That creates current/current nesting,
+        // removes/replaces the canonical manifest and makes every later update
+        // source look broken. Do not ask Velopack to operate on that damaged
+        // topology: use the visible Setup.exe once to repair the canonical install.
+        if (layout.NeedsRepair)
+        {
+            var repair = BestInstalledFallback(release);
+            if (repair is not null)
+                return BuildDirectCandidate(
+                    release,
+                    repair.Value,
+                    repair.Value.Delivery == CubicalUpdateDelivery.SetupExe
+                        ? "Recovery choice: the install layout/Velopack metadata is damaged by an earlier ZIP update. The visible installer will repair the canonical install before normal updates resume."
+                        : "Recovery choice: the install layout is damaged and no Setup.exe is available, so Cubical Compare will use the portable payload repair path.");
+        }
+
+        if (layout.CanUseVelopack &&
+            release.FullNupkg is not null &&
+            release.ReleaseIndex is not null)
         {
             try
             {
@@ -81,7 +101,9 @@ public sealed class CubicalUpdateService
                     !string.IsNullOrWhiteSpace(targetName) &&
                     release.MatchesPackage(targetName))
                 {
-                    var fallback = BestInstalledFallback(release);
+                    var fallback = layout.IsManagedInstall
+                        ? BestInstalledFallback(release)
+                        : BestPortableFallback(release);
                     var hasFastDelta = update.DeltasToTarget is { Length: > 0 };
                     var reason = hasFastDelta
                         ? $"Automatic choice: fast Velopack delta path is available ({update.DeltasToTarget.Length} delta package{(update.DeltasToTarget.Length == 1 ? "" : "s")})."
@@ -102,37 +124,56 @@ public sealed class CubicalUpdateService
                         fallback?.Asset.Sha256);
                 }
 
-                var installedFallback = BestInstalledFallback(release);
-                if (installedFallback is not null)
+                var resolvedFallback = layout.IsManagedInstall
+                    ? BestInstalledFallback(release)
+                    : BestPortableFallback(release);
+                if (resolvedFallback is not null)
                     return BuildDirectCandidate(
                         release,
-                        installedFallback.Value,
-                        "Automatic choice: package feed did not resolve cleanly, so Cubical Compare selected the safer installed-app fallback.");
+                        resolvedFallback.Value,
+                        "Automatic choice: package feed did not resolve cleanly, so Cubical Compare selected a topology-safe fallback.");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (NotInstalledException)
             {
-                // Expected for raw folders and non-Velopack portable copies.
-            }
-            catch
-            {
-                var recovery = BestInstalledFallback(release) ?? BestPortableFallback(release);
+                var recovery = layout.IsManagedInstall
+                    ? BestInstalledFallback(release)
+                    : BestPortableFallback(release);
                 if (recovery is not null)
                     return BuildDirectCandidate(
                         release,
                         recovery.Value,
-                        "Automatic choice: the package updater was temporarily unavailable, so Cubical Compare selected the safest available fallback.");
+                        layout.IsManagedInstall
+                            ? "Recovery choice: Velopack cannot read this installed copy, so the visible installer will repair its update metadata."
+                            : "Automatic choice: this portable copy is not registered with Velopack, so Cubical Compare selected the portable ZIP.");
+            }
+            catch
+            {
+                var recovery = layout.IsManagedInstall
+                    ? BestInstalledFallback(release)
+                    : BestPortableFallback(release);
+                if (recovery is not null)
+                    return BuildDirectCandidate(
+                        release,
+                        recovery.Value,
+                        "Automatic choice: the package updater was unavailable, so Cubical Compare selected the safest fallback for this install layout.");
             }
         }
 
-        var portable = BestPortableFallback(release) ?? BestInstalledFallback(release);
-        return portable is null
+        var direct = layout.IsManagedInstall
+            ? BestInstalledFallback(release) ?? BestPortableFallback(release)
+            : BestPortableFallback(release) ?? BestInstalledFallback(release);
+        return direct is null
             ? null
             : BuildDirectCandidate(
                 release,
-                portable.Value,
-                portable.Value.Delivery == CubicalUpdateDelivery.PortableZip
-                    ? "Automatic choice: this copy is not managed by Velopack, so the portable ZIP is the safest update path."
-                    : "Automatic choice: no portable ZIP is available, so Cubical Compare selected the visible installer.");
+                direct.Value,
+                direct.Value.Delivery == CubicalUpdateDelivery.PortableZip
+                    ? "Automatic choice: this copy uses the portable update path."
+                    : "Automatic choice: this installed copy uses the visible installer fallback.");
     }
 
     /// <summary>
@@ -145,7 +186,14 @@ public sealed class CubicalUpdateService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(currentVersion);
-        var release = await FindLatestReleaseAsync(Normalize(currentVersion), cancellationToken);
+
+        // Manual ZIP update doubles as a repair operation, so allow re-applying the
+        // current release. This is especially important for 4.2.1.20/21 installs
+        // whose old ZIP updater could create a nested current/current layout.
+        var release = await FindLatestReleaseAsync(
+            Normalize(currentVersion),
+            cancellationToken,
+            includeCurrentVersion: true);
         if (release is null)
             return null;
 
@@ -156,7 +204,9 @@ public sealed class CubicalUpdateService
         return BuildDirectCandidate(
             release,
             new DeliveryAsset(CubicalUpdateDelivery.PortableZip, portable),
-            "ZIP update selected: download the Windows portable archive directly from GitHub Releases, verify it, stage it safely, then restart Cubical Compare.");
+            release.Version == Normalize(currentVersion)
+                ? "ZIP repair selected: re-apply the current GitHub portable payload to the canonical app directory and repair an earlier broken ZIP update layout."
+                : "ZIP update selected: download the Windows portable archive directly from GitHub Releases, verify it, extract the real current payload, replace the canonical app directory, then restart Cubical Compare.");
     }
 
     public async Task<bool> ApplyUpdateAsync(
@@ -253,7 +303,8 @@ public sealed class CubicalUpdateService
         string applicationDirectory,
         string executableName,
         IProgress<CubicalUpdateProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool restartAfterUpdate = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(zipPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationDirectory);
@@ -293,7 +344,8 @@ public sealed class CubicalUpdateService
                 applicationDirectory,
                 executableName,
                 progress,
-                cancellationToken);
+                cancellationToken,
+                restartAfterUpdate);
         }
         catch
         {
@@ -416,7 +468,8 @@ public sealed class CubicalUpdateService
         string applicationDirectory,
         string executableName,
         IProgress<CubicalUpdateProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool restartAfterUpdate = true)
     {
         var stagePath = Path.Combine(updateRoot, "stage");
         var scriptPath = Path.Combine(updateRoot, "Apply-CubicalCompareUpdate.ps1");
@@ -442,27 +495,50 @@ public sealed class CubicalUpdateService
                 null));
             await ExtractPortableArchiveAsync(zipPath, stagePath, progress, cancellationToken);
 
+            // Velopack Portable.zip is a *bundle*:
+            //   Update.exe + .portable + stable stub + current/<real app payload>.
+            // The old updater selected the bundle root because it also contains a
+            // CubicalCompare.exe stub, then mirrored that entire bundle into the
+            // installed current folder. Always select current/<exe> first.
             var stagedRoot = ResolveApplicationRoot(stagePath, executableName);
             if (!File.Exists(Path.Combine(stagedRoot, executableName)))
                 throw new InvalidDataException($"The staged update does not contain {executableName}.");
 
+            // Recover from the exact nested topology produced by 4.2.1.20/21:
+            // ...\CubicalCompare\current\current\CubicalCompare.exe.
+            // Walk upward and target the highest canonical "current" whose parent
+            // owns Update.exe. Raw portable folders simply use their running dir.
+            var target = ResolveUpdateTargetDirectory(applicationDirectory);
+            var layout = InspectRuntimeLayout(applicationDirectory, executableName);
+            var targetParent = Directory.GetParent(target)?.FullName;
+            var targetIsManaged = targetParent is not null &&
+                                  File.Exists(Path.Combine(targetParent, "Update.exe")) &&
+                                  !File.Exists(Path.Combine(targetParent, ".portable"));
+
+            // Never destroy a real installed Velopack manifest again. The real
+            // Velopack portable payload contains current\sq.version; if a local ZIP
+            // does not, reject it for an installed target instead of breaking all
+            // future package updates.
+            if (targetIsManaged && !File.Exists(Path.Combine(stagedRoot, "sq.version")))
+                throw new InvalidDataException(
+                    "This ZIP does not contain the Velopack sq.version manifest required by the installed copy. Use a Cubical Compare Windows Portable.zip or the visible Setup.exe.");
+
             await File.WriteAllTextAsync(scriptPath, BuildPortableUpdateScript(), cancellationToken);
 
-            var target = Path.GetFullPath(applicationDirectory);
             var requiresElevation = !CanWriteDirectory(target);
             var process = Process.GetCurrentProcess();
             var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{Escape(scriptPath)}\" " +
-                       $"-ProcessId {process.Id} -StageDirectory \"{Escape(stagePath)}\" " +
+                       $"-ProcessId {process.Id} -SourceDirectory \"{Escape(stagedRoot)}\" " +
                        $"-TargetDirectory \"{Escape(target)}\" -ExecutableName \"{Escape(executableName)}\" " +
-                       $"-WorkRoot \"{Escape(updateRoot)}\"";
+                       $"-WorkRoot \"{Escape(updateRoot)}\"" +
+                       (restartAfterUpdate ? string.Empty : " -SkipRestart");
 
-            progress?.Report(new CubicalUpdateProgress(
-                requiresElevation
+            var phase = layout.NeedsRepair
+                ? "Update staged - repairing canonical install layout"
+                : requiresElevation
                     ? "Update staged - requesting permission to replace app files"
-                    : "Update staged - restarting Cubical Compare",
-                100,
-                zipBytes,
-                zipBytes));
+                    : "Update staged - replacing app files after exit";
+            progress?.Report(new CubicalUpdateProgress(phase, 100, zipBytes, zipBytes));
 
             var info = new ProcessStartInfo
             {
@@ -586,7 +662,8 @@ public sealed class CubicalUpdateService
 
     private static async Task<ReleaseSnapshot?> FindLatestReleaseAsync(
         Version currentVersion,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeCurrentVersion = false)
     {
         using var response = await Http.GetAsync(ReleasesApiUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -605,7 +682,11 @@ public sealed class CubicalUpdateService
                 ? tagNode.GetString() ?? string.Empty
                 : string.Empty;
             var version = ParseVersion(tag);
-            if (version is null || Normalize(version) <= currentVersion)
+            if (version is null)
+                continue;
+            var normalizedVersion = Normalize(version);
+            if (normalizedVersion < currentVersion ||
+                (!includeCurrentVersion && normalizedVersion == currentVersion))
                 continue;
 
             var releaseUri = release.TryGetProperty("html_url", out var htmlNode) &&
@@ -828,6 +909,12 @@ public sealed class CubicalUpdateService
 
     private static string ResolveApplicationRoot(string stagePath, string executableName)
     {
+        // Velopack Portable.zip contains a stable launcher at the bundle root and
+        // the real application under current/. Always prefer the payload directory.
+        var velopackCurrent = Path.Combine(stagePath, "current");
+        if (File.Exists(Path.Combine(velopackCurrent, executableName)))
+            return velopackCurrent;
+
         if (File.Exists(Path.Combine(stagePath, executableName)))
             return stagePath;
 
@@ -835,65 +922,133 @@ public sealed class CubicalUpdateService
             .EnumerateFiles(stagePath, executableName, SearchOption.AllDirectories)
             .Select(Path.GetDirectoryName)
             .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => Path.GetFullPath(path!))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var currentMatches = matches
+            .Where(path => Path.GetFileName(path).Equals("current", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (currentMatches.Length == 1)
+            return currentMatches[0];
+
         return matches.Length == 1
-            ? matches[0]!
-            : throw new InvalidDataException("Could not identify exactly one Cubical Compare application root in the portable update.");
+            ? matches[0]
+            : throw new InvalidDataException(
+                "Could not identify exactly one Cubical Compare application payload in the portable update.");
+    }
+
+    private static string ResolveUpdateTargetDirectory(string applicationDirectory)
+    {
+        var running = Path.GetFullPath(applicationDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var cursor = new DirectoryInfo(running);
+        string? canonicalCurrent = null;
+
+        // Keep walking upward so a broken current/current install resolves to the
+        // outer canonical current folder rather than preserving the nesting.
+        for (var depth = 0; depth < 8 && cursor is not null; depth++, cursor = cursor.Parent)
+        {
+            if (!cursor.Name.Equals("current", StringComparison.OrdinalIgnoreCase) ||
+                cursor.Parent is null)
+                continue;
+
+            if (File.Exists(Path.Combine(cursor.Parent.FullName, "Update.exe")))
+                canonicalCurrent = cursor.FullName;
+        }
+
+        return canonicalCurrent ?? running;
+    }
+
+    private static RuntimeUpdateLayout InspectRuntimeLayout(
+        string applicationDirectory,
+        string executableName)
+    {
+        var running = Path.GetFullPath(applicationDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var canonical = ResolveUpdateTargetDirectory(running);
+        var root = Directory.GetParent(canonical)?.FullName;
+        var hasUpdateExe = root is not null && File.Exists(Path.Combine(root, "Update.exe"));
+        var portableMarker = root is not null && File.Exists(Path.Combine(root, ".portable"));
+        var hasManifest = File.Exists(Path.Combine(canonical, "sq.version"));
+        var nested = !Path.GetFullPath(running).Equals(
+            Path.GetFullPath(canonical),
+            StringComparison.OrdinalIgnoreCase);
+        var managed = hasUpdateExe && !portableMarker;
+        var portable = hasUpdateExe && portableMarker;
+        var needsRepair = nested || (managed && !hasManifest);
+
+        return new RuntimeUpdateLayout(
+            running,
+            canonical,
+            managed,
+            portable,
+            hasManifest,
+            needsRepair,
+            (managed || portable) && hasManifest && !needsRepair);
     }
 
     private static string BuildPortableUpdateScript() => """
 param(
     [Parameter(Mandatory=$true)][int]$ProcessId,
-    [Parameter(Mandatory=$true)][string]$StageDirectory,
+    [Parameter(Mandatory=$true)][string]$SourceDirectory,
     [Parameter(Mandatory=$true)][string]$TargetDirectory,
     [Parameter(Mandatory=$true)][string]$ExecutableName,
-    [Parameter(Mandatory=$true)][string]$WorkRoot
+    [Parameter(Mandatory=$true)][string]$WorkRoot,
+    [switch]$SkipRestart
 )
 $ErrorActionPreference = 'Stop'
 $backup = Join-Path $WorkRoot 'backup'
+$completedMarker = Join-Path $WorkRoot 'completed.txt'
 
 function Invoke-RobocopyChecked([string]$Source, [string]$Destination, [switch]$Mirror) {
     New-Item -ItemType Directory -Path $Destination -Force | Out-Null
     $arguments = @($Source, $Destination)
     if ($Mirror) { $arguments += '/MIR' } else { $arguments += '/E' }
-    $arguments += @('/R:3','/W:1','/COPY:DAT','/DCOPY:DAT','/NFL','/NDL','/NJH','/NJS','/NP')
+    $arguments += @('/R:5','/W:1','/COPY:DAT','/DCOPY:DAT','/NFL','/NDL','/NJH','/NJS','/NP')
     & robocopy.exe @arguments | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Robocopy failed with exit code $LASTEXITCODE." }
 }
 
-function Resolve-AppRoot([string]$Root, [string]$ExeName) {
-    $direct = Join-Path $Root $ExeName
-    if (Test-Path $direct) { return $Root }
-    $matches = @(Get-ChildItem -LiteralPath $Root -Filter $ExeName -File -Recurse -ErrorAction Stop)
-    if ($matches.Count -ne 1) { throw 'Could not identify exactly one application root in the staged update.' }
-    return $matches[0].DirectoryName
-}
-
 try {
     Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
-    $source = Resolve-AppRoot $StageDirectory $ExecutableName
+
+    $sourceExe = Join-Path $SourceDirectory $ExecutableName
+    if (-not (Test-Path $sourceExe)) { throw "Staged executable is missing: $sourceExe" }
 
     if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
     if (Test-Path $TargetDirectory) {
         Invoke-RobocopyChecked $TargetDirectory $backup
     }
 
-    Invoke-RobocopyChecked $source $TargetDirectory -Mirror
+    # The source is already the *real* app payload (Portable.zip/current), not
+    # the portable bundle root. Mirroring it removes any old accidental
+    # current/current nesting and replaces the actual running version.
+    Invoke-RobocopyChecked $SourceDirectory $TargetDirectory -Mirror
 
     $exe = Join-Path $TargetDirectory $ExecutableName
     if (-not (Test-Path $exe)) { throw "Updated executable is missing: $exe" }
-    Start-Process -FilePath $exe -WorkingDirectory $TargetDirectory
+
+    if (Test-Path (Join-Path $SourceDirectory 'sq.version')) {
+        $manifest = Join-Path $TargetDirectory 'sq.version'
+        if (-not (Test-Path $manifest)) { throw "Updated Velopack manifest is missing: $manifest" }
+    }
+
+    'ok' | Set-Content -Path $completedMarker -Encoding ASCII
+    if (-not $SkipRestart) {
+        Start-Process -FilePath $exe -WorkingDirectory $TargetDirectory
+    }
 }
 catch {
     $originalError = $_ | Out-String
     try {
         if (Test-Path $backup) {
             Invoke-RobocopyChecked $backup $TargetDirectory -Mirror
-            $oldExe = Join-Path $TargetDirectory $ExecutableName
-            if (Test-Path $oldExe) {
-                Start-Process -FilePath $oldExe -WorkingDirectory $TargetDirectory
+            if (-not $SkipRestart) {
+                $oldExe = Join-Path $TargetDirectory $ExecutableName
+                if (Test-Path $oldExe) {
+                    Start-Process -FilePath $oldExe -WorkingDirectory $TargetDirectory
+                }
             }
         }
     }
@@ -903,14 +1058,25 @@ catch {
 
     $errorPath = Join-Path $env:TEMP 'CubicalCompare-update-error.txt'
     $originalError | Set-Content -Path $errorPath -Encoding UTF8
-    Start-Process notepad.exe $errorPath
+    if (-not $SkipRestart) {
+        Start-Process notepad.exe $errorPath
+    }
     throw
 }
 finally {
-    Remove-Item -LiteralPath $StageDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $SourceDirectory -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
 }
 """;
+
+    private sealed record RuntimeUpdateLayout(
+        string RunningDirectory,
+        string CanonicalTargetDirectory,
+        bool IsManagedInstall,
+        bool IsPortableInstall,
+        bool HasManifest,
+        bool NeedsRepair,
+        bool CanUseVelopack);
 
     private static bool CanWriteDirectory(string directory)
     {
