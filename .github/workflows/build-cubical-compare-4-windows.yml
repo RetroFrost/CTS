@@ -49,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.24"
+          $version = "4.2.1.25"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.24 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.25 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.25"
+          $velopackVersion = "4.2.26"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -124,7 +124,12 @@ jobs:
           if ($updateService -notmatch 'var repair = BestPortableFallback\(release\)') { throw 'Damaged installs must prefer verified ZIP recovery before Setup.exe.' }
 
           $nativeSetup = Get-Content 'windows/CubicalCompare.InstallerBootstrap/NativeSetup.cpp' -Raw
-          if ($nativeSetup -notmatch 'StopRunningCubicalCompare') { throw 'Setup does not close a running Cubical Compare before replacement.' }
+          if ($nativeSetup -notmatch 'MoveCurrentDirectoryOutsideInstall') { throw 'Setup does not release an inherited install-folder current-directory lock.' }
+          if ($nativeSetup -notmatch 'StopConflictingCubicalCompareProcesses') { throw 'Setup does not close the full Cubical Compare process tree before replacement.' }
+          if ($nativeSetup -notmatch 'QueryFullProcessImageNameW') { throw 'Setup cannot identify install-resident helper processes.' }
+          if ($nativeSetup -notmatch 'CubicalCompare.Setup.Singleton.v1') { throw 'Setup does not prevent concurrent installer races.' }
+          if ($nativeSetup -notmatch 'WM_INSTALL_PROGRESS') { throw 'Setup has no determinate progress message pipeline.' }
+          if ($nativeSetup -notmatch 'PBM_SETPOS') { throw 'Setup progress bar does not visibly advance.' }
           if ($nativeSetup -notmatch 'IsLegacyBrokenInstall') { throw 'Setup cannot detect the malformed legacy install tree.' }
           if ($nativeSetup -notmatch 'QuarantineBrokenInstall') { throw 'Setup cannot quarantine a malformed current/ tree before Velopack repair.' }
           if ($nativeSetup -notmatch 'RestoreQuarantinedInstall') { throw 'Setup has no rollback for a failed repair attempt.' }
@@ -407,6 +412,13 @@ jobs:
           'stale outer exe' | Set-Content (Join-Path $brokenCurrent 'CubicalCompare.exe') -Encoding ASCII
           'stale nested exe' | Set-Content (Join-Path $brokenNested 'CubicalCompare.exe') -Encoding ASCII
 
+          # A second helper executable inside the install tree keeps that folder open.
+          # Setup must identify/stop install-resident helpers, not only CubicalCompare.exe.
+          $helperExe = Join-Path $brokenCurrent 'CubicalCompareWorker.exe'
+          Copy-Item (Join-Path $env:SystemRoot 'System32\cmd.exe') $helperExe -Force
+          $helper = Start-Process -FilePath $helperExe -ArgumentList '/d /c ping -n 300 127.0.0.1 >nul' -WorkingDirectory $brokenCurrent -PassThru
+          $helperPid = $helper.Id
+
           $portableExe = (Resolve-Path 'artifacts/publish/CubicalCompare.exe').Path
           $alreadyRunning = Start-Process -FilePath $portableExe -ArgumentList '--ci-shell-smoke' -WorkingDirectory (Split-Path $portableExe) -PassThru
           Start-Sleep -Seconds 4
@@ -415,8 +427,11 @@ jobs:
           $oldPid = $alreadyRunning.Id
           Write-Host "Pre-existing Cubical Compare process running as PID $oldPid."
 
-          # Run exactly like a user double-clicking the public Setup.exe.
-          $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -PassThru
+          # Reproduce the key real-world lock: when Setup is launched by the app it
+          # can inherit current/ as its process working directory. Windows locks a
+          # process current directory against move/rename, so Setup must relocate
+          # itself to %TEMP% immediately before Velopack tries to rename the root.
+          $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -WorkingDirectory $brokenCurrent -PassThru
 
           $visible = $false
           $launchTimer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -444,6 +459,9 @@ jobs:
 
           if (Get-Process -Id $oldPid -ErrorAction SilentlyContinue) {
             throw 'Setup did not close the Cubical Compare process that was already running.'
+          }
+          if (Get-Process -Id $helperPid -ErrorAction SilentlyContinue) {
+            throw 'Setup did not close the background helper that was locking the install tree.'
           }
 
           $installedExe = Join-Path $installRoot 'current\CubicalCompare.exe'
@@ -507,6 +525,11 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - 4.2.1.25 fixes the folder-in-use/Access denied installer failure: the native Setup immediately moves its own process current directory to %TEMP%, because Windows locks a process current directory against rename/delete.
+          - Setup now closes the entire Cubical Compare process tree, install-resident helpers and stale embedded setup engines before Velopack replaces the install.
+          - A named setup mutex prevents multiple Cubical Compare installers from racing the same install directory.
+          - The installer progress bar is now determinate and visibly advances through payload extraction, process shutdown/repair, Velopack install and relaunch.
+          - CI launches Setup.exe with current/ as its inherited working directory and a separate helper running from that folder, then requires Setup to release both locks and install successfully.
           - 4.2.1.24 fixes the public Setup.exe failure shown on real machines: it closes a running Cubical Compare before file replacement and repairs the malformed current/current install tree left by older ZIP updates before invoking Velopack.
           - Installer repair is rollback-safe: the old current/ tree is quarantined first and restored automatically if the embedded engine still fails.
           - Setup failures now report the actual engine exit code and the Velopack log location instead of only showing a generic failure.

@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.25 · Installer lock + progress fix",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• Setup immediately moves its own current working directory out of the Cubical Compare install tree so it cannot lock the folder Velopack needs to rename\n• closes the full Cubical Compare process tree, install-resident helpers, and stale setup engines before replacement\n• prevents multiple Cubical Compare setup instances from racing each other\n• installer progress is now determinate and visibly advances through extraction, shutdown/repair, installation, and relaunch\n• CI launches Setup.exe with the install folder as its working directory and a background helper running from that folder, then requires setup to release the locks and finish successfully",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.24 · Installer repair",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
