@@ -431,8 +431,8 @@ public sealed class RendererEngine : IDisposable
                 {
                     packId = cardSelection.String("pack", packId);
                     if (cardSelection.TryGetProperty("startFrame", out var startElement) &&
-                        startElement.TryGetInt32(out var startFrame))
-                        explicitStart = startFrame;
+                        startElement.TryGetInt32(out var authoredStartFrame))
+                        explicitStart = authoredStartFrame;
                     sequenceOffset = cardSelection.Int("sequenceOffset", 0);
                 }
             }
