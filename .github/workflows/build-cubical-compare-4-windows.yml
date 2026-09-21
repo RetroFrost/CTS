@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.20"
+          $version = "4.2.1.21"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.20 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.21 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.21"
+          $velopackVersion = "4.2.22"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -118,6 +118,20 @@ jobs:
           $finalReleaseUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
           if ($finalReleaseUi -notmatch 'Get latest from GitHub') { throw 'Update from ZIP does not expose GitHub fetching.' }
           if ($finalReleaseUi -notmatch 'Choose local ZIP') { throw 'Update from ZIP lost local archive support.' }
+
+          $rendererEngine = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererEngine.cs' -Raw
+          if ($rendererEngine -notmatch 'smart-card-text-outside-artwork-clip-v1') { throw 'SmartCard text-outside-artwork-clip runtime support is missing.' }
+          if ($rendererEngine -notmatch 'entryMotion\.Equals\("top-to-final"') { throw 'SmartBadge top-to-final runtime handling is missing.' }
+          if ($rendererEngine -notmatch 'entryAnchor\.Equals\("final-x"') { throw 'SmartBadge final-X anchor runtime handling is missing.' }
+          if ($rendererEngine -notmatch 'SequenceOpaqueBounds') { throw 'SmartBadge final-X drift correction is missing.' }
+          if ($rendererEngine -notmatch 'settledHold') { throw 'SmartBadge settled-hold runtime handling is missing.' }
+
+          $smartSequence = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/SmartBadgeSequence.cs' -Raw
+          if ($smartSequence -notmatch 'FinalFrame\(\)') { throw 'SmartBadge final-frame accessor is missing.' }
+
+          if ($rendererBundle -notmatch 'smart-badge-top-entry-final-x-v1') { throw 'Renderer capability list is missing top-entry/final-X support.' }
+          if ($rendererBundle -notmatch 'smart-badge-settled-hold-v1') { throw 'Renderer capability list is missing settled-hold support.' }
+          if ($rendererBundle -notmatch 'smart-card-text-outside-artwork-clip-v1') { throw 'Renderer capability list is missing SmartCard text clip support.' }
 
           $mainWindow = Get-Content 'windows/CubicalCompare/MainWindow.xaml.cs' -Raw
           if ($mainWindow -match 'ProjectFrameSlider\.Value = 0;\s*await RenderCurrentFrameAsync\(\);') {
@@ -408,6 +422,10 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Renderer runtime compatibility: SmartCard text can stay outside artwork reveal clips, so title/description fields no longer disappear behind image masks.
+          - SmartBadge v2 now supports top-to-final entry semantics with final-X anchoring; later badges are runtime-corrected against horizontal drift while preserving their authored vertical motion.
+          - SmartBadge settledHold is recognized explicitly, and per-card placement/motion overrides can reuse one pack without duplicating assets.
+          - Renderer capability validation now recognizes the new SmartCard/SmartBadge 4.2.1.21 feature contracts instead of rejecting valid packages.
           - Preview Play no longer floods the renderer with overlapping 60 FPS jobs; playback coalesces to one latest-frame render loop and skips stale frames when rendering is slower than real-time.
           - Update from ZIP now lets you fetch the newest Windows portable ZIP directly from GitHub Releases or choose a local ZIP, using the same validation/staging/restart path.
           - Renderer v3 loading no longer forces frame 0 when the scene starts later; it opens at the first visible authored checkpoint/object frame instead.
