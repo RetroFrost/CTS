@@ -6,6 +6,7 @@ namespace CubicalCompare.Core.Renderer;
 
 public readonly record struct PreviewCardGeometry(
     double SlotX,
+    // Full renderer-authored visible artwork region / mask.
     double ArtworkX,
     double ArtworkY,
     double ArtworkWidth,
@@ -24,7 +25,14 @@ public readonly record struct PreviewCardGeometry(
     double BadgeX,
     double BadgeY,
     double BadgeWidth,
-    double BadgeHeight);
+    double BadgeHeight,
+    // Optional base layout rectangle used for scale=1 artwork composition.
+    // SmartCards can intentionally make this much smaller than Artwork* while
+    // still allowing user transforms to expand through the full artwork mask.
+    double ImageBaseX = double.NaN,
+    double ImageBaseY = double.NaN,
+    double ImageBaseWidth = double.NaN,
+    double ImageBaseHeight = double.NaN);
 
 public readonly record struct PreviewTextRegion(
     int CardIndex,
@@ -532,6 +540,7 @@ public sealed class LegacyRendererAdapter : IDisposable
         var scaleY = drawHeight / Math.Max(1, sequence.Height);
         var artwork = sequence.Artwork?.DestAt(selected.TemplateFrame);
         if (artwork is null) return false;
+        var artworkClip = sequence.Artwork?.ClipAt(selected.TemplateFrame) ?? artwork;
 
         var title = SmartFieldBounds(sequence, selected.TemplateFrame, "title");
         var description = SmartFieldBounds(sequence, selected.TemplateFrame, "description", "desc");
@@ -539,10 +548,10 @@ public sealed class LegacyRendererAdapter : IDisposable
 
         geometry = new PreviewCardGeometry(
             SlotX: cardX,
-            ArtworkX: cardX + drawX + artwork.X * scaleX,
-            ArtworkY: drawY + artwork.Y * scaleY,
-            ArtworkWidth: artwork.Width * scaleX,
-            ArtworkHeight: artwork.Height * scaleY,
+            ArtworkX: cardX + drawX + artworkClip.X * scaleX,
+            ArtworkY: drawY + artworkClip.Y * scaleY,
+            ArtworkWidth: artworkClip.Width * scaleX,
+            ArtworkHeight: artworkClip.Height * scaleY,
             ArtworkCover: true,
             ImageCoordinateScaleX: scaleX,
             ImageCoordinateScaleY: scaleY,
@@ -557,7 +566,11 @@ public sealed class LegacyRendererAdapter : IDisposable
             BadgeX: fallback.BadgeX,
             BadgeY: fallback.BadgeY,
             BadgeWidth: fallback.BadgeWidth,
-            BadgeHeight: fallback.BadgeHeight);
+            BadgeHeight: fallback.BadgeHeight,
+            ImageBaseX: cardX + drawX + artwork.X * scaleX,
+            ImageBaseY: drawY + artwork.Y * scaleY,
+            ImageBaseWidth: artwork.Width * scaleX,
+            ImageBaseHeight: artwork.Height * scaleY);
         return true;
     }
 
@@ -992,6 +1005,7 @@ public sealed class LegacyRendererAdapter : IDisposable
                 var artwork = sequence.Artwork.DestAt(selected.TemplateFrame);
                 if (artwork is null)
                     continue;
+                var artworkClip = sequence.Artwork.ClipAt(selected.TemplateFrame) ?? artwork;
 
                 var pitch = JsonDouble(resource, "slotPitch", 480);
                 var scroll = SceneNumber(props, "scroll", 0);
@@ -1016,10 +1030,10 @@ public sealed class LegacyRendererAdapter : IDisposable
 
                 geometry = new PreviewCardGeometry(
                     SlotX: cardX,
-                    ArtworkX: originX + artwork.X * scaleX,
-                    ArtworkY: originY + artwork.Y * scaleY,
-                    ArtworkWidth: artwork.Width * scaleX,
-                    ArtworkHeight: artwork.Height * scaleY,
+                    ArtworkX: originX + artworkClip.X * scaleX,
+                    ArtworkY: originY + artworkClip.Y * scaleY,
+                    ArtworkWidth: artworkClip.Width * scaleX,
+                    ArtworkHeight: artworkClip.Height * scaleY,
                     ArtworkCover: true,
                     ImageCoordinateScaleX: scaleX,
                     ImageCoordinateScaleY: scaleY,
@@ -1034,7 +1048,11 @@ public sealed class LegacyRendererAdapter : IDisposable
                     BadgeX: fallback.BadgeX,
                     BadgeY: fallback.BadgeY,
                     BadgeWidth: fallback.BadgeWidth,
-                    BadgeHeight: fallback.BadgeHeight);
+                    BadgeHeight: fallback.BadgeHeight,
+                    ImageBaseX: originX + artwork.X * scaleX,
+                    ImageBaseY: originY + artwork.Y * scaleY,
+                    ImageBaseWidth: artwork.Width * scaleX,
+                    ImageBaseHeight: artwork.Height * scaleY);
                 return true;
             }
 
