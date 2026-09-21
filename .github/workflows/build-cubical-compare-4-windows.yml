@@ -511,116 +511,85 @@ jobs:
           # --installto, then make that clean root the active copy.
           $lockFile = Join-Path $installRoot 'current\smart-installer-external.lock'
           'external lock sentinel' | Set-Content $lockFile -Encoding ASCII
-          $lockerScript = Join-Path $env:RUNNER_TEMP 'cubical-compare-external-lock.ps1'
-          $lockerReady = Join-Path $env:RUNNER_TEMP 'cubical-compare-external-lock.ready'
-          Remove-Item $lockerReady -Force -ErrorAction SilentlyContinue
-          @(
-            'param([string]$Path, [string]$Ready)',
-            '$stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)',
-            'try {',
-            "  'ready' | Set-Content $Ready -Encoding ASCII",
-            '  Start-Sleep -Seconds 180',
-            '}',
-            'finally {',
-            '  $stream.Dispose()',
-            '}'
-          ) | Set-Content $lockerScript -Encoding UTF8
+          # Keep the exclusive handle in the GitHub runner's own PowerShell
+          # process. Setup cannot terminate its parent, so this is a deterministic
+          # unknown/external lock that remains alive for the whole install attempt.
+          $externalLock = [System.IO.File]::Open(
+            $lockFile,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None)
+          if ($null -eq $externalLock -or -not $externalLock.CanRead) {
+            throw 'Could not establish the external FileShare.None lock for Smart Setup smoke testing.'
+          }
+          Write-Host "External exclusive file handle established by runner PID $PID."
 
-          # ProcessStartInfo.ArgumentList preserves paths containing spaces exactly.
-          # Start-Process -ArgumentList flattens to one command-line string and caused
-          # the previous smoke test to never establish its lock on hosted runners.
-          $lockerInfo = [System.Diagnostics.ProcessStartInfo]::new()
-          $lockerInfo.FileName = (Get-Command pwsh.exe).Source
-          $lockerInfo.UseShellExecute = $false
-          foreach ($arg in @(
-            '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-            '-File', $lockerScript, $lockFile, $lockerReady
-          )) {
-            [void]$lockerInfo.ArgumentList.Add([string]$arg)
-          }
-          $locker = [System.Diagnostics.Process]::Start($lockerInfo)
-          if ($null -eq $locker) { throw 'Could not start the unrelated external lock-holder process.' }
-
-          $readyDeadline = [DateTime]::UtcNow.AddSeconds(10)
-          while (-not (Test-Path $lockerReady) -and [DateTime]::UtcNow -lt $readyDeadline) {
-            Start-Sleep -Milliseconds 100
-          }
-          if (-not (Test-Path $lockerReady)) {
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw 'Could not establish the unrelated external folder lock for Smart Setup smoke testing.'
-          }
-          if ($locker.HasExited) { throw 'External lock-holder exited before Smart Setup test.' }
-          Write-Host "Unrelated external lock holder running as PID $($locker.Id)."
-
-          $secondSetup = Start-Process -FilePath "$env:CC_SETUP" -WorkingDirectory (Join-Path $installRoot 'current') -PassThru
-          if (-not $secondSetup.WaitForExit(120000)) {
-            Stop-Process -Id $secondSetup.Id -Force -ErrorAction SilentlyContinue
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw 'Smart Setup did not finish its persistent-lock recovery within 120 seconds.'
-          }
-          if ($secondSetup.ExitCode -ne 0) {
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw "Smart Setup persistent-lock recovery failed with exit code $($secondSetup.ExitCode)."
-          }
-
-          $locker.Refresh()
-          if ($locker.HasExited) {
-            throw 'Smart Setup killed an unrelated external lock-holder instead of using recovery installation.'
-          }
-
-          $pointer = Join-Path $env:LOCALAPPDATA 'RetroFrost\CubicalCompare\Installer\active-root.txt'
-          if (-not (Test-Path $pointer)) {
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw 'Smart Setup did not persist its active install root.'
-          }
-          $activeRoot = (Get-Content $pointer -Raw).Trim()
-          if ([string]::IsNullOrWhiteSpace($activeRoot)) {
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw 'Smart Setup active-root pointer is empty.'
-          }
-
-          $canonicalFull = [System.IO.Path]::GetFullPath($installRoot).TrimEnd('\')
-          $activeFull = [System.IO.Path]::GetFullPath($activeRoot).TrimEnd('\')
-          if ([string]::Equals($canonicalFull, $activeFull, [System.StringComparison]::OrdinalIgnoreCase)) {
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw 'Smart Setup claimed success but did not fail over from the still-locked canonical install root.'
-          }
-
-          $recoveryExe = Join-Path $activeRoot 'current\CubicalCompare.exe'
-          if (-not (Test-Path $recoveryExe)) {
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw "Smart Setup recovery root does not contain CubicalCompare.exe: $activeRoot"
-          }
-          if (-not (Test-Path (Join-Path $activeRoot 'current\sq.version'))) {
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw 'Smart Setup recovery root is missing Velopack sq.version metadata.'
-          }
-
-          $shortcutPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Cubical Compare.lnk'
-          if (Test-Path $shortcutPath) {
-            $shell = New-Object -ComObject WScript.Shell
-            $shortcut = $shell.CreateShortcut($shortcutPath)
-            $shortcutTarget = [System.IO.Path]::GetFullPath($shortcut.TargetPath)
-            if (-not $shortcutTarget.StartsWith($activeFull, [System.StringComparison]::OrdinalIgnoreCase)) {
-              Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-              throw "Desktop shortcut did not follow Smart Setup recovery root. Target: $shortcutTarget"
+          try {
+            $secondSetup = Start-Process -FilePath "$env:CC_SETUP" -WorkingDirectory (Join-Path $installRoot 'current') -PassThru
+            if (-not $secondSetup.WaitForExit(120000)) {
+              Stop-Process -Id $secondSetup.Id -Force -ErrorAction SilentlyContinue
+              throw 'Smart Setup did not finish its persistent-lock recovery within 120 seconds.'
             }
-          }
+            if ($secondSetup.ExitCode -ne 0) {
+              throw "Smart Setup persistent-lock recovery failed with exit code $($secondSetup.ExitCode)."
+            }
 
-          $recoveryProcess = $null
-          for ($i = 0; $i -lt 15; $i++) {
-            $recoveryProcess = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($recoveryProcess) { break }
-            Start-Sleep -Seconds 1
-          }
-          if (-not $recoveryProcess) {
-            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
-            throw 'Smart Setup recovery completed but did not launch Cubical Compare.'
-          }
+            # The parent process still owns the stream here. If Setup somehow
+            # depended on releasing/killing the external locker, it could not reach
+            # this point.
+            if (-not $externalLock.CanRead) {
+              throw 'Smart Setup invalidated the external lock instead of using recovery installation.'
+            }
 
-          Write-Host "Smart installer fallback passed: locked root '$installRoot' -> active recovery root '$activeRoot'."
-          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
+            $pointer = Join-Path $env:LOCALAPPDATA 'RetroFrost\CubicalCompare\Installer\active-root.txt'
+            if (-not (Test-Path $pointer)) {
+              throw 'Smart Setup did not persist its active install root.'
+            }
+            $activeRoot = (Get-Content $pointer -Raw).Trim()
+            if ([string]::IsNullOrWhiteSpace($activeRoot)) {
+              throw 'Smart Setup active-root pointer is empty.'
+            }
+
+            $canonicalFull = [System.IO.Path]::GetFullPath($installRoot).TrimEnd('\')
+            $activeFull = [System.IO.Path]::GetFullPath($activeRoot).TrimEnd('\')
+            if ([string]::Equals($canonicalFull, $activeFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+              throw 'Smart Setup claimed success but did not fail over from the still-locked canonical install root.'
+            }
+
+            $recoveryExe = Join-Path $activeRoot 'current\CubicalCompare.exe'
+            if (-not (Test-Path $recoveryExe)) {
+              throw "Smart Setup recovery root does not contain CubicalCompare.exe: $activeRoot"
+            }
+            if (-not (Test-Path (Join-Path $activeRoot 'current\sq.version'))) {
+              throw 'Smart Setup recovery root is missing Velopack sq.version metadata.'
+            }
+
+            $shortcutPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Cubical Compare.lnk'
+            if (Test-Path $shortcutPath) {
+              $shell = New-Object -ComObject WScript.Shell
+              $shortcut = $shell.CreateShortcut($shortcutPath)
+              $shortcutTarget = [System.IO.Path]::GetFullPath($shortcut.TargetPath)
+              if (-not $shortcutTarget.StartsWith($activeFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Desktop shortcut did not follow Smart Setup recovery root. Target: $shortcutTarget"
+              }
+            }
+
+            $recoveryProcess = $null
+            for ($i = 0; $i -lt 15; $i++) {
+              $recoveryProcess = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($recoveryProcess) { break }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $recoveryProcess) {
+              throw 'Smart Setup recovery completed but did not launch Cubical Compare.'
+            }
+
+            Write-Host "Smart installer fallback passed: locked root '$installRoot' -> active recovery root '$activeRoot'."
+            Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          finally {
+            $externalLock.Dispose()
+          }
 
       - name: Write SHA256 manifest
         shell: pwsh
