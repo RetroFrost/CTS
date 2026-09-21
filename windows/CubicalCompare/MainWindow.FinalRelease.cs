@@ -388,18 +388,66 @@ public sealed partial class MainWindow
 
     private async void UpdateFromZip_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new FileOpenPicker
+        var sourceDialog = new ContentDialog
         {
-            SuggestedStartLocation = PickerLocationId.Downloads,
-            ViewMode = PickerViewMode.List,
+            XamlRoot = RootNavigation.XamlRoot,
+            Title = "Update from ZIP",
+            Content = "Get the newest Windows portable ZIP directly from GitHub Releases, or choose a ZIP already on this PC.",
+            PrimaryButtonText = "Get latest from GitHub",
+            SecondaryButtonText = "Choose local ZIP",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
         };
-        picker.FileTypeFilter.Add(".zip");
 
-        var hwnd = WindowNative.GetWindowHandle(this);
-        InitializeWithWindow.Initialize(picker, hwnd);
-        var file = await picker.PickSingleFileAsync();
-        if (file is null)
+        var sourceChoice = await sourceDialog.ShowAsync();
+        if (sourceChoice == ContentDialogResult.None)
             return;
+
+        CubicalUpdateCandidate? githubZip = null;
+        global::Windows.Storage.StorageFile? localZip = null;
+
+        if (sourceChoice == ContentDialogResult.Primary)
+        {
+            try
+            {
+                if (_updateStatusText is not null)
+                    _updateStatusText.Text = "Checking GitHub Releases for the newest Windows ZIP…";
+
+                githubZip = await _updateService.CheckForPortableZipUpdateAsync(GetCurrentAppVersion());
+                if (githubZip is null)
+                {
+                    if (_updateStatusText is not null)
+                        _updateStatusText.Text = "No newer GitHub Windows ZIP is available.";
+                    await ShowErrorAsync(
+                        "No newer ZIP update",
+                        "GitHub Releases does not currently contain a newer Cubical Compare Windows portable ZIP.");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                App.WriteLog("Could not resolve GitHub ZIP update", ex);
+                if (_updateStatusText is not null)
+                    _updateStatusText.Text = $"Could not fetch GitHub ZIP update: {ex.Message}";
+                await ShowErrorAsync("Could not fetch GitHub ZIP update", ex.Message);
+                return;
+            }
+        }
+        else
+        {
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.Downloads,
+                ViewMode = PickerViewMode.List,
+            };
+            picker.FileTypeFilter.Add(".zip");
+
+            var hwnd = WindowNative.GetWindowHandle(this);
+            InitializeWithWindow.Initialize(picker, hwnd);
+            localZip = await picker.PickSingleFileAsync();
+            if (localZip is null)
+                return;
+        }
 
         if (_updateFromZipButton is not null)
             _updateFromZipButton.IsEnabled = false;
@@ -408,10 +456,16 @@ public sealed partial class MainWindow
         if (_checkUpdatesButton is not null)
             _checkUpdatesButton.IsEnabled = false;
 
+        var sourceLabel = githubZip is not null
+            ? $"GitHub · {githubZip.AssetName}"
+            : $"Local · {localZip!.Name}";
+
         try
         {
-            _updateStatusText!.Text = $"Preparing local update · {file.Name}";
-            ShowActivityWatcher("Windows ZIP update", $"Preparing {file.Name}…", 0);
+            _updateStatusText!.Text = githubZip is not null
+                ? $"Downloading ZIP from GitHub · {githubZip.AssetName}"
+                : $"Preparing local ZIP · {localZip!.Name}";
+            ShowActivityWatcher("Windows ZIP update", $"Preparing {sourceLabel}…", 0);
 
             var progress = new Progress<CubicalUpdateProgress>(state =>
             {
@@ -422,11 +476,17 @@ public sealed partial class MainWindow
                 UpdateActivityWatcher("Windows ZIP update", detail, state.Percent);
             });
 
-            var exitRequired = await _updateService.ApplyPortableZipFileAsync(
-                file.Path,
-                AppContext.BaseDirectory,
-                "CubicalCompare.exe",
-                progress);
+            var exitRequired = githubZip is not null
+                ? await _updateService.ApplyUpdateAsync(
+                    githubZip,
+                    AppContext.BaseDirectory,
+                    "CubicalCompare.exe",
+                    progress)
+                : await _updateService.ApplyPortableZipFileAsync(
+                    localZip!.Path,
+                    AppContext.BaseDirectory,
+                    "CubicalCompare.exe",
+                    progress);
 
             if (exitRequired)
             {
@@ -439,7 +499,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
-            App.WriteLog("Could not apply local ZIP update", ex);
+            App.WriteLog("Could not apply ZIP update", ex);
             if (_updateStatusText is not null)
                 _updateStatusText.Text = $"ZIP update failed: {ex.Message}";
             FailActivityWatcher("Windows ZIP update failed", ex.Message);
@@ -465,7 +525,7 @@ public sealed partial class MainWindow
     }
 
     private static Version GetCurrentAppVersion()
-        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 19);
+        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 20);
 
     private static Version NormalizeVersion(Version version) => new(
         Math.Max(0, version.Major),

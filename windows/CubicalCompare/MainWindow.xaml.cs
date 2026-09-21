@@ -283,7 +283,18 @@ public sealed partial class MainWindow : Window
     private async void ProjectFrameSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
         if (_legacyRenderer is null) return;
+
         FrameCounterText.Text = $"Frame {(int)Math.Round(e.NewValue)} / {(int)ProjectFrameSlider.Maximum}";
+
+        // Playback owns its render loop. Programmatic slider updates from the
+        // 60 FPS clock must not spawn another renderer task through ValueChanged.
+        if (_previewPlaybackSliderUpdate)
+            return;
+
+        // A real user scrub while playback is active becomes a pause + direct render.
+        if (_previewPlaying)
+            StopPreviewPlayback();
+
         await RenderCurrentFrameAsync();
     }
 
@@ -305,13 +316,16 @@ public sealed partial class MainWindow : Window
         FrameCounterText.Text = $"Frame {(int)Math.Round(ProjectFrameSlider.Value)} / {count - 1}";
     }
 
-    private async Task RenderCurrentFrameAsync()
+    private Task RenderCurrentFrameAsync()
+        => RenderFrameAsync((int)Math.Round(ProjectFrameSlider.Value));
+
+    private async Task RenderFrameAsync(int frame)
     {
         var renderer = _legacyRenderer;
         if (renderer is null) return;
 
+        frame = Math.Clamp(frame, 0, (int)Math.Round(ProjectFrameSlider.Maximum));
         var revision = Interlocked.Increment(ref _renderRevision);
-        var frame = (int)Math.Round(ProjectFrameSlider.Value);
         var project = PrepareProjectForImmersivePreviewRender(BuildProject());
 
         try

@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.20 · Live playback + GitHub ZIP updates",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• Play preview now uses one latest-frame render loop instead of spawning overlapping renderer jobs on every 60 FPS slider tick\n• slow frames are skipped cleanly while the timeline clock stays real-time, so Play no longer freezes the preview\n• Update from ZIP now offers Latest from GitHub or a local ZIP; GitHub mode fetches the portable release asset directly, verifies/stages it, then restarts normally\n• local ZIP updating remains available with the same validation, staging and rollback path",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.19 · Renderer load preview fix",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
