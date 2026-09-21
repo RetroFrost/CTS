@@ -121,6 +121,7 @@ jobs:
           if ($updateService -notmatch 'sq\.version') { throw 'ZIP updater does not protect/restore Velopack install metadata.' }
           if ($updateService -notmatch 'includeCurrentVersion:\s*true') { throw 'GitHub ZIP repair cannot re-apply the current release.' }
           if ($updateService -notmatch 'layout\.NeedsRepair') { throw 'Normal updater does not detect damaged install topology.' }
+          if ($updateService -notmatch 'var repair = BestPortableFallback\(release\)') { throw 'Damaged installs must prefer direct ZIP recovery over Setup.exe safety-check fallback.' }
 
           $finalReleaseUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
           if ($finalReleaseUi -notmatch 'Get latest from GitHub') { throw 'Update from ZIP does not expose GitHub fetching.' }
@@ -474,7 +475,7 @@ jobs:
 
           - Update-system recovery: GitHub/local ZIP updates now select the real Velopack Portable.zip current/ payload instead of mirroring the outer bundle into the installed current directory.
           - ZIP repair flattens the broken current/current topology created by 4.2.1.20/21, replaces the actual app files, restores sq.version, and preserves the canonical install-root Update.exe.
-          - Damaged installed copies now prefer the visible Setup.exe recovery route for normal automatic updates instead of repeatedly selecting a portable ZIP fallback.
+          - Damaged installed copies now repair directly from the verified GitHub portable ZIP first, avoiding a Windows installer safety-check handoff; Setup.exe is retained only as the last-resort recovery path.
           - Manual Update from ZIP can re-apply the current GitHub release, so an already-up-to-date but damaged installation can repair itself.
           - CI now reproduces the old nested-install failure and proves the ZIP updater repairs it end-to-end before a release can publish.
           - Renderer runtime compatibility: SmartCard text can stay outside artwork reveal clips, so title/description fields no longer disappear behind image masks.
