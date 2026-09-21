@@ -417,10 +417,10 @@ public sealed partial class MainWindow
                 if (githubZip is null)
                 {
                     if (_updateStatusText is not null)
-                        _updateStatusText.Text = "No newer GitHub Windows ZIP is available.";
+                        _updateStatusText.Text = "No compatible GitHub Windows ZIP is available.";
                     await ShowErrorAsync(
-                        "No newer ZIP update",
-                        "GitHub Releases does not currently contain a newer Cubical Compare Windows portable ZIP.");
+                        "No compatible ZIP update",
+                        "GitHub Releases does not currently contain a compatible Cubical Compare Windows portable ZIP to update or repair this copy.");
                     return;
                 }
             }
@@ -525,7 +525,7 @@ public sealed partial class MainWindow
     }
 
     private static Version GetCurrentAppVersion()
-        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 21);
+        => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(4, 2, 1, 22);
 
     private static Version NormalizeVersion(Version version) => new(
         Math.Max(0, version.Major),
