@@ -168,6 +168,7 @@ jobs:
           if ($rendererBundle -notmatch 'smart-badge-top-entry-final-x-v1') { throw 'Renderer capability list is missing top-entry/final-X support.' }
           if ($rendererBundle -notmatch 'smart-badge-settled-hold-v1') { throw 'Renderer capability list is missing settled-hold support.' }
           if ($rendererBundle -notmatch 'smart-card-text-outside-artwork-clip-v1') { throw 'Renderer capability list is missing SmartCard text clip support.' }
+          if ($rendererBundle -notmatch 'smart-card-full-artwork-mask-v1') { throw 'Renderer capability list is missing full SmartCard artwork-mask support.' }
 
           $mainWindow = Get-Content 'windows/CubicalCompare/MainWindow.xaml.cs' -Raw
           if ($mainWindow -match 'ProjectFrameSlider\.Value = 0;\s*await RenderCurrentFrameAsync\(\);') {
