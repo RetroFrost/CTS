@@ -328,6 +328,49 @@ jobs:
           Write-Host "Native Cubical Compare setup: $(Split-Path $versionedSetup -Leaf)"
           Write-Host "Portable release asset: $(Split-Path $versionedPortable -Leaf)"
 
+      - name: Smoke test ZIP updater recovery and canonical replacement
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'cubical-compare-zip-recovery'
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+
+          # Reproduce the old broken topology:
+          # root\Update.exe
+          # root\current\Update.exe + .portable + current\CubicalCompare.exe
+          $outerCurrent = Join-Path $root 'current'
+          $nestedCurrent = Join-Path $outerCurrent 'current'
+          New-Item -ItemType Directory -Path $nestedCurrent -Force | Out-Null
+          'canonical updater sentinel' | Set-Content (Join-Path $root 'Update.exe') -Encoding ASCII
+          'bad nested updater' | Set-Content (Join-Path $outerCurrent 'Update.exe') -Encoding ASCII
+          'portable marker copied to wrong place' | Set-Content (Join-Path $outerCurrent '.portable') -Encoding ASCII
+          'stale outer file' | Set-Content (Join-Path $outerCurrent 'stale.txt') -Encoding ASCII
+          'stale nested exe' | Set-Content (Join-Path $nestedCurrent 'CubicalCompare.exe') -Encoding ASCII
+          'stale nested file' | Set-Content (Join-Path $nestedCurrent 'stale-nested.txt') -Encoding ASCII
+
+          dotnet run -c Release --project windows/CubicalCompare.UpdateSmoke/CubicalCompare.UpdateSmoke.csproj -- "$env:CC_PORTABLE" "$nestedCurrent"
+          if ($LASTEXITCODE -ne 0) { throw "ZIP updater smoke runner failed with exit code $LASTEXITCODE." }
+
+          $deadline = [DateTime]::UtcNow.AddSeconds(90)
+          do {
+            Start-Sleep -Milliseconds 500
+            $directExe = Join-Path $outerCurrent 'CubicalCompare.exe'
+            $manifest = Join-Path $outerCurrent 'sq.version'
+            $stillNested = Test-Path (Join-Path $outerCurrent 'current')
+            $stale = Test-Path (Join-Path $outerCurrent 'stale.txt')
+            if ((Test-Path $directExe) -and (Test-Path $manifest) -and -not $stillNested -and -not $stale) { break }
+          } while ([DateTime]::UtcNow -lt $deadline)
+
+          if (-not (Test-Path (Join-Path $outerCurrent 'CubicalCompare.exe'))) { throw 'ZIP recovery did not replace the canonical current directory with the real app payload.' }
+          if (-not (Test-Path (Join-Path $outerCurrent 'sq.version'))) { throw 'ZIP recovery lost the Velopack sq.version manifest.' }
+          if (Test-Path (Join-Path $outerCurrent 'current')) { throw 'ZIP recovery preserved the broken current/current nesting.' }
+          if (Test-Path (Join-Path $outerCurrent '.portable')) { throw 'ZIP recovery mirrored the portable bundle root into the installed current directory.' }
+          if (Test-Path (Join-Path $outerCurrent 'Update.exe')) { throw 'ZIP recovery copied the portable bundle Update.exe into the installed current directory.' }
+          if (Test-Path (Join-Path $outerCurrent 'stale.txt')) { throw 'ZIP recovery did not mirror-replace stale app files.' }
+          if ((Get-Content (Join-Path $root 'Update.exe') -Raw) -notmatch 'canonical updater sentinel') { throw 'ZIP recovery modified the install-root Update.exe instead of only replacing current/.' }
+
+          Write-Host 'ZIP updater recovery smoke passed: real current/ payload selected, nested layout flattened, sq.version restored, canonical root preserved.'
+
       - name: Verify public setup is native and self-contained
         shell: pwsh
         run: |
