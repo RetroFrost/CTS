@@ -238,7 +238,7 @@ std::vector<std::filesystem::path> KnownInstallRoots() {
     std::vector<std::filesystem::path> roots;
     roots.push_back(DefaultInstallRoot());
     const auto preferred = ReadPreferredInstallRoot();
-    if (LowerPath(preferred.wstring()) != LowerPath(roots.front().wstring()))
+    if (_wcsicmp(preferred.wstring().c_str(), roots.front().wstring().c_str()) != 0)
         roots.push_back(preferred);
     return roots;
 }
