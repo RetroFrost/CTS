@@ -548,6 +548,7 @@ public static class RendererCapabilities
         "smart-badge-animation-v2", "embedded-badge-bootanimation-zips-v1",
         "per-card-badge-pack-selection-v1", "smart-badge-top-entry-final-x-v1",
         "smart-badge-settled-hold-v1", "smart-card-text-outside-artwork-clip-v1",
+        "smart-card-full-artwork-mask-v1",
         "smart-badge-per-card-placement-v1", "smart-badge-sequence-offset-v1",
         "smart-badge-field-rect-track-v1", "smart-badge-field-alpha-track-v1",
         "smart-badge-field-rotation-track-v1", "smart-badge-overlay-last-v1",

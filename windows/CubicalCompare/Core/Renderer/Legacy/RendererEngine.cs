@@ -234,12 +234,20 @@ public sealed class RendererEngine : IDisposable
                         Color = new SKColor(255, 255, 255, AlphaByte(alpha)),
                     };
                     canvas.SaveLayer(layerPaint);
-                    DrawImageCover(canvas, card, new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom));
+                    DrawImageCover(
+                        canvas,
+                        card,
+                        new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom),
+                        new SKRect(clip.X, clip.Y, clip.Right, clip.Bottom));
                     canvas.Restore();
                 }
                 else
                 {
-                    DrawImageCover(canvas, card, new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom));
+                    DrawImageCover(
+                        canvas,
+                        card,
+                        new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom),
+                        new SKRect(clip.X, clip.Y, clip.Right, clip.Bottom));
                 }
                 canvas.Restore();
             }
@@ -1315,12 +1323,20 @@ public sealed class RendererEngine : IDisposable
                         Color = new SKColor(255, 255, 255, AlphaByte(alpha)),
                     };
                     canvas.SaveLayer(layer);
-                    DrawImageCover(canvas, card, new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom));
+                    DrawImageCover(
+                        canvas,
+                        card,
+                        new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom),
+                        new SKRect(clip.X, clip.Y, clip.Right, clip.Bottom));
                     canvas.Restore();
                 }
                 else
                 {
-                    DrawImageCover(canvas, card, new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom));
+                    DrawImageCover(
+                        canvas,
+                        card,
+                        new SKRect(dest.X, dest.Y, dest.Right, dest.Bottom),
+                        new SKRect(clip.X, clip.Y, clip.Right, clip.Bottom));
                 }
 
                 canvas.Restore();
@@ -1830,14 +1846,67 @@ public sealed class RendererEngine : IDisposable
         return s switch { "$card.title" or "$project.card.title" => card?.Title ?? "", "$card.value" or "$project.card.value" => card?.Value ?? "", "$card.badgeHeader" or "$project.card.badgeHeader" => card?.BadgeHeader ?? "", "$card.description" or "$project.card.description" => card?.Description ?? "", "$card.image" or "$project.card.image" => card?.Image ?? "", "$project.name" => project.Name, _ => value };
     }
 
-    private void DrawImageCover(SKCanvas canvas, StudioCard card, SKRect dest) => DrawImage(canvas, card, dest, true, 1);
-    private void DrawImageContain(SKCanvas canvas, StudioCard card, SKRect dest, float opacity) => DrawImage(canvas, card, dest, false, opacity);
-    private void DrawImage(SKCanvas canvas, StudioCard card, SKRect dest, bool cover, float opacity)
+    private void DrawImageCover(
+        SKCanvas canvas,
+        StudioCard card,
+        SKRect dest,
+        SKRect? visibleClip = null) =>
+        DrawImage(canvas, card, dest, true, 1, visibleClip);
+
+    private void DrawImageContain(
+        SKCanvas canvas,
+        StudioCard card,
+        SKRect dest,
+        float opacity,
+        SKRect? visibleClip = null) =>
+        DrawImage(canvas, card, dest, false, opacity, visibleClip);
+
+    private void DrawImage(
+        SKCanvas canvas,
+        StudioCard card,
+        SKRect dest,
+        bool cover,
+        float opacity,
+        SKRect? visibleClip = null)
     {
-        var bitmap = LoadImage(card.Image); if (bitmap == null) return;
-        var src = new SKRect((float)(bitmap.Width * Math.Clamp(card.ImageCropLeft, 0, .95)), (float)(bitmap.Height * Math.Clamp(card.ImageCropTop, 0, .95)), (float)(bitmap.Width * (1 - Math.Clamp(card.ImageCropRight, 0, .95))), (float)(bitmap.Height * (1 - Math.Clamp(card.ImageCropBottom, 0, .95))));
-        if (src.Width < 1 || src.Height < 1) return; var baseScale = cover ? Math.Max(dest.Width / src.Width, dest.Height / src.Height) : Math.Min(dest.Width / src.Width, dest.Height / src.Height); var scale = baseScale * (float)Math.Clamp(card.ImageScale, .05, 12); var w = src.Width * scale; var h = src.Height * scale; var cx = dest.MidX + (float)card.ImageX; var cy = dest.MidY + (float)card.ImageY; var target = new SKRect(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
-        canvas.Save(); canvas.ClipRect(dest); if (card.ImageRotation != 0) canvas.RotateDegrees((float)card.ImageRotation, cx, cy); using var paint = new SKPaint { IsAntialias = true, FilterQuality = SKFilterQuality.High, Color = WithAlpha(SKColors.White, opacity) }; canvas.DrawBitmap(bitmap, src, target, paint); canvas.Restore();
+        var bitmap = LoadImage(card.Image);
+        if (bitmap == null) return;
+
+        var src = new SKRect(
+            (float)(bitmap.Width * Math.Clamp(card.ImageCropLeft, 0, .95)),
+            (float)(bitmap.Height * Math.Clamp(card.ImageCropTop, 0, .95)),
+            (float)(bitmap.Width * (1 - Math.Clamp(card.ImageCropRight, 0, .95))),
+            (float)(bitmap.Height * (1 - Math.Clamp(card.ImageCropBottom, 0, .95))));
+        if (src.Width < 1 || src.Height < 1) return;
+
+        // 'dest' is the renderer-authored base layout rectangle. It defines the
+        // scale=1 crop/center but must not also become an implicit hard mask.
+        // SmartCards often use a smaller source composition rectangle inside a
+        // much larger artwork/reveal clip. Using dest as the mask made ImageScale
+        // appear capped and prevented artwork from expanding behind the badge.
+        var baseScale = cover
+            ? Math.Max(dest.Width / src.Width, dest.Height / src.Height)
+            : Math.Min(dest.Width / src.Width, dest.Height / src.Height);
+        var scale = baseScale * (float)Math.Clamp(card.ImageScale, .05, 12);
+        var w = src.Width * scale;
+        var h = src.Height * scale;
+        var cx = dest.MidX + (float)card.ImageX;
+        var cy = dest.MidY + (float)card.ImageY;
+        var target = new SKRect(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
+        var clip = visibleClip ?? dest;
+
+        canvas.Save();
+        canvas.ClipRect(clip);
+        if (card.ImageRotation != 0)
+            canvas.RotateDegrees((float)card.ImageRotation, cx, cy);
+        using var paint = new SKPaint
+        {
+            IsAntialias = true,
+            FilterQuality = SKFilterQuality.High,
+            Color = WithAlpha(SKColors.White, opacity),
+        };
+        canvas.DrawBitmap(bitmap, src, target, paint);
+        canvas.Restore();
     }
 
     private SKBitmap? LoadImage(string path)

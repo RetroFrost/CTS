@@ -49,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.25"
+          $version = "4.2.1.26"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.25 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.26 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.26"
+          $velopackVersion = "4.2.27"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -87,6 +87,17 @@ jobs:
           if ($thumb -notmatch 'if \(_suppressCardSelectionPreviewSeek\)') { throw 'Renderer preview selection handler can still seek after direct frame clicks.' }
           if ($preview -notmatch 'TextControlBackgroundFocused') { throw 'Transparent in-place text editor styling is missing.' }
           if ($preview -notmatch 'Opacity = 0,') { throw 'Artwork ghost must stay invisible so the real rendered frame remains visible.' }
+
+          $rendererEngine = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererEngine.cs' -Raw
+          if ($rendererEngine -notmatch 'SKRect\? visibleClip') { throw 'Renderer image transforms still lack a separate visible artwork clip.' }
+          if ($rendererEngine -notmatch 'visibleClip \?\? dest') { throw 'Renderer still treats the SmartCard base image rectangle as the only artwork mask.' }
+          if ($rendererEngine -notmatch 'DrawImageCover\([\s\S]*?new SKRect\(clip\.X, clip\.Y, clip\.Right, clip\.Bottom\)') { throw 'SmartCard artwork is not using the full authored reveal clip.' }
+
+          $rendererAdapter = Get-Content 'windows/CubicalCompare/Core/Renderer/LegacyRendererAdapter.cs' -Raw
+          if ($rendererAdapter -notmatch 'ImageBaseX') { throw 'Preview geometry does not separate SmartCard base image placement from the full artwork mask.' }
+          if ($rendererAdapter -notmatch 'artworkClip = sequence\.Artwork\?\.ClipAt') { throw 'Preview geometry is not exposing the authored SmartCard artwork clip.' }
+          if ($preview -notmatch 'ReliableImageBase') { throw 'Preview transforms do not use the SmartCard image base rectangle.' }
+          if ($preview -notmatch 'ImageBaseWidth') { throw 'Preview resize/hit-testing still collapses SmartCard artwork back to the mask rectangle.' }
 
           $rendererBundle = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererBundle.cs' -Raw
           if ($rendererBundle -match 'public const string AppVersion\s*=') {
@@ -134,7 +145,11 @@ jobs:
           if ($nativeSetup -notmatch 'QuarantineBrokenInstall') { throw 'Setup cannot quarantine a malformed current/ tree before Velopack repair.' }
           if ($nativeSetup -notmatch 'RestoreQuarantinedInstall') { throw 'Setup has no rollback for a failed repair attempt.' }
           if ($nativeSetup -notmatch 'VelopackLogPath') { throw 'Setup failures do not surface the Velopack log path.' }
-          if ($nativeSetup -notmatch 'Installer engine failed \(code ') { throw 'Setup failures do not surface the real installer engine exit code.' }
+          if ($nativeSetup -notmatch 'NextRecoveryInstallRoot') { throw 'Smart Setup has no fresh-root recovery strategy.' }
+          if ($nativeSetup -notmatch 'active-root\.txt') { throw 'Smart Setup does not persist the active managed install root.' }
+          if ($nativeSetup -notmatch '--silent --installto ') { throw 'Smart Setup is not using Velopack supported install-root override.' }
+          if ($nativeSetup -notmatch 'Existing install is locked\. Switching to recovery location') { throw 'Smart Setup does not visibly explain lock recovery.' }
+          if ($nativeSetup -notmatch 'smart installer exhausted both install paths') { throw 'Smart Setup does not distinguish two-path exhaustion from a first-path lock.' }
 
           $finalReleaseUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
           if ($finalReleaseUi -notmatch 'Get latest from GitHub') { throw 'Update from ZIP does not expose GitHub fetching.' }
@@ -153,6 +168,7 @@ jobs:
           if ($rendererBundle -notmatch 'smart-badge-top-entry-final-x-v1') { throw 'Renderer capability list is missing top-entry/final-X support.' }
           if ($rendererBundle -notmatch 'smart-badge-settled-hold-v1') { throw 'Renderer capability list is missing settled-hold support.' }
           if ($rendererBundle -notmatch 'smart-card-text-outside-artwork-clip-v1') { throw 'Renderer capability list is missing SmartCard text clip support.' }
+          if ($rendererBundle -notmatch 'smart-card-full-artwork-mask-v1') { throw 'Renderer capability list is missing full SmartCard artwork-mask support.' }
 
           $mainWindow = Get-Content 'windows/CubicalCompare/MainWindow.xaml.cs' -Raw
           if ($mainWindow -match 'ProjectFrameSlider\.Value = 0;\s*await RenderCurrentFrameAsync\(\);') {
@@ -488,6 +504,93 @@ jobs:
           Write-Host "Installed-app smoke passed after installer repair (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
 
+          # Now reproduce the lock class the previous installer still could not solve:
+          # an unrelated external process owns an exclusive file handle inside current/.
+          # Smart Setup must NOT kill this unrelated process. It should let the normal
+          # Velopack attempt fail and automatically install a fresh managed copy using
+          # --installto, then make that clean root the active copy.
+          $lockFile = Join-Path $installRoot 'current\smart-installer-external.lock'
+          'external lock sentinel' | Set-Content $lockFile -Encoding ASCII
+          # Keep the exclusive handle in the GitHub runner's own PowerShell
+          # process. Setup cannot terminate its parent, so this is a deterministic
+          # unknown/external lock that remains alive for the whole install attempt.
+          $externalLock = [System.IO.File]::Open(
+            $lockFile,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None)
+          if ($null -eq $externalLock -or -not $externalLock.CanRead) {
+            throw 'Could not establish the external FileShare.None lock for Smart Setup smoke testing.'
+          }
+          Write-Host "External exclusive file handle established by runner PID $PID."
+
+          try {
+            $secondSetup = Start-Process -FilePath "$env:CC_SETUP" -WorkingDirectory (Join-Path $installRoot 'current') -PassThru
+            if (-not $secondSetup.WaitForExit(120000)) {
+              Stop-Process -Id $secondSetup.Id -Force -ErrorAction SilentlyContinue
+              throw 'Smart Setup did not finish its persistent-lock recovery within 120 seconds.'
+            }
+            if ($secondSetup.ExitCode -ne 0) {
+              throw "Smart Setup persistent-lock recovery failed with exit code $($secondSetup.ExitCode)."
+            }
+
+            # The parent process still owns the stream here. If Setup somehow
+            # depended on releasing/killing the external locker, it could not reach
+            # this point.
+            if (-not $externalLock.CanRead) {
+              throw 'Smart Setup invalidated the external lock instead of using recovery installation.'
+            }
+
+            $pointer = Join-Path $env:LOCALAPPDATA 'RetroFrost\CubicalCompare\Installer\active-root.txt'
+            if (-not (Test-Path $pointer)) {
+              throw 'Smart Setup did not persist its active install root.'
+            }
+            $activeRoot = (Get-Content $pointer -Raw).Trim()
+            if ([string]::IsNullOrWhiteSpace($activeRoot)) {
+              throw 'Smart Setup active-root pointer is empty.'
+            }
+
+            $canonicalFull = [System.IO.Path]::GetFullPath($installRoot).TrimEnd('\')
+            $activeFull = [System.IO.Path]::GetFullPath($activeRoot).TrimEnd('\')
+            if ([string]::Equals($canonicalFull, $activeFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+              throw 'Smart Setup claimed success but did not fail over from the still-locked canonical install root.'
+            }
+
+            $recoveryExe = Join-Path $activeRoot 'current\CubicalCompare.exe'
+            if (-not (Test-Path $recoveryExe)) {
+              throw "Smart Setup recovery root does not contain CubicalCompare.exe: $activeRoot"
+            }
+            if (-not (Test-Path (Join-Path $activeRoot 'current\sq.version'))) {
+              throw 'Smart Setup recovery root is missing Velopack sq.version metadata.'
+            }
+
+            $shortcutPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Cubical Compare.lnk'
+            if (Test-Path $shortcutPath) {
+              $shell = New-Object -ComObject WScript.Shell
+              $shortcut = $shell.CreateShortcut($shortcutPath)
+              $shortcutTarget = [System.IO.Path]::GetFullPath($shortcut.TargetPath)
+              if (-not $shortcutTarget.StartsWith($activeFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Desktop shortcut did not follow Smart Setup recovery root. Target: $shortcutTarget"
+              }
+            }
+
+            $recoveryProcess = $null
+            for ($i = 0; $i -lt 15; $i++) {
+              $recoveryProcess = Get-Process CubicalCompare -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($recoveryProcess) { break }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $recoveryProcess) {
+              throw 'Smart Setup recovery completed but did not launch Cubical Compare.'
+            }
+
+            Write-Host "Smart installer fallback passed: locked root '$installRoot' -> active recovery root '$activeRoot'."
+            Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          finally {
+            $externalLock.Dispose()
+          }
+
       - name: Write SHA256 manifest
         shell: pwsh
         run: |
@@ -525,6 +628,14 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - SmartCard artwork transforms now expand through the full authored artwork/reveal mask (including behind the badge) instead of being hard-clipped to the smaller scale=1 image base rectangle.
+          - Preview selection, hit-testing and resize handles now distinguish the full visible artwork mask from the SmartCard image base, fixing the later-card/post-card-4 shrink behavior.
+
+          - 4.2.1.26 introduces Smart Setup: the existing %LOCALAPPDATA%\\CubicalCompare tree is no longer a single point of failure.
+          - Setup first updates the remembered active managed root; if Windows still keeps that tree locked, Setup automatically installs a clean managed copy to a fresh recovery root using Velopack's supported --installto option.
+          - The clean recovery copy becomes the remembered active install, and Velopack refreshes shortcuts/uninstall registration to that root while the externally locked old tree is left untouched.
+          - Setup never needs to kill unrelated third-party processes merely because they hold an old Cubical Compare file open.
+          - CI now keeps an exclusive FileShare.None handle open from an unrelated pwsh.exe process, requires the canonical update to fail over automatically, verifies the unrelated locker survives, verifies the recovery root/shortcut, and requires Cubical Compare to launch.
           - 4.2.1.25 fixes the folder-in-use/Access denied installer failure: the native Setup immediately moves its own process current directory to %TEMP%, because Windows locks a process current directory against rename/delete.
           - Setup now closes the entire Cubical Compare process tree, install-resident helpers and stale embedded setup engines before Velopack replaces the install.
           - A named setup mutex prevents multiple Cubical Compare installers from racing the same install directory.
