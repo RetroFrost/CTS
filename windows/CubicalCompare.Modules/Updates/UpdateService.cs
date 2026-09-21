@@ -135,6 +135,30 @@ public sealed class CubicalUpdateService
                     : "Automatic choice: no portable ZIP is available, so Cubical Compare selected the visible installer.");
     }
 
+    /// <summary>
+    /// Resolve the newest Windows portable ZIP directly from GitHub Releases.
+    /// This is the GitHub half of "Update from ZIP"; local ZIP selection remains
+    /// available through ApplyPortableZipFileAsync.
+    /// </summary>
+    public async Task<CubicalUpdateCandidate?> CheckForPortableZipUpdateAsync(
+        Version currentVersion,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(currentVersion);
+        var release = await FindLatestReleaseAsync(Normalize(currentVersion), cancellationToken);
+        if (release is null)
+            return null;
+
+        var portable = release.PortableZip;
+        if (portable is null)
+            return null;
+
+        return BuildDirectCandidate(
+            release,
+            new DeliveryAsset(CubicalUpdateDelivery.PortableZip, portable),
+            "ZIP update selected: download the Windows portable archive directly from GitHub Releases, verify it, stage it safely, then restart Cubical Compare.");
+    }
+
     public async Task<bool> ApplyUpdateAsync(
         CubicalUpdateCandidate candidate,
         string applicationDirectory,
