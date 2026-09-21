@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.26 · Smart installer recovery",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• Smart Setup no longer treats %LOCALAPPDATA%\\CubicalCompare as mandatory\n• first tries the active managed install root, then automatically creates a clean Velopack-managed recovery root when Windows keeps the old directory locked\n• recovery uses Velopack's supported --installto path override so shortcuts and uninstall registration follow the new active copy\n• the chosen active root is remembered outside the install tree for future installers\n• the locked old tree is left untouched instead of turning a third-party folder handle into a failed installation\n• CI now holds a real file handle open from an unrelated external process and requires Setup to succeed without killing that unrelated locker",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.25 · Installer lock + progress fix",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
