@@ -9,6 +9,7 @@ on:
       - 'windows/CubicalCompare/**'
       - 'windows/CubicalCompare.Modules/**'
       - 'windows/CubicalCompare.InstallerBootstrap/**'
+      - 'windows/CubicalCompare.UpdateSmoke/**'
       - 'Directory.Build.targets'
       - '.github/workflows/build-cubical-compare-4-windows.yml'
   pull_request:
@@ -18,6 +19,7 @@ on:
       - 'windows/CubicalCompare/**'
       - 'windows/CubicalCompare.Modules/**'
       - 'windows/CubicalCompare.InstallerBootstrap/**'
+      - 'windows/CubicalCompare.UpdateSmoke/**'
       - 'Directory.Build.targets'
       - '.github/workflows/build-cubical-compare-4-windows.yml'
   workflow_dispatch:
@@ -47,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.21"
+          $version = "4.2.1.22"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.21 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.22 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.22"
+          $velopackVersion = "4.2.23"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -114,6 +116,11 @@ jobs:
           $updateService = Get-Content 'windows/CubicalCompare.Modules/Updates/UpdateService.cs' -Raw
           if ($updateService -notmatch 'CheckForPortableZipUpdateAsync') { throw 'Direct GitHub portable ZIP resolver is missing.' }
           if ($updateService -notmatch 'release\.PortableZip') { throw 'GitHub ZIP update does not resolve a portable release asset.' }
+          if ($updateService -notmatch 'Path\.Combine\(stagePath, "current"\)') { throw 'ZIP updater does not prefer the real Velopack current/ payload.' }
+          if ($updateService -notmatch 'ResolveUpdateTargetDirectory') { throw 'ZIP updater cannot repair nested current/current layouts.' }
+          if ($updateService -notmatch 'sq\.version') { throw 'ZIP updater does not protect/restore Velopack install metadata.' }
+          if ($updateService -notmatch 'includeCurrentVersion:\s*true') { throw 'GitHub ZIP repair cannot re-apply the current release.' }
+          if ($updateService -notmatch 'layout\.NeedsRepair') { throw 'Normal updater does not detect damaged install topology.' }
 
           $finalReleaseUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
           if ($finalReleaseUi -notmatch 'Get latest from GitHub') { throw 'Update from ZIP does not expose GitHub fetching.' }
