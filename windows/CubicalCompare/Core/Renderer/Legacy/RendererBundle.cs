@@ -786,7 +786,11 @@ public static class RendererCapabilities
     {
         var hasFeature = spec.RequiredFeatures.Contains("smart-badge-animation-v2", StringComparer.Ordinal) ||
                          spec.RequiredFeatures.Contains("embedded-badge-bootanimation-zips-v1", StringComparer.Ordinal) ||
-                         spec.RequiredFeatures.Contains("per-card-badge-pack-selection-v1", StringComparer.Ordinal);
+                         spec.RequiredFeatures.Contains("per-card-badge-pack-selection-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("smart-badge-top-entry-final-x-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("smart-badge-settled-hold-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("smart-badge-per-card-placement-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("smart-badge-sequence-offset-v1", StringComparer.Ordinal);
 
         if (spec.SmartBadgeV2Manifest is not JsonElement manifest)
         {
@@ -914,6 +918,13 @@ public static class RendererCapabilities
                         !entryAnchor.Equals("final-x", StringComparison.OrdinalIgnoreCase))
                         errors.Add($"SmartBadge v2 card selection '{property.Name}' has unsupported entryAnchor '{entryAnchor}'.");
 
+                    foreach (var coordinate in new[] { "drawX", "drawY" })
+                    {
+                        if (property.Value.TryGetProperty(coordinate, out var element) &&
+                            !element.TryGetDouble(out _))
+                            errors.Add($"SmartBadge v2 card selection '{property.Name}' has invalid {coordinate}.");
+                    }
+
                     foreach (var dimension in new[] { "drawWidth", "drawHeight" })
                     {
                         if (property.Value.TryGetProperty(dimension, out var element) &&
@@ -932,8 +943,15 @@ public static class RendererCapabilities
                 property.Value.ValueKind == JsonValueKind.Object &&
                 property.Value.String("entryMotion", "").Equals("top-to-final", StringComparison.OrdinalIgnoreCase) &&
                 property.Value.String("entryAnchor", "").Equals("final-x", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasTopEntry && cards.ValueKind == JsonValueKind.Object)
+                hasTopEntry = cards.EnumerateObject().Any(property =>
+                    property.Value.ValueKind == JsonValueKind.Object &&
+                    property.Value.String("entryMotion", "").Equals("top-to-final", StringComparison.OrdinalIgnoreCase) &&
+                    property.Value.String("entryAnchor", "").Equals("final-x", StringComparison.OrdinalIgnoreCase));
+
             if (!hasTopEntry)
-                errors.Add("smart-badge-top-entry-final-x-v1 requires a SmartBadge v2 pack with entryMotion='top-to-final' and entryAnchor='final-x'.");
+                errors.Add("smart-badge-top-entry-final-x-v1 requires a SmartBadge v2 pack/card override with entryMotion='top-to-final' and entryAnchor='final-x'.");
         }
 
         if (HasFeature("smart-badge-settled-hold-v1"))
@@ -941,8 +959,14 @@ public static class RendererCapabilities
             var hasSettledHold = packs.EnumerateObject().Any(property =>
                 property.Value.ValueKind == JsonValueKind.Object &&
                 property.Value.Bool("settledHold", false));
+
+            if (!hasSettledHold && cards.ValueKind == JsonValueKind.Object)
+                hasSettledHold = cards.EnumerateObject().Any(property =>
+                    property.Value.ValueKind == JsonValueKind.Object &&
+                    property.Value.Bool("settledHold", false));
+
             if (!hasSettledHold)
-                errors.Add("smart-badge-settled-hold-v1 requires a SmartBadge v2 pack with settledHold=true.");
+                errors.Add("smart-badge-settled-hold-v1 requires a SmartBadge v2 pack/card override with settledHold=true.");
         }
 
         if (HasFeature("smart-card-text-outside-artwork-clip-v1") && spec.SceneV3 is null)
