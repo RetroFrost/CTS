@@ -49,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.23"
+          $version = "4.2.1.24"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.23 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.24 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.24"
+          $velopackVersion = "4.2.25"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -122,6 +122,14 @@ jobs:
           if ($updateService -notmatch 'includeCurrentVersion:\s*true') { throw 'GitHub ZIP repair cannot re-apply the current release.' }
           if ($updateService -notmatch 'layout\.NeedsRepair') { throw 'Normal updater does not detect damaged install topology.' }
           if ($updateService -notmatch 'var repair = BestPortableFallback\(release\)') { throw 'Damaged installs must prefer verified ZIP recovery before Setup.exe.' }
+
+          $nativeSetup = Get-Content 'windows/CubicalCompare.InstallerBootstrap/NativeSetup.cpp' -Raw
+          if ($nativeSetup -notmatch 'StopRunningCubicalCompare') { throw 'Setup does not close a running Cubical Compare before replacement.' }
+          if ($nativeSetup -notmatch 'IsLegacyBrokenInstall') { throw 'Setup cannot detect the malformed legacy install tree.' }
+          if ($nativeSetup -notmatch 'QuarantineBrokenInstall') { throw 'Setup cannot quarantine a malformed current/ tree before Velopack repair.' }
+          if ($nativeSetup -notmatch 'RestoreQuarantinedInstall') { throw 'Setup has no rollback for a failed repair attempt.' }
+          if ($nativeSetup -notmatch 'VelopackLogPath') { throw 'Setup failures do not surface the Velopack log path.' }
+          if ($nativeSetup -notmatch 'Installer engine failed \(code ') { throw 'Setup failures do not surface the real installer engine exit code.' }
 
           $finalReleaseUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
           if ($finalReleaseUi -notmatch 'Get latest from GitHub') { throw 'Update from ZIP does not expose GitHub fetching.' }
@@ -385,6 +393,28 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
+          # Reproduce the user's real failure conditions:
+          # 1) Cubical Compare is already running.
+          # 2) an older ZIP update left a malformed current/current tree plus
+          #    portable-bundle markers inside the installed current/ directory.
+          $installRoot = Join-Path $env:LOCALAPPDATA 'CubicalCompare'
+          Remove-Item $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+          $brokenCurrent = Join-Path $installRoot 'current'
+          $brokenNested = Join-Path $brokenCurrent 'current'
+          New-Item -ItemType Directory -Path $brokenNested -Force | Out-Null
+          'bad portable marker' | Set-Content (Join-Path $brokenCurrent '.portable') -Encoding ASCII
+          'bad nested updater' | Set-Content (Join-Path $brokenCurrent 'Update.exe') -Encoding ASCII
+          'stale outer exe' | Set-Content (Join-Path $brokenCurrent 'CubicalCompare.exe') -Encoding ASCII
+          'stale nested exe' | Set-Content (Join-Path $brokenNested 'CubicalCompare.exe') -Encoding ASCII
+
+          $portableExe = (Resolve-Path 'artifacts/publish/CubicalCompare.exe').Path
+          $alreadyRunning = Start-Process -FilePath $portableExe -ArgumentList '--ci-shell-smoke' -WorkingDirectory (Split-Path $portableExe) -PassThru
+          Start-Sleep -Seconds 4
+          $alreadyRunning.Refresh()
+          if ($alreadyRunning.HasExited) { throw "Pre-existing Cubical Compare process exited before installer test with code $($alreadyRunning.ExitCode)." }
+          $oldPid = $alreadyRunning.Id
+          Write-Host "Pre-existing Cubical Compare process running as PID $oldPid."
+
           # Run exactly like a user double-clicking the public Setup.exe.
           $setupProcess = Start-Process -FilePath "$env:CC_SETUP" -PassThru
 
@@ -412,12 +442,16 @@ jobs:
           }
           if ($setupProcess.ExitCode -ne 0) { throw "Visible Cubical Compare Setup.exe failed with exit code $($setupProcess.ExitCode)." }
 
-          $installedExe = Join-Path $env:LOCALAPPDATA 'CubicalCompare\current\CubicalCompare.exe'
-          if (-not (Test-Path $installedExe)) {
-            $installedExe = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'CubicalCompare') -Filter CubicalCompare.exe -File -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -First 1 -ExpandProperty FullName
+          if (Get-Process -Id $oldPid -ErrorAction SilentlyContinue) {
+            throw 'Setup did not close the Cubical Compare process that was already running.'
           }
-          if (-not $installedExe -or -not (Test-Path $installedExe)) { throw 'Setup completed but the installed Cubical Compare executable was not found.' }
+
+          $installedExe = Join-Path $installRoot 'current\CubicalCompare.exe'
+          if (-not (Test-Path $installedExe)) { throw 'Setup completed but the canonical installed CubicalCompare.exe was not found.' }
+          if (-not (Test-Path (Join-Path $installRoot 'current\sq.version'))) { throw 'Setup repair did not restore sq.version.' }
+          if (Test-Path (Join-Path $installRoot 'current\current')) { throw 'Setup repair preserved the broken current/current nesting.' }
+          if (Test-Path (Join-Path $installRoot 'current\.portable')) { throw 'Setup repair left the copied portable marker inside installed current/.' }
+          if (Test-Path (Join-Path $installRoot 'current\Update.exe')) { throw 'Setup repair left the copied portable Update.exe inside installed current/.' }
 
           $launched = $null
           for ($i = 0; $i -lt 15; $i++) {
@@ -426,14 +460,14 @@ jobs:
             Start-Sleep -Seconds 1
           }
           if (-not $launched) { throw 'Visible setup completed but did not launch Cubical Compare.' }
-          Write-Host "Visible setup auto-launched Cubical Compare (PID $($launched.Id))."
+          Write-Host "Visible setup repaired the malformed install and auto-launched Cubical Compare (PID $($launched.Id))."
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
           $process = Start-Process -FilePath $installedExe -ArgumentList '--ci-shell-smoke' -WorkingDirectory (Split-Path $installedExe) -PassThru
           Start-Sleep -Seconds 8
           $process.Refresh()
           if ($process.HasExited) { throw "Installed Cubical Compare exited during smoke test with code $($process.ExitCode)." }
-          Write-Host "Installed-app smoke passed (PID $($process.Id))."
+          Write-Host "Installed-app smoke passed after installer repair (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
 
       - name: Write SHA256 manifest
@@ -473,6 +507,10 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - 4.2.1.24 fixes the public Setup.exe failure shown on real machines: it closes a running Cubical Compare before file replacement and repairs the malformed current/current install tree left by older ZIP updates before invoking Velopack.
+          - Installer repair is rollback-safe: the old current/ tree is quarantined first and restored automatically if the embedded engine still fails.
+          - Setup failures now report the actual engine exit code and the Velopack log location instead of only showing a generic failure.
+          - CI now launches Cubical Compare first, creates the old malformed install topology, then requires the public Setup.exe to repair, install and relaunch successfully.
           - 4.2.1.23 completes updater recovery by preferring the verified GitHub portable ZIP for damaged installs, avoiding an unnecessary installer handoff while retaining Setup.exe as a last resort.
           - Update-system recovery: GitHub/local ZIP updates now select the real Velopack Portable.zip current/ payload instead of mirroring the outer bundle into the installed current directory.
           - ZIP repair flattens the broken current/current topology created by 4.2.1.20/21, replaces the actual app files, restores sq.version, and preserves the canonical install-root Update.exe.
