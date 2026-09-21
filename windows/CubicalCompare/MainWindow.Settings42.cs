@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.24 · Installer repair",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• Setup.exe now closes a running Cubical Compare before the embedded installer replaces files\n• detects and quarantines the malformed current/current + copied .portable/Update.exe layout produced by older ZIP updates before invoking Velopack\n• restores the previous current/ directory automatically if installation fails after quarantine\n• installer errors now include the real engine exit code and Velopack log path instead of only saying the engine returned a failure code\n• CI now tests Setup.exe with Cubical Compare already running and a deliberately damaged old install tree",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.23 · ZIP recovery completion",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
