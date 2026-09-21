@@ -546,7 +546,11 @@ public static class RendererCapabilities
         "smart-card-animation-v1", "smart-card-jsparse-v1", "smart-card-layered-compositing-v1",
         "smart-card-ribbon-proxy-v1",
         "smart-badge-animation-v2", "embedded-badge-bootanimation-zips-v1",
-        "per-card-badge-pack-selection-v1",
+        "per-card-badge-pack-selection-v1", "smart-badge-top-entry-final-x-v1",
+        "smart-badge-settled-hold-v1", "smart-card-text-outside-artwork-clip-v1",
+        "smart-badge-per-card-placement-v1", "smart-badge-sequence-offset-v1",
+        "smart-badge-field-rect-track-v1", "smart-badge-field-alpha-track-v1",
+        "smart-badge-field-rotation-track-v1", "smart-badge-overlay-last-v1",
     };
 
     public static RendererValidationReport Report(RendererSpec spec)
@@ -782,7 +786,11 @@ public static class RendererCapabilities
     {
         var hasFeature = spec.RequiredFeatures.Contains("smart-badge-animation-v2", StringComparer.Ordinal) ||
                          spec.RequiredFeatures.Contains("embedded-badge-bootanimation-zips-v1", StringComparer.Ordinal) ||
-                         spec.RequiredFeatures.Contains("per-card-badge-pack-selection-v1", StringComparer.Ordinal);
+                         spec.RequiredFeatures.Contains("per-card-badge-pack-selection-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("smart-badge-top-entry-final-x-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("smart-badge-settled-hold-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("smart-badge-per-card-placement-v1", StringComparer.Ordinal) ||
+                         spec.RequiredFeatures.Contains("smart-badge-sequence-offset-v1", StringComparer.Ordinal);
 
         if (spec.SmartBadgeV2Manifest is not JsonElement manifest)
         {
@@ -829,8 +837,40 @@ public static class RendererCapabilities
                 warnings.Add($"SmartBadge v2 pack '{property.Name}' does not use a .zip file extension.");
 
             packAssets[property.Name] = asset;
-            foreach (var error in SmartBadgeSequence.ValidateArchive(spec, asset))
-                errors.Add($"SmartBadge v2 pack '{property.Name}': {error}");
+
+            SmartBadgeSequenceDefinition? sequence = null;
+            try
+            {
+                sequence = SmartBadgeSequence.LoadArchive(spec, asset);
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"SmartBadge v2 pack '{property.Name}': {ex.Message}");
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.Object)
+            {
+                var entryMotion = property.Value.String("entryMotion", "");
+                if (entryMotion.Length > 0 &&
+                    !entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase))
+                    errors.Add($"SmartBadge v2 pack '{property.Name}' has unsupported entryMotion '{entryMotion}'.");
+
+                var entryAnchor = property.Value.String("entryAnchor", "");
+                if (entryAnchor.Length > 0 &&
+                    !entryAnchor.Equals("final-x", StringComparison.OrdinalIgnoreCase))
+                    errors.Add($"SmartBadge v2 pack '{property.Name}' has unsupported entryAnchor '{entryAnchor}'.");
+
+                var settledHold = property.Value.Bool("settledHold", false);
+                if (settledHold && sequence?.FinalFrame() is null)
+                    errors.Add($"SmartBadge v2 pack '{property.Name}' requests settledHold but has no final frame.");
+
+                foreach (var dimension in new[] { "drawWidth", "drawHeight" })
+                {
+                    if (property.Value.TryGetProperty(dimension, out var element) &&
+                        (!element.TryGetDouble(out var value) || value <= 0))
+                        errors.Add($"SmartBadge v2 pack '{property.Name}' has invalid {dimension}.");
+                }
+            }
         }
 
         if (packAssets.Count == 0)
@@ -858,12 +898,79 @@ public static class RendererCapabilities
                 if (!packAssets.ContainsKey(pack))
                     errors.Add($"SmartBadge v2 card selection '{property.Name}' references unknown pack '{pack}'.");
 
-                if (property.Value.ValueKind == JsonValueKind.Object &&
-                    property.Value.TryGetProperty("startFrame", out var startFrame) &&
-                    (!startFrame.TryGetInt32(out var start) || start < 0))
-                    errors.Add($"SmartBadge v2 card selection '{property.Name}' has an invalid startFrame.");
+                if (property.Value.ValueKind == JsonValueKind.Object)
+                {
+                    if (property.Value.TryGetProperty("startFrame", out var startFrame) &&
+                        (!startFrame.TryGetInt32(out var start) || start < 0))
+                        errors.Add($"SmartBadge v2 card selection '{property.Name}' has an invalid startFrame.");
+
+                    if (property.Value.TryGetProperty("sequenceOffset", out var sequenceOffset) &&
+                        !sequenceOffset.TryGetInt32(out _))
+                        errors.Add($"SmartBadge v2 card selection '{property.Name}' has an invalid sequenceOffset.");
+
+                    var entryMotion = property.Value.String("entryMotion", "");
+                    if (entryMotion.Length > 0 &&
+                        !entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase))
+                        errors.Add($"SmartBadge v2 card selection '{property.Name}' has unsupported entryMotion '{entryMotion}'.");
+
+                    var entryAnchor = property.Value.String("entryAnchor", "");
+                    if (entryAnchor.Length > 0 &&
+                        !entryAnchor.Equals("final-x", StringComparison.OrdinalIgnoreCase))
+                        errors.Add($"SmartBadge v2 card selection '{property.Name}' has unsupported entryAnchor '{entryAnchor}'.");
+
+                    foreach (var coordinate in new[] { "drawX", "drawY" })
+                    {
+                        if (property.Value.TryGetProperty(coordinate, out var element) &&
+                            !element.TryGetDouble(out _))
+                            errors.Add($"SmartBadge v2 card selection '{property.Name}' has invalid {coordinate}.");
+                    }
+
+                    foreach (var dimension in new[] { "drawWidth", "drawHeight" })
+                    {
+                        if (property.Value.TryGetProperty(dimension, out var element) &&
+                            (!element.TryGetDouble(out var value) || value <= 0))
+                            errors.Add($"SmartBadge v2 card selection '{property.Name}' has invalid {dimension}.");
+                    }
+                }
             }
         }
+
+        bool HasFeature(string name) => spec.RequiredFeatures.Contains(name, StringComparer.Ordinal);
+
+        if (HasFeature("smart-badge-top-entry-final-x-v1"))
+        {
+            var hasTopEntry = packs.EnumerateObject().Any(property =>
+                property.Value.ValueKind == JsonValueKind.Object &&
+                property.Value.String("entryMotion", "").Equals("top-to-final", StringComparison.OrdinalIgnoreCase) &&
+                property.Value.String("entryAnchor", "").Equals("final-x", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasTopEntry && cards.ValueKind == JsonValueKind.Object)
+                hasTopEntry = cards.EnumerateObject().Any(property =>
+                    property.Value.ValueKind == JsonValueKind.Object &&
+                    property.Value.String("entryMotion", "").Equals("top-to-final", StringComparison.OrdinalIgnoreCase) &&
+                    property.Value.String("entryAnchor", "").Equals("final-x", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasTopEntry)
+                errors.Add("smart-badge-top-entry-final-x-v1 requires a SmartBadge v2 pack/card override with entryMotion='top-to-final' and entryAnchor='final-x'.");
+        }
+
+        if (HasFeature("smart-badge-settled-hold-v1"))
+        {
+            var hasSettledHold = packs.EnumerateObject().Any(property =>
+                property.Value.ValueKind == JsonValueKind.Object &&
+                property.Value.Bool("settledHold", false));
+
+            if (!hasSettledHold && cards.ValueKind == JsonValueKind.Object)
+                hasSettledHold = cards.EnumerateObject().Any(property =>
+                    property.Value.ValueKind == JsonValueKind.Object &&
+                    property.Value.Bool("settledHold", false));
+
+            if (!hasSettledHold)
+                errors.Add("smart-badge-settled-hold-v1 requires a SmartBadge v2 pack/card override with settledHold=true.");
+        }
+
+        if (HasFeature("smart-card-text-outside-artwork-clip-v1") && spec.SceneV3 is null)
+            errors.Add("smart-card-text-outside-artwork-clip-v1 requires a Renderer v3 SmartCard scene.");
 
         if (spec.PackageAssets.Count == 0)
             errors.Add("SmartBadge v2 requires renderer package sidecar assets.");

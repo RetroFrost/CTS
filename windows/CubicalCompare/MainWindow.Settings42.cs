@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.21 · Renderer runtime compatibility",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• SmartCard text can render outside the artwork reveal clip without losing title/description fields\n• SmartBadge v2 understands top-to-final entry motion and final-X anchoring, preventing later badges from drifting sideways\n• settledHold is recognized and keeps the final completed badge frame stable\n• per-card SmartBadge placement/sequence overrides are supported without duplicating packs\n• renderer compatibility now recognizes the new SmartCard/SmartBadge feature contracts instead of rejecting valid .renderer3 packages",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.20 · Live playback + GitHub ZIP updates",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
