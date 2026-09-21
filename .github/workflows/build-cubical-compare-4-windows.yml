@@ -47,13 +47,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.19"
+          $version = "4.2.1.20"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.19 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.20 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.20"
+          $velopackVersion = "4.2.21"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -104,6 +104,20 @@ jobs:
           if ($runtimeVersion -match '(?m)^\s*(?:public|private|internal|protected|const|static|readonly|var|string).*?["'']4\.2\.1\.\d+') {
             throw 'Renderer runtime version provider contains a hardcoded Cubical Compare release version assignment.'
           }
+
+          $playback = Get-Content 'windows/CubicalCompare/MainWindow.PreviewPlayback.cs' -Raw
+          if ($playback -notmatch '_previewPlaybackRenderLoopRunning') { throw 'Preview playback single-flight render guard is missing.' }
+          if ($playback -notmatch '_previewPlaybackRequestedFrame') { throw 'Preview playback latest-frame coalescing is missing.' }
+          if ($playback -notmatch 'RunPreviewPlaybackRenderLoopAsync') { throw 'Preview playback render loop is missing.' }
+          if ($playback -notmatch 'SetPreviewPlaybackSliderValue') { throw 'Preview playback slider-update suppression is missing.' }
+
+          $updateService = Get-Content 'windows/CubicalCompare.Modules/Updates/UpdateService.cs' -Raw
+          if ($updateService -notmatch 'CheckForPortableZipUpdateAsync') { throw 'Direct GitHub portable ZIP resolver is missing.' }
+          if ($updateService -notmatch 'release\.PortableZip') { throw 'GitHub ZIP update does not resolve a portable release asset.' }
+
+          $finalReleaseUi = Get-Content 'windows/CubicalCompare/MainWindow.FinalRelease.cs' -Raw
+          if ($finalReleaseUi -notmatch 'Get latest from GitHub') { throw 'Update from ZIP does not expose GitHub fetching.' }
+          if ($finalReleaseUi -notmatch 'Choose local ZIP') { throw 'Update from ZIP lost local archive support.' }
 
           $mainWindow = Get-Content 'windows/CubicalCompare/MainWindow.xaml.cs' -Raw
           if ($mainWindow -match 'ProjectFrameSlider\.Value = 0;\s*await RenderCurrentFrameAsync\(\);') {
@@ -394,6 +408,8 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
+          - Preview Play no longer floods the renderer with overlapping 60 FPS jobs; playback coalesces to one latest-frame render loop and skips stale frames when rendering is slower than real-time.
+          - Update from ZIP now lets you fetch the newest Windows portable ZIP directly from GitHub Releases or choose a local ZIP, using the same validation/staging/restart path.
           - Renderer v3 loading no longer forces frame 0 when the scene starts later; it opens at the first visible authored checkpoint/object frame instead.
           - Renderer minAppVersion checks now use the actual running Cubical Compare product version instead of the stale hardcoded 4.2.1.12 compatibility value.
           - CI launches the published app and verifies the renderer subsystem sees exactly $env:CC_VERSION, preventing version drift from returning.
