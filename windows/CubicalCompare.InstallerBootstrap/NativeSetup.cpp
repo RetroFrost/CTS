@@ -272,8 +272,12 @@ void StopConflictingCubicalCompareProcesses() {
             IsPathInside(record.imagePath, installRoot);
         const bool staleEmbeddedSetup =
             _wcsicmp(record.name.c_str(), L"CubicalCompare-Velopack-Setup.exe") == 0;
+        const auto lowerName = LowerPath(record.name);
+        const bool stalePublicSetup =
+            lowerName.rfind(L"cubicalcompare-", 0) == 0 &&
+            lowerName.find(L"-setup.exe") != std::wstring::npos;
 
-        if (app || installResident || staleEmbeddedSetup)
+        if (app || installResident || staleEmbeddedSetup || stalePublicSetup)
             targets.insert(record.pid);
     }
 
@@ -284,9 +288,9 @@ void StopConflictingCubicalCompareProcesses() {
     while (changed) {
         changed = false;
         for (const auto& record : records) {
-            if (record.pid == currentPid || targets.contains(record.pid))
+            if (record.pid == currentPid || targets.find(record.pid) != targets.end())
                 continue;
-            if (targets.contains(record.parentPid)) {
+            if (targets.find(record.parentPid) != targets.end()) {
                 targets.insert(record.pid);
                 changed = true;
             }
