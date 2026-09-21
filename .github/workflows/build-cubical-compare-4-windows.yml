@@ -88,6 +88,17 @@ jobs:
           if ($preview -notmatch 'TextControlBackgroundFocused') { throw 'Transparent in-place text editor styling is missing.' }
           if ($preview -notmatch 'Opacity = 0,') { throw 'Artwork ghost must stay invisible so the real rendered frame remains visible.' }
 
+          $rendererEngine = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererEngine.cs' -Raw
+          if ($rendererEngine -notmatch 'SKRect\? visibleClip') { throw 'Renderer image transforms still lack a separate visible artwork clip.' }
+          if ($rendererEngine -notmatch 'visibleClip \?\? dest') { throw 'Renderer still treats the SmartCard base image rectangle as the only artwork mask.' }
+          if ($rendererEngine -notmatch 'DrawImageCover\([\s\S]*?new SKRect\(clip\.X, clip\.Y, clip\.Right, clip\.Bottom\)') { throw 'SmartCard artwork is not using the full authored reveal clip.' }
+
+          $rendererAdapter = Get-Content 'windows/CubicalCompare/Core/Renderer/LegacyRendererAdapter.cs' -Raw
+          if ($rendererAdapter -notmatch 'ImageBaseX') { throw 'Preview geometry does not separate SmartCard base image placement from the full artwork mask.' }
+          if ($rendererAdapter -notmatch 'artworkClip = sequence\.Artwork\?\.ClipAt') { throw 'Preview geometry is not exposing the authored SmartCard artwork clip.' }
+          if ($preview -notmatch 'ReliableImageBase') { throw 'Preview transforms do not use the SmartCard image base rectangle.' }
+          if ($preview -notmatch 'ImageBaseWidth') { throw 'Preview resize/hit-testing still collapses SmartCard artwork back to the mask rectangle.' }
+
           $rendererBundle = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererBundle.cs' -Raw
           if ($rendererBundle -match 'public const string AppVersion\s*=') {
             throw 'Renderer compatibility app version is still hardcoded.'
@@ -636,6 +647,9 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
+
+          - SmartCard artwork transforms now expand through the full authored artwork/reveal mask (including behind the badge) instead of being hard-clipped to the smaller scale=1 image base rectangle.
+          - Preview selection, hit-testing and resize handles now distinguish the full visible artwork mask from the SmartCard image base, fixing the later-card/post-card-4 shrink behavior.
 
           - 4.2.1.26 introduces Smart Setup: the existing %LOCALAPPDATA%\\CubicalCompare tree is no longer a single point of failure.
           - Setup first updates the remembered active managed root; if Windows still keeps that tree locked, Setup automatically installs a clean managed copy to a fresh recovery root using Velopack's supported --installto option.
