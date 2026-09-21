@@ -9,6 +9,9 @@ public sealed partial class MainWindow
     private DispatcherTimer? _previewPlaybackTimer;
     private Button? _previewPlayButton;
     private bool _previewPlaying;
+    private bool _previewPlaybackSliderUpdate;
+    private bool _previewPlaybackRenderLoopRunning;
+    private int _previewPlaybackRequestedFrame = -1;
     private int _previewPlaybackStartFrame;
     private readonly Stopwatch _previewPlaybackClock = new();
 
@@ -21,6 +24,8 @@ public sealed partial class MainWindow
         _previewPlayButton.Click += PreviewPlayButton_Click;
         ToolTipService.SetToolTip(_previewPlayButton, "Play preview");
 
+        // This timer advances the clock only. Rendering is deliberately single-flight:
+        // a 60 FPS timer must never enqueue 60 expensive renderer tasks per second.
         _previewPlaybackTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(16),
@@ -47,12 +52,14 @@ public sealed partial class MainWindow
         }
 
         if (ProjectFrameSlider.Value >= ProjectFrameSlider.Maximum)
-            ProjectFrameSlider.Value = 0;
+            SetPreviewPlaybackSliderValue(0);
 
         _previewPlaybackStartFrame = (int)Math.Round(ProjectFrameSlider.Value);
+        _previewPlaybackRequestedFrame = -1;
         _previewPlaybackClock.Restart();
         _previewPlaying = true;
         _previewPlaybackTimer?.Start();
+        QueuePreviewPlaybackRender(_previewPlaybackStartFrame);
         RefreshPreviewPlayButton();
         TimelineStatusText.Text = "Preview playing";
     }
@@ -73,14 +80,72 @@ public sealed partial class MainWindow
 
         if (targetFrame >= lastFrame)
         {
-            ProjectFrameSlider.Value = lastFrame;
+            SetPreviewPlaybackSliderValue(lastFrame);
             StopPreviewPlayback();
+            QueuePreviewPlaybackRender(lastFrame);
             TimelineStatusText.Text = "Preview finished";
             return;
         }
 
         if ((int)Math.Round(ProjectFrameSlider.Value) != targetFrame)
-            ProjectFrameSlider.Value = targetFrame;
+            SetPreviewPlaybackSliderValue(targetFrame);
+
+        QueuePreviewPlaybackRender(targetFrame);
+    }
+
+    private void SetPreviewPlaybackSliderValue(int frame)
+    {
+        _previewPlaybackSliderUpdate = true;
+        try
+        {
+            ProjectFrameSlider.Value = Math.Clamp(frame, 0, (int)Math.Round(ProjectFrameSlider.Maximum));
+        }
+        finally
+        {
+            _previewPlaybackSliderUpdate = false;
+        }
+    }
+
+    private void QueuePreviewPlaybackRender(int frame)
+    {
+        _previewPlaybackRequestedFrame = frame;
+
+        if (_previewPlaybackRenderLoopRunning)
+            return;
+
+        _previewPlaybackRenderLoopRunning = true;
+        _ = RunPreviewPlaybackRenderLoopAsync();
+    }
+
+    private async Task RunPreviewPlaybackRenderLoopAsync()
+    {
+        try
+        {
+            while (_previewPlaybackRequestedFrame >= 0)
+            {
+                // Consume only the newest requested frame. If rendering takes longer
+                // than one source frame, intermediate timer ticks are intentionally
+                // skipped instead of piling up Task.Run renderer jobs.
+                var frame = _previewPlaybackRequestedFrame;
+                _previewPlaybackRequestedFrame = -1;
+                await RenderFrameAsync(frame);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("Preview playback render failed", ex);
+            TimelineStatusText.Text = $"Preview error: {ex.Message}";
+            StopPreviewPlayback();
+        }
+        finally
+        {
+            _previewPlaybackRenderLoopRunning = false;
+
+            // A timer tick can arrive while the final await is resuming. Start one
+            // more pass if that happened; still only one render loop may run.
+            if (_previewPlaybackRequestedFrame >= 0)
+                QueuePreviewPlaybackRender(_previewPlaybackRequestedFrame);
+        }
     }
 
     private void StopPreviewPlayback()
@@ -88,6 +153,7 @@ public sealed partial class MainWindow
         _previewPlaying = false;
         _previewPlaybackTimer?.Stop();
         _previewPlaybackClock.Stop();
+        _previewPlaybackRequestedFrame = -1;
         RefreshPreviewPlayButton();
     }
 
