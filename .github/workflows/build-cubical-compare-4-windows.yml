@@ -525,10 +525,20 @@ jobs:
             '}'
           ) | Set-Content $lockerScript -Encoding UTF8
 
-          $locker = Start-Process -FilePath 'pwsh.exe' -ArgumentList @(
+          # ProcessStartInfo.ArgumentList preserves paths containing spaces exactly.
+          # Start-Process -ArgumentList flattens to one command-line string and caused
+          # the previous smoke test to never establish its lock on hosted runners.
+          $lockerInfo = [System.Diagnostics.ProcessStartInfo]::new()
+          $lockerInfo.FileName = (Get-Command pwsh.exe).Source
+          $lockerInfo.UseShellExecute = $false
+          foreach ($arg in @(
             '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
             '-File', $lockerScript, $lockFile, $lockerReady
-          ) -PassThru
+          )) {
+            [void]$lockerInfo.ArgumentList.Add([string]$arg)
+          }
+          $locker = [System.Diagnostics.Process]::Start($lockerInfo)
+          if ($null -eq $locker) { throw 'Could not start the unrelated external lock-holder process.' }
 
           $readyDeadline = [DateTime]::UtcNow.AddSeconds(10)
           while (-not (Test-Path $lockerReady) -and [DateTime]::UtcNow -lt $readyDeadline) {
