@@ -581,6 +581,25 @@ internal sealed record SmartBadgeSequenceDefinition(
     public string? OverlayAssetAt(int templateFrame) =>
         templateFrame >= 0 && templateFrame < OverlayFrames.Count ? OverlayFrames[templateFrame] : null;
 
+    public SmartBadgeFrameSelection? FinalFrame()
+    {
+        for (var index = Parts.Count - 1; index >= 0; index--)
+        {
+            var part = Parts[index];
+            if (part.Frames.Count == 0)
+                continue;
+
+            var frameIndex = part.Frames.Count - 1;
+            return new SmartBadgeFrameSelection(
+                part.Frames[frameIndex],
+                part.TemplateOffset + frameIndex);
+        }
+
+        return null;
+    }
+
+    public bool HasInfinitePart => Parts.Any(part => part.Count == 0 && part.Frames.Count > 0);
+
     public SmartBadgeFrameSelection? SelectFrame(int frame)
     {
         if (frame < 0 || Parts.Count == 0) return null;
