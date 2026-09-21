@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.22 · Update system recovery",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• fixes GitHub/local ZIP updates selecting the outer Velopack portable bundle instead of its real current/ app payload\n• ZIP updates now replace the canonical current directory and automatically flatten the broken current/current layout created by 4.2.1.20/21\n• sq.version is preserved/restored from the real portable payload so Velopack package updates keep working\n• damaged installed copies automatically prefer the visible Setup.exe recovery path instead of repeatedly choosing a ZIP that cannot repair install metadata\n• Update from ZIP can re-apply the current GitHub release as a repair operation even when no newer version exists",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.21 · Renderer runtime compatibility",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
