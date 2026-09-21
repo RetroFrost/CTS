@@ -632,8 +632,9 @@ public sealed partial class MainWindow
 
                 var localScaleX = Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleX));
                 var localScaleY = Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleY));
-                var localSlotWidth = g.ArtworkWidth / localScaleX;
-                var localSlotHeight = g.ArtworkHeight / localScaleY;
+                var imageBase = ReliableImageBase(g);
+                var localSlotWidth = imageBase.Width / localScaleX;
+                var localSlotHeight = imageBase.Height / localScaleY;
                 var baseScale = g.ArtworkCover
                     ? Math.Max(localSlotWidth / cropWidth, localSlotHeight / cropHeight)
                     : Math.Min(localSlotWidth / cropWidth, localSlotHeight / cropHeight);
@@ -641,8 +642,8 @@ public sealed partial class MainWindow
                 var imageScale = Math.Clamp(card.ImageScale, .05, 12);
                 var halfWidth = cropWidth * baseScale * imageScale * localScaleX / 2.0;
                 var halfHeight = cropHeight * baseScale * imageScale * localScaleY / 2.0;
-                var centerX = g.ArtworkX + g.ArtworkWidth / 2.0 + card.ImageX * g.ImageCoordinateScaleX;
-                var centerY = g.ArtworkY + g.ArtworkHeight / 2.0 + card.ImageY * g.ImageCoordinateScaleY;
+                var centerX = imageBase.X + imageBase.Width / 2.0 + card.ImageX * g.ImageCoordinateScaleX;
+                var centerY = imageBase.Y + imageBase.Height / 2.0 + card.ImageY * g.ImageCoordinateScaleY;
 
                 var dx = referencePoint.X - centerX;
                 var dy = referencePoint.Y - centerY;
@@ -809,6 +810,20 @@ public sealed partial class MainWindow
             : null;
     }
 
+    private static (double X, double Y, double Width, double Height) ReliableImageBase(
+        CubicalCompare.Core.Renderer.PreviewCardGeometry geometry)
+    {
+        var x = double.IsNaN(geometry.ImageBaseX) ? geometry.ArtworkX : geometry.ImageBaseX;
+        var y = double.IsNaN(geometry.ImageBaseY) ? geometry.ArtworkY : geometry.ImageBaseY;
+        var width = double.IsNaN(geometry.ImageBaseWidth) || geometry.ImageBaseWidth <= 0
+            ? geometry.ArtworkWidth
+            : geometry.ImageBaseWidth;
+        var height = double.IsNaN(geometry.ImageBaseHeight) || geometry.ImageBaseHeight <= 0
+            ? geometry.ArtworkHeight
+            : geometry.ImageBaseHeight;
+        return (x, y, width, height);
+    }
+
     private void RefreshReliablePreviewTransformOverlay(bool useWorkingValues = false)
     {
         if (!_reliablePreviewActive ||
@@ -871,8 +886,9 @@ public sealed partial class MainWindow
             var cropHeight = bitmap.Height * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropTop, 0, .95) - Math.Clamp(card.ImageCropBottom, 0, .95));
             var coordX = Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleX));
             var coordY = Math.Max(.0001, Math.Abs(g.ImageCoordinateScaleY));
-            var localSlotWidth = g.ArtworkWidth / coordX;
-            var localSlotHeight = g.ArtworkHeight / coordY;
+            var imageBase = ReliableImageBase(g);
+            var localSlotWidth = imageBase.Width / coordX;
+            var localSlotHeight = imageBase.Height / coordY;
             var baseScale = g.ArtworkCover
                 ? Math.Max(localSlotWidth / cropWidth, localSlotHeight / cropHeight)
                 : Math.Min(localSlotWidth / cropWidth, localSlotHeight / cropHeight);
@@ -880,8 +896,8 @@ public sealed partial class MainWindow
 
             var width = Math.Max(1, cropWidth * effective * coordX * sx);
             var height = Math.Max(1, cropHeight * effective * coordY * sy);
-            var centerX = (g.ArtworkX + g.ArtworkWidth / 2 + imageX * g.ImageCoordinateScaleX) * sx;
-            var centerY = (g.ArtworkY + g.ArtworkHeight / 2 + imageY * g.ImageCoordinateScaleY) * sy;
+            var centerX = (imageBase.X + imageBase.Width / 2 + imageX * g.ImageCoordinateScaleX) * sx;
+            var centerY = (imageBase.Y + imageBase.Height / 2 + imageY * g.ImageCoordinateScaleY) * sy;
 
             // Border/handles only. The rendered frame remains fully visible beneath them.
             _reliablePreviewArtworkGhost!.Source = null;
@@ -1184,10 +1200,11 @@ public sealed partial class MainWindow
             return new Point(ReliablePreviewWidth / 2, ReliablePreviewHeight / 2);
 
         var g = geometry.Value;
+        var imageBase = ReliableImageBase(g);
         var (sx, sy) = ReliablePreviewScale();
         return new Point(
-            (g.ArtworkX + g.ArtworkWidth / 2 + imageX * g.ImageCoordinateScaleX) * sx,
-            (g.ArtworkY + g.ArtworkHeight / 2 + imageY * g.ImageCoordinateScaleY) * sy);
+            (imageBase.X + imageBase.Width / 2 + imageX * g.ImageCoordinateScaleX) * sx,
+            (imageBase.Y + imageBase.Height / 2 + imageY * g.ImageCoordinateScaleY) * sy);
     }
 
     private (double X, double Y) ReliablePreviewScale()
