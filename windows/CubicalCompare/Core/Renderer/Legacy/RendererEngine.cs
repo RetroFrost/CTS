@@ -8,6 +8,7 @@ namespace CubicalCompare.Windows;
 public sealed class RendererEngine : IDisposable
 {
     private readonly Dictionary<string, SKBitmap> _imageCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SKRect?> _sequenceOpaqueBoundsCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly InfiniteTimelineRenderer _infinite = new();
     private readonly RelationshipsRenderer _relationships = new();
 
@@ -199,10 +200,15 @@ public sealed class RendererEngine : IDisposable
         var clipLiveContent = Truthy(
             Get(props, "clipLiveContent"),
             resource.Bool("clipLiveContent", false));
+        var textOutsideArtworkClip = spec.RequiredFeatures.Contains(
+            "smart-card-text-outside-artwork-clip-v1",
+            StringComparer.Ordinal);
         var contentClip = sequence.Artwork?.ClipAt(selected.TemplateFrame);
+        var liveClipSaved = false;
         if (clipLiveContent && contentClip is not null)
         {
             canvas.Save();
+            liveClipSaved = true;
             canvas.ClipRect(
                 new SKRect(contentClip.X, contentClip.Y, contentClip.Right, contentClip.Bottom),
                 SKClipOperation.Intersect,
@@ -239,10 +245,18 @@ public sealed class RendererEngine : IDisposable
             }
         }
 
+        // New SmartCard contract: the artwork reveal/mask can stay clipped while
+        // title/description/jsparse fields remain in their authored card regions.
+        if (liveClipSaved && textOutsideArtworkClip)
+        {
+            canvas.Restore();
+            liveClipSaved = false;
+        }
+
         foreach (var field in sequence.Fields)
             DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, 1);
 
-        if (clipLiveContent && contentClip is not null)
+        if (liveClipSaved)
             canvas.Restore();
 
         // Overlay/glass/shine is deliberately outside the live-content clip and
@@ -401,16 +415,19 @@ public sealed class RendererEngine : IDisposable
         string packId = defaultPack;
         int? explicitStart = null;
         int sequenceOffset = 0;
+        JsonElement cardSelection = default;
+        var hasCardSelection = false;
 
         if (manifest.TryGetProperty("cards", out var cards) && cards.ValueKind == JsonValueKind.Object)
         {
-            if (cards.TryGetProperty(index.ToString(CultureInfo.InvariantCulture), out var cardSelection))
+            if (cards.TryGetProperty(index.ToString(CultureInfo.InvariantCulture), out cardSelection))
             {
+                hasCardSelection = cardSelection.ValueKind == JsonValueKind.Object;
                 if (cardSelection.ValueKind == JsonValueKind.String)
                 {
                     packId = cardSelection.GetString() ?? packId;
                 }
-                else if (cardSelection.ValueKind == JsonValueKind.Object)
+                else if (hasCardSelection)
                 {
                     packId = cardSelection.String("pack", packId);
                     if (cardSelection.TryGetProperty("startFrame", out var startElement) &&
@@ -432,6 +449,10 @@ public sealed class RendererEngine : IDisposable
         float drawY = 0;
         float? drawWidth = null;
         float? drawHeight = null;
+        var entryMotion = "";
+        var entryAnchor = "";
+        var settledHold = false;
+
         if (packSelection.ValueKind == JsonValueKind.String)
         {
             asset = packSelection.GetString() ?? "";
@@ -445,10 +466,27 @@ public sealed class RendererEngine : IDisposable
             var configuredHeight = packSelection.Double("drawHeight", 0);
             if (configuredWidth > 0) drawWidth = (float)configuredWidth;
             if (configuredHeight > 0) drawHeight = (float)configuredHeight;
+            entryMotion = packSelection.String("entryMotion", "");
+            entryAnchor = packSelection.String("entryAnchor", "");
+            settledHold = packSelection.Bool("settledHold", false);
         }
         else
         {
             return false;
+        }
+
+        // A card selection may override placement/motion without duplicating a pack.
+        if (hasCardSelection)
+        {
+            drawX = (float)cardSelection.Double("drawX", drawX);
+            drawY = (float)cardSelection.Double("drawY", drawY);
+            var cardWidth = cardSelection.Double("drawWidth", drawWidth ?? 0);
+            var cardHeight = cardSelection.Double("drawHeight", drawHeight ?? 0);
+            if (cardWidth > 0) drawWidth = (float)cardWidth;
+            if (cardHeight > 0) drawHeight = (float)cardHeight;
+            entryMotion = cardSelection.String("entryMotion", entryMotion);
+            entryAnchor = cardSelection.String("entryAnchor", entryAnchor);
+            settledHold = cardSelection.Bool("settledHold", settledHold);
         }
 
         if (string.IsNullOrWhiteSpace(asset))
@@ -462,17 +500,18 @@ public sealed class RendererEngine : IDisposable
         catch
         {
             // The compatibility report exposes the exact validation error. During a
-            // render we fail closed rather than falling back to a different badge and
-            // silently changing the authored renderer.
+            // render we fail closed rather than silently changing authored badges.
             return true;
         }
 
-        var start = explicitStart ?? CardStart(spec, index);
-        var sequenceFrame = globalFrame - start + sequenceOffset;
+        var startFrame = explicitStart ?? CardStart(spec, index);
+        var sequenceFrame = globalFrame - startFrame + sequenceOffset;
         if (sequenceFrame < 0)
             return true;
 
         var selected = sequence.SelectFrame(sequenceFrame);
+        if (selected is null && settledHold)
+            selected = sequence.FinalFrame();
         if (selected is null)
             return true;
 
@@ -485,8 +524,31 @@ public sealed class RendererEngine : IDisposable
         if (width <= 0 || height <= 0)
             return true;
 
+        // top-to-final is authored by the sequence's per-frame vertical geometry.
+        // final-x is enforced by the runtime so a top-entry sequence cannot drift
+        // sideways just because individual PNG bounds differ by a pixel or two.
+        var finalXCorrection = 0f;
+        var lockFinalX =
+            entryAnchor.Equals("final-x", StringComparison.OrdinalIgnoreCase) ||
+            entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase);
+        if (lockFinalX)
+        {
+            var final = sequence.FinalFrame();
+            if (final is not null)
+            {
+                var finalBitmap = DecodeSequenceBitmap(sequence, final.Asset);
+                if (finalBitmap is not null)
+                {
+                    var currentBounds = SequenceOpaqueBounds(sequence, selected.Asset, bitmap);
+                    var finalBounds = SequenceOpaqueBounds(sequence, final.Asset, finalBitmap);
+                    if (currentBounds is SKRect current && finalBounds is SKRect target)
+                        finalXCorrection = target.MidX - current.MidX;
+                }
+            }
+        }
+
         canvas.Save();
-        canvas.Translate(cardX + drawX, drawY);
+        canvas.Translate(cardX + drawX + finalXCorrection, drawY);
         canvas.Scale(width / Math.Max(1, sequence.Width), height / Math.Max(1, sequence.Height));
 
         using (var paint = new SKPaint
@@ -507,6 +569,41 @@ public sealed class RendererEngine : IDisposable
 
         canvas.Restore();
         return true;
+    }
+
+    private SKRect? SequenceOpaqueBounds(
+        SmartBadgeSequenceDefinition sequence,
+        string asset,
+        SKBitmap bitmap)
+    {
+        var key = sequence.Root + "|" + asset;
+        if (_sequenceOpaqueBoundsCache.TryGetValue(key, out var cached))
+            return cached;
+
+        var left = bitmap.Width;
+        var top = bitmap.Height;
+        var right = -1;
+        var bottom = -1;
+
+        for (var y = 0; y < bitmap.Height; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                if (bitmap.GetPixel(x, y).Alpha == 0)
+                    continue;
+
+                if (x < left) left = x;
+                if (x > right) right = x;
+                if (y < top) top = y;
+                if (y > bottom) bottom = y;
+            }
+        }
+
+        SKRect? result = right >= left && bottom >= top
+            ? new SKRect(left, top, right + 1, bottom + 1)
+            : null;
+        _sequenceOpaqueBoundsCache[key] = result;
+        return result;
     }
 
     private void DrawBadgeShape(SKCanvas canvas, StudioProject project, StudioCard card, int index, int local, RendererSpec spec)
@@ -1816,7 +1913,7 @@ public sealed class RendererEngine : IDisposable
     }
     private static JsonElement EmptyJson() { using var d = JsonDocument.Parse("{}"); return d.RootElement.Clone(); }
 
-    public void Dispose() { _infinite.Dispose(); _relationships.Dispose(); foreach (var bitmap in _imageCache.Values.Distinct()) bitmap.Dispose(); _imageCache.Clear(); }
+    public void Dispose() { _infinite.Dispose(); _relationships.Dispose(); foreach (var bitmap in _imageCache.Values.Distinct()) bitmap.Dispose(); _imageCache.Clear(); _sequenceOpaqueBoundsCache.Clear(); }
 }
 
 internal static class V3Evaluator
