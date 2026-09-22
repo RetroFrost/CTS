@@ -1226,6 +1226,37 @@ public sealed class LegacyRendererAdapter : IDisposable
         return _engine.Render(ToLegacyProject(project), _spec, Math.Max(0, frame), outputWidth, outputHeight);
     }
 
+    public sealed class RenderSession
+    {
+        private readonly Legacy.RendererEngine _engine;
+        private readonly Legacy.RendererSpec _spec;
+        private readonly Legacy.StudioProject _project;
+
+        internal RenderSession(
+            Legacy.RendererEngine engine,
+            Legacy.RendererSpec spec,
+            Legacy.StudioProject project)
+        {
+            _engine = engine;
+            _spec = spec;
+            _project = project;
+        }
+
+        public SKBitmap Render(int frame, int width, int height) =>
+            _engine.Render(
+                _project,
+                _spec,
+                Math.Max(0, frame),
+                Math.Max(2, width),
+                Math.Max(2, height));
+    }
+
+    public RenderSession CreateRenderSession(ComparisonProject project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        return new RenderSession(_engine, _spec, ToLegacyProject(project));
+    }
+
     public byte[] RenderPng(ComparisonProject project, int frame, int? width = null, int? height = null)
     {
         using var bitmap = Render(project, frame, width, height);
