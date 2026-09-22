@@ -214,11 +214,13 @@ public static class AutoThumbnailGenerator
 
     private static bool DrawArtwork(SKCanvas canvas, ComparisonCard card, SKRect destination)
     {
-        if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath)) return false;
+        if (string.IsNullOrWhiteSpace(card.ImagePath)) return false;
 
         try
         {
-            using var bitmap = SKBitmap.Decode(card.ImagePath);
+            var resolved = WebImageSource.ResolveToLocalFile(card.ImagePath);
+            if (string.IsNullOrWhiteSpace(resolved) || !File.Exists(resolved)) return false;
+            using var bitmap = SKBitmap.Decode(resolved);
             if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0) return false;
 
             var cropLeft = Math.Clamp(card.ImageCropLeft, 0, .95);
