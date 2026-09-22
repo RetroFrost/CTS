@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using CubicalCompare.Core.Project;
 using SkiaSharp;
 
 namespace CubicalCompare.Windows;
@@ -1931,9 +1932,22 @@ public sealed class RendererEngine : IDisposable
 
     private SKBitmap? LoadImage(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || path.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) return null;
-        if (_imageCache.TryGetValue(path, out var cached)) return cached;
-        try { var bitmap = SKBitmap.Decode(path); if (bitmap != null) _imageCache[path] = bitmap; return bitmap; } catch { return null; }
+        var source = WebImageSource.NormalizeSource(path);
+        if (string.IsNullOrWhiteSpace(source)) return null;
+        if (_imageCache.TryGetValue(source, out var cached)) return cached;
+
+        try
+        {
+            var resolved = WebImageSource.ResolveToLocalFile(source);
+            if (string.IsNullOrWhiteSpace(resolved) || !File.Exists(resolved)) return null;
+            var bitmap = SKBitmap.Decode(resolved);
+            if (bitmap != null) _imageCache[source] = bitmap;
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
     }
     private SKBitmap? DecodeSceneBitmap(RendererSceneV3 scene, string source)
     {
