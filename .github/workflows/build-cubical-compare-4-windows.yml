@@ -49,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.26"
+          $version = "4.2.1.27"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.26 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.27 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.27"
+          $velopackVersion = "4.2.28"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -161,6 +161,9 @@ jobs:
           if ($rendererEngine -notmatch 'entryAnchor\.Equals\("final-x"') { throw 'SmartBadge final-X anchor runtime handling is missing.' }
           if ($rendererEngine -notmatch 'SequenceOpaqueBounds') { throw 'SmartBadge final-X drift correction is missing.' }
           if ($rendererEngine -notmatch 'settledHold') { throw 'SmartBadge settled-hold runtime handling is missing.' }
+          if ($rendererEngine -notmatch 'if \(index < 4\)') { throw 'Opening SmartBadge slot isolation is missing.' }
+          if ($rendererEngine -notmatch 'slotLeft = index \* spec\.SlotPitch \+ slotInset') { throw 'Opening SmartBadge slot isolation is not anchored to the final card slot.' }
+          if ($rendererEngine -notmatch 'canvas\.ClipRect\([\s\S]*?slotLeft[\s\S]*?slotRight[\s\S]*?SKClipOperation\.Intersect') { throw 'Opening SmartBadge base/text/overlay are not clipped as one composition.' }
 
           $smartSequence = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/SmartBadgeSequence.cs' -Raw
           if ($smartSequence -notmatch 'FinalFrame\(\)') { throw 'SmartBadge final-frame accessor is missing.' }
@@ -627,6 +630,12 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
+
+          - 4.2.1.27 fixes SmartBadge opening collisions in the renderer runtime instead of patching individual renderer packages.
+          - Opening cards 1–4 are clipped to their final card slots before the moving card transform, so incoming badges reveal from the gap/divider rather than painting over the previous badge.
+          - Base badge frames, live jsparse text and overlay/shine stay in one canvas transform and one slot clip, eliminating split/ghost layers.
+          - Settled badge positions are unchanged, and cards 5+ / continuous scrolling are untouched.
+          - Existing FULL-ARTWORK renderer packages work directly; no extra gap-spawn metadata or per-renderer coordinate hacks are required.
 
           - SmartCard artwork transforms now expand through the full authored artwork/reveal mask (including behind the badge) instead of being hard-clipped to the smaller scale=1 image base rectangle.
           - Preview selection, hit-testing and resize handles now distinguish the full visible artwork mask from the SmartCard image base, fixing the later-card/post-card-4 shrink behavior.
