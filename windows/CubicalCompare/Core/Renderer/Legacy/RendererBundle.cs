@@ -853,7 +853,8 @@ public static class RendererCapabilities
             {
                 var entryMotion = property.Value.String("entryMotion", "");
                 if (entryMotion.Length > 0 &&
-                    !entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase))
+                    !entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase) &&
+                    !entryMotion.Equals("gap-to-authored-whole-unit-v2", StringComparison.OrdinalIgnoreCase))
                     errors.Add($"SmartBadge v2 pack '{property.Name}' has unsupported entryMotion '{entryMotion}'.");
 
                 var entryAnchor = property.Value.String("entryAnchor", "");
@@ -911,7 +912,8 @@ public static class RendererCapabilities
 
                     var entryMotion = property.Value.String("entryMotion", "");
                     if (entryMotion.Length > 0 &&
-                        !entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase))
+                        !entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase) &&
+                        !entryMotion.Equals("gap-to-authored-whole-unit-v2", StringComparison.OrdinalIgnoreCase))
                         errors.Add($"SmartBadge v2 card selection '{property.Name}' has unsupported entryMotion '{entryMotion}'.");
 
                     var entryAnchor = property.Value.String("entryAnchor", "");
