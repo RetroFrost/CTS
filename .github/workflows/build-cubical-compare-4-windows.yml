@@ -49,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.28"
+          $version = "4.2.1.29"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.28 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.29 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.29"
+          $velopackVersion = "4.2.30"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -175,6 +175,27 @@ jobs:
           if ($rendererBundle -notmatch 'smart-badge-settled-hold-v1') { throw 'Renderer capability list is missing settled-hold support.' }
           if ($rendererBundle -notmatch 'smart-card-text-outside-artwork-clip-v1') { throw 'Renderer capability list is missing SmartCard text clip support.' }
           if ($rendererBundle -notmatch 'smart-card-full-artwork-mask-v1') { throw 'Renderer capability list is missing full SmartCard artwork-mask support.' }
+
+          $webImages = Get-Content 'windows/CubicalCompare/Core/Project/WebImageSource.cs' -Raw
+          if ($webImages -notmatch 'TryFlaticonCdnCandidate') { throw 'Flaticon page URL resolution is missing.' }
+          if ($webImages -notmatch 'og:image') { throw 'Generic web-page image metadata resolution is missing.' }
+          if ($webImages -notmatch 'WebImageCache') { throw 'Web artwork disk caching is missing.' }
+          if ($webImages -notmatch 'AllowAutoRedirect = false') { throw 'Web artwork redirects are not being validated manually.' }
+
+          $csvImport = Get-Content 'windows/CubicalCompare/Core/Project/CsvImportService.cs' -Raw
+          if ($csvImport -notmatch 'TextFieldParser') { throw 'Quoted CSV parsing support is missing.' }
+          if ($csvImport -notmatch 'WebImageSource\.ResolveToLocalFileAsync') { throw 'CSV web artwork prefetch is missing.' }
+
+          $megaModels = Get-Content 'windows/CubicalCompare/Core/MegaPack/Zipack2Models.cs' -Raw
+          if ($megaModels -notmatch 'JsonPropertyName\("image_url"\)') { throw 'MegaPack image_url metadata support is missing.' }
+          if ($megaModels -notmatch 'ImageSource') { throw 'MegaPack normalized web artwork field is missing.' }
+          $megaImporter = Get-Content 'windows/CubicalCompare/Core/MegaPack/Zipack2Importer.cs' -Raw
+          if ($megaImporter -notmatch 'hasWebArtwork') { throw 'URL-only MegaPack import is missing.' }
+
+          $rendererWeb = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererEngine.cs' -Raw
+          if ($rendererWeb -notmatch 'WebImageSource\.ResolveToLocalFile') { throw 'Renderer does not resolve app-wide web artwork.' }
+          $thumbnailWeb = Get-Content 'windows/CubicalCompare/Core/Thumbnail/AutoThumbnailGenerator.cs' -Raw
+          if ($thumbnailWeb -notmatch 'WebImageSource\.ResolveToLocalFile') { throw 'Thumbnail generator does not resolve web artwork.' }
 
           $mainWindow = Get-Content 'windows/CubicalCompare/MainWindow.xaml.cs' -Raw
           if ($mainWindow -match 'ProjectFrameSlider\.Value = 0;\s*await RenderCurrentFrameAsync\(\);') {
@@ -642,6 +663,13 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
+
+          - 4.2.1.29 adds app-wide web artwork: direct image URLs and ordinary HTTP(S) pages can be used as card artwork, including copied Flaticon icon-page URLs.
+          - A shared resolver follows validated redirects, discovers Open Graph/Twitter/JSON-LD preview images, uses a Flaticon CDN fallback by icon ID, blocks private-network fetches, and caches resolved assets under Cubical Compare app data.
+          - The live card preview, renderer/video export, automatic thumbnail generator and MegaPack exporter now all use the same cached web-image source.
+          - MegaPack v2 card metadata accepts image, image_url, imageUrl, artwork, artwork_url and icon fields; URL-only MegaPacks can import without contact sheets.
+          - Workspace adds Import CSV with quoted-field parsing, flexible title/value/description/image aliases, relative local image paths and automatic web-image prefetch.
+          - The artwork inspector adds Web URL… so a URL can be pasted directly without going through a spreadsheet or MegaPack.
 
           - 4.2.1.28 stops hard-failing self-authored SmartBadge packs on newer entryMotion labels; the corrected renderer's existing `gap-to-authored-whole-unit-v2` metadata now loads as authored frame-local motion instead of blocking the renderer.
           - Opening cards 1–4 now use BodyInset + BodyWidth as the runtime clip, preserving the authored inter-card gap without moving settled badge coordinates or repacking badge assets.
