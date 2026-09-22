@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.28 · Renderer compatibility + max-power export",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• SmartBadge v2 now accepts the authored whole-unit opening motion used by the corrected renderer: gap-to-authored-whole-unit-v2\n• cards 1–4 are isolated to the renderer-authored BodyInset + BodyWidth card body, keeping the real inter-card gap without moving settled badges\n• export rendering now uses a memory-bounded multi-core worker pool and prefetch queue instead of rendering one frame at a time\n• Windows MediaTranscoder hardware acceleration remains enabled and unnecessary re-encoding is disabled when Windows can remux\n• soundtrack composition uses the Windows Fast trimming path instead of Precise for faster finalization",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.27 · SmartBadge opening isolation",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
