@@ -49,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.30"
+          $version = "4.2.1.31"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.30 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.31 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.31"
+          $velopackVersion = "4.2.32"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -187,12 +187,16 @@ jobs:
 
           $webImages = Get-Content 'windows/CubicalCompare/Core/Project/WebImageSource.cs' -Raw
           if ($webImages -notmatch 'TryFlaticonCdnCandidate') { throw 'Flaticon page URL resolution is missing.' }
-          if ($webImages -notmatch 'og:image') { throw 'Generic web-page image metadata resolution is missing.' }
+          if ($webImages -notmatch 'IsAllowedFlaticonSource') { throw 'Strict Flaticon web-artwork allowlist is missing.' }
+          if ($webImages -notmatch 'cdn-icons-png\.flaticon\.com') { throw 'Direct Flaticon CDN allowlist is missing.' }
+          if ($webImages -notmatch '\^/free-icon/') { throw 'Flaticon icon-detail page path restriction is missing.' }
+          if ($webImages -notmatch 'IsAllowedFlaticonUri\(current\)') { throw 'Redirects can leave the Flaticon allowlist.' }
           if ($webImages -notmatch 'WebImageCache') { throw 'Web artwork disk caching is missing.' }
           if ($webImages -notmatch 'AllowAutoRedirect = false') { throw 'Web artwork redirects are not being validated manually.' }
 
           $csvImport = Get-Content 'windows/CubicalCompare/Core/Project/CsvImportService.cs' -Raw
           if ($csvImport -notmatch 'TextFieldParser') { throw 'Quoted CSV parsing support is missing.' }
+          if ($csvImport -notmatch 'IsAllowedFlaticonSource') { throw 'CSV import does not reject non-Flaticon remote artwork.' }
           if ($csvImport -notmatch 'WebImageSource\.ResolveToLocalFileAsync') { throw 'CSV web artwork prefetch is missing.' }
 
           $megaModels = Get-Content 'windows/CubicalCompare/Core/MegaPack/Zipack2Models.cs' -Raw
@@ -200,6 +204,7 @@ jobs:
           if ($megaModels -notmatch 'ImageSource') { throw 'MegaPack normalized web artwork field is missing.' }
           $megaImporter = Get-Content 'windows/CubicalCompare/Core/MegaPack/Zipack2Importer.cs' -Raw
           if ($megaImporter -notmatch 'hasWebArtwork') { throw 'URL-only MegaPack import is missing.' }
+          if ($megaImporter -notmatch 'rejectedWebCards') { throw 'MegaPack import does not reject non-Flaticon remote artwork.' }
 
           $rendererWeb = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererEngine.cs' -Raw
           if ($rendererWeb -notmatch 'WebImageSource\.ResolveToLocalFile') { throw 'Renderer does not resolve app-wide web artwork.' }
@@ -673,7 +678,7 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - 4.2.1.30 completes web-artwork editing: URL images now work with Fit, direct manipulation, immersive preview selection, move, resize, rotate and crop using the same resolved cache as local artwork.
+          - 4.2.1.31 completes web-artwork editing: URL images now work with Fit, direct manipulation, immersive preview selection, move, resize, rotate and crop using the same resolved cache as local artwork.
           - Editor hit-testing and artwork dimensions no longer call File.Exists or SKBitmap.Decode on the original URL string; they use the cached local asset while the project continues storing the original web URL.
           - Renderer/video export keeps using the same project transform values, so web and local artwork now have one transform path end-to-end.
 

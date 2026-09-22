@@ -10,8 +10,8 @@ using System.Text.RegularExpressions;
 namespace CubicalCompare.Core.Project;
 
 /// <summary>
-/// Resolves local image paths, direct HTTP(S) image URLs and ordinary web pages
-/// (for example Flaticon icon pages) into a reusable local image file.
+/// Resolves local image paths plus a deliberately narrow set of Flaticon URLs
+/// into reusable local image files. Arbitrary web URLs are rejected.
 /// </summary>
 public static class WebImageSource
 {
@@ -19,6 +19,12 @@ public static class WebImageSource
     private const long MaxHtmlBytes = 5L * 1024 * 1024;
     private const int MaxRedirects = 8;
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromDays(30);
+    private static readonly Regex FlaticonIconPagePath = new(
+        @"^/free-icon/[^/?#]+_(?<id>[1-9]\d*)/?$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex FlaticonDirectImagePath = new(
+        @"^/\d+/\d+/\d+\.(?:png|webp|jpg|jpeg|svg)$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly HttpClient Client = CreateHttpClient();
     private static readonly ConcurrentDictionary<string, Lazy<Task<string>>> InFlight =
@@ -62,10 +68,48 @@ public static class WebImageSource
             && uri.Scheme is "http" or "https";
     }
 
+    public static bool IsAllowedFlaticonSource(string? source)
+    {
+        var value = NormalizeSource(source);
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && IsAllowedFlaticonUri(uri);
+    }
+
+    private static bool IsAllowedFlaticonUri(Uri uri)
+    {
+        if (!uri.IsAbsoluteUri ||
+            !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !uri.IsDefaultPort ||
+            !string.IsNullOrEmpty(uri.UserInfo))
+            return false;
+
+        var host = uri.IdnHost.TrimEnd('.').ToLowerInvariant();
+        return host switch
+        {
+            "flaticon.com" or "www.flaticon.com" => FlaticonIconPagePath.IsMatch(uri.AbsolutePath),
+            "cdn-icons-png.flaticon.com" => FlaticonDirectImagePath.IsMatch(uri.AbsolutePath),
+            _ => false,
+        };
+    }
+
+    private static bool IsFlaticonIconPageUri(Uri uri)
+    {
+        if (!IsAllowedFlaticonUri(uri)) return false;
+        var host = uri.IdnHost.TrimEnd('.');
+        return host.Equals("flaticon.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("www.flaticon.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static InvalidDataException RejectedWebSource(string source) =>
+        new($"Web artwork URL rejected: '{source}'. Cubical Compare only accepts Flaticon icon pages " +
+            "(https://www.flaticon.com/free-icon/..._<id>) and direct images from " +
+            "https://cdn-icons-png.flaticon.com/.");
+
     public static string? TryGetCachedLocalPath(string? source)
     {
         var value = NormalizeSource(source);
         if (!IsRemoteSource(value)) return ResolveLocalPath(value);
+        if (!IsAllowedFlaticonSource(value)) return null;
 
         var prefix = CacheKey(value) + ".";
         try
@@ -92,6 +136,7 @@ public static class WebImageSource
         var value = NormalizeSource(source);
         if (value.Length == 0) return null;
         if (!IsRemoteSource(value)) return ResolveLocalPath(value);
+        if (!IsAllowedFlaticonSource(value)) throw RejectedWebSource(value);
         return ResolveToLocalFileAsync(value, cancellationToken).GetAwaiter().GetResult();
     }
 
@@ -102,6 +147,7 @@ public static class WebImageSource
         var value = NormalizeSource(source);
         if (value.Length == 0) return null;
         if (!IsRemoteSource(value)) return ResolveLocalPath(value);
+        if (!IsAllowedFlaticonSource(value)) throw RejectedWebSource(value);
 
         var cached = TryGetCachedLocalPath(value);
         if (!string.IsNullOrWhiteSpace(cached)) return cached;
@@ -155,6 +201,8 @@ public static class WebImageSource
         var token = timeout.Token;
 
         var sourceUri = new Uri(originalSource, UriKind.Absolute);
+        if (!IsAllowedFlaticonUri(sourceUri))
+            throw RejectedWebSource(originalSource);
 
         // Flaticon page URLs expose a stable CDN path derived from the icon id.
         // Try that first so ordinary copied icon-page URLs keep working even when
@@ -266,6 +314,8 @@ public static class WebImageSource
         var current = source;
         for (var redirect = 0; redirect <= MaxRedirects; redirect++)
         {
+            if (!IsAllowedFlaticonUri(current))
+                throw RejectedWebSource(current.AbsoluteUri);
             await EnsurePublicHttpUriAsync(current, cancellationToken).ConfigureAwait(false);
 
             using var request = new HttpRequestMessage(HttpMethod.Get, current);
@@ -399,7 +449,7 @@ public static class WebImageSource
             if (decoded.StartsWith("//", StringComparison.Ordinal))
                 decoded = pageUri.Scheme + ":" + decoded;
             if (!Uri.TryCreate(pageUri, decoded, out var candidate)) continue;
-            if (candidate.Scheme is not ("http" or "https")) continue;
+            if (!IsAllowedFlaticonUri(candidate)) continue;
             if (seen.Add(candidate.AbsoluteUri))
                 yield return candidate;
         }
@@ -464,10 +514,10 @@ public static class WebImageSource
 
     private static Uri? TryFlaticonCdnCandidate(Uri pageUri)
     {
-        if (!pageUri.Host.EndsWith("flaticon.com", StringComparison.OrdinalIgnoreCase))
+        if (!IsFlaticonIconPageUri(pageUri))
             return null;
 
-        var match = Regex.Match(pageUri.AbsolutePath, @"_(?<id>\d+)(?:/|$)", RegexOptions.CultureInvariant);
+        var match = FlaticonIconPagePath.Match(pageUri.AbsolutePath);
         if (!match.Success || !long.TryParse(match.Groups["id"].Value, out var id) || id <= 0)
             return null;
 

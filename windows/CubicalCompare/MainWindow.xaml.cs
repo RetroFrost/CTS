@@ -137,14 +137,14 @@ public sealed partial class MainWindow : Window
 
         var input = new TextBox
         {
-            Text = WebImageSource.IsRemoteSource(card.ImagePath) ? card.ImagePath : string.Empty,
+            Text = WebImageSource.IsAllowedFlaticonSource(card.ImagePath) ? card.ImagePath : string.Empty,
             PlaceholderText = "https://www.flaticon.com/free-icon/...",
             MinWidth = 520,
         };
         var dialog = new ContentDialog
         {
             XamlRoot = RootNavigation.XamlRoot,
-            Title = "Use web artwork",
+            Title = "Use Flaticon artwork",
             Content = input,
             PrimaryButtonText = "Use URL",
             CloseButtonText = "Cancel",
@@ -153,15 +153,17 @@ public sealed partial class MainWindow : Window
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
         var source = WebImageSource.NormalizeSource(input.Text);
-        if (!WebImageSource.IsRemoteSource(source))
+        if (!WebImageSource.IsAllowedFlaticonSource(source))
         {
-            await ShowErrorAsync("Not a web image URL", "Paste an HTTP or HTTPS image/page URL.");
+            await ShowErrorAsync(
+                "Only Flaticon icon URLs are allowed",
+                "Use a Flaticon icon page such as https://www.flaticon.com/free-icon/name_123456 or a direct image from https://cdn-icons-png.flaticon.com/. Other websites and other Flaticon pages are rejected.");
             return;
         }
 
         try
         {
-            TimelineStatusText.Text = "Resolving web artwork…";
+            TimelineStatusText.Text = "Resolving Flaticon artwork…";
             var resolved = await WebImageSource.ResolveToLocalFileAsync(source);
             if (string.IsNullOrWhiteSpace(resolved))
                 throw new InvalidDataException("The URL did not resolve to an image.");

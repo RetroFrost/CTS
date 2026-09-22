@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.31 · Flaticon-only web artwork",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• web artwork is now restricted to real Flaticon /free-icon/..._<id> pages and direct cdn-icons-png.flaticon.com image URLs\n• arbitrary websites, unrelated Flaticon pages, lookalike hosts and redirects leaving the Flaticon allowlist are rejected\n• CSV imports reject unsupported remote image fields with a warning, while MegaPacks reject packs that contain unsupported remote artwork",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.30 · Web artwork transforms",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
