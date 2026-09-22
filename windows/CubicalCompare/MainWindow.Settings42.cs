@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.27 · SmartBadge opening isolation",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• opening SmartBadge v2 cards are clipped to their final card slots before the moving card transform is applied\n• the incoming badge now reveals from the card gap/divider instead of painting over the previous settled badge\n• badge base, jsparse text and shine/overlay share the same slot clip and transform, preventing split/ghost layers\n• cards 5+ and continuous-scroll SmartBadge behavior are unchanged\n• no renderer-specific coordinate hacks or new renderer functions are required",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.26 · Smart installer recovery",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
