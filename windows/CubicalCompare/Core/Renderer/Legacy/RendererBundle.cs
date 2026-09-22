@@ -854,7 +854,7 @@ public static class RendererCapabilities
                 var entryMotion = property.Value.String("entryMotion", "");
                 if (entryMotion.Length > 0 &&
                     !entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase))
-                    errors.Add($"SmartBadge v2 pack '{property.Name}' has unsupported entryMotion '{entryMotion}'.");
+                    warnings.Add($"SmartBadge v2 pack '{property.Name}' uses authored entryMotion '{entryMotion}'; Cubical Compare will preserve the pack's frame-local motion without adding a runtime transform.");
 
                 var entryAnchor = property.Value.String("entryAnchor", "");
                 if (entryAnchor.Length > 0 &&
@@ -912,7 +912,7 @@ public static class RendererCapabilities
                     var entryMotion = property.Value.String("entryMotion", "");
                     if (entryMotion.Length > 0 &&
                         !entryMotion.Equals("top-to-final", StringComparison.OrdinalIgnoreCase))
-                        errors.Add($"SmartBadge v2 card selection '{property.Name}' has unsupported entryMotion '{entryMotion}'.");
+                        warnings.Add($"SmartBadge v2 card selection '{property.Name}' uses authored entryMotion '{entryMotion}'; Cubical Compare will preserve the pack's frame-local motion without adding a runtime transform.");
 
                     var entryAnchor = property.Value.String("entryAnchor", "");
                     if (entryAnchor.Length > 0 &&

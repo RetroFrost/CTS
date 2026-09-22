@@ -24,7 +24,7 @@ public sealed partial class MainWindow
         if (profile.Audio is not null) profile.Audio.Bitrate = 192_000;
 
         ExportStatusText.Text = "Adding soundtrack…";
-        var operation = composition.RenderToFileAsync(outputFile, MediaTrimmingPreference.Precise, profile);
+        var operation = composition.RenderToFileAsync(outputFile, MediaTrimmingPreference.Fast, profile);
         using var registration = cancellationToken.Register(() => operation.Cancel());
         operation.Progress += (_, progress) =>
         {
