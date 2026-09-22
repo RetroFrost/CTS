@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.29 · Web artwork + CSV import",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• artwork fields now accept direct HTTP(S) image URLs and ordinary web pages such as Flaticon icon pages\n• one shared web-image resolver follows safe redirects, discovers page preview metadata, caches downloads, and keeps the original URL in the project\n• renderer previews, video export, automatic thumbnails and MegaPack export all use the same web artwork cache\n• MegaPack card metadata supports image/image_url/artwork/icon URLs, including URL-only packs without contact sheets\n• Workspace now imports CSV files with flexible title/value/description/image header aliases and resolves web artwork automatically",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.28 · Renderer compatibility + max-power export",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
