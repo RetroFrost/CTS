@@ -172,19 +172,24 @@ public sealed partial class MainWindow
                 maxBufferedFrames);
 
             exportRenderers = new List<LegacyRendererAdapter>(exportWorkerCount);
+            var exportSessions = new List<LegacyRendererAdapter.RenderSession>(exportWorkerCount);
             for (var workerIndex = 0; workerIndex < exportWorkerCount; workerIndex++)
-                exportRenderers.Add(LegacyRendererAdapter.Load(_legacyRenderer.SourcePath));
+            {
+                var workerRenderer = LegacyRendererAdapter.Load(_legacyRenderer.SourcePath);
+                exportRenderers.Add(workerRenderer);
+                exportSessions.Add(workerRenderer.CreateRenderSession(project));
+            }
 
             pendingFrameRenders = new Dictionary<int, Task<byte[]>>();
 
-            var reusableWorkers = new Stack<LegacyRendererAdapter>(exportRenderers);
+            var reusableWorkers = new Stack<LegacyRendererAdapter.RenderSession>(exportSessions);
             var reusableWorkersGate = new SemaphoreSlim(exportWorkerCount, exportWorkerCount);
             var reusableWorkersLock = new object();
 
             async Task<byte[]> RenderFrameWithReusableWorkerAsync(int frameIndex)
             {
                 await reusableWorkersGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                LegacyRendererAdapter workerRenderer;
+                LegacyRendererAdapter.RenderSession workerRenderer;
                 lock (reusableWorkersLock)
                     workerRenderer = reusableWorkers.Pop();
 
@@ -193,7 +198,6 @@ public sealed partial class MainWindow
                     return await Task.Run(
                         () => RenderExportFrameBytes(
                             workerRenderer,
-                            project,
                             frameIndex,
                             width,
                             height),
@@ -439,13 +443,12 @@ public sealed partial class MainWindow
     }
 
     private static byte[] RenderExportFrameBytes(
-        LegacyRendererAdapter renderer,
-        CubicalCompare.Core.Project.ComparisonProject project,
+        LegacyRendererAdapter.RenderSession renderer,
         int frameIndex,
         int width,
         int height)
     {
-        using var rendered = renderer.Render(project, frameIndex, width, height);
+        using var rendered = renderer.Render(frameIndex, width, height);
         if (rendered.Width != width || rendered.Height != height)
             throw new InvalidOperationException(
                 $"Renderer returned {rendered.Width}x{rendered.Height}; expected {width}x{height}.");
