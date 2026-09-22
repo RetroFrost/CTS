@@ -74,6 +74,24 @@ public sealed class Zipack2CardDefinition
     [JsonPropertyName("details")]
     public string Details { get; set; } = "";
 
+    [JsonPropertyName("image")]
+    public string Image { get; set; } = "";
+
+    [JsonPropertyName("image_url")]
+    public string ImageUrl { get; set; } = "";
+
+    [JsonPropertyName("imageUrl")]
+    public string ImageUrlCamel { get; set; } = "";
+
+    [JsonPropertyName("artwork")]
+    public string Artwork { get; set; } = "";
+
+    [JsonPropertyName("artwork_url")]
+    public string ArtworkUrl { get; set; } = "";
+
+    [JsonPropertyName("icon")]
+    public string Icon { get; set; } = "";
+
     [JsonPropertyName("image_x")]
     public double ImageX { get; set; }
 
@@ -112,6 +130,8 @@ public sealed class Zipack2CardDefinition
             Value = value,
             BadgeHeader = First(BadgeHeader, BadgeHeaderCamel),
             Description = First(Description, Details),
+            ImageSource = CubicalCompare.Core.Project.WebImageSource.NormalizeSource(
+                First(Image, ImageUrl, ImageUrlCamel, Artwork, ArtworkUrl, Icon)),
             ImageX = Finite(ImageX, 0, -4000, 4000),
             ImageY = Finite(ImageY, 0, -4000, 4000),
             ImageScale = Finite(ImageScale, 1, .05, 12),
@@ -135,6 +155,7 @@ public sealed class Zipack2CardData
     public string Value { get; set; } = "";
     public string BadgeHeader { get; set; } = "";
     public string Description { get; set; } = "";
+    public string ImageSource { get; set; } = "";
     public double ImageX { get; set; }
     public double ImageY { get; set; }
     public double ImageScale { get; set; } = 1.0;
