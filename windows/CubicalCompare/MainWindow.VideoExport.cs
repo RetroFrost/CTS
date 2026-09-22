@@ -285,7 +285,7 @@ public sealed partial class MainWindow
                             {
                                 ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
                                 var writtenBytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
-                                var detail = $"Rendering · {renderedCount:N0}/{frameCount:N0} frames · {progress:0.0}% · {FormatByteCount(writtenBytes)}";
+                                var detail = $"Max-power render · {exportWorkerCount} workers · {renderedCount:N0}/{frameCount:N0} frames · {progress:0.0}% · {FormatByteCount(writtenBytes)}";
                                 ExportStatusText.Text = detail;
                                 UpdateActivityWatcher("Video export", detail, Math.Clamp(progress, 0, 99.5));
                             });
