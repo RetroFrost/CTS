@@ -178,7 +178,7 @@ public sealed partial class MainWindow
             pendingFrameRenders = new Dictionary<int, Task<byte[]>>();
 
             var reusableWorkers = new Stack<LegacyRendererAdapter>(exportRenderers);
-            using var reusableWorkersGate = new SemaphoreSlim(exportWorkerCount, exportWorkerCount);
+            var reusableWorkersGate = new SemaphoreSlim(exportWorkerCount, exportWorkerCount);
             var reusableWorkersLock = new object();
 
             async Task<byte[]> RenderFrameWithReusableWorkerAsync(int frameIndex)
