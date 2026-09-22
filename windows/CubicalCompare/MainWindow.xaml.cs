@@ -131,6 +131,99 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void SetArtworkUrl_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardsList.SelectedItem is not ProjectCardViewModel card) return;
+
+        var input = new TextBox
+        {
+            Text = WebImageSource.IsRemoteSource(card.ImagePath) ? card.ImagePath : string.Empty,
+            PlaceholderText = "https://www.flaticon.com/free-icon/...",
+            MinWidth = 520,
+        };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootNavigation.XamlRoot,
+            Title = "Use web artwork",
+            Content = input,
+            PrimaryButtonText = "Use URL",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var source = WebImageSource.NormalizeSource(input.Text);
+        if (!WebImageSource.IsRemoteSource(source))
+        {
+            await ShowErrorAsync("Not a web image URL", "Paste an HTTP or HTTPS image/page URL.");
+            return;
+        }
+
+        try
+        {
+            TimelineStatusText.Text = "Resolving web artwork…";
+            var resolved = await WebImageSource.ResolveToLocalFileAsync(source);
+            if (string.IsNullOrWhiteSpace(resolved))
+                throw new InvalidDataException("The URL did not resolve to an image.");
+
+            card.ImagePath = source;
+            TimelineStatusText.Text = $"Web artwork cached · {new Uri(source).Host}";
+            await RenderCurrentFrameAsync();
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("Could not resolve web artwork", ex);
+            await ShowErrorAsync("Could not use web artwork", ex.Message);
+        }
+    }
+
+    private async void ImportCsv_Click(object sender, RoutedEventArgs e)
+    {
+        var file = await PickFileAsync([".csv"]);
+        if (file is null) return;
+
+        try
+        {
+            TimelineStatusText.Text = "Importing CSV and resolving web artwork…";
+            var result = await CsvImportService.ImportAsync(file.Path);
+            ClearProjectCards();
+            foreach (var card in result.Cards)
+            {
+                AddProjectCard(new ProjectCardViewModel
+                {
+                    Id = card.Id,
+                    Title = card.Title,
+                    Value = card.Value,
+                    BadgeHeader = card.BadgeHeader,
+                    Description = card.Description,
+                    ImagePath = card.ImagePath,
+                    ImageX = card.ImageX,
+                    ImageY = card.ImageY,
+                    ImageScale = card.ImageScale,
+                    ImageRotation = card.ImageRotation,
+                    ImageCropLeft = card.ImageCropLeft,
+                    ImageCropTop = card.ImageCropTop,
+                    ImageCropRight = card.ImageCropRight,
+                    ImageCropBottom = card.ImageCropBottom,
+                    ImageLayer = card.ImageLayer,
+                });
+            }
+
+            CardsList.SelectedIndex = 0;
+            RefreshTimelineRange();
+            await RenderCurrentFrameAsync();
+            TimelineStatusText.Text = $"Imported {result.Cards.Count} CSV cards · {Path.GetFileName(file.Path)}";
+
+            if (result.Warnings.Count > 0)
+                await ShowErrorAsync("CSV imported with warnings", string.Join(Environment.NewLine, result.Warnings));
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("CSV import failed", ex);
+            await ShowErrorAsync("Could not import CSV", ex.Message);
+        }
+    }
+
     private void ClearArtwork_Click(object sender, RoutedEventArgs e)
     {
         if (CardsList.SelectedItem is not ProjectCardViewModel card) return;
@@ -218,7 +311,9 @@ public sealed partial class MainWindow : Window
                 Value = data?.Value ?? "",
                 BadgeHeader = data?.BadgeHeader ?? "",
                 Description = data?.Description ?? "",
-                ImagePath = detected.ExtractedPath,
+                ImagePath = !string.IsNullOrWhiteSpace(data?.ImageSource)
+                    ? data!.ImageSource
+                    : detected.ExtractedPath,
                 ImageX = data?.ImageX ?? 0,
                 ImageY = data?.ImageY ?? 0,
                 ImageScale = data?.ImageScale ?? 1,
@@ -499,8 +594,10 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
         get => _imagePath;
         set
         {
-            if (!Set(ref _imagePath, value)) return;
-            Preview = CreatePreview(value);
+            var normalized = WebImageSource.NormalizeSource(value);
+            if (!Set(ref _imagePath, normalized)) return;
+            Preview = null;
+            _ = RefreshPreviewAsync(normalized);
         }
     }
 
@@ -530,10 +627,24 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
         return true;
     }
 
-    private static BitmapImage? CreatePreview(string path)
+    private async Task RefreshPreviewAsync(string source)
     {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
-        return new BitmapImage(new Uri(path)) { DecodePixelWidth = 960 };
+        if (string.IsNullOrWhiteSpace(source)) return;
+        try
+        {
+            var resolved = await WebImageSource.ResolveToLocalFileAsync(source);
+            if (!string.Equals(_imagePath, source, StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(resolved) ||
+                !File.Exists(resolved))
+                return;
+
+            Preview = new BitmapImage(new Uri(resolved)) { DecodePixelWidth = 960 };
+        }
+        catch
+        {
+            if (string.Equals(_imagePath, source, StringComparison.Ordinal))
+                Preview = null;
+        }
     }
 }
 
