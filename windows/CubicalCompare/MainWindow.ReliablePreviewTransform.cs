@@ -399,7 +399,7 @@ public sealed partial class MainWindow
             return;
 
         var card = Cards[cardIndex];
-        if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
+        if (TryGetCachedArtworkPath(card.ImagePath) is null)
             return;
 
         _reliablePreviewDragMode = mode;
@@ -612,7 +612,8 @@ public sealed partial class MainWindow
         {
             var g = item.Geometry!.Value;
             var card = Cards[item.Index];
-            if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
+            var resolvedArtwork = TryGetCachedArtworkPath(card.ImagePath);
+            if (resolvedArtwork is null)
                 continue;
 
             if (referencePoint.X < g.ArtworkX ||
@@ -623,7 +624,7 @@ public sealed partial class MainWindow
 
             try
             {
-                using var bitmap = SKBitmap.Decode(card.ImagePath);
+                using var bitmap = SKBitmap.Decode(resolvedArtwork);
                 if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0)
                     continue;
 
@@ -862,7 +863,8 @@ public sealed partial class MainWindow
             Canvas.SetTop(_reliablePreviewApplyAllButton, Math.Clamp(g.ArtworkY * sy + 8, 8, ReliablePreviewHeight - 42));
         }
 
-        if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
+        var resolvedArtwork = TryGetCachedArtworkPath(card.ImagePath);
+        if (resolvedArtwork is null)
         {
             _reliablePreviewAdorner.Visibility = Visibility.Collapsed;
             return;
@@ -870,7 +872,7 @@ public sealed partial class MainWindow
 
         try
         {
-            using var bitmap = SKBitmap.Decode(card.ImagePath);
+            using var bitmap = SKBitmap.Decode(resolvedArtwork);
             if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0)
             {
                 _reliablePreviewAdorner.Visibility = Visibility.Collapsed;

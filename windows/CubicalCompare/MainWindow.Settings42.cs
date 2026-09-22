@@ -93,6 +93,18 @@ public sealed partial class MainWindow
         });
         changelogPanel.Children.Add(new TextBlock
         {
+            Text = "4.2.1.30 · Web artwork transforms",
+            FontSize = 14,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
+            Text = "• Fit now resolves web artwork through the shared cache instead of requiring a local file path\n• direct artwork manipulation and preview move/resize/rotate hit-testing now use the resolved cached image for URL cards\n• web and local artwork share the same crop, position, scale and rotation values from editor preview through renderer/video export",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
+        });
+        changelogPanel.Children.Add(new TextBlock
+        {
             Text = "4.2.1.29 · Web artwork + CSV import",
             FontSize = 14,
             FontWeight = global::Windows.UI.Text.FontWeights.SemiBold,

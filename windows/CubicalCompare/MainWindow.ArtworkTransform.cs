@@ -1,3 +1,4 @@
+using CubicalCompare.Core.Project;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SkiaSharp;
@@ -9,6 +10,17 @@ public sealed partial class MainWindow
     private const double ArtworkSlotWidth = 471.0;
     private const double ArtworkSlotHeight = 872.0;
     private int _artworkTransformBatchDepth;
+
+    private static string? TryGetCachedArtworkPath(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return null;
+
+        var resolved = WebImageSource.TryGetCachedLocalPath(source);
+        return !string.IsNullOrWhiteSpace(resolved) && File.Exists(resolved)
+            ? resolved
+            : null;
+    }
 
     private async void ArtworkTransform_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
     {
@@ -29,7 +41,7 @@ public sealed partial class MainWindow
         if (CardsList.SelectedItem is not ProjectCardViewModel card)
             return;
 
-        if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
+        if (string.IsNullOrWhiteSpace(card.ImagePath))
         {
             TimelineStatusText.Text = "Choose artwork before fitting it.";
             return;
@@ -37,7 +49,17 @@ public sealed partial class MainWindow
 
         try
         {
-            using var bitmap = SKBitmap.Decode(card.ImagePath);
+            if (WebImageSource.IsRemoteSource(card.ImagePath))
+                TimelineStatusText.Text = "Resolving web artwork for transform…";
+
+            var resolvedArtwork = await WebImageSource.ResolveToLocalFileAsync(card.ImagePath);
+            if (string.IsNullOrWhiteSpace(resolvedArtwork) || !File.Exists(resolvedArtwork))
+            {
+                TimelineStatusText.Text = "Artwork could not be resolved.";
+                return;
+            }
+
+            using var bitmap = SKBitmap.Decode(resolvedArtwork);
             if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0)
             {
                 TimelineStatusText.Text = "Artwork dimensions could not be read.";

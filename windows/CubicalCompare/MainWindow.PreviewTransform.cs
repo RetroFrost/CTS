@@ -1,3 +1,4 @@
+using CubicalCompare.Core.Project;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -222,7 +223,7 @@ public sealed partial class MainWindow
             return;
 
         var card = Cards[_previewTransformCardIndex];
-        if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
+        if (TryGetCachedArtworkPath(card.ImagePath) is null)
             return;
 
         var tag = (e.OriginalSource as FrameworkElement)?.Tag as string;
@@ -429,7 +430,8 @@ public sealed partial class MainWindow
         Canvas.SetLeft(_previewArtworkSlotFrame, bodyLeft * sx);
         Canvas.SetTop(_previewArtworkSlotFrame, 0);
 
-        if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
+        var resolvedArtwork = TryGetCachedArtworkPath(card.ImagePath);
+        if (resolvedArtwork is null)
         {
             _previewTransformAdorner.Visibility = Visibility.Collapsed;
             return;
@@ -437,7 +439,7 @@ public sealed partial class MainWindow
 
         try
         {
-            using var bitmap = SKBitmap.Decode(card.ImagePath);
+            using var bitmap = SKBitmap.Decode(resolvedArtwork);
             if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0)
             {
                 _previewTransformAdorner.Visibility = Visibility.Collapsed;

@@ -1,3 +1,4 @@
+using CubicalCompare.Core.Project;
 using System.ComponentModel;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -263,15 +264,18 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(card.ImagePath) || !File.Exists(card.ImagePath))
+        var resolvedArtwork = TryGetCachedArtworkPath(card.ImagePath);
+        if (resolvedArtwork is null)
         {
             _artworkManipulatorAdorner.Visibility = Visibility.Collapsed;
             if (_artworkManipulatorInfo is not null)
-                _artworkManipulatorInfo.Text = "Choose artwork to manipulate it directly.";
+                _artworkManipulatorInfo.Text = WebImageSource.IsRemoteSource(card.ImagePath)
+                    ? "Web artwork is still resolving…"
+                    : "Choose artwork to manipulate it directly.";
             return;
         }
 
-        EnsureArtworkSourceDimensions(card.ImagePath);
+        EnsureArtworkSourceDimensions(resolvedArtwork);
         if (_artworkSourceWidth <= 0 || _artworkSourceHeight <= 0)
         {
             _artworkManipulatorAdorner.Visibility = Visibility.Collapsed;

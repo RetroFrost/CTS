@@ -49,13 +49,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.29"
+          $version = "4.2.1.30"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.29 and advance the
+          # Keep the visible Cubical Compare version at 4.2.1.30 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.30"
+          $velopackVersion = "4.2.31"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -87,6 +87,15 @@ jobs:
           if ($thumb -notmatch 'if \(_suppressCardSelectionPreviewSeek\)') { throw 'Renderer preview selection handler can still seek after direct frame clicks.' }
           if ($preview -notmatch 'TextControlBackgroundFocused') { throw 'Transparent in-place text editor styling is missing.' }
           if ($preview -notmatch 'Opacity = 0,') { throw 'Artwork ghost must stay invisible so the real rendered frame remains visible.' }
+
+          if ($preview -match 'File\.Exists\(card\.ImagePath\)') { throw 'Immersive transform editor still requires a local image path.' }
+          if ($preview -match 'SKBitmap\.Decode\(card\.ImagePath\)') { throw 'Immersive transform editor still decodes the URL string instead of resolved artwork.' }
+          if ($preview -notmatch 'TryGetCachedArtworkPath') { throw 'Immersive transform editor is not using the shared web-artwork cache.' }
+          $precisionTransform = Get-Content 'windows/CubicalCompare/MainWindow.ArtworkTransform.cs' -Raw
+          if ($precisionTransform -notmatch 'ResolveToLocalFileAsync\(card\.ImagePath\)') { throw 'Precision Fit does not resolve web artwork.' }
+          $directArtwork = Get-Content 'windows/CubicalCompare/MainWindow.DirectArtworkManipulator.cs' -Raw
+          if ($directArtwork -match 'File\.Exists\(card\.ImagePath\)') { throw 'Direct artwork manipulator still rejects URL artwork.' }
+          if ($directArtwork -notmatch 'TryGetCachedArtworkPath') { throw 'Direct artwork manipulator is not using resolved web artwork.' }
 
           $rendererEngine = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererEngine.cs' -Raw
           if ($rendererEngine -notmatch 'SKRect\? visibleClip') { throw 'Renderer image transforms still lack a separate visible artwork clip.' }
@@ -663,6 +672,10 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
+
+          - 4.2.1.30 completes web-artwork editing: URL images now work with Fit, direct manipulation, immersive preview selection, move, resize, rotate and crop using the same resolved cache as local artwork.
+          - Editor hit-testing and artwork dimensions no longer call File.Exists or SKBitmap.Decode on the original URL string; they use the cached local asset while the project continues storing the original web URL.
+          - Renderer/video export keeps using the same project transform values, so web and local artwork now have one transform path end-to-end.
 
           - 4.2.1.29 adds app-wide web artwork: direct image URLs and ordinary HTTP(S) pages can be used as card artwork, including copied Flaticon icon-page URLs.
           - A shared resolver follows validated redirects, discovers Open Graph/Twitter/JSON-LD preview images, uses a Flaticon CDN fallback by icon ID, blocks private-network fetches, and caches resolved assets under Cubical Compare app data.
