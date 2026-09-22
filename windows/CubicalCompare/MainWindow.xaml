@@ -166,12 +166,14 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Timeline" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource EditorAccentBrush}" VerticalAlignment="Center" />
                                     <Border Grid.Column="1" Width="1" Height="18" Background="{StaticResource EditorBorderBrush}" Margin="4,0" />
                                     <TextBlock Grid.Column="2" Text="Cards" FontSize="12" Foreground="{StaticResource EditorTextSecondaryBrush}" VerticalAlignment="Center" />
-                                    <Button Grid.Column="3" Content="Add card" Click="AddCard_Click" Padding="10,4" />
-                                    <Button Grid.Column="4" Content="Remove" Click="RemoveCard_Click" Padding="10,4" />
+                                    <Button Grid.Column="3" Content="Import CSV" Click="ImportCsv_Click" Padding="10,4" />
+                                    <Button Grid.Column="4" Content="Add card" Click="AddCard_Click" Padding="10,4" />
+                                    <Button Grid.Column="5" Content="Remove" Click="RemoveCard_Click" Padding="10,4" />
                                 </Grid>
 
                                 <ListView x:Name="CardsList" Grid.Row="1" ItemsSource="{x:Bind Cards, Mode=OneWay}" SelectionMode="Single" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
@@ -313,7 +315,8 @@
                                             </Border>
                                             <StackPanel Grid.Column="1" Spacing="7">
                                                 <TextBlock Text="{Binding ImagePath}" FontSize="10" Foreground="{StaticResource EditorTextSecondaryBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="30" />
-                                                <Button Content="Change Image…" HorizontalAlignment="Stretch" Click="ChooseArtwork_Click" />
+                                                <Button Content="Local image…" HorizontalAlignment="Stretch" Click="ChooseArtwork_Click" />
+                                                <Button Content="Web URL…" HorizontalAlignment="Stretch" Click="SetArtworkUrl_Click" />
                                                 <Button Content="Clear artwork" HorizontalAlignment="Stretch" Click="ClearArtwork_Click" />
                                             </StackPanel>
                                         </Grid>
