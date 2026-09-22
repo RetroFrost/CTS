@@ -165,7 +165,8 @@ jobs:
           if ($rendererEngine -notmatch 'bodyLeft = index \* spec\.SlotPitch \+ spec\.BodyInset') { throw 'Opening SmartBadge isolation is not anchored to the authored card body.' }
           if ($rendererEngine -notmatch 'bodyRight = bodyLeft \+ spec\.BodyWidth') { throw 'Opening SmartBadge isolation ignores the authored card-body width/inter-card gap.' }
           if ($rendererEngine -notmatch 'canvas\.ClipRect\([\s\S]*?bodyLeft[\s\S]*?bodyRight[\s\S]*?SKClipOperation\.Intersect') { throw 'Opening SmartBadge base/text/overlay are not clipped as one composition.' }
-          if ($rendererBundle -notmatch 'gap-to-authored-whole-unit-v2') { throw 'Renderer compatibility still rejects the authored whole-unit gap entry motion.' }
+          if ($rendererBundle -notmatch 'uses authored entryMotion') { throw 'Renderer compatibility still hard-fails self-authored SmartBadge motion labels.' }
+          if ($rendererBundle -match "unsupported entryMotion") { throw 'Renderer compatibility still treats unknown self-authored SmartBadge entryMotion labels as fatal.' }
 
           $smartSequence = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/SmartBadgeSequence.cs' -Raw
           if ($smartSequence -notmatch 'FinalFrame\(\)') { throw 'SmartBadge final-frame accessor is missing.' }
@@ -642,7 +643,7 @@ jobs:
           $notes = @"
           ## Cubical Compare $env:CC_VERSION — Windows
 
-          - 4.2.1.28 accepts the corrected renderer's existing SmartBadge entryMotion `gap-to-authored-whole-unit-v2` instead of rejecting the package at load time.
+          - 4.2.1.28 stops hard-failing self-authored SmartBadge packs on newer entryMotion labels; the corrected renderer's existing `gap-to-authored-whole-unit-v2` metadata now loads as authored frame-local motion instead of blocking the renderer.
           - Opening cards 1–4 now use BodyInset + BodyWidth as the runtime clip, preserving the authored inter-card gap without moving settled badge coordinates or repacking badge assets.
           - Video export now uses a memory-bounded multi-core renderer pool with frame prefetch, prepared renderer sessions, and all safe logical CPU threads available within the memory budget.
           - Windows MediaTranscoder hardware acceleration stays enabled, unnecessary re-encoding is disabled where remuxing is possible, and soundtrack finalization uses the faster Windows trimming path.
