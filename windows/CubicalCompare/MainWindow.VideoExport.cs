@@ -49,6 +49,8 @@ public sealed partial class MainWindow
         StorageFile? stagedRenderVideo = null;
         StorageFile? stagedFinalVideo = null;
         StorageFile? temporaryRendererAudio = null;
+        List<LegacyRendererAdapter>? exportRenderers = null;
+        Dictionary<int, Task<byte[]>>? pendingFrameRenders = null;
 
         try
         {
@@ -128,6 +130,97 @@ public sealed partial class MainWindow
             using var sampleGate = new SemaphoreSlim(1, 1);
             var lastUiProgressTicks = 0L;
 
+            // Rendering, not H.264 encoding, is normally the expensive part of a
+            // comparison export. MediaTranscoder already has hardware acceleration
+            // enabled below, so feed it from a bounded multi-core renderer pool.
+            // Each worker owns its own renderer engine/caches to avoid sharing Skia
+            // dictionaries across threads.
+            var frameBytes = Math.Max(1L, (long)width * height * 4);
+            const long renderQueueBudgetBytes = 384L * 1024 * 1024;
+            var maxBufferedFrames = (int)Math.Clamp(
+                renderQueueBudgetBytes / frameBytes,
+                2L,
+                32L);
+
+            var rendererPackageBytes = Math.Max(
+                1L,
+                File.Exists(_legacyRenderer.SourcePath)
+                    ? new FileInfo(_legacyRenderer.SourcePath).Length
+                    : 32L * 1024 * 1024);
+            var availableMemory = Math.Max(
+                512L * 1024 * 1024,
+                GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+            var rendererPoolBudget = Math.Clamp(
+                availableMemory / 5,
+                256L * 1024 * 1024,
+                1536L * 1024 * 1024);
+            var estimatedRendererBytes = Math.Max(
+                32L * 1024 * 1024,
+                rendererPackageBytes * 2);
+            var maxWorkersByMemory = (int)Math.Clamp(
+                rendererPoolBudget / estimatedRendererBytes,
+                1L,
+                16L);
+            var exportWorkerCount = Math.Max(
+                1,
+                Math.Min(
+                    Environment.ProcessorCount,
+                    Math.Min(maxBufferedFrames, maxWorkersByMemory)));
+            var prefetchDepth = Math.Clamp(
+                exportWorkerCount * 2,
+                exportWorkerCount,
+                maxBufferedFrames);
+
+            exportRenderers = new List<LegacyRendererAdapter>(exportWorkerCount);
+            for (var workerIndex = 0; workerIndex < exportWorkerCount; workerIndex++)
+                exportRenderers.Add(LegacyRendererAdapter.Load(_legacyRenderer.SourcePath));
+
+            pendingFrameRenders = new Dictionary<int, Task<byte[]>>();
+
+            var reusableWorkers = new Stack<LegacyRendererAdapter>(exportRenderers);
+            using var reusableWorkersGate = new SemaphoreSlim(exportWorkerCount, exportWorkerCount);
+            var reusableWorkersLock = new object();
+
+            async Task<byte[]> RenderFrameWithReusableWorkerAsync(int frameIndex)
+            {
+                await reusableWorkersGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                LegacyRendererAdapter workerRenderer;
+                lock (reusableWorkersLock)
+                    workerRenderer = reusableWorkers.Pop();
+
+                try
+                {
+                    return await Task.Run(
+                        () => RenderExportFrameBytes(
+                            workerRenderer,
+                            project,
+                            frameIndex,
+                            width,
+                            height),
+                        cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    lock (reusableWorkersLock)
+                        reusableWorkers.Push(workerRenderer);
+                    reusableWorkersGate.Release();
+                }
+            }
+
+            void ScheduleFrame(int frameIndex)
+            {
+                if (frameIndex < 0 || frameIndex >= frameCount ||
+                    pendingFrameRenders.ContainsKey(frameIndex))
+                    return;
+                pendingFrameRenders[frameIndex] = RenderFrameWithReusableWorkerAsync(frameIndex);
+            }
+
+            for (var frameIndex = 0; frameIndex < Math.Min(frameCount, prefetchDepth); frameIndex++)
+                ScheduleFrame(frameIndex);
+
+            ExportStatusText.Text =
+                $"Max-power render · {exportWorkerCount} workers · {prefetchDepth}-frame queue";
+
             mediaSource.Starting += (_, args) =>
             {
                 if (args.Request.StartPosition is not null)
@@ -161,41 +254,16 @@ public sealed partial class MainWindow
                             return;
                         }
 
-                        using var rendered = renderer.Render(project, frameIndex, width, height);
+                        if (!pendingFrameRenders.TryGetValue(frameIndex, out var frameTask))
+                        {
+                            ScheduleFrame(frameIndex);
+                            frameTask = pendingFrameRenders[frameIndex];
+                        }
+
+                        var bytes = await frameTask.ConfigureAwait(false);
+                        pendingFrameRenders.Remove(frameIndex);
+                        ScheduleFrame(frameIndex + prefetchDepth);
                         cancellationToken.ThrowIfCancellationRequested();
-
-                        if (rendered.Width != width || rendered.Height != height)
-                            throw new InvalidOperationException($"Renderer returned {rendered.Width}x{rendered.Height}; expected {width}x{height}.");
-
-                        var byteCount = checked(width * height * 4);
-                        var bytes = GC.AllocateUninitializedArray<byte>(byteCount);
-                        var pixels = rendered.GetPixels();
-                        if (pixels == IntPtr.Zero)
-                            throw new InvalidOperationException("Renderer returned a frame with no pixel buffer.");
-
-                        // Media Foundation's raw BGRA video path treats positive-stride samples as
-                        // bottom-up DIB data. Skia gives us top-down rows. Feeding Skia's row 0 first
-                        // therefore made every exported frame vertically inverted. Reverse row order
-                        // only; never reverse pixels inside a row, otherwise left/right is mirrored.
-                        if (rendered.ColorType == SKColorType.Bgra8888)
-                        {
-                            CopyBgraRowsBottomUp(pixels, rendered.RowBytes, bytes, width, height);
-                        }
-                        else
-                        {
-                            using var bgra = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
-                            using (var canvas = new SKCanvas(bgra))
-                            {
-                                canvas.Clear(SKColors.Black);
-                                canvas.DrawBitmap(rendered, new SKRect(0, 0, width, height));
-                                canvas.Flush();
-                            }
-
-                            var bgraPixels = bgra.GetPixels();
-                            if (bgraPixels == IntPtr.Zero)
-                                throw new InvalidOperationException("Could not access the converted BGRA frame buffer.");
-                            CopyBgraRowsBottomUp(bgraPixels, bgra.RowBytes, bytes, width, height);
-                        }
 
                         var buffer = CryptographicBuffer.CreateFromByteArray(bytes);
                         var timestamp = TimeSpan.FromTicks(frameIndex * frameDurationTicks);
@@ -250,6 +318,7 @@ public sealed partial class MainWindow
             var transcoder = new MediaTranscoder
             {
                 HardwareAccelerationEnabled = true,
+                AlwaysReencode = false,
             };
 
             var prepared = await transcoder.PrepareMediaStreamSourceTranscodeAsync(mediaSource, output, profile);
@@ -325,6 +394,20 @@ public sealed partial class MainWindow
         }
         finally
         {
+            _videoExportCancellation?.Cancel();
+            if (pendingFrameRenders is not null && pendingFrameRenders.Count > 0)
+            {
+                try { await Task.WhenAll(pendingFrameRenders.Values); }
+                catch { }
+                pendingFrameRenders.Clear();
+            }
+            if (exportRenderers is not null)
+            {
+                foreach (var workerRenderer in exportRenderers)
+                    workerRenderer.Dispose();
+                exportRenderers.Clear();
+            }
+
             if (stagedRenderVideo is not null)
                 TryDeleteExport(stagedRenderVideo.Path);
             if (stagedFinalVideo is not null)
@@ -353,6 +436,47 @@ public sealed partial class MainWindow
             >= 25_000_000 => 7_000_000u,
             _ => 4_000_000u,
         };
+    }
+
+    private static byte[] RenderExportFrameBytes(
+        LegacyRendererAdapter renderer,
+        CubicalCompare.Core.Project.ComparisonProject project,
+        int frameIndex,
+        int width,
+        int height)
+    {
+        using var rendered = renderer.Render(project, frameIndex, width, height);
+        if (rendered.Width != width || rendered.Height != height)
+            throw new InvalidOperationException(
+                $"Renderer returned {rendered.Width}x{rendered.Height}; expected {width}x{height}.");
+
+        var byteCount = checked(width * height * 4);
+        var bytes = GC.AllocateUninitializedArray<byte>(byteCount);
+        var pixels = rendered.GetPixels();
+        if (pixels == IntPtr.Zero)
+            throw new InvalidOperationException("Renderer returned a frame with no pixel buffer.");
+
+        // Media Foundation consumes positive-stride BGRA as bottom-up DIB data.
+        if (rendered.ColorType == SKColorType.Bgra8888)
+        {
+            CopyBgraRowsBottomUp(pixels, rendered.RowBytes, bytes, width, height);
+            return bytes;
+        }
+
+        using var bgra = new SKBitmap(
+            new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
+        using (var canvas = new SKCanvas(bgra))
+        {
+            canvas.Clear(SKColors.Black);
+            canvas.DrawBitmap(rendered, new SKRect(0, 0, width, height));
+            canvas.Flush();
+        }
+
+        var bgraPixels = bgra.GetPixels();
+        if (bgraPixels == IntPtr.Zero)
+            throw new InvalidOperationException("Could not access the converted BGRA frame buffer.");
+        CopyBgraRowsBottomUp(bgraPixels, bgra.RowBytes, bytes, width, height);
+        return bytes;
     }
 
     private static void CopyBgraRowsBottomUp(IntPtr sourcePixels, int sourceRowBytes, byte[] destination, int width, int height)
