@@ -559,22 +559,20 @@ public sealed class RendererEngine : IDisposable
 
         // Opening SmartBadge packs already author their own local badge motion. The
         // opening card body itself also slides from the previous slot into its final
-        // slot. Without a final-slot clip, those two motions compound and the active
-        // badge can paint over the previous card's settled badge. Clip the complete
-        // SmartBadge composition (base + live fields + overlay/shine) to the card's
-        // final slot before applying the moving card transform. That makes the badge
-        // reveal naturally from the gap/divider into its own card while preserving
-        // the authored settled position. Later scrolling cards are intentionally
-        // unchanged.
+        // slot. Keep the *entire* SmartBadge composition (base + live fields +
+        // overlay/shine) inside the renderer-authored final card body. The card body
+        // is intentionally narrower than SlotPitch, so BodyInset + BodyWidth leaves
+        // the real inter-card gap visible instead of allowing two red badge shapes to
+        // meet at the divider. This is a runtime isolation fix; the badge animation
+        // assets and their settled coordinates remain untouched.
         if (index < 4)
         {
-            var slotInset = Math.Max(1f, spec.BodyInset);
-            var slotLeft = index * spec.SlotPitch + slotInset;
-            var slotRight = (index + 1) * spec.SlotPitch - slotInset;
-            if (slotRight > slotLeft)
+            var bodyLeft = index * spec.SlotPitch + spec.BodyInset;
+            var bodyRight = bodyLeft + spec.BodyWidth;
+            if (bodyRight > bodyLeft)
             {
                 canvas.ClipRect(
-                    new SKRect(slotLeft, 0, slotRight, spec.ReferenceHeight),
+                    new SKRect(bodyLeft, 0, bodyRight, spec.ReferenceHeight),
                     SKClipOperation.Intersect,
                     false);
             }
