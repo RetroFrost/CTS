@@ -118,8 +118,10 @@ public static class WebImageSource
         }
         finally
         {
-            if (lazy.IsValueCreated && lazy.Value.IsCompleted)
-                InFlight.TryRemove(new KeyValuePair<string, Lazy<Task<string>>>(value, lazy));
+            if (lazy.IsValueCreated && lazy.Value.IsCompleted &&
+                InFlight.TryGetValue(value, out var current) &&
+                ReferenceEquals(current, lazy))
+                InFlight.TryRemove(value, out _);
         }
     }
 
@@ -393,22 +395,16 @@ public static class WebImageSource
         return values;
     }
 
-    private static IEnumerable<string> ExtractJsonImageValues(string json)
+    private static IReadOnlyList<string> ExtractJsonImageValues(string json)
     {
-        JsonDocument? document = null;
         try
         {
-            document = JsonDocument.Parse(json);
-            foreach (var value in EnumerateJsonImageValues(document.RootElement))
-                yield return value;
+            using var document = JsonDocument.Parse(json);
+            return EnumerateJsonImageValues(document.RootElement).ToArray();
         }
         catch
         {
-            yield break;
-        }
-        finally
-        {
-            document?.Dispose();
+            return Array.Empty<string>();
         }
     }
 
@@ -461,7 +457,8 @@ public static class WebImageSource
         long maximumBytes,
         CancellationToken cancellationToken)
     {
-        if (content.Headers.ContentLength is > 0 and var declared && declared > maximumBytes)
+        var declared = content.Headers.ContentLength;
+        if (declared.HasValue && declared.Value > maximumBytes)
             throw new InvalidDataException($"Remote image exceeds the {maximumBytes / (1024 * 1024)} MiB limit.");
 
         await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
