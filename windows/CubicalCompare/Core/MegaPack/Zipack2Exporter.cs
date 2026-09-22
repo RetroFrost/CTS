@@ -41,7 +41,7 @@ public static class Zipack2Exporter
         var parent = Path.GetDirectoryName(destinationPath);
         if (!string.IsNullOrWhiteSpace(parent)) Directory.CreateDirectory(parent);
 
-        var work = BuildArtworkItems(project);
+        var work = await BuildArtworkItemsAsync(project, cancellationToken);
         var sheets = BuildSheetPlans(work);
         var thumbnail = AutoThumbnailGenerator.Generate(project);
         var soundtrackSource = ResolveSoundtrack(project.SoundtrackPath);
@@ -118,6 +118,9 @@ public static class Zipack2Exporter
         Value = card.Value,
         BadgeHeader = card.BadgeHeader,
         Description = card.Description,
+        Image = WebImageSource.IsRemoteSource(card.ImagePath)
+            ? WebImageSource.NormalizeSource(card.ImagePath)
+            : string.Empty,
         ImageX = card.ImageX,
         ImageY = card.ImageY,
         ImageScale = card.ImageScale,
@@ -129,16 +132,20 @@ public static class Zipack2Exporter
         ImageLayer = card.ImageLayer,
     };
 
-    private static List<ArtworkItem> BuildArtworkItems(ComparisonProject project)
+    private static async Task<List<ArtworkItem>> BuildArtworkItemsAsync(
+        ComparisonProject project,
+        CancellationToken cancellationToken)
     {
         var result = new List<ArtworkItem>(project.Cards.Count);
         for (var index = 0; index < project.Cards.Count; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var card = project.Cards[index];
             SKBitmap bitmap;
-            if (!string.IsNullOrWhiteSpace(card.ImagePath) && File.Exists(card.ImagePath))
+            var resolvedPath = await WebImageSource.ResolveToLocalFileAsync(card.ImagePath, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(resolvedPath) && File.Exists(resolvedPath))
             {
-                bitmap = SKBitmap.Decode(card.ImagePath)
+                bitmap = SKBitmap.Decode(resolvedPath)
                     ?? throw new InvalidDataException($"Card {index + 1} artwork is not a supported image.");
             }
             else
