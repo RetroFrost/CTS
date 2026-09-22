@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using CubicalCompare.Core.Project;
 using SkiaSharp;
 
 namespace CubicalCompare.Core.MegaPack;
@@ -40,10 +41,13 @@ public static class Zipack2Importer
             throw new InvalidDataException($"Unsupported Zipack2 version {manifest.Version}.");
 
         var definitions = ResolveSheetDefinitions(archive, manifest);
-        if (definitions.Count == 0)
-            throw new InvalidDataException("This Zipack2 pack does not contain any contact sheets.");
+        var manifestCards = manifest.Cards.Select((card, index) => card.Normalize(index)).ToList();
+        var hasWebArtwork = manifestCards.Any(card => WebImageSource.IsRemoteSource(card.ImageSource));
+        if (definitions.Count == 0 && !hasWebArtwork)
+            throw new InvalidDataException("This Zipack2 pack does not contain contact sheets or web artwork URLs.");
 
-        ValidateSheetDefinitions(definitions);
+        if (definitions.Count > 0)
+            ValidateSheetDefinitions(definitions);
 
         var extractionRoot = Path.Combine(
             Path.GetTempPath(),
@@ -114,8 +118,37 @@ public static class Zipack2Importer
                 });
             }
 
-            for (var index = 0; index < Math.Min(allCards.Count, manifest.Cards.Count); index++)
-                allCards[index].Data = manifest.Cards[index].Normalize(index);
+            for (var index = 0; index < Math.Min(allCards.Count, manifestCards.Count); index++)
+                allCards[index].Data = manifestCards[index];
+
+            // URL-only MegaPacks do not need to manufacture a contact sheet. Resolve
+            // their web artwork into the shared app cache so the detection/approval UI
+            // still has a real local preview while the project keeps the original URL.
+            for (var index = allCards.Count; index < manifestCards.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var data = manifestCards[index];
+                if (!WebImageSource.IsRemoteSource(data.ImageSource))
+                    continue;
+
+                var resolved = await WebImageSource.ResolveToLocalFileAsync(data.ImageSource, cancellationToken)
+                    ?? throw new InvalidDataException($"MegaPack card {index + 1} web artwork could not be resolved.");
+
+                using var bitmap = SKBitmap.Decode(resolved)
+                    ?? throw new InvalidDataException($"MegaPack card {index + 1} web artwork is not a supported raster image.");
+
+                allCards.Add(new DetectedZipack2Card
+                {
+                    SheetPath = data.ImageSource,
+                    SheetOrder = sheetResults.Count,
+                    LocalIndex = index,
+                    GlobalIndex = globalIndex++,
+                    Bounds = new PixelRect(0, 0, bitmap.Width, bitmap.Height),
+                    ExtractedPath = resolved,
+                    Confidence = 1.0,
+                    Data = data,
+                });
+            }
 
             var soundtrackPath = await ExtractSoundtrackAsync(archive, manifest, extractionRoot, cancellationToken);
 
