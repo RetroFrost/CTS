@@ -155,6 +155,29 @@ public static class WebImageSource
         var token = timeout.Token;
 
         var sourceUri = new Uri(originalSource, UriKind.Absolute);
+
+        // Flaticon page URLs expose a stable CDN path derived from the icon id.
+        // Try that first so ordinary copied icon-page URLs keep working even when
+        // the HTML endpoint applies anti-bot/consent handling to desktop apps.
+        var flaticonCandidate = TryFlaticonCdnCandidate(sourceUri);
+        if (flaticonCandidate is not null)
+        {
+            try
+            {
+                var flaticonLocal = await DownloadCandidateAsync(
+                    originalSource,
+                    flaticonCandidate,
+                    sourceUri,
+                    token).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(flaticonLocal))
+                    return flaticonLocal;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidDataException)
+            {
+                // Fall through to normal page metadata discovery.
+            }
+        }
+
         var (response, finalUri) = await SendAsync(
             sourceUri,
             "image/avif,image/webp,image/apng,image/svg+xml,image/*,text/html;q=0.9,*/*;q=0.5",
