@@ -19,6 +19,7 @@ from comparison_studio.data import (
     parse_duration,
     resolve_cards,
     save_project_json,
+    table_from_matrix,
 )
 
 
@@ -87,6 +88,48 @@ class DataTests(unittest.TestCase):
         self.assertEqual(illustrated["image"], "Artwork")
         self.assertEqual(classic["badge_secondary"], "Unit")
 
+    def test_comparison_table_headers_map_to_badge_and_image(self) -> None:
+        data = table_from_matrix([
+            ["Highlight", "Highlight Image", "Title", "Description", "Image"],
+            ["3.37 km²", "highlight.png", "Batman: Arkham Knight", "Gotham City", "maps/batman.png"],
+        ])
+        mapping = guess_field_mapping(data.headers)
+        cards = resolve_cards(data, mapping)
+        self.assertEqual(mapping["badge_primary"], "Highlight")
+        self.assertEqual(mapping["image"], "Image")
+        self.assertEqual(cards[0].uploaded, "3.37 km²")
+        self.assertEqual(cards[0].image, "maps/batman.png")
+
+    def test_highlight_image_can_fallback_when_image_column_is_absent(self) -> None:
+        data = table_from_matrix([
+            ["Highlight", "Highlight Image", "Title", "Description"],
+            ["3.7 km²", "maps/assassins.png", "Assassin's Creed Syndicat", "Pushed city density"],
+        ])
+        mapping = guess_field_mapping(data.headers)
+        cards = resolve_cards(data, mapping)
+        self.assertEqual(mapping["image"], "Highlight Image")
+        self.assertEqual(cards[0].image, "maps/assassins.png")
+
+    def test_csv_web_url_alias_is_optional_image_source(self) -> None:
+        data = table_from_matrix([
+            ["Badge Value", "Title", "Web URL"],
+            ["42", "Remote card", "https://example.com/card.png"],
+        ])
+        mapping = guess_field_mapping(data.headers)
+        cards = resolve_cards(data, mapping)
+        self.assertEqual(mapping["image"], "Web URL")
+        self.assertEqual(cards[0].image, "https://example.com/card.png")
+
+    def test_csv_without_web_url_still_imports_local_image(self) -> None:
+        data = table_from_matrix([
+            ["Badge Value", "Title", "Image"],
+            ["42", "Local card", "art/card.png"],
+        ])
+        mapping = guess_field_mapping(data.headers)
+        cards = resolve_cards(data, mapping)
+        self.assertEqual(mapping["image"], "Image")
+        self.assertEqual(cards[0].image, "art/card.png")
+
     def test_v2_project_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "project.cts.json"
@@ -109,24 +152,3 @@ class DataTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-    def test_csv_web_url_alias_is_optional_image_source(self) -> None:
-        data = table_from_matrix([
-            ["Badge Value", "Title", "Web URL"],
-            ["42", "Remote card", "https://example.com/card.png"],
-        ])
-        mapping = guess_field_mapping(data.headers)
-        cards = resolve_cards(data, mapping)
-        self.assertEqual(mapping["image"], "Web URL")
-        self.assertEqual(cards[0].image, "https://example.com/card.png")
-
-    def test_csv_without_web_url_still_imports_local_image(self) -> None:
-        data = table_from_matrix([
-            ["Badge Value", "Title", "Image"],
-            ["42", "Local card", "art/card.png"],
-        ])
-        mapping = guess_field_mapping(data.headers)
-        cards = resolve_cards(data, mapping)
-        self.assertEqual(mapping["image"], "Image")
-        self.assertEqual(cards[0].image, "art/card.png")
