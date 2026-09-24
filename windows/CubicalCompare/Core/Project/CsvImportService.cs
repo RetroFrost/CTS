@@ -7,6 +7,7 @@ public sealed class CsvImportResult
 {
     public List<ComparisonCard> Cards { get; init; } = [];
     public List<string> Warnings { get; init; } = [];
+    public double? DurationSeconds { get; init; }
 }
 
 public static class CsvImportService
@@ -17,7 +18,7 @@ public static class CsvImportService
         ["value"] = ["value", "badge", "badge value", "badge primary", "amount", "number", "age", "rank"],
         ["badge_header"] = ["badge header", "badge_header", "header", "badge label", "badge secondary", "unit", "label"],
         ["description"] = ["description", "details", "desc", "summary", "caption", "text"],
-        ["image"] = ["image", "image url", "image_url", "image path", "artwork", "artwork url", "artwork_url", "icon", "icon url", "icon_url", "picture", "photo", "thumbnail", "url"],
+        ["image"] = ["image", "image url", "image_url", "image path", "artwork", "artwork url", "artwork_url", "image link", "web image url", "web artwork url", "highlight image", "icon", "icon url", "icon_url", "picture", "photo", "thumbnail", "web url", "url"],
         ["image_x"] = ["image x", "image_x", "artwork x", "x"],
         ["image_y"] = ["image y", "image_y", "artwork y", "y"],
         ["image_scale"] = ["image scale", "image_scale", "artwork scale", "scale"],
@@ -61,6 +62,12 @@ public static class CsvImportService
             };
         }
 
+        var durationIndex = FindHeaderIndex(
+            header,
+            "duration", "video duration", "target duration", "length", "video length");
+        double? durationSeconds = null;
+        var durationRows = new List<(int RowNumber, string Value)>();
+
         var cards = new List<ComparisonCard>();
         var csvDirectory = Path.GetDirectoryName(fullPath) ?? Environment.CurrentDirectory;
 
@@ -69,6 +76,9 @@ public static class CsvImportService
             cancellationToken.ThrowIfCancellationRequested();
             var row = rows[rowIndex];
             if (row.All(string.IsNullOrWhiteSpace)) continue;
+
+            if (durationIndex >= 0 && durationIndex < row.Length && !string.IsNullOrWhiteSpace(row[durationIndex]))
+                durationRows.Add((rowIndex + 1, row[durationIndex].Trim()));
 
             string Cell(string role)
                 => mapping.TryGetValue(role, out var index) && index >= 0 && index < row.Length
@@ -138,10 +148,29 @@ public static class CsvImportService
             }
         }
 
+        if (durationRows.Count > 0)
+        {
+            foreach (var entry in durationRows)
+            {
+                try
+                {
+                    var parsed = ParseDuration(entry.Value);
+                    durationSeconds ??= parsed;
+                    if (durationSeconds.HasValue && Math.Abs(durationSeconds.Value - parsed) > 0.001)
+                        warnings.Add($"CSV row {entry.RowNumber}: Duration {entry.Value} differs from the first Duration value; using the first value.");
+                }
+                catch (FormatException ex)
+                {
+                    warnings.Add($"CSV row {entry.RowNumber}: invalid Duration '{entry.Value}' ({ex.Message}); the imported cards were kept but project timing was not changed.");
+                }
+            }
+        }
+
         return new CsvImportResult
         {
             Cards = cards,
             Warnings = warnings,
+            DurationSeconds = durationSeconds,
         };
     }
 
@@ -253,6 +282,42 @@ public static class CsvImportService
         {
             return value;
         }
+    }
+
+    private static int FindHeaderIndex(IReadOnlyList<string> headers, params string[] aliases)
+    {
+        for (var index = 0; index < headers.Count; index++)
+        {
+            var normalized = NormalizeHeader(headers[index]);
+            if (aliases.Any(alias => NormalizeHeader(alias) == normalized))
+                return index;
+        }
+        return -1;
+    }
+
+    private static double ParseDuration(string value)
+    {
+        var text = value.Trim();
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) &&
+            double.IsFinite(seconds) && seconds >= 1)
+            return seconds;
+
+        var parts = text.Split(':');
+        if (parts.Length is not (2 or 3) || parts.Any(part => !int.TryParse(part, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+            throw new FormatException("use seconds, MM:SS, or HH:MM:SS");
+
+        var numbers = parts.Select(part => int.Parse(part, CultureInfo.InvariantCulture)).ToArray();
+        var minutes = parts.Length == 2 ? numbers[0] : numbers[1];
+        var secs = numbers[^1];
+        var hours = parts.Length == 3 ? numbers[0] : 0;
+
+        if (secs is < 0 or > 59 || minutes is < 0 or > 59 || hours < 0)
+            throw new FormatException("minutes and seconds must be below 60");
+
+        var total = hours * 3600d + minutes * 60d + secs;
+        if (!double.IsFinite(total) || total < 1)
+            throw new FormatException("duration must be at least one second");
+        return total;
     }
 
     private static double ParseDouble(string value, double fallback)
