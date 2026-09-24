@@ -261,10 +261,19 @@ def _unique_headers(values: Sequence[object], width: int | None = None) -> list[
 def guess_field_mapping(headers: Sequence[str]) -> dict[str, str]:
     mapping: dict[str, str] = {}
     normalized = [normalize_header(value) for value in headers]
+    image_priority = (
+        "image", "image path", "photo", "picture", "thumbnail", "artwork",
+        "image url", "url", "web url", "web image url", "web artwork url",
+        "artwork url", "image link", "highlight image",
+    )
     for role, aliases in HEADER_ALIASES.items():
-        for index, value in enumerate(normalized):
-            if value in aliases:
-                mapping[role] = headers[index]
+        candidates = image_priority if role == "image" else tuple(aliases)
+        for alias in candidates:
+            for index, value in enumerate(normalized):
+                if value == alias:
+                    mapping[role] = headers[index]
+                    break
+            if role in mapping:
                 break
     return mapping
 
