@@ -47,6 +47,22 @@ Badge Value,Badge Label,Title,Description,Artwork
 
 Every field is optional. Each data row becomes one comparison card.
 
+For artwork, the image field may contain either a local file path or a web URL. A separate URL-style column is optional: headers such as `URL`, `Web URL`, `Web Image URL`, `Artwork URL`, and `Image URL` are automatically recognized as the card artwork source. If no URL column is present, local artwork continues to work normally.
+
+Example with an optional web URL:
+
+```csv
+Badge Value,Title,Web URL
+42,Remote card,https://example.com/card.png
+```
+
+Example without a web URL:
+
+```csv
+Badge Value,Title,Image
+42,Local card,art/card.png
+```
+
 ## Reference Timeline
 
 The current canonical presentation is the **Reference Timeline**.
