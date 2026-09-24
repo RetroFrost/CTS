@@ -77,6 +77,18 @@ Highlight,Highlight Image,Title,Description,Image
 
 When both `Highlight Image` and `Image` are present, `Image` is preferred as the card artwork. If `Image` is absent, `Highlight Image` can supply the artwork.
 
+## Project-level video settings
+
+A CSV may also specify the target video duration. Use a `Duration` column (or `Video Duration`, `Target Duration`, `Length`, or `Video Length`). CTS accepts seconds, `MM:SS`, or `HH:MM:SS`.
+
+```csv
+Duration,Badge Value,Badge Label,Title,Description,Image
+01:30,3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
+01:30,3.7,km²,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
+```
+
+The duration is a **project-level target**, not a per-card duration. If multiple non-blank Duration values are present, CTS uses the first one and warns about the mismatch. When Duration is present, CTS automatically switches from automatic timing to that target length.
+
 ## Local and web artwork
 
 The artwork field can contain either a local file or a web URL.
