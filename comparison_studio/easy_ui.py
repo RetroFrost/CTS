@@ -39,6 +39,7 @@ from .data import (
     load_xlsx_table,
     parse_duration,
     table_from_matrix,
+    _resolve_possible_asset,
 )
 from .easy_timing import timeline_parts, with_easy_timing
 from .premiere_ui import PREMIERE_STYLE
@@ -186,6 +187,9 @@ def load_table_file(path: str | Path) -> tuple[SpreadsheetData, list[str]]:
         except UnicodeDecodeError:
             text = target.read_text(encoding="latin-1")
         data = _parse_text_table(text)
+        for row in data.rows:
+            for index, value in enumerate(row):
+                row[index] = _resolve_possible_asset(value, target)
         if not data.headers:
             raise FriendlyError(
                 "The selected file does not contain a readable table.",
