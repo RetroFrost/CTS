@@ -208,7 +208,7 @@ class ProjectDocument:
 HEADER_ALIASES = {
     "badge_primary": {
         "date", "uploaded", "upload date", "uploaded date", "year", "value",
-        "badge", "badge value", "badge date / value", "number", "amount", "age",
+        "badge", "badge value", "badge date / value", "highlight", "number", "amount", "age",
         "probability", "rank",
     },
     "badge_secondary": {
@@ -217,7 +217,11 @@ HEADER_ALIASES = {
     },
     "title": {"title", "name", "heading", "card title", "item", "subject"},
     "description": {"description", "details", "summary", "text", "caption"},
-    "image": {\n        "image", "image path", "image url", "photo", "picture", "thumbnail", "artwork",\n        "url", "web url", "web image url", "web artwork url", "artwork url", "image link",\n    },
+    "image": {
+        "image", "image path", "photo", "picture", "thumbnail", "artwork",
+        "image url", "url", "web url", "web image url", "web artwork url",
+        "artwork url", "image link", "highlight image",
+    },
 }
 
 
