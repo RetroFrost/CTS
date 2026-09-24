@@ -109,3 +109,24 @@ class DataTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_csv_web_url_alias_is_optional_image_source(self) -> None:
+        data = table_from_matrix([
+            ["Badge Value", "Title", "Web URL"],
+            ["42", "Remote card", "https://example.com/card.png"],
+        ])
+        mapping = guess_field_mapping(data.headers)
+        cards = resolve_cards(data, mapping)
+        self.assertEqual(mapping["image"], "Web URL")
+        self.assertEqual(cards[0].image, "https://example.com/card.png")
+
+    def test_csv_without_web_url_still_imports_local_image(self) -> None:
+        data = table_from_matrix([
+            ["Badge Value", "Title", "Image"],
+            ["42", "Local card", "art/card.png"],
+        ])
+        mapping = guess_field_mapping(data.headers)
+        cards = resolve_cards(data, mapping)
+        self.assertEqual(mapping["image"], "Image")
+        self.assertEqual(cards[0].image, "art/card.png")
