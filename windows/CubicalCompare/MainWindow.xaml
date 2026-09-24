@@ -164,7 +164,9 @@
                             </ScrollViewer>
                         </Grid>
                     </Border>
-                </Grid>\n\n                <Grid x:Name="ProjectPage">
+                </Grid>
+
+                <Grid x:Name="ProjectPage">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="12" />
