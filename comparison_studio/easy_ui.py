@@ -38,6 +38,7 @@ from .data import (
     format_duration,
     load_xlsx_table,
     parse_duration,
+    guess_project_field,
     table_from_matrix,
     _resolve_possible_asset,
 )
@@ -930,6 +931,29 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
             self.table.set_data(data)
             self._auto_map_fields()
             self._apply_model_schema(self.model_combo.currentData() or MODEL_ILLUSTRATED)
+
+            # A CSV may optionally carry a project-level Duration column. Apply
+            # the first non-blank value to CTS's normal timing controls so the
+            # CSV can fully specify the target video length without affecting
+            # the card schema.
+            duration_header = guess_project_field(data.headers, "duration")
+            if duration_header:
+                duration_index = data.headers.index(duration_header)
+                duration_values = [
+                    row[duration_index].strip()
+                    for row in data.rows
+                    if duration_index < len(row) and row[duration_index].strip()
+                ]
+                if duration_values:
+                    parsed_duration = parse_duration(duration_values[0])
+                    self.auto_length.setChecked(False)
+                    self.custom_length.setText(duration_values[0])
+                    if len(set(duration_values)) > 1:
+                        warnings = list(warnings or [])
+                        warnings.append(
+                            f"Multiple Duration values were found; CTS used the first value: {duration_values[0]}"
+                        )
+
             cards = self.cards()
             if cards:
                 visible = self.project_settings().effective_visible_cards()
