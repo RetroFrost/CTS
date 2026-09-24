@@ -2,16 +2,27 @@
 
 Cubical Compare can import comparison data directly from a `.csv` file.
 
+## Comparison-table format
+
+A CSV can mirror the familiar comparison-table layout:
+
+    Highlight,Highlight Image,Title,Description,Image
+    3.37 km²,highlight/batman.png,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
+    3.7 km²,highlight/assassins.png,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
+
+Highlight maps to the card's primary badge/highlight value. Title, Description, and Image map to the corresponding card fields. Highlight Image is optional; when an Image column exists, Image is preferred for the card artwork. If Image is absent, Highlight Image can be used as the artwork fallback.
+
 ## Supported CSV fields
 
 The first row is treated as the header row. Field names are matched automatically, so the exact column order is not important.
 
 Common fields include:
 
-- **Badge Value** / **Value**
+- **Highlight** / **Badge Value** / **Value**
 - **Badge Label** / **Unit**
 - **Title**
 - **Description**
+- **Highlight Image** (optional artwork fallback)
 - **Image** / **Artwork**
 - **Image URL**
 - **URL**
@@ -22,6 +33,17 @@ Common fields include:
 - **Image Link**
 
 All fields are optional. Each non-empty data row becomes a card.
+
+## Local or web images
+
+The Image field can contain either a local path or a web URL.
+
+For local artwork, paths are resolved relative to the CSV file:
+
+    Highlight,Title,Image
+    3.37 km²,Batman: Arkham Knight,images/batman.png
+
+A CSV does not need a web URL column. Local-only artwork remains supported.
 
 ## Web artwork URLs
 
