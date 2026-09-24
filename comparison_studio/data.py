@@ -52,6 +52,13 @@ MODEL_SCHEMAS: dict[str, tuple[tuple[str, str], ...]] = {
 
 FIELD_ROLES = ("badge_primary", "badge_secondary", "title", "description", "image")
 
+# Project-level CSV metadata. These columns configure the generated video rather
+# than becoming card fields. A Duration value may be repeated on every row or
+# supplied once; CTS uses the first non-blank value.
+PROJECT_FIELD_ALIASES = {
+    "duration": {"duration", "video duration", "target duration", "length", "video length"},
+}
+
 
 class FriendlyError(RuntimeError):
     """An application error that is safe and useful to show to a user."""
@@ -223,6 +230,16 @@ HEADER_ALIASES = {
         "artwork url", "image link", "highlight image",
     },
 }
+
+
+def guess_project_field(headers: Sequence[str], role: str) -> str:
+    aliases = PROJECT_FIELD_ALIASES.get(role, set())
+    normalized = [normalize_header(value) for value in headers]
+    for alias in aliases:
+        for index, value in enumerate(normalized):
+            if value == alias:
+                return headers[index]
+    return ""
 
 
 def normalize_header(value: object) -> str:
