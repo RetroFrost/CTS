@@ -242,7 +242,7 @@ public sealed partial class MainWindow
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;
         return value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r')
-            ? $""{value.Replace(""", """")}""
+            ? $"\"{value.Replace("\"", "\"\"")}\""
             : value;
     }
 
