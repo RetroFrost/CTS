@@ -217,7 +217,7 @@ HEADER_ALIASES = {
     },
     "title": {"title", "name", "heading", "card title", "item", "subject"},
     "description": {"description", "details", "summary", "text", "caption"},
-    "image": {"image", "image path", "image url", "photo", "picture", "thumbnail", "artwork"},
+    "image": {\n        "image", "image path", "image url", "photo", "picture", "thumbnail", "artwork",\n        "url", "web url", "web image url", "web artwork url", "artwork url", "image link",\n    },
 }
 
 
