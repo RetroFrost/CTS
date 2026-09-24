@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.2.1.32 — 2026-09-24
+
+- CSV imports now explicitly recognize optional web-artwork URL columns, including `URL`, `Web URL`, `Web Image URL`, `Web Artwork URL`, `Artwork URL`, and `Image Link`.
+- A CSV row can use a web URL as its artwork source without requiring a local image column.
+- Existing `Image` / `Image URL` CSV files remain compatible.
+- Added regression coverage for URL-only and local-image CSV rows.
+
+
 ## 0.4.5 — 2026-07-14
 
 - Promoted the redesigned editing workspace to the CTS 0.4.5 release line.
