@@ -72,7 +72,8 @@
                 </NavigationViewItem>
                 <NavigationViewItem Content="MegaPacks" Tag="assets">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Library" /></NavigationViewItem.Icon>
-                </NavigationViewItem>\n                <NavigationViewItem Content="CSV Helper" Tag="csv-helper">
+                </NavigationViewItem>
+                <NavigationViewItem Content="CSV Helper" Tag="csv-helper">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Edit" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Thumbnail" Tag="thumbnail">
