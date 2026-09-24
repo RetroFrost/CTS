@@ -40,14 +40,16 @@ It supports:
 A basic dataset looks like this:
 
 ```csv
-Badge Value,Badge Label,Title,Description,Artwork
-10,SECONDS OLD,Breathing,A baby's first breath requires blood flow through the heart.,image.png
-20,SECONDS OLD,First Cry,The first cry helps expand the lungs.,cry.png
+Highlight,Highlight Image,Title,Description,Image
+3.37 km²,highlight/batman.png,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
+3.7 km²,highlight/assassins.png,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
 ```
+
+This layout mirrors the comparison-table format used by the editor. `Highlight` is the primary badge value. `Title`, `Description`, and `Image` become the card fields. `Highlight Image` is optional; when both image columns exist, `Image` is used for the card artwork, while `Highlight Image` remains available as table data. If `Image` is omitted, `Highlight Image` can be used as the artwork fallback.
 
 Every field is optional. Each data row becomes one comparison card.
 
-For artwork, the image field may contain either a local file path or a web URL. A separate URL-style column is optional: headers such as `URL`, `Web URL`, `Web Image URL`, `Artwork URL`, and `Image URL` are automatically recognized as the card artwork source. If no URL column is present, local artwork continues to work normally.
+For artwork, `Image` may contain either a local file path or a web URL. Local relative paths are resolved relative to the CSV file, so `maps/batman.png` works without an absolute path. A separate URL-style column is optional: headers such as `URL`, `Web URL`, `Web Image URL`, `Artwork URL`, and `Image URL` are automatically recognized as the card artwork source.
 
 Example with an optional web URL:
 
