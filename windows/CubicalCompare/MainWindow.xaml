@@ -72,6 +72,8 @@
                 </NavigationViewItem>
                 <NavigationViewItem Content="MegaPacks" Tag="assets">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Library" /></NavigationViewItem.Icon>
+                </NavigationViewItem>\n                <NavigationViewItem Content="CSV Helper" Tag="csv-helper">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Edit" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Thumbnail" Tag="thumbnail">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Pictures" /></NavigationViewItem.Icon>
@@ -88,7 +90,81 @@
             </NavigationView.FooterMenuItems>
 
             <Grid Padding="12,12,14,14">
-                <Grid x:Name="ProjectPage">
+                <Grid x:Name="CsvHelperPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="CSV Helper" FontSize="24" FontWeight="SemiBold" />
+                            <TextBlock Text="Build a comparison CSV without editing raw CSV syntax." Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button Content="Add row" Click="CsvHelperAddRow_Click" />
+                            <Button Content="Import CSV" Click="CsvHelperImport_Click" />
+                            <Button Content="Export CSV" Click="CsvHelperExport_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
+                            <Button Content="Load into project" Click="CsvHelperLoadIntoProject_Click" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid Grid.Row="1" Margin="0,14,0,10" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="220" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="CsvHelperProjectNameBox" Header="Project name" PlaceholderText="My comparison" />
+                        <TextBox x:Name="CsvHelperDurationBox" Grid.Column="1" Header="Duration" PlaceholderText="00:30 or 30" />
+                        <TextBox x:Name="CsvHelperDefaultHeaderBox" Grid.Column="2" Header="Badge header" PlaceholderText="Probability" />
+                        <TextBlock x:Name="CsvHelperStatusText" Grid.Column="3" Text="0 rows · Ready" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                    <Border Grid.Row="2" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid ColumnSpacing="8" Padding="4,0,4,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="50" />
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="4*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="#" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="Title" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="Value" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="3" Text="Image URL / local path" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="4" Text="" />
+                            </Grid>
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl x:Name="CsvHelperRowsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnSpacing="8" Margin="0,3">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="50" />
+                                                    <ColumnDefinition Width="2*" />
+                                                    <ColumnDefinition Width="170" />
+                                                    <ColumnDefinition Width="4*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Number}" VerticalAlignment="Center" />
+                                                <TextBox Grid.Column="1" Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Comparison item" />
+                                                <TextBox Grid.Column="2" Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="50%" />
+                                                <TextBox Grid.Column="3" Text="{Binding Image, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Flaticon URL or local file" />
+                                                <Button Grid.Column="4" Content="×" Tag="{Binding}" Click="CsvHelperRemoveRow_Click" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>\n\n                <Grid x:Name="ProjectPage">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="12" />
