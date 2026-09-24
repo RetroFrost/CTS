@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.Storage;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -245,24 +246,18 @@ public sealed partial class MainWindow
             : value;
     }
 
-    private async Task<StorageFileCompat?> PickSaveCsvAsync()
+    private async Task<StorageFile?> PickSaveCsvAsync()
     {
         var picker = new FileSavePicker
         {
-            SuggestedFileName = string.IsNullOrWhiteSpace(CsvHelperProjectNameBox.Text) ? "comparison.csv" : CsvHelperProjectNameBox.Text.Trim() + ".csv",
+            SuggestedFileName = string.IsNullOrWhiteSpace(CsvHelperProjectNameBox.Text) ? "comparison.csv" : CsvHelperProjectNameBox.Text.Trim().EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
+                ? CsvHelperProjectNameBox.Text.Trim()
+                : CsvHelperProjectNameBox.Text.Trim() + ".csv",
             FileTypeChoices = { { "CSV file", [".csv"] } },
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
         };
-        picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
-
-        var file = await picker.PickSaveFileAsync();
-        return file is null ? null : new StorageFileCompat(file);
-    }
-
-    private sealed class StorageFileCompat
-    {
-        public StorageFileCompat(Windows.Storage.StorageFile file) => Path = file.Path;
-        public string Path { get; }
+        return await picker.PickSaveFileAsync();
     }
 }
 
