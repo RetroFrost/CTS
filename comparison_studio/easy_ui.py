@@ -945,7 +945,7 @@ class EasyMainWindow(ReferenceIllustratedMainWindow):
                     if duration_index < len(row) and row[duration_index].strip()
                 ]
                 if duration_values:
-                    parsed_duration = parse_duration(duration_values[0])
+                    parse_duration(duration_values[0])
                     self.auto_length.setChecked(False)
                     self.custom_length.setText(duration_values[0])
                     if len(set(duration_values)) > 1:
