@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window
         AssetsPage.Visibility = tag == "assets" ? Visibility.Visible : Visibility.Collapsed;
         ThumbnailPage.Visibility = tag == "thumbnail" ? Visibility.Visible : Visibility.Collapsed;
         RendererPage.Visibility = tag == "renderer" ? Visibility.Visible : Visibility.Collapsed;
+        CsvHelperPage.Visibility = tag == "csv-helper" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void NewProject_Click(object sender, RoutedEventArgs e)
