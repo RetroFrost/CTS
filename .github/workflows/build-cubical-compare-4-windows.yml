@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - windows/main
+      - windows/4.2.2-csv
       - work/portable-zip-windows
+      - windows/4.2.2-csv
     paths:
       - 'windows/CubicalCompare/**'
       - 'windows/CubicalCompare.Modules/**'
@@ -49,13 +51,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.1.31"
+          $version = "4.2.2"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.1.31 and advance the
-          # package/feed version independently.
-          $velopackVersion = "4.2.32"
+          # Keep the visible Cubical Compare version at 4.2.2 and advance the
+          # package/feed version independently for each Windows release.
+          $velopackVersion = "4.2.34"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append

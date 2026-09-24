@@ -189,6 +189,9 @@ public sealed partial class MainWindow : Window
             TimelineStatusText.Text = "Importing CSV and resolving web artwork…";
             var result = await CsvImportService.ImportAsync(file.Path);
             ClearProjectCards();
+            if (result.DurationSeconds is > 0)
+                _projectDurationSeconds = result.DurationSeconds.Value;
+
             foreach (var card in result.Cards)
             {
                 AddProjectCard(new ProjectCardViewModel
