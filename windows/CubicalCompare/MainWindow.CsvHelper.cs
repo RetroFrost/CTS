@@ -15,7 +15,7 @@ public sealed partial class MainWindow
     public ObservableCollection<CsvHelperRowViewModel> CsvHelperRows { get; } = [];
     private int _csvHelperSequence;
 
-    private void InitializeCsvHelper()
+    internal void InitializeCsvHelper()
     {
         CsvHelperRows.Clear();
         _csvHelperSequence = 0;
