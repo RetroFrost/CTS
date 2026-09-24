@@ -57,7 +57,7 @@ jobs:
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.1.31 and advance the
           # package/feed version independently.
-          $velopackVersion = "4.2.32"
+          $velopackVersion = "4.2.33"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
