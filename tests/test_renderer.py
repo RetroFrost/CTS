@@ -75,6 +75,35 @@ class RendererTests(unittest.TestCase):
             "https://www.example.com/image.png",
         )
 
+    def test_badge_fields_have_no_fallback_or_date_split(self) -> None:
+        class CaptureRenderer(TimelineRenderer):
+            def _render_badge(self, header, primary, secondary, *args, **kwargs):
+                self.captured = (header, primary, secondary)
+                return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+
+        renderer = CaptureRenderer()
+        card = CardData(uploaded="2025-04-23", title="Example")
+        renderer._render_reference_card(card, 480, 1080, 1.0)
+        self.assertEqual(renderer.captured, ("", "2025-04-23", ""))
+
+        card = CardData(badge_header="AFTER", uploaded="30", badge_label="MINUTES")
+        renderer._render_reference_card(card, 480, 1080, 1.0)
+        self.assertEqual(renderer.captured, ("AFTER", "30", "MINUTES"))
+
+    def test_renderer_timeline_depends_on_card_count(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp_path = Path(directory)
+            renderer = TimelineRenderer()
+            short_cards = _cards(tmp_path, 4)
+            long_cards = _cards(tmp_path, 9)
+            short_duration = ProjectSettings().auto_duration(len(short_cards))
+            long_duration = ProjectSettings().auto_duration(len(long_cards))
+            self.assertGreater(long_duration, short_duration)
+            self.assertNotEqual(
+                renderer._placements(len(short_cards), short_duration * 0.8, 4, 640.0),
+                renderer._placements(len(long_cards), short_duration * 0.8, 4, 640.0),
+            )
+
     def test_compact_long_text_shrinks_and_wraps_without_early_ellipsis(self) -> None:
         draw = ImageDraw.Draw(Image.new("RGB", (320, 180)))
         text = "A compact model title with several words that should remain readable"
