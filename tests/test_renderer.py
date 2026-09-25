@@ -166,6 +166,7 @@ class RendererTests(unittest.TestCase):
         cards = [CardData() for _ in range(4)]
         renderer = TimelineRenderer()
         settings = ProjectSettings()
+        self.assertEqual(renderer.hit_test(cards, 8.0, settings, 0.125, 0.14), (0, "badge_header"))
         self.assertEqual(renderer.hit_test(cards, 8.0, settings, 0.125, 0.20), (0, "badge_primary"))
         self.assertEqual(renderer.hit_test(cards, 8.0, settings, 0.125, 0.48), (0, "title"))
         self.assertEqual(renderer.hit_test(cards, 8.0, settings, 0.125, 0.60), (0, "description"))
@@ -175,11 +176,13 @@ class RendererTests(unittest.TestCase):
         cards = [CardData() for _ in range(4)]
         renderer = TimelineRenderer()
         illustrated = ProjectSettings(model_id=MODEL_ILLUSTRATED)
-        self.assertEqual(renderer.hit_test(cards, 6.0, illustrated, 1 / 6, 0.12), (0, "badge_primary"))
+        self.assertEqual(renderer.hit_test(cards, 6.0, illustrated, 1 / 6, 0.12), (0, "badge_header"))
+        self.assertEqual(renderer.hit_test(cards, 6.0, illustrated, 1 / 6, 0.18), (0, "badge_primary"))
         self.assertEqual(renderer.hit_test(cards, 6.0, illustrated, 1 / 6, 0.27), (0, "badge_secondary"))
         self.assertEqual(renderer.hit_test(cards, 6.0, illustrated, 1 / 6, 0.55), (0, "image"))
         self.assertEqual(renderer.hit_test(cards, 6.0, illustrated, 1 / 6, 0.94), (0, "title"))
         classic = ProjectSettings(model_id=MODEL_CLASSIC)
+        self.assertEqual(renderer.hit_test(cards, 8.0, classic, 0.125, 0.10), (0, "badge_header"))
         self.assertEqual(renderer.hit_test(cards, 8.0, classic, 0.125, 0.15), (0, "badge_primary"))
         self.assertEqual(renderer.hit_test(cards, 8.0, classic, 0.125, 0.30), (0, "badge_secondary"))
         self.assertEqual(renderer.hit_test(cards, 8.0, classic, 0.125, 0.44), (0, "title"))
@@ -231,9 +234,9 @@ class RendererTests(unittest.TestCase):
     def test_badge_opacity_does_not_resize_its_geometry(self) -> None:
         renderer = TimelineRenderer()
         renderer._active_badge_opacity = 0.0
-        hidden = renderer._render_badge("45", "Minutes", 240, 140, 0.97)
+        hidden = renderer._render_badge("", "45", "Minutes", 240, 140, 0.97)
         renderer._active_badge_opacity = 1.0
-        visible = renderer._render_badge("45", "Minutes", 240, 140, 0.97)
+        visible = renderer._render_badge("", "45", "Minutes", 240, 140, 0.97)
         self.assertEqual(hidden.size, visible.size)
         self.assertEqual(hidden.getchannel("A").getextrema(), (0, 0))
         self.assertGreater(visible.getchannel("A").getextrema()[1], 0)
