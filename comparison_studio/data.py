@@ -403,7 +403,12 @@ def _header_mapping(values: Sequence[object]) -> dict[str, int]:
     guessed = guess_field_mapping(headers)
     result: dict[str, int] = {}
     role_to_old = {
-        "badge_primary": "uploaded", "title": "title", "description": "description", "image": "image"
+        "badge_header": "badge_header",
+        "badge_primary": "uploaded",
+        "badge_secondary": "badge_label",
+        "title": "title",
+        "description": "description",
+        "image": "image",
     }
     for role, old_name in role_to_old.items():
         if role in guessed:
@@ -570,8 +575,21 @@ def load_xlsx(path: str | Path) -> ImportResult:
 
 
 def _cards_to_table(cards: Iterable[CardData]) -> SpreadsheetData:
-    rows = [[card.uploaded, card.badge_label, card.title, card.description, card.image] for card in cards]
-    return SpreadsheetData(["Value", "Label", "Title", "Description", "Image"], rows)
+    rows = [
+        [
+            card.badge_header,
+            card.uploaded,
+            card.badge_label,
+            card.title,
+            card.description,
+            card.image,
+        ]
+        for card in cards
+    ]
+    return SpreadsheetData(
+        ["Badge Header", "Badge Value", "Badge Unit", "Title", "Description", "Image"],
+        rows,
+    )
 
 
 def save_project_json(
@@ -605,6 +623,7 @@ def load_project_document(path: str | Path) -> ProjectDocument:
         old = payload.get("settings", {})
         settings = ProjectSettings(**{key: value for key, value in old.items() if key in ProjectSettings.__dataclass_fields__})
         settings.field_mapping = {
+            "badge_header": "",
             "badge_primary": "Value",
             "badge_secondary": "Label",
             "title": "Title",
