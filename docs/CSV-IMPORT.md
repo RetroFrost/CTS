@@ -32,7 +32,7 @@ Badge fields have explicit limits:
 
 Longer values are reported by the validator and kept editable; they are never silently replaced by fallback/default badge text. Blank fields remain blank.
 
-All five fields are optional. CTS creates a card from every non-blank data row.
+All six fields are optional. CTS creates a card from every non-blank data row.
 
 ### Universal CTS template
 
@@ -85,8 +85,8 @@ When both `Highlight Image` and `Image` are present, `Image` is preferred as the
 A CSV may also specify the target video duration. Use a `Duration` column (or `Video Duration`, `Target Duration`, `Length`, or `Video Length`). CTS accepts seconds, `MM:SS`, or `HH:MM:SS`.
 
 ```csv
-Duration,Badge Value,Badge Label,Title,Description,Image
-01:30,3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
+Duration,Badge Header,Badge Value,Badge Unit,Title,Description,Image
+01:30,AGE,3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
 01:30,3.7,km²,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
 ```
 
