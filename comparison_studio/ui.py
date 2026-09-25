@@ -1856,11 +1856,9 @@ class MainWindow(QMainWindow):
             box.setInformativeText(
                 "The export will keep the supplied text. No fallback or default badge text will be inserted."
             )
-            detail = "
-".join(badge_warnings[:20])
+            detail = "\n".join(badge_warnings[:20])
             if len(badge_warnings) > 20:
-                detail += f"
-…and {len(badge_warnings) - 20} more."
+                detail += f"\n…and {len(badge_warnings) - 20} more."
             box.setDetailedText(detail)
             box.setStandardButtons(
                 QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Ok
