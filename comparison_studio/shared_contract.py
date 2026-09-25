@@ -3,7 +3,7 @@ from __future__ import annotations
 """Generated from shared/cts_contract.json. Do not edit by hand."""
 
 from dataclasses import dataclass
-from math import floor
+from math import ceil, floor
 
 CONTRACT_VERSION = 1
 PROJECT_VERSION = 3
@@ -77,7 +77,7 @@ def timeline_frame_count(card_count: int, fps: int) -> int:
     """Return frame capacity from the actual card count and target FPS."""
     if card_count <= 0:
         return 1
-    return max(1, round(automatic_duration(card_count) * max(1, int(fps))))
+    return max(1, ceil(automatic_duration(card_count) * max(1, int(fps))))
 
 
 def automatic_duration(card_count: int) -> float:
