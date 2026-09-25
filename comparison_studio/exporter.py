@@ -109,7 +109,7 @@ class ExportWorker(QThread):
                 return
 
             duration = self.settings.duration(len(self.cards))
-            total_frames = max(1, math.ceil(duration * self.settings.fps))
+            total_frames = self.settings.frame_count(len(self.cards))
             width, height, fps = (
                 self.settings.width,
                 self.settings.height,
