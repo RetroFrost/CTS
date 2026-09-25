@@ -247,7 +247,7 @@ HEADER_ALIASES = {
         "probability", "rank",
     },
     "badge_secondary": {
-        "unit", "label", "badge label", "badge label / unit", "small label",
+        "unit", "badge unit", "label", "badge label", "badge label / unit", "small label",
         "type", "metric",
     },
     "title": {"title", "name", "heading", "card title", "item", "subject"},
