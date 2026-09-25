@@ -9,6 +9,7 @@ from comparison_studio.data import (
     MODEL_REFERENCE,
     MODEL_SCHEMAS,
     AudioTrack,
+    CardData,
     ProjectSettings,
     SpreadsheetData,
     cards_from_matrix,
@@ -109,6 +110,38 @@ class DataTests(unittest.TestCase):
         cards = resolve_cards(data, mapping)
         self.assertEqual(mapping["image"], "Highlight Image")
         self.assertEqual(cards[0].image, "maps/assassins.png")
+
+    def test_badge_header_value_and_unit_map_independently(self) -> None:
+        data = table_from_matrix([
+            ["Badge Header", "Badge Value", "Badge Unit", "Title", "Description"],
+            ["AFTER", "30", "MINUTES", "A new card", "Text"],
+        ])
+        mapping = guess_field_mapping(data.headers)
+        cards = resolve_cards(data, mapping)
+        self.assertEqual(mapping["badge_header"], "Badge Header")
+        self.assertEqual(mapping["badge_primary"], "Badge Value")
+        self.assertEqual(mapping["badge_secondary"], "Badge Unit")
+        self.assertEqual(cards[0].badge_header, "AFTER")
+        self.assertEqual(cards[0].uploaded, "30")
+        self.assertEqual(cards[0].badge_label, "MINUTES")
+
+    def test_badge_length_warnings_are_field_specific(self) -> None:
+        from comparison_studio.data import badge_length_warnings
+
+        cards = [CardData(
+            badge_header="1234567890123456789",
+            uploaded="123456789012345",
+            badge_label="123456789012345678901",
+        )]
+        warnings = badge_length_warnings(cards)
+        self.assertEqual(len(warnings), 3)
+        self.assertIn("Badge Header", warnings[0])
+        self.assertIn("Badge Value", warnings[1])
+        self.assertIn("Badge Unit", warnings[2])
+
+    def test_dynamic_frame_count_scales_with_card_count(self) -> None:
+        settings = ProjectSettings(fps=30)
+        self.assertLess(settings.frame_count(1), settings.frame_count(20))
 
     def test_csv_web_url_alias_is_optional_image_source(self) -> None:
         data = table_from_matrix([
