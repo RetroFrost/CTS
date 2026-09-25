@@ -240,8 +240,8 @@ class InsertDataDialog(QDialog):
 
         self.editor = QPlainTextEdit()
         self.editor.setPlaceholderText(
-            "Badge Value\tBadge Label\tTitle\tArtwork\n"
-            "84\tPERCENT\tExample card\thttps://example.com/image.png"
+            "Badge Header\tBadge Value\tBadge Unit\tTitle\tArtwork\n"
+            "AFTER\t84\tPERCENT\tExample card\thttps://example.com/image.png"
         )
         if clipboard_text.strip() and any(
             delimiter in clipboard_text for delimiter in ("\n", "\t", ",", ";")
