@@ -9,7 +9,6 @@ on:
 
 jobs:
   build-android:
-    if: ${{ hashFiles('android/**') != '' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -31,6 +30,7 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
+        if: \${{ hashFiles('android/**') != '' }}
         uses: android-actions/setup-android@v3
 
       - name: Verify Android Gradle Wrapper
