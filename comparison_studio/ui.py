@@ -141,18 +141,22 @@ MODEL_INFO = {
 
 MODEL_FIELD_HELP = {
     MODEL_REFERENCE: {
-        "Badge Date / Value": "Big text inside the red badge. A full date is split into date and year automatically.",
+        "Badge Header": "Optional small line above the badge value. Blank means no header.",
+        "Badge Value": "Main value in the badge. Blank means no primary value.",
+        "Badge Unit": "Optional unit/secondary line below the value. Blank means no unit.",
         "Title": "Main card name shown in the white strip.",
         "Description": "Smaller explanation shown in the muted panel above the image.",
         "Image": "Picture inside the lower framed image area. Use a path, URL, embedded XLSX image, or the image picker.",
     },
     MODEL_ILLUSTRATED: {
+        "Badge Header": "Optional small line above the badge value. Blank means no header.",
         "Badge Value": "Big number or text inside the red badge, such as 20, 12%, or ?.",
-        "Badge Label": "Small text below the badge value, such as AGE, KNEW THIS, or MINUTES.",
+        "Badge Unit": "Small text below the badge value, such as AGE, KNEW THIS, or MINUTES.",
         "Title": "Card name shown in the white strip along the bottom.",
         "Artwork": "The large illustration or picture filling the card behind the badge.",
     },
     MODEL_CLASSIC: {
+        "Badge Header": "Optional small line above the badge value. Blank means no header.",
         "Value": "Big number or text inside the red badge, such as 84 or 3,540.",
         "Unit": "Small text below the value, such as METER, PROBABILITY, or LOSS.",
         "Title": "Item name shown in the white strip between the badge and image.",
@@ -161,6 +165,7 @@ MODEL_FIELD_HELP = {
 }
 
 ROLE_LABELS = {
+    "badge_header": "Badge header",
     "badge_primary": "Badge value",
     "badge_secondary": "Badge label / unit",
     "title": "Card title",
@@ -524,6 +529,7 @@ class PreviewWidget(QFrame):
         color, selected_color = self._inline_indicator_colors(normalized_region)
         weight = 800 if role != "description" else 500
         size_factor = {
+            "badge_header": 0.28,
             "badge_primary": 0.46,
             "badge_secondary": 0.34,
             "title": 0.42,
@@ -1476,13 +1482,22 @@ class MainWindow(QMainWindow):
         settings: ProjectSettings,
     ) -> None:
         cards = [
-            CardData(card.uploaded, card.title, card.description, card.image, card.badge_label)
+            CardData(
+                badge_header=card.badge_header,
+                uploaded=card.uploaded,
+                title=card.title,
+                description=card.description,
+                image=card.image,
+                badge_label=card.badge_label,
+            )
             for card in self.cards()
         ]
         if not (0 <= card_index < len(cards)):
             return
         card = cards[card_index]
-        if role == "badge_primary":
+        if role == "badge_header":
+            card.badge_header = ""
+        elif role == "badge_primary":
             card.uploaded = ""
         elif role == "badge_secondary":
             card.badge_label = ""
