@@ -34,7 +34,7 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        if: \${{ hashFiles('android/**') != '' }}
+        if: ${{ hashFiles('android/**') != '' }}
         uses: android-actions/setup-android@v3
 
       - name: Verify Android Gradle Wrapper
