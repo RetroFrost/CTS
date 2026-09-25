@@ -18,11 +18,19 @@ CTS has three visual card models, but they all resolve into the same five card f
 
 | CTS card field | Canonical CSV header | Other supported headers |
 |---|---|---|
+| Badge header | `Badge Header` | `Header`, `Badge Heading`, `Badge Title`, `Small Heading` |
 | Primary badge value | `Badge Value` | `Badge Date / Value`, `Highlight`, `Value`, `Date`, `Uploaded`, `Upload Date`, `Uploaded Date`, `Year`, `Badge`, `Number`, `Amount`, `Age`, `Probability`, `Rank` |
-| Secondary badge text | `Badge Label` | `Unit`, `Label`, `Badge Label / Unit`, `Small Label`, `Type`, `Metric` |
+| Secondary badge/unit | `Badge Unit` | `Unit`, `Label`, `Badge Label`, `Badge Label / Unit`, `Small Label`, `Type`, `Metric` |
 | Card title | `Title` | `Name`, `Heading`, `Card Title`, `Item`, `Subject` |
 | Card description | `Description` | `Details`, `Summary`, `Text`, `Caption` |
 | Card artwork | `Image` | `Image Path`, `Photo`, `Picture`, `Thumbnail`, `Artwork`, `Image URL`, `URL`, `Web URL`, `Web Image URL`, `Web Artwork URL`, `Artwork URL`, `Image Link`, `Highlight Image` |
+
+Badge fields have explicit limits:
+- `Badge Header`: 18 characters, 1 line.
+- `Badge Value`: 14 characters, up to 2 lines.
+- `Badge Unit`: 20 characters, up to 2 lines.
+
+Longer values are reported by the validator and kept editable; they are never silently replaced by fallback/default badge text. Blank fields remain blank.
 
 All five fields are optional. CTS creates a card from every non-blank data row.
 
@@ -31,8 +39,8 @@ All five fields are optional. CTS creates a card from every non-blank data row.
 This is the recommended portable CSV format because it covers every card field used by all CTS models:
 
 ```csv
-Badge Value,Badge Label,Title,Description,Image
-3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
+Badge Header,Badge Value,Badge Unit,Title,Description,Image
+AGE,3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
 3.7,km²,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
 5.5,km²,Fortnite Battle Royale,The island shifts completely,maps/fortnite.png
 8.12,km²,GTA III,Liberty City completely...,maps/gta3.png
@@ -114,4 +122,3 @@ If multiple artwork aliases are present, CTS prefers the canonical `Image` field
 ## Importing
 
 Use **Import CSV / XLSX** in the data dialog, or select the CSV through the spreadsheet workflow. Quoted CSV fields and UTF-8 CSV files are supported. The first row must contain field names.
-
