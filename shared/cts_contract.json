@@ -43,38 +43,58 @@
     "badge_border": "#FF4545"
   },
   "fields": [
+    "badge_header",
     "badge_primary",
     "badge_secondary",
     "title",
     "description",
     "image"
   ],
+  "badge_constraints": {
+    "badge_header": {
+      "max_chars": 18,
+      "max_lines": 1
+    },
+    "badge_primary": {
+      "max_chars": 14,
+      "max_lines": 2
+    },
+    "badge_secondary": {
+      "max_chars": 20,
+      "max_lines": 2
+    }
+  },
   "sample_cards": [
     {
+      "badge_header": "AGE",
       "badge_primary": "10",
       "badge_secondary": "SECONDS OLD",
       "title": "Breathing",
       "description": "A baby's first breath requires blood flow through the heart."
     },
     {
+      "badge_header": "AGE",
       "badge_primary": "1",
       "badge_secondary": "HOUR OLD",
       "title": "Suckling",
       "description": "Newborns instinctively try to feed within just hours."
     },
     {
+      "badge_header": "AGE",
       "badge_primary": "3",
       "badge_secondary": "DAYS OLD",
       "title": "Recognizing Mom's Smell",
       "description": "Within days a baby can recognize a familiar scent."
     },
     {
+      "badge_header": "AGE",
       "badge_primary": "6.5",
       "badge_secondary": "MONTHS OLD",
       "title": "Recognizing Their Own Name",
       "description": "A baby turns toward their name months before speaking."
     },
     {
+      "badge_header": "AGE",
       "badge_primary": "8",
       "badge_secondary": "MONTHS OLD",
       "title": "Object Permanence",
