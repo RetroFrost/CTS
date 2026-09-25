@@ -31,6 +31,12 @@ jobs:
         with:
           ffmpeg-version: release
 
+      - name: Read application version
+        shell: pwsh
+        run: |
+          $version = python -c "from comparison_studio import __version__; print(__version__)"
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+
       - name: Build Standalone Windows Executable
         run: |
           pyinstaller cubical_compare_windows.spec
@@ -40,11 +46,12 @@ jobs:
         run: |
           $ffmpegPath = (Get-Command ffmpeg).Source
           Copy-Item $ffmpegPath -Destination dist\ComparisonTimelineStudio\ffmpeg.exe
-          Compress-Archive -Path dist\ComparisonTimelineStudio\* -DestinationPath dist\ComparisonTimelineStudio-Windows-x64.zip
+          $archiveName = "CubicalCompare-$env:APP_VERSION-Windows-x64-Portable.zip"
+          Compress-Archive -Path dist\ComparisonTimelineStudio\* -DestinationPath "dist\$archiveName"
 
       - name: Upload Windows Binary Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ComparisonTimelineStudio-Windows-x64
-          path: dist/ComparisonTimelineStudio-Windows-x64.zip
+          name: CubicalCompare-${{ env.APP_VERSION }}-Windows-x64-Portable
+          path: dist/CubicalCompare-${{ env.APP_VERSION }}-Windows-x64-Portable.zip
           retention-days: 14
