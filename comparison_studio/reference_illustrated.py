@@ -46,6 +46,7 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
     @staticmethod
     def _field_box(_model_id: str, role: str):
         return {
+            "badge_header": BADGE_FRAME,
             "badge_primary": BADGE_FRAME,
             "badge_secondary": BADGE_FRAME,
             "title": TITLE_FRAME,
@@ -60,8 +61,12 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             badge_x <= local_x <= badge_x + badge_width
             and badge_y <= local_y <= badge_y + badge_height
         ):
-            split = badge_y + badge_height * 0.58
-            return "badge_primary" if local_y <= split else "badge_secondary"
+            relative = (local_y - badge_y) / max(0.000001, badge_height)
+            if relative < 0.23:
+                return "badge_header"
+            if relative < 0.64:
+                return "badge_primary"
+            return "badge_secondary"
         if local_y < TITLE_FRAME[1]:
             return "image"
         if local_y < DESCRIPTION_FRAME[1]:
@@ -344,6 +349,7 @@ class ReferenceIllustratedRenderer(CardRelativeRenderer):
             try:
                 entrance_scale = 1.42 - 0.42 * settle
                 badge = self._render_badge(
+                    card.badge_header,
                     card.uploaded,
                     card.badge_label,
                     width,

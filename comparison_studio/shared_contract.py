@@ -3,7 +3,7 @@ from __future__ import annotations
 """Generated from shared/cts_contract.json. Do not edit by hand."""
 
 from dataclasses import dataclass
-from math import floor
+from math import ceil, floor
 
 CONTRACT_VERSION = 1
 PROJECT_VERSION = 3
@@ -11,7 +11,13 @@ MODEL_ID = "illustrated_cards"
 MODEL_LABEL = "Reference Timeline"
 VISIBLE_CARDS = 4
 LEGACY_MODEL_IDS = ("illustrated_cards", "reference_detail", "classic_compact")
-FIELDS = ("badge_primary", "badge_secondary", "title", "description", "image")
+FIELDS = ("badge_header", "badge_primary", "badge_secondary", "title", "description", "image")
+
+BADGE_FIELD_LIMITS = {
+    "badge_header": {"max_chars": 18, "max_lines": 1},
+    "badge_primary": {"max_chars": 14, "max_lines": 2},
+    "badge_secondary": {"max_chars": 20, "max_lines": 2},
+}
 
 REVEAL_SECONDS = 2.0
 SCROLL_SECONDS = 3.3333333333333335
@@ -46,6 +52,7 @@ COLORS = {
 
 @dataclass(frozen=True, slots=True)
 class SharedCard:
+    badge_header: str
     badge_primary: str
     badge_secondary: str
     title: str
@@ -53,17 +60,24 @@ class SharedCard:
 
 
 SAMPLE_CARDS = (
-    SharedCard("10", "SECONDS OLD", "Breathing", "A baby's first breath requires blood flow through the heart."),
-    SharedCard("1", "HOUR OLD", "Suckling", "Newborns instinctively try to feed within just hours."),
-    SharedCard("3", "DAYS OLD", "Recognizing Mom's Smell", "Within days a baby can recognize a familiar scent."),
-    SharedCard("6.5", "MONTHS OLD", "Recognizing Their Own Name", "A baby turns toward their name months before speaking."),
-    SharedCard("8", "MONTHS OLD", "Object Permanence", "Objects still exist even when they are out of sight."),
+    SharedCard("AGE", "10", "SECONDS OLD", "Breathing", "A baby's first breath requires blood flow through the heart."),
+    SharedCard("AGE", "1", "HOUR OLD", "Suckling", "Newborns instinctively try to feed within just hours."),
+    SharedCard("AGE", "3", "DAYS OLD", "Recognizing Mom's Smell", "Within days a baby can recognize a familiar scent."),
+    SharedCard("AGE", "6.5", "MONTHS OLD", "Recognizing Their Own Name", "A baby turns toward their name months before speaking."),
+    SharedCard("AGE", "8", "MONTHS OLD", "Object Permanence", "Objects still exist even when they are out of sight."),
 )
 
 
 def normalize_model_id(_value: str | None) -> str:
     """Map every historical CTS model to the one cross-platform design."""
     return MODEL_ID
+
+
+def timeline_frame_count(card_count: int, fps: int) -> int:
+    """Return frame capacity from the actual card count and target FPS."""
+    if card_count <= 0:
+        return 1
+    return max(1, ceil(automatic_duration(card_count) * max(1, int(fps))))
 
 
 def automatic_duration(card_count: int) -> float:

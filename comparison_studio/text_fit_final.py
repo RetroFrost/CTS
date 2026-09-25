@@ -76,6 +76,7 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
         top_height: int,
         animated_scale: float,
         manual_scale: float,
+        header: str = "",
     ) -> dict[str, object]:
         """Choose width, height, font sizes, and complete wrapped lines."""
         motion_scale = max(0.87, animated_scale)
@@ -89,6 +90,9 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
 
         probe = Image.new("RGB", (8, 8))
         draw = ImageDraw.Draw(probe)
+        header_size = max(7, round(base_height * 0.10))
+        header_font = renderer_module._font(header_size, True)
+        header_width = draw.textbbox((0, 0), header.strip(), font=header_font)[2] if header.strip() else 0
         primary_size = max(12, round(base_height * 0.25))
         secondary_size = max(8, round(base_height * 0.13))
 
@@ -103,7 +107,11 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
                 inner_width = max(12, round(body_width * 0.82))
                 primary_lines = self._wrap_everything(draw, primary, primary_font, inner_width)
                 secondary_lines = self._wrap_everything(draw, secondary, secondary_font, inner_width)
-                if len(primary_lines) <= 6 and len(secondary_lines) <= 3:
+                if (
+                    len(primary_lines) <= 6
+                    and len(secondary_lines) <= 3
+                    and (not header.strip() or header_width <= inner_width)
+                ):
                     chosen = (
                         body_width,
                         size,
@@ -148,7 +156,13 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
         gap = max(4, round(base_height * 0.055)) if primary_lines and secondary_lines else 0
 
         # Polygon tips need breathing room above and below the text block.
-        required_height = round((primary_block + secondary_block + gap) / 0.68) if (primary_block or secondary_block) else base_height
+        header_block = self._line_height(draw, header_font) if header.strip() else 0
+        header_gap = max(3, round(base_height * 0.025)) if header_block else 0
+        required_height = (
+            round((header_block + header_gap + primary_block + secondary_block + gap) / 0.68)
+            if (header_block or primary_block or secondary_block)
+            else base_height
+        )
         body_height = max(base_height, required_height)
         body_height = min(body_height, round(top_height * 1.48 * max(1.0, manual_scale)))
 
@@ -161,6 +175,9 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
             "secondary_font": secondary_font,
             "primary_size": primary_size,
             "secondary_size": secondary_size,
+            "header": header.strip(),
+            "header_font": header_font,
+            "header_size": header_size,
         }
 
     @staticmethod
@@ -195,6 +212,9 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
         secondary_font = plan["secondary_font"]
         primary_size = int(plan["primary_size"])
         secondary_size = int(plan["secondary_size"])
+        header = str(plan.get("header", ""))
+        header_font = plan.get("header_font")
+        header_size = int(plan.get("header_size", 8))
 
         padding = max(8, round(badge_width * 0.065))
         canvas = Image.new("RGBA", (badge_width + padding * 2, badge_height + padding * 2), (0, 0, 0, 0))
@@ -240,11 +260,37 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
         text_draw = ImageDraw.Draw(canvas)
         inner_left = x0 + round(badge_width * 0.09)
         inner_right = x1 - round(badge_width * 0.09)
+        has_header = bool(header.strip())
+        if has_header:
+            header_box = (
+                inner_left,
+                y0 + round(badge_height * 0.04),
+                inner_right,
+                y0 + round(badge_height * 0.19),
+            )
+            cls._draw_centered_lines(
+                text_draw,
+                [header.strip()],
+                header_font,
+                header_box,
+                (255, 248, 240, 255),
+                max(1, round(header_size * 0.08)),
+            )
         if secondary_lines:
-            primary_box = (inner_left, y0 + round(badge_height * 0.13), inner_right, y0 + round(badge_height * 0.68))
+            primary_box = (
+                inner_left,
+                y0 + round(badge_height * (0.21 if has_header else 0.13)),
+                inner_right,
+                y0 + round(badge_height * (0.63 if has_header else 0.68)),
+            )
             secondary_box = (inner_left, y0 + round(badge_height * 0.67), inner_right, y0 + round(badge_height * 0.90))
         else:
-            primary_box = (inner_left, y0 + round(badge_height * 0.12), inner_right, y0 + round(badge_height * 0.88))
+            primary_box = (
+                inner_left,
+                y0 + round(badge_height * (0.20 if has_header else 0.12)),
+                inner_right,
+                y0 + round(badge_height * (0.82 if has_header else 0.88)),
+            )
             secondary_box = (inner_left, y0, inner_right, y0)
 
         cls._draw_centered_lines(
@@ -294,6 +340,7 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
                 top_height,
                 animated_scale,
                 manual_badge_scale,
+                header=card.badge_header,
             )
             badge = self._render_true_fit_badge(plan)
             width_growth = int(plan["width"]) / max(1.0, width * 0.69 * manual_badge_scale)
@@ -305,6 +352,7 @@ class TrueFitStudioTimelineRenderer(ResponsiveStudioTimelineRenderer):
             )
         else:
             badge = self._render_badge(
+                card.badge_header,
                 card.uploaded,
                 card.badge_label,
                 width,

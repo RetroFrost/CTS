@@ -317,7 +317,6 @@ class TimelineRenderer:
 
     def __init__(self, asset_cache: AssetCache | None = None) -> None:
         self.assets = asset_cache or AssetCache()
-
     def render(
         self,
         cards: list[CardData],
@@ -491,18 +490,21 @@ class TimelineRenderer:
     def _field_box(model_id: str, role: str) -> tuple[float, float, float, float] | None:
         boxes = {
             MODEL_REFERENCE: {
+                "badge_header": (0.10, 0.10, 0.80, 0.12),
                 "badge_primary": (0.10, 0.10, 0.80, 0.28),
                 "title": (0.035, 0.445, 0.93, 0.087),
                 "description": (0.045, 0.55, 0.91, 0.11),
                 "image": (0.085, 0.67, 0.83, 0.32),
             },
             MODEL_ILLUSTRATED: {
+                "badge_header": (0.15, 0.06, 0.70, 0.08),
                 "badge_primary": (0.15, 0.075, 0.70, 0.14),
                 "badge_secondary": (0.18, 0.215, 0.64, 0.09),
                 "title": (0.035, 0.885, 0.93, 0.105),
                 "image": (0.01, 0.01, 0.98, 0.87),
             },
             MODEL_CLASSIC: {
+                "badge_header": (0.15, 0.07, 0.70, 0.08),
                 "badge_primary": (0.15, 0.095, 0.70, 0.15),
                 "badge_secondary": (0.18, 0.25, 0.64, 0.10),
                 "title": (0.035, 0.397, 0.93, 0.09),
@@ -518,16 +520,28 @@ class TimelineRenderer:
                 return "title"
             # The badge floats over the artwork; clicks outside its footprint edit artwork.
             if 0.12 <= local_x <= 0.88 and local_y <= 0.32:
-                return "badge_primary" if local_y <= 0.21 else "badge_secondary"
+                if local_y < 0.16:
+                    return "badge_header"
+                if local_y <= 0.23:
+                    return "badge_primary"
+                return "badge_secondary"
             return "image"
         if model_id == MODEL_CLASSIC:
             if local_y < 0.39:
-                return "badge_primary" if local_y < 0.25 else "badge_secondary"
+                if local_y < 0.14:
+                    return "badge_header"
+                if local_y < 0.28:
+                    return "badge_primary"
+                return "badge_secondary"
             if local_y < 0.495:
                 return "title"
             return "image"
         if local_y < 0.44:
-            return "badge_primary"
+            if local_y < 0.17:
+                return "badge_header"
+            if local_y < 0.32:
+                return "badge_primary"
+            return "badge_secondary"
         if local_y < 0.538:
             return "title"
         if local_y < 0.67:
@@ -628,10 +642,14 @@ class TimelineRenderer:
             bold=False,
         )
 
-        primary, secondary = card.uploaded, card.badge_label
-        if primary and not secondary:
-            primary, secondary = date_lines(primary)
-        badge = self._render_badge(primary, secondary, width, top_height, badge_scale)
+        badge = self._render_badge(
+            card.badge_header,
+            card.uploaded,
+            card.badge_label,
+            width,
+            top_height,
+            badge_scale,
+        )
         badge_x = (width - badge.width) // 2
         badge_y = max(4, round((top_height - badge.height) * 0.52))
         layer.alpha_composite(badge, (badge_x, badge_y))
@@ -675,6 +693,7 @@ class TimelineRenderer:
             layer.paste(fitted, (divider, image_top + divider))
 
         badge = self._render_badge(
+            card.badge_header,
             card.uploaded,
             card.badge_label,
             width,
@@ -724,7 +743,14 @@ class TimelineRenderer:
             bold=True,
         )
         top_height = round(height * 0.37)
-        badge = self._render_badge(card.uploaded, card.badge_label, width, top_height, badge_scale * 0.87)
+        badge = self._render_badge(
+            card.badge_header,
+            card.uploaded,
+            card.badge_label,
+            width,
+            top_height,
+            badge_scale * 0.87,
+        )
         layer.alpha_composite(badge, ((width - badge.width) // 2, max(3, round(height * 0.025))))
         return layer
 
@@ -762,15 +788,35 @@ class TimelineRenderer:
 
     def _render_badge(
         self,
+        header: str,
         primary: str,
         secondary: str,
         card_width: int,
         top_height: int,
-        scale: float,
+        scale: float | None = None,
         primary_max_lines: int = 2,
         secondary_max_lines: int = 2,
         minimum_text_scale: float = 0.10,
     ) -> Image.Image:
+        """Render independent badge header, value, and unit fields.
+
+        Empty fields stay empty. No date splitting or fallback/default text is added.
+        """
+        if scale is None:
+            # Backward compatibility for legacy subclasses still calling the pre-header
+            # signature: _render_badge(primary, secondary, width, top_height, scale).
+            scale = float(top_height)
+            top_height = int(card_width)
+            card_width = int(secondary)
+            secondary = str(primary or "")
+            primary = str(header or "")
+            header = ""
+        header = str(header or "").strip()
+        primary = str(primary or "").strip()
+        secondary = str(secondary or "").strip()
+        if not any((header, primary, secondary)):
+            return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+
         badge_width = max(20, round(card_width * 0.69 * scale))
         badge_height = max(24, round(top_height * 0.73 * scale))
         padding = max(8, round(badge_width * 0.08))
@@ -811,34 +857,73 @@ class TimelineRenderer:
         canvas.alpha_composite(gradient)
 
         border = ImageDraw.Draw(canvas)
-        border.line(points + [points[0]], fill=(125, 0, 6, 235), width=max(1, round(badge_width * 0.012)), joint="curve")
+        border.line(
+            points + [points[0]],
+            fill=(125, 0, 6, 235),
+            width=max(1, round(badge_width * 0.012)),
+            joint="curve",
+        )
 
         text_draw = ImageDraw.Draw(canvas)
         inner_left = x0 + round(badge_width * 0.07)
         inner_right = x1 - round(badge_width * 0.07)
-        main_top = y0 + round(badge_height * (0.22 if secondary else 0.17))
-        main_bottom = y0 + round(badge_height * (0.68 if secondary else 0.83))
-        _draw_text_box(
-            text_draw,
-            primary,
-            (inner_left, main_top, inner_right, main_bottom),
-            (255, 250, 244, 255),
-            maximum_size=round(badge_height * 0.25),
-            minimum_size=max(7, round(badge_height * minimum_text_scale)),
-            max_lines=primary_max_lines,
-            bold=True,
+
+        if header:
+            _draw_text_box(
+                text_draw,
+                header,
+                (
+                    inner_left,
+                    y0 + round(badge_height * 0.05),
+                    inner_right,
+                    y0 + round(badge_height * 0.23),
+                ),
+                (255, 248, 240, 255),
+                maximum_size=round(badge_height * 0.10),
+                minimum_size=max(7, round(badge_height * 0.055)),
+                max_lines=1,
+                bold=True,
+            )
+
+        primary_top = y0 + round(badge_height * (0.22 if header else 0.15))
+        primary_bottom = y0 + round(
+            badge_height * (
+                0.61
+                if secondary
+                else (0.80 if header else 0.84)
+            )
         )
+        if primary:
+            _draw_text_box(
+                text_draw,
+                primary,
+                (inner_left, primary_top, inner_right, primary_bottom),
+                (255, 250, 244, 255),
+                maximum_size=round(badge_height * 0.25),
+                minimum_size=max(7, round(badge_height * minimum_text_scale)),
+                max_lines=primary_max_lines,
+                bold=True,
+            )
+
         if secondary:
+            secondary_top = 0.60 if primary else (0.30 if header else 0.20)
+            secondary_bottom = 0.90
             _draw_text_box(
                 text_draw,
                 secondary,
-                (inner_left, y0 + round(badge_height * 0.67), inner_right, y0 + round(badge_height * 0.88)),
+                (
+                    inner_left,
+                    y0 + round(badge_height * secondary_top),
+                    inner_right,
+                    y0 + round(badge_height * secondary_bottom),
+                ),
                 (255, 248, 240, 255),
                 maximum_size=round(badge_height * 0.13),
                 minimum_size=max(7, round(badge_height * min(0.09, minimum_text_scale))),
                 max_lines=secondary_max_lines,
                 bold=True,
             )
+
         opacity = _clamp(getattr(self, "_active_badge_opacity", 1.0))
         if opacity < 0.999:
             channel = canvas.getchannel("A").point(lambda value: round(value * opacity))

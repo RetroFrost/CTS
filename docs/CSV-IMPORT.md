@@ -14,55 +14,58 @@ Highlight maps to the card's primary badge/highlight value. Title, Description, 
 
 ## Complete CTS CSV schema
 
-CTS has three visual card models, but they all resolve into the same five card fields:
+CTS has three visual card models, but they all resolve into the same six card fields:
 
 | CTS card field | Canonical CSV header | Other supported headers |
 |---|---|---|
+| Badge header | `Badge Header` | `Header`, `Badge Heading`, `Badge Title`, `Small Heading` |
 | Primary badge value | `Badge Value` | `Badge Date / Value`, `Highlight`, `Value`, `Date`, `Uploaded`, `Upload Date`, `Uploaded Date`, `Year`, `Badge`, `Number`, `Amount`, `Age`, `Probability`, `Rank` |
-| Secondary badge text | `Badge Label` | `Unit`, `Label`, `Badge Label / Unit`, `Small Label`, `Type`, `Metric` |
+| Secondary badge/unit | `Badge Unit` | `Unit`, `Label`, `Badge Label`, `Badge Label / Unit`, `Small Label`, `Type`, `Metric` |
 | Card title | `Title` | `Name`, `Heading`, `Card Title`, `Item`, `Subject` |
 | Card description | `Description` | `Details`, `Summary`, `Text`, `Caption` |
 | Card artwork | `Image` | `Image Path`, `Photo`, `Picture`, `Thumbnail`, `Artwork`, `Image URL`, `URL`, `Web URL`, `Web Image URL`, `Web Artwork URL`, `Artwork URL`, `Image Link`, `Highlight Image` |
 
-All five fields are optional. CTS creates a card from every non-blank data row.
+Badge fields have explicit limits:
+- `Badge Header`: 18 characters, 1 line.
+- `Badge Value`: 14 characters, up to 2 lines.
+- `Badge Unit`: 20 characters, up to 2 lines.
+
+Longer values are reported by the validator and kept editable; they are never silently replaced by fallback/default badge text. Blank fields remain blank.
+
+All six fields are optional. CTS creates a card from every non-blank data row.
 
 ### Universal CTS template
 
 This is the recommended portable CSV format because it covers every card field used by all CTS models:
 
 ```csv
-Badge Value,Badge Label,Title,Description,Image
-3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
-3.7,km²,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
-5.5,km²,Fortnite Battle Royale,The island shifts completely,maps/fortnite.png
-8.12,km²,GTA III,Liberty City completely...,maps/gta3.png
-9.11,km²,GTA Vice City,Over 38% of the calculated...,maps/gtavc.png
+Badge Header,Badge Value,Badge Unit,Title,Description,Image
+AGE,3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
+AGE,3.7,km²,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
+AGE,5.5,km²,Fortnite Battle Royale,The island shifts completely,maps/fortnite.png
+AGE,8.12,km²,GTA III,Liberty City completely...,maps/gta3.png
+AGE,9.11,km²,GTA Vice City,Over 38% of the calculated...,maps/gtavc.png
 ```
 
 ### Reference Timeline format
 
-The Reference model can use its native field names directly:
-
 ```csv
-Badge Date / Value,Title,Description,Image
-3.37 km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
-3.7 km²,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
+Badge Header,Badge Value,Badge Unit,Title,Description,Image
+AFTER,30,MINUTES,Card title,Short explanation,maps/card.png
 ```
 
 ### Illustrated Cards format
 
 ```csv
-Badge Value,Badge Label,Title,Artwork
-3.37,km²,Batman: Arkham Knight,maps/batman.png
-3.7,km²,Assassin's Creed Syndicat,maps/assassins.png
+Badge Header,Badge Value,Badge Unit,Title,Artwork
+AFTER,30,MINUTES,Card title,maps/card.png
 ```
 
 ### Classic Compact format
 
 ```csv
-Value,Unit,Title,Image
-3.37,km²,Batman: Arkham Knight,maps/batman.png
-3.7,km²,Assassin's Creed Syndicat,maps/assassins.png
+Badge Header,Value,Unit,Title,Image
+AFTER,30,MINUTES,Card title,maps/card.png
 ```
 
 ### Comparison-table compatibility
@@ -82,8 +85,8 @@ When both `Highlight Image` and `Image` are present, `Image` is preferred as the
 A CSV may also specify the target video duration. Use a `Duration` column (or `Video Duration`, `Target Duration`, `Length`, or `Video Length`). CTS accepts seconds, `MM:SS`, or `HH:MM:SS`.
 
 ```csv
-Duration,Badge Value,Badge Label,Title,Description,Image
-01:30,3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
+Duration,Badge Header,Badge Value,Badge Unit,Title,Description,Image
+01:30,AGE,3.37,km²,Batman: Arkham Knight,Gotham City was built with aggressive vertical density,maps/batman.png
 01:30,3.7,km²,Assassin's Creed Syndicat,Pushed city density further,maps/assassins.png
 ```
 
@@ -114,4 +117,3 @@ If multiple artwork aliases are present, CTS prefers the canonical `Image` field
 ## Importing
 
 Use **Import CSV / XLSX** in the data dialog, or select the CSV through the spreadsheet workflow. Quoted CSV fields and UTF-8 CSV files are supported. The first row must contain field names.
-

@@ -20,8 +20,8 @@ class CsvTextDialog(InsertDataDialog):
         self.setWindowTitle("CSV text")
         self.heading.setText("PASTE CSV TEXT")
         self.editor.setPlaceholderText(
-            "Badge Value,Badge Label,Title,Description,Artwork\n"
-            "84,PERCENT,Example card,Optional description,https://example.com/image.png"
+            "Badge Header,Badge Value,Badge Unit,Title,Description,Artwork\n"
+            "AFTER,84,PERCENT,Example card,Optional description,https://example.com/image.png"
         )
 
         for label in self.findChildren(QLabel):

@@ -27,22 +27,32 @@ MODEL_DEFAULT_VISIBLE = {
 }
 VISIBLE_CARDS = 4  # Backwards-compatible reference-model constant.
 
-# Each visual model owns the fields its layout actually renders. Values inside these
-# columns may be blank; the schema exists to make the editor understandable.
+# Badge fields are intentionally separate. Blank fields remain blank at render time.
+BADGE_FIELD_LIMITS: dict[str, dict[str, int]] = {
+    "badge_header": {"max_chars": 18, "max_lines": 1},
+    "badge_primary": {"max_chars": 14, "max_lines": 2},
+    "badge_secondary": {"max_chars": 20, "max_lines": 2},
+}
+
+# Each visual model owns the fields its layout actually renders.
 MODEL_SCHEMAS: dict[str, tuple[tuple[str, str], ...]] = {
     MODEL_REFERENCE: (
-        ("Badge Date / Value", "badge_primary"),
+        ("Badge Header", "badge_header"),
+        ("Badge Value", "badge_primary"),
+        ("Badge Unit", "badge_secondary"),
         ("Title", "title"),
         ("Description", "description"),
         ("Image", "image"),
     ),
     MODEL_ILLUSTRATED: (
+        ("Badge Header", "badge_header"),
         ("Badge Value", "badge_primary"),
-        ("Badge Label", "badge_secondary"),
+        ("Badge Unit", "badge_secondary"),
         ("Title", "title"),
         ("Artwork", "image"),
     ),
     MODEL_CLASSIC: (
+        ("Badge Header", "badge_header"),
         ("Value", "badge_primary"),
         ("Unit", "badge_secondary"),
         ("Title", "title"),
@@ -50,7 +60,14 @@ MODEL_SCHEMAS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
 }
 
-FIELD_ROLES = ("badge_primary", "badge_secondary", "title", "description", "image")
+FIELD_ROLES = (
+    "badge_header",
+    "badge_primary",
+    "badge_secondary",
+    "title",
+    "description",
+    "image",
+)
 
 # Project-level CSV metadata. These columns configure the generated video rather
 # than becoming card fields. A Duration value may be repeated on every row or
@@ -79,11 +96,13 @@ class CardData:
     description: str = ""
     image: str = ""
     badge_label: str = ""
+    badge_header: str = ""
 
     def is_blank(self) -> bool:
         return not any(
             value.strip()
             for value in (
+                self.badge_header,
                 self.uploaded,
                 self.title,
                 self.description,
@@ -190,6 +209,12 @@ class ProjectSettings:
         speed = self.speed_multiplier(card_count)
         return REFERENCE_SCROLL_SECONDS / speed if speed > 0 else 0.0
 
+    def frame_count(self, card_count: int) -> int:
+        """Return the number of output frames derived from the actual card count."""
+        if card_count <= 0:
+            return 1
+        return max(1, math.ceil(self.duration(card_count) * max(1, int(self.fps))))
+
 
 @dataclass(slots=True)
 class ImportResult:
@@ -213,13 +238,16 @@ class ProjectDocument:
 
 
 HEADER_ALIASES = {
+    "badge_header": {
+        "badge header", "header", "badge title", "badge heading", "small heading",
+    },
     "badge_primary": {
         "date", "uploaded", "upload date", "uploaded date", "year", "value",
         "badge", "badge value", "badge date / value", "highlight", "number", "amount", "age",
         "probability", "rank",
     },
     "badge_secondary": {
-        "unit", "label", "badge label", "badge label / unit", "small label",
+        "unit", "badge unit", "label", "badge label", "badge label / unit", "small label",
         "type", "metric",
     },
     "title": {"title", "name", "heading", "card title", "item", "subject"},
@@ -333,14 +361,40 @@ def resolve_cards(data: SpreadsheetData, mapping: dict[str, str]) -> list[CardDa
 
     return [
         CardData(
+            badge_header=value(row, "badge_header"),
             uploaded=value(row, "badge_primary"),
+            badge_label=value(row, "badge_secondary"),
             title=value(row, "title"),
             description=value(row, "description"),
             image=value(row, "image"),
-            badge_label=value(row, "badge_secondary"),
         )
         for row in normalized.rows
     ]
+
+
+def badge_length_warnings(cards: Sequence[CardData]) -> list[str]:
+    """Return precise, field-specific badge length warnings without mutating data."""
+    getters = {
+        "badge_header": lambda card: card.badge_header,
+        "badge_primary": lambda card: card.uploaded,
+        "badge_secondary": lambda card: card.badge_label,
+    }
+    labels = {
+        "badge_header": "Badge Header",
+        "badge_primary": "Badge Value",
+        "badge_secondary": "Badge Unit",
+    }
+    warnings: list[str] = []
+    for index, card in enumerate(cards, start=1):
+        for role, getter in getters.items():
+            value = getter(card).strip()
+            limit = BADGE_FIELD_LIMITS[role]["max_chars"]
+            if len(value) > limit:
+                warnings.append(
+                    f"Card {index}: {labels[role]} is {len(value)} characters; "
+                    f"recommended maximum is {limit}."
+                )
+    return warnings
 
 
 # Compatibility helpers for 0.1 integrations and tests.
@@ -349,7 +403,12 @@ def _header_mapping(values: Sequence[object]) -> dict[str, int]:
     guessed = guess_field_mapping(headers)
     result: dict[str, int] = {}
     role_to_old = {
-        "badge_primary": "uploaded", "title": "title", "description": "description", "image": "image"
+        "badge_header": "badge_header",
+        "badge_primary": "uploaded",
+        "badge_secondary": "badge_label",
+        "title": "title",
+        "description": "description",
+        "image": "image",
     }
     for role, old_name in role_to_old.items():
         if role in guessed:
@@ -516,8 +575,21 @@ def load_xlsx(path: str | Path) -> ImportResult:
 
 
 def _cards_to_table(cards: Iterable[CardData]) -> SpreadsheetData:
-    rows = [[card.uploaded, card.badge_label, card.title, card.description, card.image] for card in cards]
-    return SpreadsheetData(["Value", "Label", "Title", "Description", "Image"], rows)
+    rows = [
+        [
+            card.badge_header,
+            card.uploaded,
+            card.badge_label,
+            card.title,
+            card.description,
+            card.image,
+        ]
+        for card in cards
+    ]
+    return SpreadsheetData(
+        ["Badge Header", "Badge Value", "Badge Unit", "Title", "Description", "Image"],
+        rows,
+    )
 
 
 def save_project_json(
@@ -551,6 +623,7 @@ def load_project_document(path: str | Path) -> ProjectDocument:
         old = payload.get("settings", {})
         settings = ProjectSettings(**{key: value for key, value in old.items() if key in ProjectSettings.__dataclass_fields__})
         settings.field_mapping = {
+            "badge_header": "",
             "badge_primary": "Value",
             "badge_secondary": "Label",
             "title": "Title",

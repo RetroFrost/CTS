@@ -3,8 +3,12 @@ name: Build Android APK
 on:
   push:
     branches: [ "main", "release/*" ]
+    paths:
+      - "android/**"
   pull_request:
     branches: [ "main", "release/*" ]
+    paths:
+      - "android/**"
   workflow_dispatch:
 
 jobs:
@@ -30,6 +34,7 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
+        if: ${{ hashFiles('android/**') != '' }}
         uses: android-actions/setup-android@v3
 
       - name: Verify Android Gradle Wrapper

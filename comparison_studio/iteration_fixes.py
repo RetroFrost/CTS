@@ -90,6 +90,13 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
         # The badge renderer reserves about 86% of the polygon width for text.
         maximum_body_width = max(base_width, round(card_width * 0.93 * max(1.0, manual_scale)))
         maximum_inner_width = maximum_body_width * 0.86
+        header_size = max(7, round(base_height * 0.10))
+        header_font = renderer_module._font(header_size, True)
+        header_width = (
+            draw.textbbox((0, 0), card.badge_header.strip(), font=header_font)[2]
+            if card.badge_header.strip()
+            else 0
+        )
         primary_lines, primary_width = self._choose_line_count(
             draw,
             card.uploaded,
@@ -105,7 +112,7 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
             maximum_inner_width,
         )
 
-        required_inner_width = max(primary_width, secondary_width)
+        required_inner_width = max(header_width, primary_width, secondary_width)
         required_body_width = round(required_inner_width / 0.82) if required_inner_width else base_width
         badge_width = max(base_width, min(maximum_body_width, required_body_width))
 
@@ -127,6 +134,7 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
 
     @staticmethod
     def _render_adaptive_badge(
+        header: str,
         primary: str,
         secondary: str,
         badge_width: int,
@@ -185,8 +193,30 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
         text_draw = ImageDraw.Draw(canvas)
         inner_left = x0 + round(badge_width * 0.07)
         inner_right = x1 - round(badge_width * 0.07)
-        main_top = y0 + round(badge_height * (0.18 if secondary else 0.14))
-        main_bottom = y0 + round(badge_height * (0.69 if secondary else 0.86))
+        if header.strip():
+            _draw_text_box(
+                text_draw,
+                header.strip(),
+                (
+                    inner_left,
+                    y0 + round(badge_height * 0.05),
+                    inner_right,
+                    y0 + round(badge_height * 0.20),
+                ),
+                (255, 248, 240, 255),
+                maximum_size=max(7, round(badge_height * 0.10)),
+                minimum_size=max(7, round(badge_height * 0.055)),
+                max_lines=1,
+                bold=True,
+            )
+        main_top = y0 + round(badge_height * (0.22 if header.strip() else 0.18))
+        main_bottom = y0 + round(
+            badge_height * (
+                0.63
+                if secondary
+                else (0.79 if header.strip() else 0.86)
+            )
+        )
         _draw_text_box(
             text_draw,
             primary,
@@ -252,6 +282,7 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
                 manual_badge_scale,
             )
             badge = self._render_adaptive_badge(
+                card.badge_header,
                 card.uploaded,
                 card.badge_label,
                 adaptive_width,
@@ -265,6 +296,7 @@ class ResponsiveStudioTimelineRenderer(StudioTimelineRenderer):
             image_auto_factor = _clamp(1.0 - max(0.0, width_growth - 1.0) * 0.07, 0.93, 1.0)
         else:
             badge = self._render_badge(
+                card.badge_header,
                 card.uploaded,
                 card.badge_label,
                 width,

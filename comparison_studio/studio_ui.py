@@ -374,10 +374,14 @@ class StudioTimelineRenderer(TimelineRenderer):
             bold=False,
         )
 
-        primary, secondary = card.uploaded, card.badge_label
-        if primary and not secondary:
-            primary, secondary = date_lines(primary)
-        badge = self._render_badge(primary, secondary, width, top_height, badge_scale)
+        badge = self._render_badge(
+            card.badge_header,
+            card.uploaded,
+            card.badge_label,
+            width,
+            top_height,
+            badge_scale,
+        )
         badge_x = (width - badge.width) // 2
         badge_y = max(4, round((top_height - badge.height) * 0.52))
         layer.alpha_composite(badge, (badge_x, badge_y))
@@ -416,6 +420,7 @@ class StudioTimelineRenderer(TimelineRenderer):
             layer.alpha_composite(fitted, (divider, image_top + divider))
 
         badge = self._render_badge(
+            card.badge_header,
             card.uploaded,
             card.badge_label,
             width,
@@ -451,7 +456,11 @@ class StudioTimelineRenderer(TimelineRenderer):
         auto_factor = 1.0
         image_auto_factor = 1.0
         if bool(getattr(self._studio_settings, "illustrated_auto_size", False)):
-            text_weight = max(len(card.uploaded.strip()), round(len(card.badge_label.strip()) * 0.72))
+            text_weight = max(
+                round(len(card.badge_header.strip()) * 0.60),
+                len(card.uploaded.strip()),
+                round(len(card.badge_label.strip()) * 0.72),
+            )
             auto_factor = _clamp(0.90 + max(0, text_weight - 3) * 0.033, 0.90, 1.30)
             image_auto_factor = _clamp(1.08 - (auto_factor - 0.90) * 0.42, 0.88, 1.08)
 
@@ -476,6 +485,7 @@ class StudioTimelineRenderer(TimelineRenderer):
         )
         top_height = round(height * 0.37)
         badge = self._render_badge(
+            card.badge_header,
             card.uploaded,
             card.badge_label,
             width,

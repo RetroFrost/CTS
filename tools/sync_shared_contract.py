@@ -67,7 +67,8 @@ def render_python(spec: dict[str, Any]) -> str:
         f"    {quoted(name)}: {quoted(value)}," for name, value in spec["colors"].items()
     )
     samples = "\n".join(
-        "    SharedCard({primary}, {secondary}, {title}, {description}),".format(
+        "    SharedCard({header}, {primary}, {secondary}, {title}, {description}),".format(
+            header=quoted(card.get("badge_header", "")),
             primary=quoted(card["badge_primary"]),
             secondary=quoted(card["badge_secondary"]),
             title=quoted(card["title"]),
@@ -82,7 +83,7 @@ def render_python(spec: dict[str, Any]) -> str:
 """Generated from shared/cts_contract.json. Do not edit by hand."""
 
 from dataclasses import dataclass
-from math import floor
+from math import ceil, floor
 
 CONTRACT_VERSION = {int(spec["contract_version"])}
 PROJECT_VERSION = {int(spec["project_version"])}
@@ -91,6 +92,8 @@ MODEL_LABEL = {quoted(model["label"])}
 VISIBLE_CARDS = {int(model["visible_cards"])}
 LEGACY_MODEL_IDS = ({legacy})
 FIELDS = ({fields})
+
+BADGE_FIELD_LIMITS = {repr(spec.get("badge_constraints", {}))}
 
 REVEAL_SECONDS = {float(timing["reveal_seconds"])}
 SCROLL_SECONDS = {float(timing["scroll_seconds"])}
@@ -114,6 +117,7 @@ COLORS = {{
 
 @dataclass(frozen=True, slots=True)
 class SharedCard:
+    badge_header: str
     badge_primary: str
     badge_secondary: str
     title: str
@@ -127,6 +131,12 @@ SAMPLE_CARDS = (
 
 def normalize_model_id(_value: str | None) -> str:
     return MODEL_ID
+
+
+def timeline_frame_count(card_count: int, fps: int) -> int:
+    if card_count <= 0:
+        return 1
+    return max(1, ceil(automatic_duration(card_count) * max(1, int(fps))))
 
 
 def automatic_duration(card_count: int) -> float:
@@ -214,11 +224,13 @@ def render_kotlin(spec: dict[str, Any]) -> str:
     ]
     samples = "\n".join(
         """    SharedSampleCard(
+        badgeHeader = {header},
         badgePrimary = {primary},
         badgeSecondary = {secondary},
         title = {title},
         description = {description},
     ),""".format(
+            header=quoted(card.get("badge_header", "")),
             primary=quoted(card["badge_primary"]),
             secondary=quoted(card["badge_secondary"]),
             title=quoted(card["title"]),
@@ -242,6 +254,21 @@ object SharedContract {{
     val LEGACY_MODEL_IDS = setOf({legacy})
     val FIELDS = listOf({fields})
 
+    val BADGE_FIELD_LIMITS = mapOf(
+        "badge_header" to mapOf(
+            "max_chars" to ${spec.get("badge_constraints", {}).get("badge_header", {}).get("max_chars", 18)},
+            "max_lines" to ${spec.get("badge_constraints", {}).get("badge_header", {}).get("max_lines", 1)}
+        ),
+        "badge_primary" to mapOf(
+            "max_chars" to ${spec.get("badge_constraints", {}).get("badge_primary", {}).get("max_chars", 14)},
+            "max_lines" to ${spec.get("badge_constraints", {}).get("badge_primary", {}).get("max_lines", 2)}
+        ),
+        "badge_secondary" to mapOf(
+            "max_chars" to ${spec.get("badge_constraints", {}).get("badge_secondary", {}).get("max_chars", 20)},
+            "max_lines" to ${spec.get("badge_constraints", {}).get("badge_secondary", {}).get("max_lines", 2)}
+        )
+    )
+
     const val REVEAL_SECONDS = {float(timing["reveal_seconds"])}f
     const val SCROLL_SECONDS = {float(timing["scroll_seconds"])}f
     const val END_HOLD_SECONDS = {float(timing["end_hold_seconds"])}f
@@ -262,6 +289,7 @@ object SharedContract {{
 }}
 
 data class SharedSampleCard(
+    val badgeHeader: String,
     val badgePrimary: String,
     val badgeSecondary: String,
     val title: String,
@@ -309,6 +337,7 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
         "DESCRIPTION_FRAME": tuple(float(value) for value in layout["description_frame"]),
         "BADGE_FRAME": tuple(float(value) for value in layout["badge_frame"]),
         "COLORS": spec["colors"],
+        "BADGE_FIELD_LIMITS": spec.get("badge_constraints", {}),
     }
     for constant, key in TIMING_CONSTANTS.items():
         expected_python[constant] = timing[key]
@@ -318,6 +347,7 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
 
     python_cards = [
         {
+            "badge_header": card.badge_header,
             "badge_primary": card.badge_primary,
             "badge_secondary": card.badge_secondary,
             "title": card.title,
@@ -327,6 +357,10 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
     ]
     if python_cards != spec["sample_cards"]:
         errors.append("desktop sample cards do not match the shared contract")
+
+    if not KOTLIN_PATH.is_file():
+        # Desktop-only CTS checkouts may omit the Android tree.
+        return errors
 
     kotlin = KOTLIN_PATH.read_text(encoding="utf-8")
     for name, expected in {
@@ -364,6 +398,9 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
         for value in card.values():
             if quoted(value) not in kotlin:
                 errors.append(f"Android adapter is missing sample value {value!r}")
+
+    if not PROGRAM_MONITOR_PATH.is_file():
+        return errors
 
     monitor = PROGRAM_MONITOR_PATH.read_text(encoding="utf-8")
     for key, class_name in {
