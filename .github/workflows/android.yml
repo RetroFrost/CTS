@@ -31,24 +31,24 @@ jobs:
         run: python tools/sync_shared_contract.py --check
 
       - name: Set up JDK 17
-        if: \${{ hashFiles('android/**') != '' }}
+        if: ${{ hashFiles('android/**') != '' }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle 8.13
-        if: \${{ hashFiles('android/**') != '' }}
+        if: ${{ hashFiles('android/**') != '' }}
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
 
       - name: Build debug APK
-        if: \${{ hashFiles('android/**') != '' }}
+        if: ${{ hashFiles('android/**') != '' }}
         run: gradle --project-dir android :app:assembleDebug --stacktrace --console=plain
 
       - name: Upload debug APK
-        if: \${{ hashFiles('android/**') != '' }}
+        if: ${{ hashFiles('android/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: CTS-Android-debug
@@ -56,7 +56,7 @@ jobs:
           if-no-files-found: error
 
       - name: Run unit tests
-        if: \${{ hashFiles('android/**') != '' }}
+        if: ${{ hashFiles('android/**') != '' }}
         shell: bash
         run: |
           set -o pipefail
