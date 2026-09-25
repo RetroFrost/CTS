@@ -490,18 +490,21 @@ class TimelineRenderer:
     def _field_box(model_id: str, role: str) -> tuple[float, float, float, float] | None:
         boxes = {
             MODEL_REFERENCE: {
+                "badge_header": (0.10, 0.10, 0.80, 0.12),
                 "badge_primary": (0.10, 0.10, 0.80, 0.28),
                 "title": (0.035, 0.445, 0.93, 0.087),
                 "description": (0.045, 0.55, 0.91, 0.11),
                 "image": (0.085, 0.67, 0.83, 0.32),
             },
             MODEL_ILLUSTRATED: {
+                "badge_header": (0.15, 0.06, 0.70, 0.08),
                 "badge_primary": (0.15, 0.075, 0.70, 0.14),
                 "badge_secondary": (0.18, 0.215, 0.64, 0.09),
                 "title": (0.035, 0.885, 0.93, 0.105),
                 "image": (0.01, 0.01, 0.98, 0.87),
             },
             MODEL_CLASSIC: {
+                "badge_header": (0.15, 0.07, 0.70, 0.08),
                 "badge_primary": (0.15, 0.095, 0.70, 0.15),
                 "badge_secondary": (0.18, 0.25, 0.64, 0.10),
                 "title": (0.035, 0.397, 0.93, 0.09),
@@ -517,16 +520,28 @@ class TimelineRenderer:
                 return "title"
             # The badge floats over the artwork; clicks outside its footprint edit artwork.
             if 0.12 <= local_x <= 0.88 and local_y <= 0.32:
-                return "badge_primary" if local_y <= 0.21 else "badge_secondary"
+                if local_y < 0.16:
+                    return "badge_header"
+                if local_y <= 0.23:
+                    return "badge_primary"
+                return "badge_secondary"
             return "image"
         if model_id == MODEL_CLASSIC:
             if local_y < 0.39:
-                return "badge_primary" if local_y < 0.25 else "badge_secondary"
+                if local_y < 0.14:
+                    return "badge_header"
+                if local_y < 0.28:
+                    return "badge_primary"
+                return "badge_secondary"
             if local_y < 0.495:
                 return "title"
             return "image"
         if local_y < 0.44:
-            return "badge_primary"
+            if local_y < 0.17:
+                return "badge_header"
+            if local_y < 0.32:
+                return "badge_primary"
+            return "badge_secondary"
         if local_y < 0.538:
             return "title"
         if local_y < 0.67:
