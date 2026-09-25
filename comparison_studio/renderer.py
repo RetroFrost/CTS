@@ -793,7 +793,7 @@ class TimelineRenderer:
         secondary: str,
         card_width: int,
         top_height: int,
-        scale: float,
+        scale: float | None = None,
         primary_max_lines: int = 2,
         secondary_max_lines: int = 2,
         minimum_text_scale: float = 0.10,
@@ -802,6 +802,15 @@ class TimelineRenderer:
 
         Empty fields stay empty. No date splitting or fallback/default text is added.
         """
+        if scale is None:
+            # Backward compatibility for legacy subclasses still calling the pre-header
+            # signature: _render_badge(primary, secondary, width, top_height, scale).
+            scale = float(top_height)
+            top_height = int(card_width)
+            card_width = int(secondary)
+            secondary = str(primary or "")
+            primary = str(header or "")
+            header = ""
         header = str(header or "").strip()
         primary = str(primary or "").strip()
         secondary = str(secondary or "").strip()
