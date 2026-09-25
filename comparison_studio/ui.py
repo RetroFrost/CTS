@@ -56,6 +56,7 @@ from .data import (
     REFERENCE_SCROLL_SECONDS,
     AudioTrack,
     CardData,
+    badge_length_warnings,
     FriendlyError,
     ProjectSettings,
     SpreadsheetData,
@@ -1846,6 +1847,27 @@ class MainWindow(QMainWindow):
 
     def export_video(self) -> None:
         cards = self.cards()
+        badge_warnings = badge_length_warnings(cards)
+        if badge_warnings:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle("Badge text length")
+            box.setText("Some badge fields exceed the recommended lengths.")
+            box.setInformativeText(
+                "The export will keep the supplied text. No fallback or default badge text will be inserted."
+            )
+            detail = "
+".join(badge_warnings[:20])
+            if len(badge_warnings) > 20:
+                detail += f"
+…and {len(badge_warnings) - 20} more."
+            box.setDetailedText(detail)
+            box.setStandardButtons(
+                QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Ok
+            )
+            box.button(QMessageBox.StandardButton.Ok).setText("Export anyway")
+            if box.exec() != QMessageBox.StandardButton.Ok:
+                return
         if not cards:
             show_error(self, "There are no cards to export.", "Add at least one spreadsheet row; its cells may be empty.")
             return
