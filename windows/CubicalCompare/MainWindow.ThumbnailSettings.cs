@@ -57,12 +57,10 @@ public sealed partial class MainWindow
         {
             Color = current,
             IsMoreButtonVisible = true,
-            IsCompact = false,
             IsAlphaEnabled = false,
             IsHexInputVisible = true,
             IsColorSliderVisible = true,
             IsColorChannelTextInputVisible = true,
-            IsSpectrumVisible = true,
         };
 
         var dialog = new ContentDialog
