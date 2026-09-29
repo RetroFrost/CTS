@@ -136,6 +136,7 @@ public static class ProjectFileService
             card.ImagePath = NormalizeText(card.ImagePath, string.Empty, MaxPathLength);
             card.ImageLayer = NormalizeText(card.ImageLayer, "behind", 64).ToLowerInvariant();
             card.ThumbnailBackgroundColor = NormalizeHexColor(card.ThumbnailBackgroundColor, "#05070E");
+            card.ThumbnailAccentColor = NormalizeHexColor(card.ThumbnailAccentColor, "#FF0F16");
 
             if (!double.IsFinite(card.ImageX) || !double.IsFinite(card.ImageY) ||
                 !double.IsFinite(card.ImageScale) || !double.IsFinite(card.ImageRotation) ||
@@ -163,6 +164,15 @@ public static class ProjectFileService
                 card.ImageCropBottom = 0;
             }
         }
+
+        var validCardIds = project.Cards.Select(card => card.Id).ToHashSet(StringComparer.Ordinal);
+        project.ThumbnailSelectedCardIds = (project.ThumbnailSelectedCardIds ?? [])
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Where(validCardIds.Contains)
+            .Distinct(StringComparer.Ordinal)
+            .Take(4)
+            .ToList();
     }
 
     private static async Task<ComparisonProject> LoadExactAsync(string path, CancellationToken cancellationToken)
