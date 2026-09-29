@@ -115,6 +115,7 @@ public sealed partial class MainWindow
             _soundtrackVolume = project.SoundtrackVolume;
             _soundtrackLoop = project.SoundtrackLoop;
             RenderFontSelection.ApplyProjectFont(project.RenderFontFamily, project.RenderFontFile);
+            SetThumbnailCardCountUi(project.ThumbnailCardCount);
 
             foreach (var card in project.Cards)
             {
@@ -135,6 +136,7 @@ public sealed partial class MainWindow
                     ImageCropRight = card.ImageCropRight,
                     ImageCropBottom = card.ImageCropBottom,
                     ImageLayer = card.ImageLayer,
+                    ThumbnailBackgroundColor = card.ThumbnailBackgroundColor,
                 });
             }
 
