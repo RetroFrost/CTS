@@ -323,6 +323,7 @@ public sealed partial class MainWindow
             _projectShowBadges = project.ShowBadges;
             _projectCreditsEnabled = project.CreditsEnabled;
             _projectDurationSeconds = project.AutoLength ? 0 : Math.Max(0, project.CustomLengthSeconds);
+            SetThumbnailCardCountUi(project.ThumbnailCardCount);
             _soundtrackPath = project.SoundtrackPath;
             _soundtrackVolume = project.SoundtrackVolume;
             _soundtrackLoop = project.SoundtrackLoop;
@@ -346,6 +347,7 @@ public sealed partial class MainWindow
                     ImageCropRight = card.ImageCropRight,
                     ImageCropBottom = card.ImageCropBottom,
                     ImageLayer = card.ImageLayer,
+                    ThumbnailBackgroundColor = card.ThumbnailBackgroundColor,
                 });
             }
 
