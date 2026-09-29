@@ -45,15 +45,15 @@ public static class Zipack2Importer
         var rejectedWebCards = manifestCards
             .Select((card, index) => (card, index))
             .Where(x => WebImageSource.IsRemoteSource(x.card.ImageSource) &&
-                        !WebImageSource.IsAllowedFlaticonSource(x.card.ImageSource))
+                        !WebImageSource.IsAllowedWebSource(x.card.ImageSource))
             .Select(x => x.index + 1)
             .ToArray();
         if (rejectedWebCards.Length > 0)
             throw new InvalidDataException(
                 $"MegaPack card(s) {string.Join(", ", rejectedWebCards)} use unsupported web artwork. " +
-                "Only Flaticon /free-icon/... pages and direct cdn-icons-png.flaticon.com images are allowed.");
+                "Use a public HTTP(S) image or image-page URL.");
 
-        var hasWebArtwork = manifestCards.Any(card => WebImageSource.IsAllowedFlaticonSource(card.ImageSource));
+        var hasWebArtwork = manifestCards.Any(card => WebImageSource.IsAllowedWebSource(card.ImageSource));
         if (definitions.Count == 0 && !hasWebArtwork)
             throw new InvalidDataException("This Zipack2 pack does not contain contact sheets or allowed Flaticon artwork URLs.");
 
@@ -139,7 +139,7 @@ public static class Zipack2Importer
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var data = manifestCards[index];
-                if (!WebImageSource.IsAllowedFlaticonSource(data.ImageSource))
+                if (!WebImageSource.IsAllowedWebSource(data.ImageSource))
                     continue;
 
                 var resolved = await WebImageSource.ResolveToLocalFileAsync(data.ImageSource, cancellationToken)
