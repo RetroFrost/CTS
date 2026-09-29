@@ -444,6 +444,44 @@ public static class WebImageSource
                 candidates.Add(href);
         }
 
+        foreach (Match tag in Regex.Matches(
+                     html,
+                     @"<(?:img|source)\b[^>]*>",
+                     RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            var attrs = ParseAttributes(tag.Value);
+            foreach (var key in new[] { "src", "data-src", "data-original", "data-lazy-src", "data-url" })
+            {
+                if (attrs.TryGetValue(key, out var direct) && !string.IsNullOrWhiteSpace(direct))
+                    candidates.Add(direct);
+            }
+
+            foreach (var key in new[] { "srcset", "data-srcset" })
+            {
+                if (attrs.TryGetValue(key, out var srcset) && TryGetFirstSrcSetUrl(srcset) is { } first)
+                    candidates.Add(first);
+            }
+        }
+
+        foreach (Match quotedUrl in Regex.Matches(
+                     html,
+                     @"https?://[^""'<>\\\s]+",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            var raw = WebUtility.HtmlDecode(quotedUrl.Value)
+                .Replace(@"\u003d", "=", StringComparison.OrdinalIgnoreCase)
+                .Replace(@"\u0026", "&", StringComparison.OrdinalIgnoreCase)
+                .Replace(@"\u002F", "/", StringComparison.OrdinalIgnoreCase)
+                .Replace(@"\/", "/", StringComparison.Ordinal);
+
+            if (LooksLikeImageCandidate(raw))
+                candidates.Add(raw);
+        }
+
+        var googleImage = TryGoogleImageCandidate(pageUri);
+        if (googleImage is not null)
+            candidates.Add(googleImage.AbsoluteUri);
+
         foreach (Match script in Regex.Matches(
                      html,
                      @"<script\b[^>]*type\s*=\s*[""']application/ld\+json[""'][^>]*>(?<json>.*?)</script>",
@@ -524,6 +562,28 @@ public static class WebImageSource
                 foreach (var nested in EnumerateJsonImageValues(item))
                     yield return nested;
         }
+    }
+
+    private static bool LooksLikeImageCandidate(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || !IsAllowedWebUri(uri))
+            return false;
+
+        var path = uri.AbsolutePath.ToLowerInvariant();
+        var host = uri.IdnHost.ToLowerInvariant();
+        if (host.Contains("encrypted-tbn") || host.EndsWith(".gstatic.com", StringComparison.Ordinal))
+            return true;
+
+        return path.EndsWith(".png", StringComparison.Ordinal)
+            || path.EndsWith(".jpg", StringComparison.Ordinal)
+            || path.EndsWith(".jpeg", StringComparison.Ordinal)
+            || path.EndsWith(".webp", StringComparison.Ordinal)
+            || path.EndsWith(".gif", StringComparison.Ordinal)
+            || path.EndsWith(".bmp", StringComparison.Ordinal)
+            || path.EndsWith(".svg", StringComparison.Ordinal)
+            || path.EndsWith(".ico", StringComparison.Ordinal)
+            || uri.Query.Contains("format=image", StringComparison.OrdinalIgnoreCase)
+            || uri.Query.Contains("imgtype", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? TryGetFirstSrcSetUrl(string value)
