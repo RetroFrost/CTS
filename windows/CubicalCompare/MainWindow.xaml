@@ -485,7 +485,10 @@
                             </Grid.ColumnDefinitions>
                             <Button Content="Regenerate" Click="RegenerateThumbnail_Click" />
                             <Button Grid.Column="1" Content="Save PNG" Click="SaveThumbnail_Click" />
-                            <TextBlock x:Name="ThumbnailStatusText" Grid.Column="2" Text="Waiting for project data…" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                            <StackPanel Grid.Column="2" Spacing="2">
+                                <TextBlock x:Name="ThumbnailSelectedCardText" Text="No thumbnail element selected" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock x:Name="ThumbnailStatusText" Text="Waiting for project data…" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
                         </Grid>
                     </Grid>
                 </Grid>
