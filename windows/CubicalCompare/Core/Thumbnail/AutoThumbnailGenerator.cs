@@ -62,13 +62,13 @@ public static class AutoThumbnailGenerator
             var last = count - 1;
             var firstMiddle = last / 3;
             var secondMiddle = (last * 2) / 3;
-            return [0, firstMiddle, secondMiddle, last]
+            return new[] { 0, firstMiddle, secondMiddle, last }
                 .Distinct()
                 .ToList();
         }
 
         var middle = (count - 1) / 2;
-        return [0, middle, count - 1]
+        return new[] { 0, middle, count - 1 }
             .Distinct()
             .ToList();
     }
