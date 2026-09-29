@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace CubicalCompare.Core.Project;
@@ -116,6 +117,7 @@ public static class ProjectFileService
         project.SoundtrackPath = NormalizeText(project.SoundtrackPath, string.Empty, MaxPathLength);
         if (!double.IsFinite(project.SoundtrackVolume)) project.SoundtrackVolume = 1.0;
         project.SoundtrackVolume = Math.Clamp(project.SoundtrackVolume, 0, 1);
+        project.ThumbnailCardCount = project.ThumbnailCardCount == 4 ? 4 : 3;
 
         project.Cards ??= [];
         if (project.Cards.Count == 0) throw new InvalidDataException("A project must contain at least one card.");
@@ -133,6 +135,7 @@ public static class ProjectFileService
             card.Description = NormalizeText(card.Description, string.Empty, MaxDescriptionLength, trim: false);
             card.ImagePath = NormalizeText(card.ImagePath, string.Empty, MaxPathLength);
             card.ImageLayer = NormalizeText(card.ImageLayer, "behind", 64).ToLowerInvariant();
+            card.ThumbnailBackgroundColor = NormalizeHexColor(card.ThumbnailBackgroundColor, "#05070E");
 
             if (!double.IsFinite(card.ImageX) || !double.IsFinite(card.ImageY) ||
                 !double.IsFinite(card.ImageScale) || !double.IsFinite(card.ImageRotation) ||
