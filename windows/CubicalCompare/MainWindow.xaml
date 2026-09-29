@@ -427,21 +427,33 @@
                 <Grid x:Name="ThumbnailPage" Visibility="Collapsed" MaxWidth="1100" HorizontalAlignment="Left">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <StackPanel>
                         <TextBlock Text="Automatic thumbnail" FontSize="28" FontWeight="SemiBold" />
-                        <TextBlock Text="Cubical Compare picks three representative cards and continuously rebuilds a 1280×720 comparison thumbnail." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,4,0,0" />
+                        <TextBlock Text="Cubical Compare picks representative cards and continuously rebuilds a 1280×720 comparison thumbnail. Thumbnail typography is independent from the video renderer." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,4,0,0" />
                     </StackPanel>
-                    <Border Grid.Row="1" Margin="0,18,0,0" Background="Black" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="12">
+                    <Border Grid.Row="1" Margin="0,14,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="Cards" VerticalAlignment="Center" />
+                            <ComboBox x:Name="ThumbnailCardCountComboBox" Width="110" SelectedIndex="0" SelectionChanged="ThumbnailCardCount_SelectionChanged">
+                                <ComboBoxItem Content="3 cards" />
+                                <ComboBoxItem Content="4 cards" />
+                            </ComboBox>
+                            <Button Content="Pick background for selected card" Click="PickThumbnailBackground_Click" />
+                            <TextBlock x:Name="ThumbnailSelectedCardText" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="2" Margin="0,18,0,0" Background="Black" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="12">
                         <Viewbox Stretch="Uniform">
                             <Border Width="1280" Height="720" Background="#101010">
                                 <Image x:Name="ThumbnailPreviewImage" Stretch="Uniform" />
                             </Border>
                         </Viewbox>
                     </Border>
-                    <Grid Grid.Row="2" Margin="0,14,0,0" ColumnSpacing="8">
+                    <Grid Grid.Row="3" Margin="0,14,0,0" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
