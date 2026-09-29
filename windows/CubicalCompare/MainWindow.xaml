@@ -135,63 +135,359 @@
                             </Grid>
                         </Border>
 
-                        <Border Grid.Row="1" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
-                        <StackPanel Spacing="8">
-                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                <TextBlock Text="Cards" VerticalAlignment="Center" />
-                                <ComboBox x:Name="ThumbnailCardCountComboBox" Width="110" SelectedIndex="0" SelectionChanged="ThumbnailCardCount_SelectionChanged">
-                                    <ComboBoxItem Content="3 cards" />
-                                    <ComboBoxItem Content="4 cards" />
-                                </ComboBox>
-                                <Button Content="Use automatic cards" Click="UseAutomaticThumbnailCards_Click" />
-                                <TextBlock x:Name="ThumbnailPickerModeText" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" />
-                            </StackPanel>
-                            <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto" VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled">
-                                <StackPanel x:Name="ThumbnailCardPickerPanel" Orientation="Horizontal" Spacing="4" />
-                            </ScrollViewer>
-                            <TextBlock Text="Click artwork to edit its URL. Click a badge to select the whole card and edit thumbnail-only colours. Press Esc to release the selection." FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Row="2" Margin="0,18,0,0" Background="Black" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="12">
-                        <Viewbox Stretch="Uniform">
-                            <Border Width="1280" Height="720" Background="#101010">
-                                <Grid>
-                                    <Image x:Name="ThumbnailPreviewImage" Stretch="Uniform" />
-                                    <Canvas x:Name="ThumbnailInteractionCanvas" Width="1280" Height="720" Background="Transparent" PointerPressed="ThumbnailInteractionCanvas_PointerPressed" />
+                        <Border Grid.Row="1" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10,8">
+                            <Grid x:Name="PreviewTimelineGrid" ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="PreviewPlayButton" Width="42" Height="38" Padding="0" Background="{StaticResource EditorAccentSoftBrush}" Foreground="{StaticResource EditorAccentBrush}">
+                                    <SymbolIcon Symbol="Play" />
+                                </Button>
+                                <TextBlock x:Name="FrameCounterText" Grid.Column="1" Text="Frame —" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" MinWidth="88" />
+                                <Slider x:Name="ProjectFrameSlider" Grid.Column="2" Minimum="0" Maximum="0" Value="0" IsEnabled="False" StepFrequency="1" ValueChanged="ProjectFrameSlider_ValueChanged" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TimelineStatusText" Grid.Column="3" Text="Load a renderer to enable timeline" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" MaxWidth="260" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="2" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="10">
+                            <Grid RowSpacing="8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Timeline" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource EditorAccentBrush}" VerticalAlignment="Center" />
+                                    <Border Grid.Column="1" Width="1" Height="18" Background="{StaticResource EditorBorderBrush}" Margin="4,0" />
+                                    <TextBlock Grid.Column="2" Text="Cards" FontSize="12" Foreground="{StaticResource EditorTextSecondaryBrush}" VerticalAlignment="Center" />
+                                    <Button Grid.Column="3" Content="Import CSV" Click="ImportCsv_Click" Padding="10,4" />
+                                    <Button Grid.Column="4" Content="Add card" Click="AddCard_Click" Padding="10,4" />
+                                    <Button Grid.Column="5" Content="Remove" Click="RemoveCard_Click" Padding="10,4" />
                                 </Grid>
-                            </Border>
-                        </Viewbox>
+
+                                <ListView x:Name="CardsList" Grid.Row="1" ItemsSource="{x:Bind Cards, Mode=OneWay}" SelectionMode="Single" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                    <ListView.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsStackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ListView.ItemsPanel>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Width="116" Height="112" Margin="3" Padding="5" CornerRadius="10" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" Background="#F9FBFE">
+                                                <Grid RowSpacing="4">
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="72" />
+                                                        <RowDefinition Height="*" />
+                                                    </Grid.RowDefinitions>
+                                                    <Border Background="#18222C" CornerRadius="7">
+                                                        <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                                    </Border>
+                                                    <StackPanel Grid.Row="1" Spacing="0">
+                                                        <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Value}" FontSize="10" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="3" Background="#E6F2FF" BorderBrush="#C7E0FA" BorderThickness="1" CornerRadius="12" Padding="12,8">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <SymbolIcon Symbol="Microphone" Foreground="{StaticResource EditorAccentBrush}" />
+                                <TextBlock Grid.Column="1" Text="Soundtrack" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" />
+                                <Grid Grid.Column="2" Height="24" Margin="6,0">
+                                    <Rectangle Height="3" RadiusX="1.5" RadiusY="1.5" Fill="#91C8FF" VerticalAlignment="Center" />
+                                    <Rectangle Width="2" Height="18" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="24,0,0,0" />
+                                    <Rectangle Width="2" Height="12" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="58,0,0,0" />
+                                    <Rectangle Width="2" Height="21" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="96,0,0,0" />
+                                    <Rectangle Width="2" Height="10" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="132,0,0,0" />
+                                    <Rectangle Width="2" Height="18" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="176,0,0,0" />
+                                    <Rectangle Width="2" Height="14" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="224,0,0,0" />
+                                    <Rectangle Width="2" Height="22" Fill="#3C9AF2" HorizontalAlignment="Left" Margin="278,0,0,0" />
+                                </Grid>
+                                <TextBlock Grid.Column="3" Text="Audio muxes into export" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                            </Grid>
+                        </Border>
+
+                        <Grid Grid.Row="4" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="ExportStatusText" Text="" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                            <ProgressBar x:Name="ExportProgressBar" Grid.Column="1" Minimum="0" Maximum="100" Value="0" Visibility="Collapsed" VerticalAlignment="Center" />
+                            <Button x:Name="ExportCancelButton" Grid.Column="2" Content="Cancel export" Click="CancelVideoExport_Click" Visibility="Collapsed" />
+                        </Grid>
+                    </Grid>
+
+                    <Border Grid.Column="2" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="0">
+                        <Grid>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel DataContext="{Binding SelectedItem, ElementName=CardsList}" Spacing="10" Padding="14,12,14,16">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="44" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="44" Height="44" Background="#EEF5FC" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="8">
+                                            <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                            <TextBlock Text="Selected card" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Expander Header="Transform (Preview &amp; Export)" IsExpanded="True" Margin="0,4,0,0">
+                                        <StackPanel Spacing="8" Margin="0,8,0,0">
+                                            <Grid ColumnSpacing="8" RowSpacing="6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                                                    <TextBlock Text="Position X" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageXBox" Value="{Binding ImageX, Mode=TwoWay}" Minimum="-4000" Maximum="4000" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="3">
+                                                    <TextBlock Text="Position Y" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageYBox" Value="{Binding ImageY, Mode=TwoWay}" Minimum="-4000" Maximum="4000" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="3">
+                                                    <TextBlock Text="Scale" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageScaleBox" Value="{Binding ImageScale, Mode=TwoWay}" Minimum="0.05" Maximum="12" SmallChange="0.05" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3">
+                                                    <TextBlock Text="Rotation" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageRotationBox" Value="{Binding ImageRotation, Mode=TwoWay}" Minimum="-360" Maximum="360" SmallChange="1" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <Grid ColumnSpacing="6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button Content="Center" HorizontalAlignment="Stretch" Click="ArtworkTransform_Center_Click" />
+                                                <Button Grid.Column="1" Content="Fit" HorizontalAlignment="Stretch" Click="ArtworkTransform_Fit_Click" />
+                                                <Button Grid.Column="2" Content="Fill" HorizontalAlignment="Stretch" Click="ArtworkTransform_Fill_Click" />
+                                                <Button Grid.Column="3" Content="Reset" HorizontalAlignment="Stretch" Click="ArtworkTransform_Reset_Click" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Expander>
+
+                                    <TextBlock Text="Artwork" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                    <Border Background="#F4F8FC" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="9">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="72" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="72" Height="82" Background="#EEF5FC" CornerRadius="8">
+                                                <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Spacing="7">
+                                                <TextBlock Text="{Binding ImagePath}" FontSize="10" Foreground="{StaticResource EditorTextSecondaryBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="30" />
+                                                <Button Content="Local image…" HorizontalAlignment="Stretch" Click="ChooseArtwork_Click" />
+                                                <Button Content="Web URL…" HorizontalAlignment="Stretch" Click="SetArtworkUrl_Click" />
+                                                <Button Content="Clear artwork" HorizontalAlignment="Stretch" Click="ClearArtwork_Click" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <TextBlock Text="Text" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                    <TextBlock Text="Title" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Value" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Description" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="92" TextWrapping="Wrap" />
+
+                                    <Expander Header="Advanced crop" IsExpanded="False" Margin="0,6,0,0">
+                                        <StackPanel Spacing="8" Margin="0,8,0,0">
+                                            <Grid ColumnSpacing="8" RowSpacing="6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                                                    <TextBlock Text="Crop left" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageCropLeftBox" Value="{Binding ImageCropLeft, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="3">
+                                                    <TextBlock Text="Crop right" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageCropRightBox" Value="{Binding ImageCropRight, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="3">
+                                                    <TextBlock Text="Crop top" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageCropTopBox" Value="{Binding ImageCropTop, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3">
+                                                    <TextBlock Text="Crop bottom" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                                    <NumberBox x:Name="ImageCropBottomBox" Value="{Binding ImageCropBottom, Mode=TwoWay}" Minimum="0" Maximum="0.95" SmallChange="0.01" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <Button Content="Apply current transform to all cards" HorizontalAlignment="Stretch" Click="ArtworkTransform_ApplyAll_Click" />
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
                     </Border>
-                    <Grid Grid.Row="3" Margin="0,14,0,0" RowSpacing="8">
+                </Grid>
+
+                <Grid x:Name="AssetsPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="MegaPack Zipack2" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock x:Name="DetectedSummaryText" Text="Import a .zipack2 package to detect contact-sheet cards." Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,4,0,0" />
+                            <TextBlock x:Name="MegaPackExportStatusText" Text="Export keeps full-resolution card artwork in yellow-separated contact sheets." Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,3,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Content="Import Zipack2" Click="ImportMegaPack_Click" />
+                            <Button Content="Export MegaPack" Click="ExportMegaPack_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ListView x:Name="DetectedCardsList" Grid.Row="1" Margin="0,16,0,0" ItemsSource="{x:Bind DetectedCards, Mode=OneWay}" SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,5" ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="110" Height="72" Background="Black" CornerRadius="8">
+                                        <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{Binding Label}" FontSize="16" />
+                                        <TextBlock Text="{Binding Details}" FontSize="12" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="2" IsChecked="{Binding Included, Mode=TwoWay}" Content="Include" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <Grid Grid.Row="2" Margin="0,14,0,0" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button Content="Move earlier" Click="MoveDetectedEarlier_Click" />
+                        <Button Grid.Column="1" Content="Move later" Click="MoveDetectedLater_Click" />
+                        <Button Grid.Column="3" Content="Use detected cards" Click="ApproveDetectedCards_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
+                    <Grid x:Name="ThumbnailPage" Visibility="Collapsed" MaxWidth="1100" HorizontalAlignment="Left">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <StackPanel x:Name="ThumbnailArtworkActions" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
-                            <TextBlock Text="Artwork selected" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{StaticResource EditorAccentBrush}" />
-                            <Button Content="Replace artwork by URL" Click="ThumbnailReplaceArtworkByUrl_Click" />
+                        <StackPanel>
+                            <TextBlock Text="Automatic thumbnail" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="Pick exact cards, edit thumbnail artwork URLs and card colours directly from the generated thumbnail. Esc releases any active thumbnail or preview element." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,4,0,0" />
                         </StackPanel>
-                        <StackPanel x:Name="ThumbnailCardActions" Grid.Row="1" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
-                            <TextBlock Text="Card selected" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{StaticResource EditorAccentBrush}" />
-                            <Button Content="Artwork background" Click="ThumbnailCardBackground_Click" />
-                            <Button Content="Badge color" Click="ThumbnailCardAccent_Click" />
-                        </StackPanel>
-                        <Grid Grid.Row="2" ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Button Content="Regenerate" Click="RegenerateThumbnail_Click" />
-                            <Button Grid.Column="1" Content="Save PNG" Click="SaveThumbnail_Click" />
-                            <TextBlock x:Name="ThumbnailSelectedCardText" Grid.Column="2" Text="No thumbnail element selected" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                        <Border Grid.Row="1" Margin="0,14,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
+                            <StackPanel Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <TextBlock Text="Cards" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="ThumbnailCardCountComboBox" Width="110" SelectedIndex="0" SelectionChanged="ThumbnailCardCount_SelectionChanged">
+                                        <ComboBoxItem Content="3 cards" />
+                                        <ComboBoxItem Content="4 cards" />
+                                    </ComboBox>
+                                    <Button Content="Use automatic cards" Click="UseAutomaticThumbnailCards_Click" />
+                                    <TextBlock x:Name="ThumbnailPickerModeText" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                </StackPanel>
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto" VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled">
+                                    <StackPanel x:Name="ThumbnailCardPickerPanel" Orientation="Horizontal" Spacing="4" />
+                                </ScrollViewer>
+                                <TextBlock Text="Click artwork to edit its URL. Click a badge to select the whole card and edit thumbnail-only colours. Press Esc to release the selection." FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="2" Margin="0,18,0,0" Background="Black" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="12">
+                            <Viewbox Stretch="Uniform">
+                                <Border Width="1280" Height="720" Background="#101010">
+                                    <Grid>
+                                        <Image x:Name="ThumbnailPreviewImage" Stretch="Uniform" />
+                                        <Canvas x:Name="ThumbnailInteractionCanvas" Width="1280" Height="720" Background="Transparent" PointerPressed="ThumbnailInteractionCanvas_PointerPressed" />
+                                    </Grid>
+                                </Border>
+                            </Viewbox>
+                        </Border>
+                        <Grid Grid.Row="3" Margin="0,14,0,0" RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel x:Name="ThumbnailArtworkActions" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
+                                <TextBlock Text="Artwork selected" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{StaticResource EditorAccentBrush}" />
+                                <Button Content="Replace artwork by URL" Click="ThumbnailReplaceArtworkByUrl_Click" />
+                            </StackPanel>
+                            <StackPanel x:Name="ThumbnailCardActions" Grid.Row="1" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
+                                <TextBlock Text="Card selected" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{StaticResource EditorAccentBrush}" />
+                                <Button Content="Artwork background" Click="ThumbnailCardBackground_Click" />
+                                <Button Content="Badge color" Click="ThumbnailCardAccent_Click" />
+                            </StackPanel>
+                            <Grid Grid.Row="2" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Content="Regenerate" Click="RegenerateThumbnail_Click" />
+                                <Button Grid.Column="1" Content="Save PNG" Click="SaveThumbnail_Click" />
+                                <TextBlock x:Name="ThumbnailStatusText" Grid.Column="2" Text="Waiting for project data…" VerticalAlignment="Center" Foreground="{StaticResource EditorTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                            </Grid>
                         </Grid>
                     </Grid>
-                </Grid>
-            </Grid>
 
-            <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="1000" HorizontalAlignment="Left" Loaded="RendererPage_Loaded">
+<Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="1000" HorizontalAlignment="Left" Loaded="RendererPage_Loaded">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
