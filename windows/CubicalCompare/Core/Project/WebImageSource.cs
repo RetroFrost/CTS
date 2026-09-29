@@ -10,8 +10,8 @@ using System.Text.RegularExpressions;
 namespace CubicalCompare.Core.Project;
 
 /// <summary>
-/// Resolves local image paths plus a deliberately narrow set of Flaticon URLs
-/// into reusable local image files. Arbitrary web URLs are rejected.
+/// Resolves local image paths, direct web images, and image-page URLs into reusable local image files.
+/// Public HTTP(S) artwork is supported while private/local destinations are blocked by the downloader.
 /// </summary>
 public static class WebImageSource
 {
@@ -68,6 +68,22 @@ public static class WebImageSource
             && uri.Scheme is "http" or "https";
     }
 
+    public static bool IsAllowedWebSource(string? source)
+    {
+        var value = NormalizeSource(source);
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && IsAllowedWebUri(uri);
+    }
+
+    private static bool IsAllowedWebUri(Uri uri)
+    {
+        return uri.IsAbsoluteUri
+            && uri.Scheme is "http" or "https"
+            && uri.IsDefaultPort
+            && string.IsNullOrWhiteSpace(uri.UserInfo)
+            && !string.IsNullOrWhiteSpace(uri.Host);
+    }
+
     public static bool IsAllowedFlaticonSource(string? source)
     {
         var value = NormalizeSource(source);
@@ -101,15 +117,13 @@ public static class WebImageSource
     }
 
     private static InvalidDataException RejectedWebSource(string source) =>
-        new($"Web artwork URL rejected: '{source}'. Cubical Compare only accepts Flaticon icon pages " +
-            "(https://www.flaticon.com/free-icon/..._<id>) and direct images from " +
-            "https://cdn-icons-png.flaticon.com/.");
+        new($"Web artwork URL rejected: '{source}'. Enter a public HTTP(S) image or image-page URL.");
 
     public static string? TryGetCachedLocalPath(string? source)
     {
         var value = NormalizeSource(source);
         if (!IsRemoteSource(value)) return ResolveLocalPath(value);
-        if (!IsAllowedFlaticonSource(value)) return null;
+        if (!IsAllowedWebSource(value)) return null;
 
         var prefix = CacheKey(value) + ".";
         try
@@ -136,7 +150,7 @@ public static class WebImageSource
         var value = NormalizeSource(source);
         if (value.Length == 0) return null;
         if (!IsRemoteSource(value)) return ResolveLocalPath(value);
-        if (!IsAllowedFlaticonSource(value)) throw RejectedWebSource(value);
+        if (!IsAllowedWebSource(value)) throw RejectedWebSource(value);
         return ResolveToLocalFileAsync(value, cancellationToken).GetAwaiter().GetResult();
     }
 
@@ -201,7 +215,7 @@ public static class WebImageSource
         var token = timeout.Token;
 
         var sourceUri = new Uri(originalSource, UriKind.Absolute);
-        if (!IsAllowedFlaticonUri(sourceUri))
+        if (!IsAllowedWebUri(sourceUri))
             throw RejectedWebSource(originalSource);
 
         // Flaticon page URLs expose a stable CDN path derived from the icon id.
@@ -314,7 +328,7 @@ public static class WebImageSource
         var current = source;
         for (var redirect = 0; redirect <= MaxRedirects; redirect++)
         {
-            if (!IsAllowedFlaticonUri(current))
+            if (!IsAllowedWebUri(current))
                 throw RejectedWebSource(current.AbsoluteUri);
             await EnsurePublicHttpUriAsync(current, cancellationToken).ConfigureAwait(false);
 
@@ -449,7 +463,7 @@ public static class WebImageSource
             if (decoded.StartsWith("//", StringComparison.Ordinal))
                 decoded = pageUri.Scheme + ":" + decoded;
             if (!Uri.TryCreate(pageUri, decoded, out var candidate)) continue;
-            if (!IsAllowedFlaticonUri(candidate)) continue;
+            if (!IsAllowedWebUri(candidate)) continue;
             if (seen.Add(candidate.AbsoluteUri))
                 yield return candidate;
         }
@@ -510,6 +524,41 @@ public static class WebImageSource
                 foreach (var nested in EnumerateJsonImageValues(item))
                     yield return nested;
         }
+    }
+
+    private static string? TryGetFirstSrcSetUrl(string value)
+    {
+        var first = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(first))
+            return null;
+        var pieces = first.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return pieces.Length == 0 ? null : pieces[0];
+    }
+
+    private static Uri? TryGoogleImageCandidate(Uri pageUri)
+    {
+        var host = pageUri.IdnHost.TrimEnd('.').ToLowerInvariant();
+        if (!(host == "google.com" || host.EndsWith(".google.com", StringComparison.Ordinal)))
+            return null;
+
+        foreach (var pair in pageUri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length != 2)
+                continue;
+
+            var key = WebUtility.UrlDecode(parts[0]);
+            if (!key.Equals("imgurl", StringComparison.OrdinalIgnoreCase) &&
+                !key.Equals("mediaurl", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var decoded = WebUtility.UrlDecode(parts[1]);
+            if (Uri.TryCreate(decoded, UriKind.Absolute, out var candidate) && IsAllowedWebUri(candidate))
+                return candidate;
+        }
+
+        return null;
     }
 
     private static Uri? TryFlaticonCdnCandidate(Uri pageUri)
