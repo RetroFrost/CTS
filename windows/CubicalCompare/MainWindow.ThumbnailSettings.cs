@@ -222,7 +222,8 @@ public sealed partial class MainWindow
         var card = ResolveThumbnailSelectedCard();
         if (card is null) return;
 
-        await SetArtworkUrlForCardAsync(card);
+        CardsList.SelectedItem = card;
+        SetArtworkUrl_Click(sender, e);
         _thumbnailSelectedCardId = card.Id;
         _thumbnailSelectionPart = ThumbnailSelectionPart.Artwork;
         RefreshThumbnailInteractionOverlay();
