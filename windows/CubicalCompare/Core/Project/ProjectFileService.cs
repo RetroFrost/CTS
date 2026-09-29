@@ -214,6 +214,16 @@ public static class ProjectFileService
         return normalized;
     }
 
+    private static string NormalizeHexColor(string? value, string fallback)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 7 && normalized[0] == '#' &&
+            normalized[1..].All(Uri.IsHexDigit))
+            return normalized.ToUpperInvariant();
+
+        return fallback;
+    }
+
     private static void TryDelete(string path)
     {
         try
