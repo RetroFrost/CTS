@@ -161,7 +161,7 @@ public static class WebImageSource
         var value = NormalizeSource(source);
         if (value.Length == 0) return null;
         if (!IsRemoteSource(value)) return ResolveLocalPath(value);
-        if (!IsAllowedFlaticonSource(value)) throw RejectedWebSource(value);
+        if (!IsAllowedWebSource(value)) throw RejectedWebSource(value);
 
         var cached = TryGetCachedLocalPath(value);
         if (!string.IsNullOrWhiteSpace(cached)) return cached;
