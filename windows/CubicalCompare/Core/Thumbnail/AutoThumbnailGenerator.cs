@@ -20,7 +20,7 @@ public static class AutoThumbnailGenerator
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Black);
 
-        var indices = PickCards(project.Cards.Count);
+        var indices = PickCards(project);
         if (indices.Count == 0)
         {
             DrawEmpty(canvas, project);
@@ -48,21 +48,34 @@ public static class AutoThumbnailGenerator
         return new GeneratedThumbnail(png, path, indices);
     }
 
-    private static List<int> PickCards(int count)
+    private static List<int> PickCards(ComparisonProject project)
     {
+        var count = project.Cards.Count;
         if (count <= 0) return [];
-        if (count == 1) return [0];
-        if (count == 2) return [0, 1];
 
-        // Keep the selection deterministic and representative of the whole comparison.
-        // This gives the thumbnail a beginning / middle / extreme progression.
+        var desired = project.ThumbnailCardCount == 4 ? 4 : 3;
+        if (count <= desired)
+            return Enumerable.Range(0, count).ToList();
+
+        if (desired == 4)
+        {
+            var last = count - 1;
+            var firstMiddle = last / 3;
+            var secondMiddle = (last * 2) / 3;
+            return [0, firstMiddle, secondMiddle, last]
+                .Distinct()
+                .ToList();
+        }
+
         var middle = (count - 1) / 2;
-        return [0, middle, count - 1];
+        return [0, middle, count - 1]
+            .Distinct()
+            .ToList();
     }
 
     private static void DrawEmpty(SKCanvas canvas, ComparisonProject project)
     {
-        using var paint = TextPaint(project, 76, SKColors.White, bold: true);
+        using var paint = TextPaint( 76, SKColors.White, bold: true);
         paint.TextAlign = SKTextAlign.Center;
         canvas.DrawText("CUBICAL COMPARE", Width / 2f, Height / 2f, paint);
         paint.TextSize = 34;
@@ -80,7 +93,12 @@ public static class AutoThumbnailGenerator
             var rect = new SKRect(left, TopHeight, right, Height);
             var card = project.Cards[indices[slot]];
 
-            using (var background = new SKPaint { Color = new SKColor(5, 7, 14), Style = SKPaintStyle.Fill })
+            using (var background = new SKPaint
+            {
+                Color = ParseThumbnailColor(card.ThumbnailBackgroundColor),
+                Style = SKPaintStyle.Fill,
+                IsAntialias = true,
+            })
                 canvas.DrawRect(rect, background);
 
             if (!DrawArtwork(canvas, card, rect))
@@ -103,7 +121,7 @@ public static class AutoThumbnailGenerator
             using (var top = new SKPaint { Color = new SKColor(34, 34, 34), Style = SKPaintStyle.Fill })
                 canvas.DrawRect(left, 0, right - left, TopHeight - TitleStripHeight, top);
 
-            DrawBadge(canvas, project, card, (left + right) / 2f, 145f, Math.Min(125f, (right - left) * .29f));
+            DrawBadge(canvas, project, card, (left + right) / 2f, 145f, Math.Min(125f, (right - left) * .29f), slot == count - 1);
 
             using (var strip = new SKPaint { Color = new SKColor(244, 244, 244), Style = SKPaintStyle.Fill })
                 canvas.DrawRect(left, TopHeight - TitleStripHeight, right - left, TitleStripHeight, strip);
@@ -126,7 +144,7 @@ public static class AutoThumbnailGenerator
         }
     }
 
-    private static void DrawBadge(SKCanvas canvas, ComparisonProject project, ComparisonCard card, float cx, float cy, float radius)
+    private static void DrawBadge(SKCanvas canvas, ComparisonProject project, ComparisonCard card, float cx, float cy, float radius, bool isLastCard)
     {
         var rx = radius;
         var ry = radius * .88f;
@@ -156,8 +174,8 @@ public static class AutoThumbnailGenerator
         using (var edge = new SKPaint { IsAntialias = true, Color = new SKColor(175, 0, 8), Style = SKPaintStyle.Stroke, StrokeWidth = 5 })
             canvas.DrawPath(path, edge);
 
-        var (header, primary, secondary) = SplitBadgeText(card);
-        using var text = TextPaint(project, 54, SKColors.White, bold: false);
+        var (header, primary, secondary) = isLastCard ? ("", "?", "") : SplitBadgeText(card);
+        using var text = TextPaint(54, SKColors.White, bold: false);
         text.TextAlign = SKTextAlign.Center;
 
         if (!string.IsNullOrWhiteSpace(header))
@@ -304,20 +322,28 @@ public static class AutoThumbnailGenerator
         canvas.DrawText(text, box.MidX, baseline, paint);
     }
 
-    private static SKPaint TextPaint(ComparisonProject project, float size, SKColor color, bool bold)
+    private static SKColor ParseThumbnailColor(string? value)
+    {
+        var normalized = string.IsNullOrWhiteSpace(value) ? "#05070E" : value.Trim();
+        if (normalized.Length == 7 && normalized[0] == '#' &&
+            uint.TryParse(normalized.AsSpan(1), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out var rgb))
+            return new SKColor((byte)((rgb >> 16) & 0xFF), (byte)((rgb >> 8) & 0xFF), (byte)(rgb & 0xFF));
+        return new SKColor(5, 7, 14);
+    }
+
+    private static SKPaint TextPaint(float size, SKColor color, bool bold)
     {
         SKTypeface typeface;
         try
         {
-            typeface = !string.IsNullOrWhiteSpace(project.RenderFontFile) && File.Exists(project.RenderFontFile)
-                ? SKTypeface.FromFile(project.RenderFontFile)
-                : SKTypeface.FromFamilyName(
-                    string.IsNullOrWhiteSpace(project.RenderFontFamily) ? "Segoe UI" : project.RenderFontFamily,
-                    bold ? SKFontStyle.Bold : SKFontStyle.Normal);
+            // Thumbnail typography is intentionally independent from the video/render font.
+            typeface = SKTypeface.FromFamilyName("Nimbus Sans", bold ? SKFontStyle.Bold : SKFontStyle.Normal);
         }
         catch
         {
-            typeface = SKTypeface.Default;
+            typeface = SKTypeface.FromFamilyName("Segoe UI", bold ? SKFontStyle.Bold : SKFontStyle.Normal)
+                ?? SKTypeface.Default;
         }
 
         return new SKPaint
