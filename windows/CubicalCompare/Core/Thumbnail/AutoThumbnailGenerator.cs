@@ -163,7 +163,7 @@ public static class AutoThumbnailGenerator
     private static void DrawBadge(SKCanvas canvas, ComparisonProject project, ComparisonCard card, float cx, float cy, float radius, bool isLastCard)
     {
         var accent = ParseThumbnailColor(card.ThumbnailAccentColor, new SKColor(255, 15, 22));
-        var edge = new SKColor((byte)(accent.Red * .68f), (byte)(accent.Green * .68f), (byte)(accent.Blue * .68f));
+        var edgeColor = new SKColor((byte)(accent.Red * .68f), (byte)(accent.Green * .68f), (byte)(accent.Blue * .68f));
         var shadowColor = new SKColor((byte)(accent.Red * .42f), (byte)(accent.Green * .42f), (byte)(accent.Blue * .42f));
         var rx = radius;
         var ry = radius * .88f;
@@ -190,7 +190,7 @@ public static class AutoThumbnailGenerator
         using (var fill = new SKPaint { IsAntialias = true, Color = accent, Style = SKPaintStyle.Fill })
             canvas.DrawPath(path, fill);
 
-        using (var edge = new SKPaint { IsAntialias = true, Color = edge, Style = SKPaintStyle.Stroke, StrokeWidth = 5 })
+        using (var edge = new SKPaint { IsAntialias = true, Color = edgeColor, Style = SKPaintStyle.Stroke, StrokeWidth = 5 })
             canvas.DrawPath(path, edge);
 
         var (header, primary, secondary) = isLastCard ? ("", "?", "") : SplitBadgeText(card);
