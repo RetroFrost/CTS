@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
+using Windows.UI;
 using WinRT.Interop;
 
 namespace CubicalCompare;
@@ -138,15 +139,29 @@ public sealed partial class MainWindow : Window
 
         var input = new TextBox
         {
-            Text = WebImageSource.IsAllowedFlaticonSource(card.ImagePath) ? card.ImagePath : string.Empty,
-            PlaceholderText = "https://www.flaticon.com/free-icon/...",
-            MinWidth = 520,
+            Text = WebImageSource.IsAllowedWebSource(card.ImagePath) ? card.ImagePath : string.Empty,
+            PlaceholderText = "https://… image or image page (Google Images supported)",
+            MinWidth = 560,
+            AcceptsReturn = false,
         };
         var dialog = new ContentDialog
         {
             XamlRoot = RootNavigation.XamlRoot,
-            Title = "Use Flaticon artwork",
-            Content = input,
+            Title = "Use web artwork",
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Paste a direct image URL or an image-page URL. Google Images result pages and Flaticon pages are supported.",
+                        TextWrapping = TextWrapping.Wrap,
+                        Opacity = 0.72,
+                    },
+                    input,
+                },
+            },
             PrimaryButtonText = "Use URL",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
@@ -154,23 +169,24 @@ public sealed partial class MainWindow : Window
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
         var source = WebImageSource.NormalizeSource(input.Text);
-        if (!WebImageSource.IsAllowedFlaticonSource(source))
+        if (!WebImageSource.IsAllowedWebSource(source))
         {
             await ShowErrorAsync(
-                "Only Flaticon icon URLs are allowed",
-                "Use a Flaticon icon page such as https://www.flaticon.com/free-icon/name_123456 or a direct image from https://cdn-icons-png.flaticon.com/. Other websites and other Flaticon pages are rejected.");
+                "Unsupported web artwork URL",
+                "Enter a public HTTP(S) image or image-page URL. Local/private-network addresses are blocked for safety.");
             return;
         }
 
         try
         {
-            TimelineStatusText.Text = "Resolving Flaticon artwork…";
+            TimelineStatusText.Text = "Resolving web artwork…";
             var resolved = await WebImageSource.ResolveToLocalFileAsync(source);
-            if (string.IsNullOrWhiteSpace(resolved))
-                throw new InvalidDataException("The URL did not resolve to an image.");
+            if (string.IsNullOrWhiteSpace(resolved) || !File.Exists(resolved))
+                throw new InvalidDataException("The URL did not resolve to a usable image.");
 
             card.ImagePath = source;
             TimelineStatusText.Text = $"Web artwork cached · {new Uri(source).Host}";
+            UpdateThumbnailBackgroundUi();
             await RenderCurrentFrameAsync();
         }
         catch (Exception ex)
@@ -463,6 +479,7 @@ public sealed partial class MainWindow : Window
             CustomLengthSeconds = _projectDurationSeconds > 0 ? _projectDurationSeconds : 90,
             RenderFontFamily = RenderFontSelection.CurrentFamily,
             RenderFontFile = RenderFontSelection.CurrentFile,
+            ThumbnailCardCount = GetThumbnailCardCount(),
         };
         foreach (var card in Cards)
         {
@@ -483,6 +500,7 @@ public sealed partial class MainWindow : Window
                 ImageCropRight = card.ImageCropRight,
                 ImageCropBottom = card.ImageCropBottom,
                 ImageLayer = card.ImageLayer,
+                ThumbnailBackgroundColor = card.ThumbnailBackgroundColor,
             });
         }
         return project;
@@ -567,6 +585,7 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
     private string _badgeHeader = "";
     private string _description = "";
     private string _imagePath = "";
+    private string _thumbnailBackgroundColor = "#05070E";
     private BitmapImage? _preview;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -616,6 +635,12 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
     public double ImageCropRight { get; set; }
     public double ImageCropBottom { get; set; }
     public string ImageLayer { get; set; } = "behind";
+
+    public string ThumbnailBackgroundColor
+    {
+        get => _thumbnailBackgroundColor;
+        set => Set(ref _thumbnailBackgroundColor, value);
+    }
 
     public BitmapImage? Preview
     {
