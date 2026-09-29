@@ -15,6 +15,8 @@ public sealed class ComparisonProject
     public string SoundtrackPath { get; set; } = "";
     public double SoundtrackVolume { get; set; } = 1.0;
     public bool SoundtrackLoop { get; set; } = true;
+    // Thumbnail-only layout settings. These never affect renderer/video output.
+    public int ThumbnailCardCount { get; set; } = 3;
 
     // Keep this settable so projects can be safely round-tripped by System.Text.Json
     // for workspace recovery, file persistence and future interchange formats.
@@ -38,4 +40,6 @@ public sealed class ComparisonCard
     public double ImageCropRight { get; set; }
     public double ImageCropBottom { get; set; }
     public string ImageLayer { get; set; } = "behind";
+    // Thumbnail-only fill behind transparent/backgroundless artwork.
+    public string ThumbnailBackgroundColor { get; set; } = "#05070E";
 }
