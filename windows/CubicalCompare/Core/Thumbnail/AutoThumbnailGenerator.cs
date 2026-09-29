@@ -48,12 +48,28 @@ public static class AutoThumbnailGenerator
         return new GeneratedThumbnail(png, path, indices);
     }
 
-    private static List<int> PickCards(ComparisonProject project)
+    public static List<int> PickCards(ComparisonProject project)
     {
         var count = project.Cards.Count;
         if (count <= 0) return [];
 
         var desired = project.ThumbnailCardCount == 4 ? 4 : 3;
+        var selectedIds = (project.ThumbnailSelectedCardIds ?? [])
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Take(desired)
+            .ToArray();
+        if (selectedIds.Length > 0)
+        {
+            var selected = new List<int>(selectedIds.Length);
+            foreach (var id in selectedIds)
+            {
+                var index = project.Cards.FindIndex(card => string.Equals(card.Id, id, StringComparison.Ordinal));
+                if (index >= 0) selected.Add(index);
+            }
+            if (selected.Count > 0) return selected;
+        }
         if (count <= desired)
             return Enumerable.Range(0, count).ToList();
 
@@ -146,13 +162,16 @@ public static class AutoThumbnailGenerator
 
     private static void DrawBadge(SKCanvas canvas, ComparisonProject project, ComparisonCard card, float cx, float cy, float radius, bool isLastCard)
     {
+        var accent = ParseThumbnailColor(card.ThumbnailAccentColor, new SKColor(255, 15, 22));
+        var edge = new SKColor((byte)(accent.Red * .68f), (byte)(accent.Green * .68f), (byte)(accent.Blue * .68f));
+        var shadowColor = new SKColor((byte)(accent.Red * .42f), (byte)(accent.Green * .42f), (byte)(accent.Blue * .42f));
         var rx = radius;
         var ry = radius * .88f;
 
         using (var glow = new SKPaint
         {
             IsAntialias = true,
-            Color = new SKColor(255, 18, 32, 155),
+            Color = new SKColor(accent.Red, accent.Green, accent.Blue, 155),
             MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 30),
         })
         {
@@ -160,7 +179,7 @@ public static class AutoThumbnailGenerator
         }
 
         using var path = Hexagon(cx, cy, rx, ry);
-        using (var shadow = new SKPaint { IsAntialias = true, Color = new SKColor(120, 0, 8), Style = SKPaintStyle.Fill })
+        using (var shadow = new SKPaint { IsAntialias = true, Color = shadowColor, Style = SKPaintStyle.Fill })
         {
             canvas.Save();
             canvas.Translate(0, 12);
@@ -168,10 +187,10 @@ public static class AutoThumbnailGenerator
             canvas.Restore();
         }
 
-        using (var fill = new SKPaint { IsAntialias = true, Color = new SKColor(255, 15, 22), Style = SKPaintStyle.Fill })
+        using (var fill = new SKPaint { IsAntialias = true, Color = accent, Style = SKPaintStyle.Fill })
             canvas.DrawPath(path, fill);
 
-        using (var edge = new SKPaint { IsAntialias = true, Color = new SKColor(175, 0, 8), Style = SKPaintStyle.Stroke, StrokeWidth = 5 })
+        using (var edge = new SKPaint { IsAntialias = true, Color = edge, Style = SKPaintStyle.Stroke, StrokeWidth = 5 })
             canvas.DrawPath(path, edge);
 
         var (header, primary, secondary) = isLastCard ? ("", "?", "") : SplitBadgeText(card);
@@ -322,14 +341,15 @@ public static class AutoThumbnailGenerator
         canvas.DrawText(text, box.MidX, baseline, paint);
     }
 
-    private static SKColor ParseThumbnailColor(string? value)
+    private static SKColor ParseThumbnailColor(string? value, SKColor? fallback = null)
     {
-        var normalized = string.IsNullOrWhiteSpace(value) ? "#05070E" : value.Trim();
+        var fallbackColor = fallback ?? new SKColor(5, 7, 14);
+        var normalized = string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
         if (normalized.Length == 7 && normalized[0] == '#' &&
             uint.TryParse(normalized.AsSpan(1), System.Globalization.NumberStyles.HexNumber,
                 System.Globalization.CultureInfo.InvariantCulture, out var rgb))
             return new SKColor((byte)((rgb >> 16) & 0xFF), (byte)((rgb >> 8) & 0xFF), (byte)(rgb & 0xFF));
-        return new SKColor(5, 7, 14);
+        return fallbackColor;
     }
 
     private static SKPaint TextPaint(float size, SKColor color, bool bold)
