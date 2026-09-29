@@ -7,6 +7,7 @@ on:
       - windows/4.2.2-csv
       - work/portable-zip-windows
       - windows/4.2.2-csv
+      - work/4.2.2-thumbnail-general-artwork
     paths:
       - 'windows/CubicalCompare/**'
       - 'windows/CubicalCompare.Modules/**'
@@ -189,16 +190,19 @@ jobs:
 
           $webImages = Get-Content 'windows/CubicalCompare/Core/Project/WebImageSource.cs' -Raw
           if ($webImages -notmatch 'TryFlaticonCdnCandidate') { throw 'Flaticon page URL resolution is missing.' }
-          if ($webImages -notmatch 'IsAllowedFlaticonSource') { throw 'Strict Flaticon web-artwork allowlist is missing.' }
-          if ($webImages -notmatch 'cdn-icons-png\.flaticon\.com') { throw 'Direct Flaticon CDN allowlist is missing.' }
-          if ($webImages -notmatch '\^/free-icon/') { throw 'Flaticon icon-detail page path restriction is missing.' }
-          if ($webImages -notmatch 'IsAllowedFlaticonUri\(current\)') { throw 'Redirects can leave the Flaticon allowlist.' }
+          if ($webImages -notmatch 'IsAllowedWebSource') { throw 'General web-artwork allowlist is missing.' }
+          if ($webImages -notmatch 'IsAllowedFlaticonSource') { throw 'Flaticon compatibility validation is missing.' }
+          if ($webImages -notmatch 'cdn-icons-png\.flaticon\.com') { throw 'Flaticon CDN support is missing.' }
+          if ($webImages -notmatch 'TryGoogleImageCandidate') { throw 'Google Images page support is missing.' }
+          if ($webImages -notmatch 'LooksLikeImageCandidate') { throw 'Generic image URL extraction is missing.' }
+          if ($webImages -notmatch 'IsAllowedWebUri\(current\)') { throw 'Redirects can leave the public-web allowlist.' }
+          if ($webImages -notmatch 'EnsurePublicHttpUriAsync') { throw 'Public/private network URL validation is missing.' }
           if ($webImages -notmatch 'WebImageCache') { throw 'Web artwork disk caching is missing.' }
           if ($webImages -notmatch 'AllowAutoRedirect = false') { throw 'Web artwork redirects are not being validated manually.' }
 
           $csvImport = Get-Content 'windows/CubicalCompare/Core/Project/CsvImportService.cs' -Raw
           if ($csvImport -notmatch 'TextFieldParser') { throw 'Quoted CSV parsing support is missing.' }
-          if ($csvImport -notmatch 'IsAllowedFlaticonSource') { throw 'CSV import does not reject non-Flaticon remote artwork.' }
+          if ($csvImport -notmatch 'IsAllowedWebSource') { throw 'CSV import does not validate general web artwork.' }
           if ($csvImport -notmatch 'WebImageSource\.ResolveToLocalFileAsync') { throw 'CSV web artwork prefetch is missing.' }
 
           $megaModels = Get-Content 'windows/CubicalCompare/Core/MegaPack/Zipack2Models.cs' -Raw
@@ -206,7 +210,8 @@ jobs:
           if ($megaModels -notmatch 'ImageSource') { throw 'MegaPack normalized web artwork field is missing.' }
           $megaImporter = Get-Content 'windows/CubicalCompare/Core/MegaPack/Zipack2Importer.cs' -Raw
           if ($megaImporter -notmatch 'hasWebArtwork') { throw 'URL-only MegaPack import is missing.' }
-          if ($megaImporter -notmatch 'rejectedWebCards') { throw 'MegaPack import does not reject non-Flaticon remote artwork.' }
+          if ($megaImporter -notmatch 'rejectedWebCards') { throw 'MegaPack import does not validate unsupported remote artwork.' }
+          if ($megaImporter -notmatch 'IsAllowedWebSource') { throw 'MegaPack import does not accept general public web artwork.' }
 
           $rendererWeb = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererEngine.cs' -Raw
           if ($rendererWeb -notmatch 'WebImageSource\.ResolveToLocalFile') { throw 'Renderer does not resolve app-wide web artwork.' }
