@@ -189,8 +189,9 @@
                         </Grid>
                     </Grid>
                 </Grid>
+            </Grid>
 
-                <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="1000" HorizontalAlignment="Left" Loaded="RendererPage_Loaded">
+            <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="1000" HorizontalAlignment="Left" Loaded="RendererPage_Loaded">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
