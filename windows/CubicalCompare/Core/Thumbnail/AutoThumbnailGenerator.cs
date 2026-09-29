@@ -358,14 +358,22 @@ public static class AutoThumbnailGenerator
         // Resolve Nimbus Sans through Skia's system-font manager so an installed Windows
         // Nimbus Sans is used rather than silently loading/bundling another font.
         var fontStyle = bold ? SKFontStyle.Bold : SKFontStyle.Normal;
-        var systemFamilies = SKFontManager.Default.GetFamilies();
+        var manager = SKFontManager.Default;
+        string? family = null;
+        for (var index = 0; index < manager.FamilyCount; index++)
+        {
+            var name = manager.GetFamilyName(index);
+            if (string.Equals(name, "Nimbus Sans", StringComparison.OrdinalIgnoreCase))
+            {
+                family = name;
+                break;
+            }
 
-        var family = systemFamilies.FirstOrDefault(name =>
-            string.Equals(name, "Nimbus Sans", StringComparison.OrdinalIgnoreCase))
-            ?? systemFamilies.FirstOrDefault(name =>
-                string.Equals(name, "Nimbus Sans L", StringComparison.OrdinalIgnoreCase))
-            ?? systemFamilies.FirstOrDefault(name =>
-                name.StartsWith("Nimbus Sans", StringComparison.OrdinalIgnoreCase));
+            if (string.Equals(name, "Nimbus Sans L", StringComparison.OrdinalIgnoreCase))
+                family ??= name;
+            else if (name.StartsWith("Nimbus Sans", StringComparison.OrdinalIgnoreCase))
+                family ??= name;
+        }
 
         var typeface = !string.IsNullOrWhiteSpace(family)
             ? SKTypeface.FromFamilyName(family, fontStyle)
