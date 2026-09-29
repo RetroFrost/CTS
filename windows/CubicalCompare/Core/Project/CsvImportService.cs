@@ -28,6 +28,7 @@ public static class CsvImportService
         ["crop_right"] = ["crop right", "image_crop_right", "crop_right"],
         ["crop_bottom"] = ["crop bottom", "image_crop_bottom", "crop_bottom"],
         ["image_layer"] = ["image layer", "image_layer", "layer"],
+        ["thumbnail_background"] = ["thumbnail background", "thumbnail_background", "background", "icon background", "transparent background"],
     };
 
     public static async Task<CsvImportResult> ImportAsync(
@@ -112,6 +113,7 @@ public static class CsvImportService
                 ImageCropRight = Math.Clamp(ParseDouble(Cell("crop_right"), 0), 0, .95),
                 ImageCropBottom = Math.Clamp(ParseDouble(Cell("crop_bottom"), 0), 0, .95),
                 ImageLayer = Cell("image_layer").Equals("front", StringComparison.OrdinalIgnoreCase) ? "front" : "behind",
+                ThumbnailBackgroundColor = Cell("thumbnail_background"),
             };
             cards.Add(card);
         }
