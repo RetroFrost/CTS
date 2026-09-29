@@ -354,17 +354,25 @@ public static class AutoThumbnailGenerator
 
     private static SKPaint TextPaint(float size, SKColor color, bool bold)
     {
-        SKTypeface typeface;
-        try
-        {
-            // Thumbnail typography is intentionally independent from the video/render font.
-            typeface = SKTypeface.FromFamilyName("Nimbus Sans", bold ? SKFontStyle.Bold : SKFontStyle.Normal);
-        }
-        catch
-        {
-            typeface = SKTypeface.FromFamilyName("Segoe UI", bold ? SKFontStyle.Bold : SKFontStyle.Normal)
-                ?? SKTypeface.Default;
-        }
+        // Thumbnail typography is intentionally independent from the video/render font.
+        // Resolve Nimbus Sans through Skia's system-font manager so an installed Windows
+        // Nimbus Sans is used rather than silently loading/bundling another font.
+        var fontStyle = bold ? SKFontStyle.Bold : SKFontStyle.Normal;
+        var systemFamilies = SKFontManager.Default.GetFamilies();
+
+        var family = systemFamilies.FirstOrDefault(name =>
+            string.Equals(name, "Nimbus Sans", StringComparison.OrdinalIgnoreCase))
+            ?? systemFamilies.FirstOrDefault(name =>
+                string.Equals(name, "Nimbus Sans L", StringComparison.OrdinalIgnoreCase))
+            ?? systemFamilies.FirstOrDefault(name =>
+                name.StartsWith("Nimbus Sans", StringComparison.OrdinalIgnoreCase));
+
+        var typeface = !string.IsNullOrWhiteSpace(family)
+            ? SKTypeface.FromFamilyName(family, fontStyle)
+            : null;
+
+        // Keep thumbnail generation functional on systems without Nimbus Sans installed.
+        typeface ??= SKTypeface.FromFamilyName("Segoe UI", fontStyle) ?? SKTypeface.Default;
 
         return new SKPaint
         {
