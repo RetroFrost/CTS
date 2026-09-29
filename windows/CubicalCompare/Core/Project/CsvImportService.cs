@@ -90,9 +90,9 @@ public static class CsvImportService
             var badgeHeader = Cell("badge_header");
             var description = Cell("description");
             var image = ResolveImageCell(Cell("image"), csvDirectory);
-            if (WebImageSource.IsRemoteSource(image) && !WebImageSource.IsAllowedFlaticonSource(image))
+            if (WebImageSource.IsRemoteSource(image) && !WebImageSource.IsAllowedWebSource(image))
             {
-                warnings.Add($"CSV row {rowIndex + 1}: image URL rejected. Only Flaticon /free-icon/... pages and direct cdn-icons-png.flaticon.com images are allowed.");
+                warnings.Add($"CSV row {rowIndex + 1}: image URL rejected. Use a public HTTP(S) image or image-page URL.");
                 image = string.Empty;
             }
 
