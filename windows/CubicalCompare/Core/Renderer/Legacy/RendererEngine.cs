@@ -508,9 +508,9 @@ public sealed class RendererEngine : IDisposable
         }
         catch
         {
-            // The compatibility report exposes the exact validation error. During a
-            // render we fail closed rather than silently changing authored badges.
-            return true;
+            // Recoverable SmartBadge failures must fall back to the built-in badge renderer.
+            // Returning true here suppresses the fallback and makes the badge vanish.
+            return false;
         }
 
         var startFrame = explicitStart ?? CardStart(spec, index);
@@ -522,11 +522,11 @@ public sealed class RendererEngine : IDisposable
         if (selected is null && settledHold)
             selected = sequence.FinalFrame();
         if (selected is null)
-            return true;
+            return false;
 
         var bitmap = DecodeSequenceBitmap(sequence, selected.Asset);
         if (bitmap is null)
-            return true;
+            return false;
 
         var width = drawWidth ?? sequence.Width;
         var height = drawHeight ?? sequence.Height;
