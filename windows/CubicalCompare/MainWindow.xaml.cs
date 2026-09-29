@@ -167,7 +167,11 @@ public sealed partial class MainWindow : Window
     private async void SetArtworkUrl_Click(object sender, RoutedEventArgs e)
     {
         if (CardsList.SelectedItem is not ProjectCardViewModel card) return;
+        await SetArtworkUrlForCardAsync(card);
+    }
 
+    private async Task SetArtworkUrlForCardAsync(ProjectCardViewModel card)
+    {
         var input = new TextBox
         {
             Text = WebImageSource.IsAllowedWebSource(card.ImagePath) ? card.ImagePath : string.Empty,
