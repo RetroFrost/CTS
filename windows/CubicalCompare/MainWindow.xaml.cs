@@ -12,6 +12,7 @@ using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
 using WinRT.Interop;
+using Windows.System;
 
 namespace CubicalCompare;
 
@@ -33,6 +34,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         InitializeThumbnailSettings();
+        RootNavigation.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(MainWindow_GlobalKeyDown), true);
 
         // The XAML reserves the right-side caption-button inset and declares a Mica
         // backdrop, so make the 64 px app bar the actual draggable title bar instead of
@@ -59,6 +61,32 @@ public sealed partial class MainWindow : Window
         };
     }
 
+    private void MainWindow_GlobalKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape) return;
+
+        if (_reliablePreviewDragMode != ReliablePreviewDragMode.None)
+            CancelReliablePreviewDrag();
+        if (_reliablePreviewActive)
+            DeactivateReliablePreviewTransform();
+        if (_previewTransformMode != PreviewTransformMode.None)
+            CancelPreviewTransformDrag();
+        if (_previewTransformActive)
+            DeactivatePreviewTransform();
+        if (_artworkPointerMode != ArtworkPointerMode.None)
+        {
+            _artworkPointerMode = ArtworkPointerMode.None;
+            _artworkPointerId = 0;
+            RefreshArtworkManipulator();
+        }
+
+        _thumbnailSelectionPart = ThumbnailSelectionPart.None;
+        _thumbnailSelectedCardId = null;
+        RefreshThumbnailInteractionOverlay();
+        RefreshThumbnailSelectedCardUi();
+        e.Handled = true;
+    }
+
     private void RootNavigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItemContainer?.Tag is not string tag) return;
@@ -77,6 +105,9 @@ public sealed partial class MainWindow : Window
     {
         ClearProjectCards();
         _pendingZipack2 = null;
+        _thumbnailSelectedCardIds.Clear();
+        _thumbnailSelectedCardId = null;
+        _thumbnailSelectionPart = ThumbnailSelectionPart.None;
         _projectShowBadges = true;
         _projectCreditsEnabled = true;
         _projectDurationSeconds = 0;
@@ -479,6 +510,7 @@ public sealed partial class MainWindow : Window
             RenderFontFamily = RenderFontSelection.CurrentFamily,
             RenderFontFile = RenderFontSelection.CurrentFile,
             ThumbnailCardCount = GetThumbnailCardCount(),
+            ThumbnailSelectedCardIds = _thumbnailSelectedCardIds.ToList(),
         };
         foreach (var card in Cards)
         {
@@ -500,6 +532,7 @@ public sealed partial class MainWindow : Window
                 ImageCropBottom = card.ImageCropBottom,
                 ImageLayer = card.ImageLayer,
                 ThumbnailBackgroundColor = card.ThumbnailBackgroundColor,
+                ThumbnailAccentColor = card.ThumbnailAccentColor,
             });
         }
         return project;
@@ -585,6 +618,7 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
     private string _description = "";
     private string _imagePath = "";
     private string _thumbnailBackgroundColor = "#05070E";
+    private string _thumbnailAccentColor = "#FF0F16";
     private BitmapImage? _preview;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -639,6 +673,12 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
     {
         get => _thumbnailBackgroundColor;
         set => Set(ref _thumbnailBackgroundColor, value);
+    }
+
+    public string ThumbnailAccentColor
+    {
+        get => _thumbnailAccentColor;
+        set => Set(ref _thumbnailAccentColor, value);
     }
 
     public BitmapImage? Preview
