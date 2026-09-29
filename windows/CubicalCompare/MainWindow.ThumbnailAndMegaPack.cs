@@ -122,6 +122,7 @@ public sealed partial class MainWindow
 
             _latestThumbnail = generated;
             ThumbnailPreviewImage.Source = await BitmapFromPngAsync(generated.Png);
+            RefreshThumbnailInteractionOverlay();
             ThumbnailStatusText.Text = $"Auto-generated 1280×720 · cards {string.Join(", ", generated.CardIndices.Select(x => x + 1))}";
         }
         catch (Exception ex)
@@ -348,9 +349,11 @@ public sealed partial class MainWindow
                     ImageCropBottom = card.ImageCropBottom,
                     ImageLayer = card.ImageLayer,
                     ThumbnailBackgroundColor = card.ThumbnailBackgroundColor,
+                    ThumbnailAccentColor = card.ThumbnailAccentColor,
                 });
             }
 
+            ApplyThumbnailSelection(project.ThumbnailSelectedCardIds);
             CardsList.SelectedIndex = 0;
             UpdateProjectIdentityUi();
             RefreshSoundtrackUi();
