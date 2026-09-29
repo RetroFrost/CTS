@@ -355,32 +355,23 @@ public static class AutoThumbnailGenerator
     private static SKPaint TextPaint(float size, SKColor color, bool bold)
     {
         // Thumbnail typography is intentionally independent from the video/render font.
-        // Resolve Nimbus Sans through Skia's system-font manager so an installed Windows
-        // Nimbus Sans is used rather than silently loading/bundling another font.
-        var fontStyle = bold ? SKFontStyle.Bold : SKFontStyle.Normal;
+        // Resolve Nimbus Sans through Skia's system font manager so an installed Windows
+        // Nimbus Sans is selected instead of bundling a substitute font.
         var manager = SKFontManager.Default;
-        string? family = null;
-        for (var index = 0; index < manager.FamilyCount; index++)
-        {
-            var name = manager.GetFamilyName(index);
-            if (string.Equals(name, "Nimbus Sans", StringComparison.OrdinalIgnoreCase))
-            {
-                family = name;
-                break;
-            }
+        var fontStyle = bold ? SKFontStyle.Bold : SKFontStyle.Normal;
 
-            if (string.Equals(name, "Nimbus Sans L", StringComparison.OrdinalIgnoreCase))
-                family ??= name;
-            else if (name.StartsWith("Nimbus Sans", StringComparison.OrdinalIgnoreCase))
-                family ??= name;
+        var typeface = manager.MatchFamily("Nimbus Sans", fontStyle);
+        if (typeface is null ||
+            !typeface.FamilyName.StartsWith("Nimbus Sans", StringComparison.OrdinalIgnoreCase))
+        {
+            typeface = manager.MatchFamily("Nimbus Sans L", fontStyle);
         }
 
-        var typeface = !string.IsNullOrWhiteSpace(family)
-            ? SKTypeface.FromFamilyName(family, fontStyle)
-            : null;
-
-        // Keep thumbnail generation functional on systems without Nimbus Sans installed.
-        typeface ??= SKTypeface.FromFamilyName("Segoe UI", fontStyle) ?? SKTypeface.Default;
+        if (typeface is null ||
+            !typeface.FamilyName.StartsWith("Nimbus Sans", StringComparison.OrdinalIgnoreCase))
+        {
+            typeface = SKTypeface.FromFamilyName("Segoe UI", fontStyle) ?? SKTypeface.Default;
+        }
 
         return new SKPaint
         {
