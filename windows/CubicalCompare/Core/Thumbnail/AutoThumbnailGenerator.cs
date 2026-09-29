@@ -282,7 +282,7 @@ public static class AutoThumbnailGenerator
     private static void DrawFallbackArtwork(SKCanvas canvas, ComparisonProject project, ComparisonCard card, SKRect destination)
     {
         var glyph = FallbackGlyph(card);
-        using var glow = TextPaint(project, 230, new SKColor(30, 162, 255), bold: true);
+        using var glow = TextPaint(230, new SKColor(30, 162, 255), bold: true);
         glow.TextAlign = SKTextAlign.Center;
         glow.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 18);
         canvas.DrawText(glyph, destination.MidX, destination.MidY + 78, glow);
@@ -312,7 +312,7 @@ public static class AutoThumbnailGenerator
 
     private static void DrawFittedCentredText(SKCanvas canvas, ComparisonProject project, string text, SKRect box, SKColor color, float preferred, float minimum, bool bold)
     {
-        using var paint = TextPaint(project, preferred, color, bold);
+        using var paint = TextPaint(preferred, color, bold);
         paint.TextAlign = SKTextAlign.Center;
         var measured = Math.Max(1f, paint.MeasureText(text));
         if (measured > box.Width)
