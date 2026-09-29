@@ -287,7 +287,7 @@ public static class AutoThumbnailGenerator
         glow.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 18);
         canvas.DrawText(glyph, destination.MidX, destination.MidY + 78, glow);
 
-        using var text = TextPaint(project, 230, SKColors.White, bold: true);
+        using var text = TextPaint(230, SKColors.White, bold: true);
         text.TextAlign = SKTextAlign.Center;
         var measured = Math.Max(1f, text.MeasureText(glyph));
         if (measured > destination.Width * .86f)
