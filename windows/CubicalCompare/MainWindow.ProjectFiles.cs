@@ -137,9 +137,11 @@ public sealed partial class MainWindow
                     ImageCropBottom = card.ImageCropBottom,
                     ImageLayer = card.ImageLayer,
                     ThumbnailBackgroundColor = card.ThumbnailBackgroundColor,
+                    ThumbnailAccentColor = card.ThumbnailAccentColor,
                 });
             }
 
+            ApplyThumbnailSelection(project.ThumbnailSelectedCardIds);
             CardsList.SelectedIndex = 0;
             RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
             RefreshTimelineRange();
