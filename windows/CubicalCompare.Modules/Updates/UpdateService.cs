@@ -1037,19 +1037,19 @@ function Stop-ConflictingCubicalCompareProcesses {
     do {
         $changed = $false
         foreach ($process in $snapshot) {
-            $pid = [int]$process.ProcessId
+            $processId = [int]$process.ProcessId
             $parentPid = [int]$process.ParentProcessId
-            if ($pid -eq $selfPid -or $targets.Contains($pid)) { continue }
+            if ($processId -eq $selfPid -or $targets.Contains($processId)) { continue }
             if ($targets.Contains($parentPid)) {
-                [void]$targets.Add($pid)
+                [void]$targets.Add($processId)
                 $changed = $true
             }
         }
     } while ($changed)
 
-    foreach ($pid in $targets) {
+    foreach ($processId in $targets) {
         try {
-            Stop-Process -Id $pid -Force -ErrorAction Stop
+            Stop-Process -Id $processId -Force -ErrorAction Stop
         }
         catch {
         }
