@@ -144,6 +144,10 @@ jobs:
           if ($updateService -notmatch 'includeCurrentVersion:\s*true') { throw 'GitHub ZIP repair cannot re-apply the current release.' }
           if ($updateService -notmatch 'layout\.NeedsRepair') { throw 'Normal updater does not detect damaged install topology.' }
           if ($updateService -notmatch 'var repair = BestPortableFallback\(release\)') { throw 'Damaged installs must prefer verified ZIP recovery before Setup.exe.' }
+          if ($updateService -notmatch 'Stop-ConflictingCubicalCompareProcesses') { throw 'Portable ZIP updater does not close lingering Cubical Compare processes before replacement.' }
+          if ($updateService -notmatch "'/XJ'") { throw 'Portable ZIP updater does not exclude junction traversal during replacement.' }
+          if ($updateService -notmatch 'robocopy\.log') { throw 'Portable ZIP updater does not retain Robocopy diagnostics.' }
+          if ($updateService -notmatch 'after 3 attempts') { throw 'Portable ZIP updater lacks bounded Robocopy retry handling.' }
 
           $nativeSetup = Get-Content 'windows/CubicalCompare.InstallerBootstrap/NativeSetup.cpp' -Raw
           if ($nativeSetup -notmatch 'MoveCurrentDirectoryOutsideInstall') { throw 'Setup does not release an inherited install-folder current-directory lock.' }
