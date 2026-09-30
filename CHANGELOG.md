@@ -1,4 +1,11 @@
 # Changelog
+
+## 4.2.3 — Windows updater hotfix
+
+- Hardened portable ZIP updates against lingering Cubical Compare renderer/export helper processes.
+- Robocopy-based replacement now retries after process cleanup, excludes junction traversal, captures detailed failure output, and records the copy log for diagnostics.
+- The visible application version remains **4.2.3** while the Windows package/feed revision advances independently.
+
 ## 4.2.1.19 — Renderer load preview fix
 
 - Valid Renderer v3 packages no longer appear broken just because frame 0 is intentionally blank.

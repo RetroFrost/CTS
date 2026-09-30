@@ -1004,13 +1004,89 @@ $ErrorActionPreference = 'Stop'
 $backup = Join-Path $WorkRoot 'backup'
 $completedMarker = Join-Path $WorkRoot 'completed.txt'
 
+function Test-PathInsideRoot([string]$Candidate, [string]$Root) {
+    if ([string]::IsNullOrWhiteSpace($Candidate)) { return $false }
+    try {
+        $fullCandidate = [System.IO.Path]::GetFullPath($Candidate).TrimEnd('\')
+        $fullRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+        return $fullCandidate.StartsWith($fullRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Stop-ConflictingCubicalCompareProcesses {
+    $selfPid = $PID
+    $snapshot = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    $targets = [System.Collections.Generic.HashSet[int]]::new()
+
+    foreach ($process in $snapshot) {
+        if ([int]$process.ProcessId -eq $selfPid) { continue }
+
+        $imagePath = [string]$process.ExecutablePath
+        $name = [System.IO.Path]::GetFileName($imagePath)
+        $matchesApp = $name.Equals($ExecutableName, [System.StringComparison]::OrdinalIgnoreCase)
+        $matchesTarget = Test-PathInsideRoot $imagePath $TargetDirectory
+
+        if ($matchesApp -or $matchesTarget) {
+            [void]$targets.Add([int]$process.ProcessId)
+        }
+    }
+
+    do {
+        $changed = $false
+        foreach ($process in $snapshot) {
+            $pid = [int]$process.ProcessId
+            $parentPid = [int]$process.ParentProcessId
+            if ($pid -eq $selfPid -or $targets.Contains($pid)) { continue }
+            if ($targets.Contains($parentPid)) {
+                [void]$targets.Add($pid)
+                $changed = $true
+            }
+        }
+    } while ($changed)
+
+    foreach ($pid in $targets) {
+        try {
+            Stop-Process -Id $pid -Force -ErrorAction Stop
+        }
+        catch {
+        }
+    }
+
+    if ($targets.Count -gt 0) {
+        Start-Sleep -Milliseconds 750
+    }
+}
+
 function Invoke-RobocopyChecked([string]$Source, [string]$Destination, [switch]$Mirror) {
     New-Item -ItemType Directory -Path $Destination -Force | Out-Null
     $arguments = @($Source, $Destination)
     if ($Mirror) { $arguments += '/MIR' } else { $arguments += '/E' }
-    $arguments += @('/R:5','/W:1','/COPY:DAT','/DCOPY:DAT','/NFL','/NDL','/NJH','/NJS','/NP')
-    & robocopy.exe @arguments | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "Robocopy failed with exit code $LASTEXITCODE." }
+    $arguments += @('/R:20','/W:1','/COPY:DAT','/DCOPY:DAT','/XJ','/FFT','/NFL','/NDL','/NJH','/NJS','/NP')
+
+    $logPath = Join-Path $WorkRoot 'robocopy.log'
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $output = @(& robocopy.exe @arguments 2>&1)
+        $code = $LASTEXITCODE
+        if ($output.Count -gt 0) {
+            $output | Add-Content -LiteralPath $logPath -Encoding UTF8
+        }
+
+        if ($code -lt 8) {
+            return
+        }
+
+        if ($attempt -lt 3) {
+            Stop-ConflictingCubicalCompareProcesses
+            Start-Sleep -Seconds $attempt
+        }
+        else {
+            $detail = ($output | Select-Object -Last 12) -join [Environment]::NewLine
+            throw "Robocopy failed with exit code $code after 3 attempts. See $logPath. $detail"
+        }
+    }
 }
 
 try {
