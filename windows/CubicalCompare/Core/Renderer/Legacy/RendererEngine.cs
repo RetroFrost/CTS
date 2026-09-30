@@ -1657,17 +1657,51 @@ public sealed class RendererEngine : IDisposable
 
     private void DrawV3ProjectBadgeText(SKCanvas canvas, StudioProject project, RendererObjectV3 obj, JsonElement resource, Dictionary<string, object?> props, float opacity)
     {
-        var index = CardIndex(obj); if (index == null || index < 0 || index >= project.Cards.Count) return;
+        var index = CardIndex(obj);
+        if (index == null || index < 0 || index >= project.Cards.Count) return;
+
         var card = project.Cards[index.Value];
         var width = (float)Number(Get(props, "width"), resource.Double("width", 477));
-        var height = (float)Number(Get(props, "height"), resource.Double("height", 420));
-        var x = (float)Number(Get(props, "x"), resource.Double("x", 0)); var y = (float)Number(Get(props, "y"), resource.Double("y", 0));
-        using var paint = TextPaint(project, 58, WithAlpha(SKColors.White, opacity), true);
-        var center = x + width / 2;
-        if (!string.IsNullOrWhiteSpace(card.BadgeHeader)) { paint.TextSize = 24; DrawCentered(canvas, card.BadgeHeader, center, y + height * 0.41f, paint, width * 0.56f); }
-        var words = Regex.Split(card.Value.Trim(), "\\s+").Where(v => v.Length > 0).ToArray();
-        paint.TextSize = 58; DrawCentered(canvas, words.FirstOrDefault() ?? "", center, y + height * 0.60f, paint, width * 0.56f);
-        if (words.Length > 1) { paint.TextSize = 28; DrawCentered(canvas, string.Join(' ', words.Skip(1)), center, y + height * 0.72f, paint, width * 0.56f); }
+        var x = (float)Number(Get(props, "x"), resource.Double("x", 0));
+        var y = (float)Number(Get(props, "y"), resource.Double("y", 0));
+        var center = x + width / 2f;
+        var maxWidth = width * (float)Number(Get(props, "maxWidthRatio"), resource.Double("maxWidthRatio", 0.72));
+
+        var numberY = (float)Number(Get(props, "numberY"), resource.Double("numberY", 188));
+        var headerY = (float)Number(Get(props, "headerY"), resource.Double("headerY", 234));
+        var suffixY = (float)Number(Get(props, "suffixY"), resource.Double("suffixY", 277));
+        var numberSize = (float)Number(Get(props, "numberSize"), resource.Double("numberSize", 80));
+        var headerSize = (float)Number(Get(props, "headerSize"), resource.Double("headerSize", 34));
+        var suffixSize = (float)Number(Get(props, "suffixSize"), resource.Double("suffixSize", 34));
+        var color = WithAlpha(ParseColor(
+            StringValue(Get(props, "color", "textColor")) ?? resource.String("color", "#FFFFFF"),
+            SKColors.White), opacity);
+
+        var words = Regex.Split(card.Value.Trim(), "\\s+")
+            .Where(v => v.Length > 0)
+            .ToArray();
+        var primary = words.FirstOrDefault() ?? "";
+        var suffix = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "";
+
+        using var paint = TextPaint(project, numberSize, color, true);
+
+        if (!string.IsNullOrWhiteSpace(primary))
+        {
+            paint.TextSize = numberSize;
+            DrawCentered(canvas, primary, center, y + numberY, paint, maxWidth);
+        }
+
+        if (!string.IsNullOrWhiteSpace(card.BadgeHeader))
+        {
+            paint.TextSize = headerSize;
+            DrawCentered(canvas, card.BadgeHeader.Trim().ToUpperInvariant(), center, y + headerY, paint, maxWidth);
+        }
+
+        if (!string.IsNullOrWhiteSpace(suffix))
+        {
+            paint.TextSize = suffixSize;
+            DrawCentered(canvas, suffix, center, y + suffixY, paint, maxWidth);
+        }
     }
 
     private void DrawV3Rect(SKCanvas canvas, JsonElement resource, Dictionary<string, object?> props, float opacity)
@@ -1814,18 +1848,47 @@ public sealed class RendererEngine : IDisposable
                 tx = MathF.Round(tx);
                 ty = MathF.Round(ty);
             }
-            var m = new SKMatrix { ScaleX = (float)Number(Get(props, "matrix.m00", "m00"), 1), SkewX = (float)Number(Get(props, "matrix.m01", "m01"), 0), TransX = tx, SkewY = (float)Number(Get(props, "matrix.m10", "m10"), 0), ScaleY = (float)Number(Get(props, "matrix.m11", "m11"), 1), TransY = ty, Persp2 = 1 };
-            canvas.Concat(ref m); return;
+
+            var m = new SKMatrix
+            {
+                ScaleX = (float)Number(Get(props, "matrix.m00", "m00"), 1),
+                SkewX = (float)Number(Get(props, "matrix.m01", "m01"), 0),
+                TransX = tx,
+                SkewY = (float)Number(Get(props, "matrix.m10", "m10"), 0),
+                ScaleY = (float)Number(Get(props, "matrix.m11", "m11"), 1),
+                TransY = ty,
+                Persp2 = 1,
+            };
+            canvas.Concat(ref m);
+            return;
         }
-        var x = (float)Number(Get(props, "x", "transform.x", "translateX"), 0); var y = (float)Number(Get(props, "y", "transform.y", "translateY"), 0);
+
+        var x = (float)Number(Get(props, "x", "transform.x", "translateX"), 0);
+        var y = (float)Number(Get(props, "y", "transform.y", "translateY"), 0);
         if (Truthy(Get(props, "pixelSnap", "transform.pixelSnap"), false))
         {
             x = MathF.Round(x);
             y = MathF.Round(y);
         }
-        var sx = (float)Number(Get(props, "scaleX", "transform.scaleX", "scale"), 1); var sy = (float)Number(Get(props, "scaleY", "transform.scaleY", "scale"), 1); var rotation = (float)Number(Get(props, "rotation", "transform.rotation"), 0);
-        canvas.Translate(x, y); if (rotation != 0) canvas.RotateDegrees(rotation); if (sx != 1 || sy != 1) canvas.Scale(sx, sy);
+
+        var sx = (float)Number(Get(props, "scaleX", "transform.scaleX", "scale"), 1);
+        var sy = (float)Number(Get(props, "scaleY", "transform.scaleY", "scale"), 1);
+        var rotation = (float)Number(Get(props, "rotation", "transform.rotation"), 0);
+        var originX = (float)Number(Get(props, "transform.originX", "originX"), 0);
+        var originY = (float)Number(Get(props, "transform.originY", "originY"), 0);
+
+        if (originX != 0 || originY != 0)
+            canvas.Translate(x + originX, y + originY);
+        else
+            canvas.Translate(x, y);
+
+        if (rotation != 0) canvas.RotateDegrees(rotation);
+        if (sx != 1 || sy != 1) canvas.Scale(sx, sy);
+
+        if (originX != 0 || originY != 0)
+            canvas.Translate(-originX, -originY);
     }
+
     private void ApplyClip(SKCanvas canvas, Dictionary<string, object?> props)
     {
         var antialias = Truthy(Get(props, "clip.antialias", "mask.antialias"), false);
