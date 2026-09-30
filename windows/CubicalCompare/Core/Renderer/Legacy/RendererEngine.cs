@@ -793,7 +793,7 @@ public sealed class RendererEngine : IDisposable
                 obj.Kind is "openingCard" or "card" &&
                 type != "relationships-card")
             {
-                DrawV3ProjectCard(canvas, project, obj, resource, (float)opacity);
+                DrawV3ProjectCard(canvas, project, obj, resource, bound, (float)opacity);
                 return;
             }
             if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) && obj.Kind is "openingText" or "badgeText" or "laterText") { DrawV3ProjectBadgeText(canvas, project, obj, resource, bound, (float)opacity); return; }
@@ -1632,27 +1632,159 @@ public sealed class RendererEngine : IDisposable
         };
     }
 
-    private void DrawV3ProjectCard(SKCanvas canvas, StudioProject project, RendererObjectV3 obj, JsonElement resource, float opacity)
+    private void DrawV3ProjectCard(
+        SKCanvas canvas,
+        StudioProject project,
+        RendererObjectV3 obj,
+        JsonElement resource,
+        Dictionary<string, object?> props,
+        float opacity)
     {
-        var index = CardIndex(obj); if (index == null || index < 0 || index >= project.Cards.Count) return;
+        var index = CardIndex(obj);
+        if (index == null || index < 0 || index >= project.Cards.Count) return;
+
         var card = project.Cards[index.Value];
-        var width = (float)resource.Double("width", 470); var height = (float)resource.Double("height", 1080);
-        var top = (float)resource.Double("topFieldHeight", 476); var titleH = string.IsNullOrWhiteSpace(card.Title) ? 0 : (float)resource.Double("titleHeight", 101);
-        using var paint = new SKPaint { IsAntialias = true, Color = WithAlpha(ParseColor(resource.String("topBackground", "#1d1d1d"), new SKColor(29,29,29)), opacity) };
+        var width = (float)Number(Get(props, "width"), resource.Double("width", 470));
+        var height = (float)Number(Get(props, "height"), resource.Double("height", 1080));
+        var top = (float)Number(Get(props, "topFieldHeight"), resource.Double("topFieldHeight", 476));
+        var titleH = string.IsNullOrWhiteSpace(card.Title)
+            ? 0
+            : (float)Number(Get(props, "titleHeight"), resource.Double("titleHeight", 101));
+
+        var artworkMode = resource.String("artworkMode", "legacy");
+        if (!artworkMode.Equals("top-field", StringComparison.OrdinalIgnoreCase))
+        {
+            using var legacyPaint = new SKPaint
+            {
+                IsAntialias = true,
+                Color = WithAlpha(ParseColor(
+                    resource.String("topBackground", "#1d1d1d"),
+                    new SKColor(29, 29, 29)), opacity)
+            };
+            legacyPaint.Color = WithAlpha(ParseColor(
+                resource.String("topBackground", "#1d1d1d"),
+                new SKColor(29, 29, 29)), opacity);
+            canvas.DrawRect(0, 0, width, top, legacyPaint);
+            var legacyCursor = top;
+            if (titleH > 0)
+            {
+                legacyPaint.Color = WithAlpha(ParseColor(
+                    resource.String("titleBackground", "#d8d6d0"),
+                    new SKColor(216, 214, 208)), opacity);
+                canvas.DrawRect(0, legacyCursor, width, titleH, legacyPaint);
+                DrawFitText(
+                    canvas,
+                    project,
+                    card.Title,
+                    new SKRect(12, legacyCursor + 4, width - 12, legacyCursor + titleH - 4),
+                    WithAlpha(ParseColor(
+                        resource.String("titleText", "#111111"),
+                        new SKColor(17, 17, 17)), opacity),
+                    (float)resource.Double("titleTextSize", 31),
+                    true,
+                    2);
+                legacyCursor += titleH;
+            }
+
+            legacyPaint.Color = WithAlpha(ParseColor(
+                resource.String("descriptionBackground", "#6c6760"),
+                new SKColor(108, 103, 96)), opacity);
+            canvas.DrawRect(0, legacyCursor, width, Math.Max(0, height - legacyCursor), legacyPaint);
+
+            var descH = string.IsNullOrWhiteSpace(card.Description)
+                ? 0
+                : Math.Min(165, (height - legacyCursor) * 0.34f);
+            if (descH > 0)
+                DrawFitText(
+                    canvas,
+                    project,
+                    card.Description,
+                    new SKRect(14, legacyCursor + 8, width - 14, legacyCursor + descH - 5),
+                    WithAlpha(ParseColor(
+                        resource.String("descriptionText", "#e6e3dd"),
+                        new SKColor(230, 227, 221)), opacity),
+                    (float)resource.Double("descriptionTextSize", 23),
+                    false,
+                    4);
+
+            if (!string.IsNullOrWhiteSpace(card.Image))
+                DrawImageContain(
+                    canvas,
+                    card,
+                    new SKRect(16, legacyCursor + descH + 8, width - 16, height - 16),
+                    opacity);
+            return;
+        }
+
+        // Reference-video card contract: artwork fills the upper field, followed by
+        // a centered title band and a centered description band. Renderer v3 keeps
+        // the live card image/data while the source-measured layout stays fixed.
+        var topBackground = ParseColor(
+            resource.String("topBackground", "#0068C9"),
+            new SKColor(0, 104, 201));
+        var titleBackground = ParseColor(
+            resource.String("titleBackground", "#F2F2F2"),
+            new SKColor(242, 242, 242));
+        var titleText = ParseColor(
+            resource.String("titleText", "#111111"),
+            new SKColor(17, 17, 17));
+        var descriptionBackground = ParseColor(
+            resource.String("descriptionBackground", "#635E57"),
+            new SKColor(99, 94, 87));
+        var descriptionText = ParseColor(
+            resource.String("descriptionText", "#F8F7F4"),
+            new SKColor(248, 247, 244));
+
+        using var paint = new SKPaint { IsAntialias = false, Style = SKPaintStyle.Fill };
+        paint.Color = WithAlpha(topBackground, opacity);
         canvas.DrawRect(0, 0, width, top, paint);
+
+        if (!string.IsNullOrWhiteSpace(card.Image) && top > 0 && width > 0)
+        {
+            DrawImageCover(
+                canvas,
+                card,
+                new SKRect(0, 0, width, top),
+                new SKRect(0, 0, width, top),
+                opacity);
+        }
+
         var cursor = top;
         if (titleH > 0)
         {
-            paint.Color = WithAlpha(ParseColor(resource.String("titleBackground", "#d8d6d0"), new SKColor(216,214,208)), opacity);
+            paint.Color = WithAlpha(titleBackground, opacity);
             canvas.DrawRect(0, cursor, width, titleH, paint);
-            DrawFitText(canvas, project, card.Title, new SKRect(12, cursor + 4, width - 12, cursor + titleH - 4), WithAlpha(ParseColor(resource.String("titleText", "#111111"), new SKColor(17,17,17)), opacity), (float)resource.Double("titleTextSize", 31), true, 2);
+
+            DrawFitTextCentered(
+                canvas,
+                project,
+                card.Title,
+                new SKRect(10, cursor + 3, width - 10, cursor + titleH - 3),
+                WithAlpha(titleText, opacity),
+                (float)resource.Double("titleTextSize", 45),
+                true,
+                2);
             cursor += titleH;
         }
-        paint.Color = WithAlpha(ParseColor(resource.String("descriptionBackground", "#6c6760"), new SKColor(108,103,96)), opacity);
+
+        paint.Color = WithAlpha(descriptionBackground, opacity);
         canvas.DrawRect(0, cursor, width, Math.Max(0, height - cursor), paint);
-        var descH = string.IsNullOrWhiteSpace(card.Description) ? 0 : Math.Min(165, (height - cursor) * 0.34f);
-        if (descH > 0) DrawFitText(canvas, project, card.Description, new SKRect(14, cursor + 8, width - 14, cursor + descH - 5), WithAlpha(ParseColor(resource.String("descriptionText", "#e6e3dd"), new SKColor(230,227,221)), opacity), (float)resource.Double("descriptionTextSize", 23), false, 4);
-        if (!string.IsNullOrWhiteSpace(card.Image)) DrawImageContain(canvas, card, new SKRect(16, cursor + descH + 8, width - 16, height - 16), opacity);
+
+        if (!string.IsNullOrWhiteSpace(card.Description))
+        {
+            DrawFitTextCentered(
+                canvas,
+                project,
+                card.Description,
+                new SKRect(10, cursor + 7, width - 10, height - 7),
+                WithAlpha(descriptionText, opacity),
+                (float)resource.Double("descriptionTextSize", 25),
+                false,
+                (int)Math.Clamp(
+                    resource.Double("descriptionMaxLines", 3),
+                    1,
+                    8));
+        }
     }
 
     private void DrawV3ProjectBadgeText(SKCanvas canvas, StudioProject project, RendererObjectV3 obj, JsonElement resource, Dictionary<string, object?> props, float opacity)
@@ -2051,6 +2183,48 @@ public sealed class RendererEngine : IDisposable
         while (size >= 12) { paint.TextSize = size; lines = Wrap(text, paint, box.Width); if (lines.Count <= maxLines && lines.Count * size * 1.15f <= box.Height) break; size -= 1; }
         paint.TextSize = size; var y = box.Top + size; foreach (var line in lines.Take(maxLines)) { canvas.DrawText(line, box.Left, y, paint); y += size * 1.15f; }
     }
+    private void DrawFitTextCentered(
+        SKCanvas canvas,
+        StudioProject project,
+        string text,
+        SKRect box,
+        SKColor color,
+        float preferred,
+        bool bold,
+        int maxLines)
+    {
+        if (string.IsNullOrWhiteSpace(text) || box.Width <= 1 || box.Height <= 1)
+            return;
+
+        using var paint = TextPaint(project, preferred, color, bold);
+        var size = preferred;
+        List<string> lines = [];
+
+        while (size >= 12)
+        {
+            paint.TextSize = size;
+            lines = Wrap(text, paint, box.Width);
+            if (lines.Count <= maxLines && lines.Count * size * 1.10f <= box.Height)
+                break;
+            size -= 1;
+        }
+
+        paint.TextSize = size;
+        paint.TextAlign = SKTextAlign.Center;
+        var lineHeight = size * 1.10f;
+        var count = Math.Min(lines.Count, maxLines);
+        var totalHeight = count * lineHeight;
+        var y = box.MidY - totalHeight / 2f - paint.FontMetrics.Ascent * 0.08f;
+
+        foreach (var line in lines.Take(count))
+        {
+            canvas.DrawText(line, box.MidX, y, paint);
+            y += lineHeight;
+        }
+
+        paint.TextAlign = SKTextAlign.Left;
+    }
+
     private static List<string> Wrap(string text, SKPaint paint, float width)
     {
         var output = new List<string>(); foreach (var paragraph in text.Replace("\r", "").Split('\n')) { var current = ""; foreach (var word in paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries)) { var candidate = current.Length == 0 ? word : current + " " + word; if (paint.MeasureText(candidate) <= width || current.Length == 0) current = candidate; else { output.Add(current); current = word; } } if (current.Length > 0) output.Add(current); } return output;
