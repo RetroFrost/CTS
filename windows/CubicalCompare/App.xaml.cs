@@ -77,6 +77,7 @@ public partial class App : Application
                     mainWindow.InitializeFinalReleaseUi();
                     mainWindow.InitializeAdaptiveExportUi();
                     mainWindow.InitializeInterfaceReview();
+                    mainWindow.InitializeCsvHelper();
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
