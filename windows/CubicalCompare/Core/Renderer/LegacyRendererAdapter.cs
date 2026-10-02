@@ -469,21 +469,43 @@ public sealed class LegacyRendererAdapter : IDisposable
                     false));
             }
 
-            if (!exact.Any(region => region.Field == "value") &&
+            if (!exact.Any(region => region.Field == "badgeValue") &&
                 project.ShowBadges &&
-                !string.IsNullOrWhiteSpace(card.Value) &&
+                !string.IsNullOrWhiteSpace(card.BadgeValue) &&
                 geometry.BadgeWidth > 0 &&
                 geometry.BadgeHeight > 0)
             {
                 result.Add(new PreviewTextRegion(
                     cardIndex,
-                    "value",
+                    "badgeValue",
                     geometry.BadgeX + geometry.BadgeWidth * .12,
                     geometry.BadgeY + geometry.BadgeHeight * .35,
                     geometry.BadgeWidth * .76,
-                    geometry.BadgeHeight * .44,
+                    geometry.BadgeHeight * .26,
                     0,
                     Math.Max(16, 58 * Math.Max(.25, _spec.BadgeScale)),
+                    true,
+                    "center",
+                    "center",
+                    _spec.BadgeTextColor,
+                    false));
+            }
+
+            if (!exact.Any(region => region.Field == "badgeUnit") &&
+                project.ShowBadges &&
+                !string.IsNullOrWhiteSpace(card.BadgeUnit) &&
+                geometry.BadgeWidth > 0 &&
+                geometry.BadgeHeight > 0)
+            {
+                result.Add(new PreviewTextRegion(
+                    cardIndex,
+                    "badgeUnit",
+                    geometry.BadgeX + geometry.BadgeWidth * .12,
+                    geometry.BadgeY + geometry.BadgeHeight * .60,
+                    geometry.BadgeWidth * .76,
+                    geometry.BadgeHeight * .24,
+                    0,
+                    Math.Max(14, 34 * Math.Max(.25, _spec.BadgeScale)),
                     true,
                     "center",
                     "center",
