@@ -834,6 +834,8 @@ public sealed class LegacyRendererAdapter : IDisposable
                 "title" => card.Title,
                 "description" => card.Description,
                 "badgeHeader" => card.BadgeHeader,
+                "badgeValue" => card.BadgeValue,
+                "badgeUnit" => card.BadgeUnit,
                 "value" => card.Value,
                 _ => "",
             };
@@ -862,7 +864,8 @@ public sealed class LegacyRendererAdapter : IDisposable
         "title" => "title",
         "description" or "desc" => "description",
         "header" or "badgeheader" or "badge-header" => "badgeHeader",
-        "value" or "primary" or "number" or "unit" or "suffix" or "fullvalue" or "full-value" or "raw" or "jsparse" => "value",
+        "value" or "primary" or "number" or "badgevalue" or "badge-value" or "fullvalue" or "full-value" or "raw" or "jsparse" => "badgeValue",
+        "unit" or "suffix" or "badgeunit" or "badge-unit" => "badgeUnit",
         _ => null,
     };
 
