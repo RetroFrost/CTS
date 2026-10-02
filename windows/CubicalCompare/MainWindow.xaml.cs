@@ -624,8 +624,9 @@ public sealed partial class MainWindow : Window
 public sealed class ProjectCardViewModel : INotifyPropertyChanged
 {
     private string _title = "Untitled";
-    private string _value = "";
+    private string _badgeValue = "";
     private string _badgeHeader = "";
+    private string _badgeUnit = "";
     private string _description = "";
     private string _imagePath = "";
     private string _thumbnailBackgroundColor = "#05070E";
@@ -640,16 +641,37 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
         set => Set(ref _title, value);
     }
 
+    // Value remains a legacy alias for BadgeValue so existing renderer/import code keeps working.
     public string Value
     {
-        get => _value;
-        set => Set(ref _value, value);
+        get => _badgeValue;
+        set => SetBadgeValue(value);
     }
 
     public string BadgeHeader
     {
         get => _badgeHeader;
         set => Set(ref _badgeHeader, value);
+    }
+
+    public string BadgeValue
+    {
+        get => _badgeValue;
+        set => SetBadgeValue(value);
+    }
+
+    public string BadgeUnit
+    {
+        get => _badgeUnit;
+        set => Set(ref _badgeUnit, value);
+    }
+
+    private void SetBadgeValue(string value)
+    {
+        if (EqualityComparer<string>.Default.Equals(_badgeValue, value)) return;
+        _badgeValue = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Value)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BadgeValue)));
     }
 
     public string Description
