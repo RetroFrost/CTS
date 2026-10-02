@@ -1161,7 +1161,7 @@ public sealed class RendererEngine : IDisposable
     {
         var words = Regex.Split(card.Value.Trim(), "\\s+").Where(x => x.Length > 0).ToArray();
         var primary = words.FirstOrDefault() ?? "";
-        var unit = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "People";
+        var unit = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "";
         var header = string.IsNullOrWhiteSpace(card.BadgeHeader) ? "1 in" : card.BadgeHeader.Trim();
 
         void DrawLine(string value, float y, float size, float maxWidth)
@@ -1635,7 +1635,7 @@ public sealed class RendererEngine : IDisposable
             : words.FirstOrDefault() ?? "";
         var unit = !string.IsNullOrWhiteSpace(card.BadgeUnit)
             ? card.BadgeUnit.Trim()
-            : (words.Length > 1 ? string.Join(' ', words.Skip(1)) : "People");
+            : (words.Length > 1 ? string.Join(' ', words.Skip(1)) : "");
 
         return source.Trim().ToLowerInvariant() switch
         {
