@@ -12,6 +12,8 @@ public static class ProjectFileService
     private const int MaxCardTitleLength = 1_000;
     private const int MaxCardValueLength = 1_000;
     private const int MaxBadgeHeaderLength = 1_000;
+    private const int MaxBadgeValueLength = 1_000;
+    private const int MaxBadgeUnitLength = 1_000;
     private const int MaxDescriptionLength = 100_000;
     private const int MaxPathLength = 32_000;
 
@@ -132,6 +134,27 @@ public static class ProjectFileService
             card.Title = NormalizeText(card.Title, "Untitled", MaxCardTitleLength);
             card.Value = NormalizeText(card.Value, string.Empty, MaxCardValueLength);
             card.BadgeHeader = NormalizeText(card.BadgeHeader, string.Empty, MaxBadgeHeaderLength);
+            card.BadgeValue = NormalizeText(card.BadgeValue, string.Empty, MaxBadgeValueLength);
+            card.BadgeUnit = NormalizeText(card.BadgeUnit, string.Empty, MaxBadgeUnitLength);
+
+            // Migrate the legacy combined Value field into the explicit badge fields.
+            // Existing projects such as "7M YEARS AGO" become BadgeValue="7M" and
+            // BadgeUnit="YEARS AGO" without losing the legacy Value representation.
+            if (string.IsNullOrWhiteSpace(card.BadgeValue) && !string.IsNullOrWhiteSpace(card.Value))
+            {
+                var legacyParts = card.Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                card.BadgeValue = legacyParts.FirstOrDefault() ?? string.Empty;
+                card.BadgeUnit = legacyParts.Length > 1
+                    ? string.Join(' ', legacyParts.Skip(1))
+                    : card.BadgeUnit;
+            }
+            else if (string.IsNullOrWhiteSpace(card.Value) &&
+                     (!string.IsNullOrWhiteSpace(card.BadgeValue) || !string.IsNullOrWhiteSpace(card.BadgeUnit)))
+            {
+                card.Value = string.Join(' ', new[] { card.BadgeValue, card.BadgeUnit }
+                    .Where(value => !string.IsNullOrWhiteSpace(value)));
+            }
+
             card.Description = NormalizeText(card.Description, string.Empty, MaxDescriptionLength, trim: false);
             card.ImagePath = NormalizeText(card.ImagePath, string.Empty, MaxPathLength);
             card.ImageLayer = NormalizeText(card.ImageLayer, "behind", 64).ToLowerInvariant();
