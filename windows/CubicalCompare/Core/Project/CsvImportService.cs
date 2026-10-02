@@ -95,6 +95,7 @@ public static class CsvImportService
             var badgeValue = Cell("badge_value");
             var badgeHeader = Cell("badge_header");
             var badgeUnit = Cell("badge_unit");
+            var description = Cell("description");
             if (string.IsNullOrWhiteSpace(badgeValue))
                 badgeValue = legacyValue;
             var image = ResolveImageCell(Cell("image"), csvDirectory);
