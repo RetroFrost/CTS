@@ -750,7 +750,7 @@ public sealed class RendererEngine : IDisposable
         if (index is int b && (smartBadge || obj.Kind is "openingBadge" or "badge" or "laterBadge" or "openingText" or "badgeText" or "laterText" or "openingShine" or "shineBroad" or "shineCore" or "shadow" or "relationshipsBadge"))
         {
             var card = project.Cards[b];
-            if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return false;
+            if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.BadgeValue) && string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader) && string.IsNullOrWhiteSpace(card.BadgeUnit))) return false;
         }
         return true;
     }
@@ -1063,7 +1063,7 @@ public sealed class RendererEngine : IDisposable
         var index = CardIndex(obj);
         if (index is null || index < 0 || index >= project.Cards.Count) return;
         var card = project.Cards[index.Value];
-        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return;
+        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.BadgeValue) && string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader) && string.IsNullOrWhiteSpace(card.BadgeUnit))) return;
 
         var pitch = (float)resource.Double("slotPitch", 480);
         var width = (float)resource.Double("cardWidth", 474);
@@ -1399,7 +1399,7 @@ public sealed class RendererEngine : IDisposable
         var index = CardIndex(obj);
         if (index is null || index < 0 || index >= project.Cards.Count) return;
         var card = project.Cards[index.Value];
-        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return;
+        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.BadgeValue) && string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader) && string.IsNullOrWhiteSpace(card.BadgeUnit))) return;
 
         var sequenceRoot = StringValue(Get(props, "sequenceRoot")) ?? resource.String("sequenceRoot", "");
         if (string.IsNullOrWhiteSpace(sequenceRoot)) return;
