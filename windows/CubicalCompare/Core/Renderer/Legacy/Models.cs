@@ -11,8 +11,11 @@ public sealed class StudioCard
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Title { get; set; } = "Card 1";
+    // Value is retained for legacy renderer/project compatibility.
     public string Value { get; set; } = "1";
     public string BadgeHeader { get; set; } = "";
+    public string BadgeValue { get; set; } = "";
+    public string BadgeUnit { get; set; } = "";
     public string Description { get; set; } = "";
     public string Image { get; set; } = "";
     public double ImageX { get; set; }
@@ -63,6 +66,8 @@ public sealed class StudioProject
                 ["title"] = card.Title,
                 ["value"] = card.Value,
                 ["badge_header"] = card.BadgeHeader,
+                ["badge_value"] = card.BadgeValue,
+                ["badge_unit"] = card.BadgeUnit,
                 ["description"] = card.Description,
                 ["image"] = card.Image,
                 ["image_x"] = card.ImageX,
@@ -144,6 +149,8 @@ public sealed class StudioProject
                     Title = card.String("title", ""),
                     Value = card.String("value", ""),
                     BadgeHeader = card.String("badge_header", card.String("badgeHeader", "")),
+                    BadgeValue = card.String("badge_value", card.String("badgeValue", "")),
+                    BadgeUnit = card.String("badge_unit", card.String("badgeUnit", "")),
                     Description = card.String("description", ""),
                     Image = card.String("image", ""),
                     ImageX = card.Double("image_x", 0),
