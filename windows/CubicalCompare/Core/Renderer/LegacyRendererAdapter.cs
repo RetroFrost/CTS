@@ -1312,6 +1312,8 @@ public sealed class LegacyRendererAdapter : IDisposable
                 Title = card.Title,
                 Value = card.Value,
                 BadgeHeader = card.BadgeHeader,
+                BadgeValue = card.BadgeValue,
+                BadgeUnit = card.BadgeUnit,
                 Description = card.Description,
                 Image = card.ImagePath,
                 ImageX = card.ImageX,
