@@ -252,6 +252,8 @@ public sealed partial class MainWindow : Window
                     Title = card.Title,
                     Value = card.Value,
                     BadgeHeader = card.BadgeHeader,
+                    BadgeValue = card.BadgeValue,
+                    BadgeUnit = card.BadgeUnit,
                     Description = card.Description,
                     ImagePath = card.ImagePath,
                     ImageX = card.ImageX,
@@ -367,6 +369,8 @@ public sealed partial class MainWindow : Window
                 Title = !string.IsNullOrWhiteSpace(data?.Title) ? data!.Title : $"Card {index + 1}",
                 Value = data?.Value ?? "",
                 BadgeHeader = data?.BadgeHeader ?? "",
+                BadgeValue = data?.BadgeValue ?? data?.Value ?? "",
+                BadgeUnit = data?.BadgeUnit ?? "",
                 Description = data?.Description ?? "",
                 ImagePath = !string.IsNullOrWhiteSpace(data?.ImageSource)
                     ? data!.ImageSource
@@ -525,6 +529,8 @@ public sealed partial class MainWindow : Window
                 Title = card.Title,
                 Value = card.Value,
                 BadgeHeader = card.BadgeHeader,
+                BadgeValue = card.BadgeValue,
+                BadgeUnit = card.BadgeUnit,
                 Description = card.Description,
                 ImagePath = card.ImagePath,
                 ImageX = card.ImageX,
