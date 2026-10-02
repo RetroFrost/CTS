@@ -15,8 +15,10 @@ public static class CsvImportService
     private static readonly Dictionary<string, string[]> Aliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["title"] = ["title", "name", "item", "subject", "card title", "heading"],
-        ["value"] = ["value", "badge", "badge value", "badge primary", "amount", "number", "age", "rank"],
-        ["badge_header"] = ["badge header", "badge_header", "header", "badge label", "badge secondary", "unit", "label"],
+        ["value"] = ["value", "badge", "amount", "number", "age", "rank"],
+        ["badge_value"] = ["badge value", "badge_value", "badge primary", "badge_primary", "primary"],
+        ["badge_header"] = ["badge header", "badge_header", "header", "badge label", "label"],
+        ["badge_unit"] = ["badge unit", "badge_unit", "badge secondary", "badge_secondary", "unit", "suffix"],
         ["description"] = ["description", "details", "desc", "summary", "caption", "text"],
         ["image"] = ["image", "image url", "image_url", "image path", "artwork", "artwork url", "artwork_url", "image link", "web image url", "web artwork url", "highlight image", "icon", "icon url", "icon_url", "picture", "photo", "thumbnail", "web url", "url"],
         ["image_x"] = ["image x", "image_x", "artwork x", "x"],
@@ -60,6 +62,8 @@ public static class CsvImportService
                 ["description"] = 2,
                 ["image"] = 3,
                 ["badge_header"] = 4,
+                ["badge_value"] = 1,
+                ["badge_unit"] = -1,
             };
         }
 
@@ -87,9 +91,12 @@ public static class CsvImportService
                     : string.Empty;
 
             var title = Cell("title");
-            var value = Cell("value");
+            var legacyValue = Cell("value");
+            var badgeValue = Cell("badge_value");
             var badgeHeader = Cell("badge_header");
-            var description = Cell("description");
+            var badgeUnit = Cell("badge_unit");
+            if (string.IsNullOrWhiteSpace(badgeValue))
+                badgeValue = legacyValue;
             var image = ResolveImageCell(Cell("image"), csvDirectory);
             if (WebImageSource.IsRemoteSource(image) && !WebImageSource.IsAllowedWebSource(image))
             {
@@ -100,8 +107,10 @@ public static class CsvImportService
             var card = new ComparisonCard
             {
                 Title = string.IsNullOrWhiteSpace(title) ? $"Card {cards.Count + 1}" : title,
-                Value = value,
+                Value = string.Join(' ', new[] { badgeValue, badgeUnit }.Where(x => !string.IsNullOrWhiteSpace(x))),
                 BadgeHeader = badgeHeader,
+                BadgeValue = badgeValue,
+                BadgeUnit = badgeUnit,
                 Description = description,
                 ImagePath = image,
                 ImageX = ParseDouble(Cell("image_x"), 0),

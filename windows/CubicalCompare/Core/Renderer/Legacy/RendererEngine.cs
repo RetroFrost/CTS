@@ -367,7 +367,7 @@ public sealed class RendererEngine : IDisposable
 
     private void DrawRibbonBadge(SKCanvas canvas, StudioProject project, StudioCard card, int index, float cardX, int globalFrame, RendererSpec spec)
     {
-        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return;
+        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.BadgeValue) && string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader) && string.IsNullOrWhiteSpace(card.BadgeUnit))) return;
 
         // SmartBadge v2 badge packs are complete card-local bootanimations. Each card
         // selects its own nested ZIP from smartbadge-v2.json, so the pack owns badge
@@ -652,9 +652,13 @@ public sealed class RendererEngine : IDisposable
     private void DrawRibbonBadgeText(SKCanvas canvas, StudioProject project, StudioCard card, int index, int local, RendererSpec spec)
     {
         var header = card.BadgeHeader.Trim().ToUpperInvariant();
-        var words = Regex.Split(card.Value.Trim(), "\\s+").Where(x => x.Length > 0).ToArray();
-        var primary = words.FirstOrDefault() ?? "";
-        var unit = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "";
+        var legacyWords = Regex.Split(card.Value.Trim(), "\\s+").Where(x => x.Length > 0).ToArray();
+        var primary = !string.IsNullOrWhiteSpace(card.BadgeValue)
+            ? card.BadgeValue.Trim()
+            : legacyWords.FirstOrDefault() ?? "";
+        var unit = !string.IsNullOrWhiteSpace(card.BadgeUnit)
+            ? card.BadgeUnit.Trim()
+            : (legacyWords.Length > 1 ? string.Join(' ', legacyWords.Skip(1)) : "");
         var prefix = index < 4 ? $"ribbon.open.{index}" : $"ribbon.card.{index}";
         var progress = Motion(spec, $"{prefix}.text.progress", local) ?? Math.Clamp((local - 40) / 26f, 0, 1);
         if (progress <= 0) return;
@@ -746,7 +750,7 @@ public sealed class RendererEngine : IDisposable
         if (index is int b && (smartBadge || obj.Kind is "openingBadge" or "badge" or "laterBadge" or "openingText" or "badgeText" or "laterText" or "openingShine" or "shineBroad" or "shineCore" or "shadow" or "relationshipsBadge"))
         {
             var card = project.Cards[b];
-            if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return false;
+            if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.BadgeValue) && string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader) && string.IsNullOrWhiteSpace(card.BadgeUnit))) return false;
         }
         return true;
     }
@@ -1059,7 +1063,7 @@ public sealed class RendererEngine : IDisposable
         var index = CardIndex(obj);
         if (index is null || index < 0 || index >= project.Cards.Count) return;
         var card = project.Cards[index.Value];
-        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return;
+        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.BadgeValue) && string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader) && string.IsNullOrWhiteSpace(card.BadgeUnit))) return;
 
         var pitch = (float)resource.Double("slotPitch", 480);
         var width = (float)resource.Double("cardWidth", 474);
@@ -1157,7 +1161,7 @@ public sealed class RendererEngine : IDisposable
     {
         var words = Regex.Split(card.Value.Trim(), "\\s+").Where(x => x.Length > 0).ToArray();
         var primary = words.FirstOrDefault() ?? "";
-        var unit = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "People";
+        var unit = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "";
         var header = string.IsNullOrWhiteSpace(card.BadgeHeader) ? "1 in" : card.BadgeHeader.Trim();
 
         void DrawLine(string value, float y, float size, float maxWidth)
@@ -1395,7 +1399,7 @@ public sealed class RendererEngine : IDisposable
         var index = CardIndex(obj);
         if (index is null || index < 0 || index >= project.Cards.Count) return;
         var card = project.Cards[index.Value];
-        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader))) return;
+        if (!project.ShowBadges || (string.IsNullOrWhiteSpace(card.BadgeValue) && string.IsNullOrWhiteSpace(card.Value) && string.IsNullOrWhiteSpace(card.BadgeHeader) && string.IsNullOrWhiteSpace(card.BadgeUnit))) return;
 
         var sequenceRoot = StringValue(Get(props, "sequenceRoot")) ?? resource.String("sequenceRoot", "");
         if (string.IsNullOrWhiteSpace(sequenceRoot)) return;
@@ -1626,8 +1630,12 @@ public sealed class RendererEngine : IDisposable
         var words = Regex.Split(card.Value.Trim(), "\\s+", RegexOptions.CultureInvariant)
             .Where(value => value.Length > 0)
             .ToArray();
-        var primary = words.FirstOrDefault() ?? "";
-        var unit = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "People";
+        var primary = !string.IsNullOrWhiteSpace(card.BadgeValue)
+            ? card.BadgeValue.Trim()
+            : words.FirstOrDefault() ?? "";
+        var unit = !string.IsNullOrWhiteSpace(card.BadgeUnit)
+            ? card.BadgeUnit.Trim()
+            : (words.Length > 1 ? string.Join(' ', words.Skip(1)) : "");
 
         return source.Trim().ToLowerInvariant() switch
         {
@@ -1635,7 +1643,9 @@ public sealed class RendererEngine : IDisposable
                 string.IsNullOrWhiteSpace(card.BadgeHeader) ? "1 in" : card.BadgeHeader.Trim(),
             "value" or "primary" or "number" => primary,
             "unit" or "suffix" => unit,
-            "fullvalue" or "full-value" or "raw" => card.Value.Trim(),
+            "badgevalue" or "badge-value" => primary,
+            "badgeunit" or "badge-unit" => unit,
+            "fullvalue" or "full-value" or "raw" => string.Join(' ', new[] { primary, unit }.Where(v => !string.IsNullOrWhiteSpace(v))),
             "title" => card.Title.Trim(),
             "description" or "desc" => card.Description.Trim(),
             _ => source.Equals("jsparse", StringComparison.Ordinal) ? primary : primary,
@@ -1822,8 +1832,12 @@ public sealed class RendererEngine : IDisposable
         var words = Regex.Split(card.Value.Trim(), "\\s+")
             .Where(v => v.Length > 0)
             .ToArray();
-        var primary = words.FirstOrDefault() ?? "";
-        var suffix = words.Length > 1 ? string.Join(' ', words.Skip(1)) : "";
+        var primary = !string.IsNullOrWhiteSpace(card.BadgeValue)
+            ? card.BadgeValue.Trim()
+            : words.FirstOrDefault() ?? "";
+        var suffix = !string.IsNullOrWhiteSpace(card.BadgeUnit)
+            ? card.BadgeUnit.Trim()
+            : (words.Length > 1 ? string.Join(' ', words.Skip(1)) : "");
 
         using var paint = TextPaint(project, numberSize, color, true);
 
@@ -2069,7 +2083,18 @@ public sealed class RendererEngine : IDisposable
     {
         if (value is not string s || !s.StartsWith('$')) return value;
         var index = CardIndex(obj) ?? 0; var card = index >= 0 && index < project.Cards.Count ? project.Cards[index] : null;
-        return s switch { "$card.title" or "$project.card.title" => card?.Title ?? "", "$card.value" or "$project.card.value" => card?.Value ?? "", "$card.badgeHeader" or "$project.card.badgeHeader" => card?.BadgeHeader ?? "", "$card.description" or "$project.card.description" => card?.Description ?? "", "$card.image" or "$project.card.image" => card?.Image ?? "", "$project.name" => project.Name, _ => value };
+        return s switch
+        {
+            "$card.title" or "$project.card.title" => card?.Title ?? "",
+            "$card.value" or "$project.card.value" => card?.Value ?? "",
+            "$card.badgeHeader" or "$project.card.badgeHeader" => card?.BadgeHeader ?? "",
+            "$card.badgeValue" or "$project.card.badgeValue" => card?.BadgeValue ?? "",
+            "$card.badgeUnit" or "$project.card.badgeUnit" => card?.BadgeUnit ?? "",
+            "$card.description" or "$project.card.description" => card?.Description ?? "",
+            "$card.image" or "$project.card.image" => card?.Image ?? "",
+            "$project.name" => project.Name,
+            _ => value
+        };
     }
 
     private void DrawImageCover(

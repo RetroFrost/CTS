@@ -469,21 +469,43 @@ public sealed class LegacyRendererAdapter : IDisposable
                     false));
             }
 
-            if (!exact.Any(region => region.Field == "value") &&
+            if (!exact.Any(region => region.Field == "badgeValue") &&
                 project.ShowBadges &&
-                !string.IsNullOrWhiteSpace(card.Value) &&
+                !string.IsNullOrWhiteSpace(card.BadgeValue) &&
                 geometry.BadgeWidth > 0 &&
                 geometry.BadgeHeight > 0)
             {
                 result.Add(new PreviewTextRegion(
                     cardIndex,
-                    "value",
+                    "badgeValue",
                     geometry.BadgeX + geometry.BadgeWidth * .12,
                     geometry.BadgeY + geometry.BadgeHeight * .35,
                     geometry.BadgeWidth * .76,
-                    geometry.BadgeHeight * .44,
+                    geometry.BadgeHeight * .26,
                     0,
                     Math.Max(16, 58 * Math.Max(.25, _spec.BadgeScale)),
+                    true,
+                    "center",
+                    "center",
+                    _spec.BadgeTextColor,
+                    false));
+            }
+
+            if (!exact.Any(region => region.Field == "badgeUnit") &&
+                project.ShowBadges &&
+                !string.IsNullOrWhiteSpace(card.BadgeUnit) &&
+                geometry.BadgeWidth > 0 &&
+                geometry.BadgeHeight > 0)
+            {
+                result.Add(new PreviewTextRegion(
+                    cardIndex,
+                    "badgeUnit",
+                    geometry.BadgeX + geometry.BadgeWidth * .12,
+                    geometry.BadgeY + geometry.BadgeHeight * .60,
+                    geometry.BadgeWidth * .76,
+                    geometry.BadgeHeight * .24,
+                    0,
+                    Math.Max(14, 34 * Math.Max(.25, _spec.BadgeScale)),
                     true,
                     "center",
                     "center",
@@ -834,6 +856,8 @@ public sealed class LegacyRendererAdapter : IDisposable
                 "title" => card.Title,
                 "description" => card.Description,
                 "badgeHeader" => card.BadgeHeader,
+                "badgeValue" => card.BadgeValue,
+                "badgeUnit" => card.BadgeUnit,
                 "value" => card.Value,
                 _ => "",
             };
@@ -862,7 +886,8 @@ public sealed class LegacyRendererAdapter : IDisposable
         "title" => "title",
         "description" or "desc" => "description",
         "header" or "badgeheader" or "badge-header" => "badgeHeader",
-        "value" or "primary" or "number" or "unit" or "suffix" or "fullvalue" or "full-value" or "raw" or "jsparse" => "value",
+        "value" or "primary" or "number" or "badgevalue" or "badge-value" or "fullvalue" or "full-value" or "raw" or "jsparse" => "badgeValue",
+        "unit" or "suffix" or "badgeunit" or "badge-unit" => "badgeUnit",
         _ => null,
     };
 
@@ -1312,6 +1337,8 @@ public sealed class LegacyRendererAdapter : IDisposable
                 Title = card.Title,
                 Value = card.Value,
                 BadgeHeader = card.BadgeHeader,
+                BadgeValue = card.BadgeValue,
+                BadgeUnit = card.BadgeUnit,
                 Description = card.Description,
                 Image = card.ImagePath,
                 ImageX = card.ImageX,

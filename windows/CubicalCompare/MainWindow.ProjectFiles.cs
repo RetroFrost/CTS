@@ -125,6 +125,8 @@ public sealed partial class MainWindow
                     Title = card.Title,
                     Value = card.Value,
                     BadgeHeader = card.BadgeHeader,
+                    BadgeValue = card.BadgeValue,
+                    BadgeUnit = card.BadgeUnit,
                     Description = card.Description,
                     ImagePath = card.ImagePath,
                     ImageX = card.ImageX,

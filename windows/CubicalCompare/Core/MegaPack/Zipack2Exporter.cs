@@ -111,12 +111,28 @@ public static class Zipack2Exporter
         return Path.GetFullPath(path);
     }
 
-    private static Zipack2CardDefinition ToManifestCard(ComparisonCard card) => new()
+    private static Zipack2CardDefinition ToManifestCard(ComparisonCard card)
     {
+        var badgeValue = card.BadgeValue?.Trim() ?? "";
+        var badgeUnit = card.BadgeUnit?.Trim() ?? "";
+
+        // Preserve older callers that only populated the combined Value field.
+        if (string.IsNullOrWhiteSpace(badgeValue) && !string.IsNullOrWhiteSpace(card.Value))
+        {
+            var parts = card.Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            badgeValue = parts.FirstOrDefault() ?? "";
+            if (string.IsNullOrWhiteSpace(badgeUnit) && parts.Length > 1)
+                badgeUnit = string.Join(' ', parts.Skip(1));
+        }
+
+        return new Zipack2CardDefinition
+        {
         Id = card.Id,
         Title = card.Title,
-        Value = card.Value,
+        Value = string.Join(' ', new[] { badgeValue, badgeUnit }.Where(value => !string.IsNullOrWhiteSpace(value))),
         BadgeHeader = card.BadgeHeader,
+        BadgeValue = badgeValue,
+        BadgeUnit = badgeUnit,
         Description = card.Description,
         Image = WebImageSource.IsRemoteSource(card.ImagePath)
             ? WebImageSource.NormalizeSource(card.ImagePath)

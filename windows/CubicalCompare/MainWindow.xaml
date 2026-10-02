@@ -325,8 +325,12 @@
                                     <TextBlock Text="Text" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,0" />
                                     <TextBlock Text="Title" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
                                     <TextBox Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Text="Value" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
-                                    <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Badge Header" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding BadgeHeader, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Badge Value" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding BadgeValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Badge Unit" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
+                                    <TextBox Text="{Binding BadgeUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Text="Description" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,2,0,-5" />
                                     <TextBox Text="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="92" TextWrapping="Wrap" />
 

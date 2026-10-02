@@ -28,8 +28,11 @@ public sealed class ComparisonCard
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Title { get; set; } = "Untitled";
+    // Value is retained as the legacy combined badge-value field for older projects/renderers.
     public string Value { get; set; } = "";
     public string BadgeHeader { get; set; } = "";
+    public string BadgeValue { get; set; } = "";
+    public string BadgeUnit { get; set; } = "";
     public string Description { get; set; } = "";
     public string ImagePath { get; set; } = "";
     public double ImageX { get; set; }

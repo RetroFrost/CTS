@@ -27,6 +27,8 @@ public sealed partial class MainWindow
         Title,
         Description,
         BadgeHeader,
+        BadgeValue,
+        BadgeUnit,
         Value,
     }
 
@@ -1081,6 +1083,8 @@ public sealed partial class MainWindow
         InlinePreviewTextField.Title => card.Title,
         InlinePreviewTextField.Description => card.Description,
         InlinePreviewTextField.BadgeHeader => card.BadgeHeader,
+        InlinePreviewTextField.BadgeValue => card.BadgeValue,
+        InlinePreviewTextField.BadgeUnit => card.BadgeUnit,
         InlinePreviewTextField.Value => card.Value,
         _ => string.Empty,
     };
@@ -1098,8 +1102,14 @@ public sealed partial class MainWindow
             case InlinePreviewTextField.BadgeHeader:
                 card.BadgeHeader = value;
                 break;
+            case InlinePreviewTextField.BadgeValue:
+                card.BadgeValue = value;
+                break;
+            case InlinePreviewTextField.BadgeUnit:
+                card.BadgeUnit = value;
+                break;
             case InlinePreviewTextField.Value:
-                card.Value = value;
+                card.BadgeValue = value;
                 break;
         }
     }
@@ -1109,6 +1119,8 @@ public sealed partial class MainWindow
         InlinePreviewTextField.Title => "title",
         InlinePreviewTextField.Description => "description",
         InlinePreviewTextField.BadgeHeader => "badge header",
+        InlinePreviewTextField.BadgeValue => "badge value",
+        InlinePreviewTextField.BadgeUnit => "badge unit",
         InlinePreviewTextField.Value => "badge value",
         _ => "text",
     };
@@ -1118,6 +1130,8 @@ public sealed partial class MainWindow
         "title" => InlinePreviewTextField.Title,
         "description" => InlinePreviewTextField.Description,
         "badgeHeader" => InlinePreviewTextField.BadgeHeader,
+        "badgeValue" or "badge-value" => InlinePreviewTextField.BadgeValue,
+        "badgeUnit" or "badge-unit" => InlinePreviewTextField.BadgeUnit,
         "value" => InlinePreviewTextField.Value,
         _ => InlinePreviewTextField.None,
     };
@@ -1151,11 +1165,16 @@ public sealed partial class MainWindow
             case InlinePreviewTextField.BadgeHeader:
                 card.BadgeHeader = invisibleLayoutText;
                 break;
+            case InlinePreviewTextField.BadgeValue:
+                card.BadgeValue = invisibleLayoutText;
+                break;
+            case InlinePreviewTextField.BadgeUnit:
+                card.BadgeUnit = invisibleLayoutText;
+                break;
             case InlinePreviewTextField.Value:
-                // Keep both primary and unit jsparse fields present while rendering
-                // neither glyph. One zero-width token would make SmartBadge's unit
-                // fallback render "People"; two invisible tokens suppress both.
-                card.Value = invisibleLayoutText + " " + invisibleLayoutText;
+                // Legacy region alias: blank the explicit badge value without
+                // reintroducing the old combined-value split.
+                card.BadgeValue = invisibleLayoutText;
                 break;
         }
 

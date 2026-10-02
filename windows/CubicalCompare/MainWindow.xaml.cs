@@ -252,6 +252,8 @@ public sealed partial class MainWindow : Window
                     Title = card.Title,
                     Value = card.Value,
                     BadgeHeader = card.BadgeHeader,
+                    BadgeValue = card.BadgeValue,
+                    BadgeUnit = card.BadgeUnit,
                     Description = card.Description,
                     ImagePath = card.ImagePath,
                     ImageX = card.ImageX,
@@ -367,6 +369,8 @@ public sealed partial class MainWindow : Window
                 Title = !string.IsNullOrWhiteSpace(data?.Title) ? data!.Title : $"Card {index + 1}",
                 Value = data?.Value ?? "",
                 BadgeHeader = data?.BadgeHeader ?? "",
+                BadgeValue = data?.BadgeValue ?? data?.Value ?? "",
+                BadgeUnit = data?.BadgeUnit ?? "",
                 Description = data?.Description ?? "",
                 ImagePath = !string.IsNullOrWhiteSpace(data?.ImageSource)
                     ? data!.ImageSource
@@ -525,6 +529,8 @@ public sealed partial class MainWindow : Window
                 Title = card.Title,
                 Value = card.Value,
                 BadgeHeader = card.BadgeHeader,
+                BadgeValue = card.BadgeValue,
+                BadgeUnit = card.BadgeUnit,
                 Description = card.Description,
                 ImagePath = card.ImagePath,
                 ImageX = card.ImageX,
@@ -618,8 +624,9 @@ public sealed partial class MainWindow : Window
 public sealed class ProjectCardViewModel : INotifyPropertyChanged
 {
     private string _title = "Untitled";
-    private string _value = "";
+    private string _badgeValue = "";
     private string _badgeHeader = "";
+    private string _badgeUnit = "";
     private string _description = "";
     private string _imagePath = "";
     private string _thumbnailBackgroundColor = "#05070E";
@@ -634,16 +641,37 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
         set => Set(ref _title, value);
     }
 
+    // Value remains a legacy alias for BadgeValue so existing renderer/import code keeps working.
     public string Value
     {
-        get => _value;
-        set => Set(ref _value, value);
+        get => _badgeValue;
+        set => SetBadgeValue(value);
     }
 
     public string BadgeHeader
     {
         get => _badgeHeader;
         set => Set(ref _badgeHeader, value);
+    }
+
+    public string BadgeValue
+    {
+        get => _badgeValue;
+        set => SetBadgeValue(value);
+    }
+
+    public string BadgeUnit
+    {
+        get => _badgeUnit;
+        set => Set(ref _badgeUnit, value);
+    }
+
+    private void SetBadgeValue(string value)
+    {
+        if (EqualityComparer<string>.Default.Equals(_badgeValue, value)) return;
+        _badgeValue = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Value)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BadgeValue)));
     }
 
     public string Description
@@ -743,7 +771,14 @@ public sealed class DetectedCardViewModel : INotifyPropertyChanged
     {
         get
         {
-            var value = !string.IsNullOrWhiteSpace(Card.Data?.Value) ? $" · {Card.Data!.Value}" : "";
+            var badge = string.Join(' ', new[]
+                {
+                    Card.Data?.BadgeValue,
+                    Card.Data?.BadgeUnit,
+                }.Where(value => !string.IsNullOrWhiteSpace(value)));
+            var value = !string.IsNullOrWhiteSpace(badge)
+                ? $" · {badge}"
+                : (!string.IsNullOrWhiteSpace(Card.Data?.Value) ? $" · {Card.Data!.Value}" : "");
             return $"Sheet {Card.SheetOrder + 1} · {Card.Bounds.Width}×{Card.Bounds.Height}{value} · {Card.Confidence:P0} confidence";
         }
     }

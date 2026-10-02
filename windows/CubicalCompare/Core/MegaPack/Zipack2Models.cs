@@ -68,6 +68,12 @@ public sealed class Zipack2CardDefinition
     [JsonPropertyName("badge_secondary")]
     public string BadgeSecondary { get; set; } = "";
 
+    [JsonPropertyName("badge_value")]
+    public string BadgeValue { get; set; } = "";
+
+    [JsonPropertyName("badge_unit")]
+    public string BadgeUnit { get; set; } = "";
+
     [JsonPropertyName("description")]
     public string Description { get; set; } = "";
 
@@ -121,14 +127,29 @@ public sealed class Zipack2CardDefinition
 
     public Zipack2CardData Normalize(int index)
     {
-        var primary = !string.IsNullOrWhiteSpace(Value) ? Value.Trim() : BadgePrimary.Trim();
-        var value = string.Join(' ', new[] { primary, BadgeSecondary.Trim() }.Where(x => x.Length > 0));
+        var legacyValue = Value.Trim();
+        var primary = First(BadgeValue, BadgePrimary);
+        var unit = First(BadgeUnit, BadgeSecondary);
+
+        // Older Zipack2 manifests store the complete badge as Value. Split it only
+        // when the explicit fields are absent so old packs gain the new three-field model.
+        if (string.IsNullOrWhiteSpace(primary) && legacyValue.Length > 0)
+        {
+            var parts = legacyValue.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            primary = parts.FirstOrDefault() ?? "";
+            if (string.IsNullOrWhiteSpace(unit) && parts.Length > 1)
+                unit = string.Join(' ', parts.Skip(1));
+        }
+
+        var value = string.Join(' ', new[] { primary, unit }.Where(x => x.Length > 0));
         return new Zipack2CardData
         {
             Id = string.IsNullOrWhiteSpace(Id) ? $"zipack2-{index + 1:D4}" : Id.Trim(),
             Title = First(Title, Name),
             Value = value,
             BadgeHeader = First(BadgeHeader, BadgeHeaderCamel),
+            BadgeValue = primary,
+            BadgeUnit = unit,
             Description = First(Description, Details),
             ImageSource = CubicalCompare.Core.Project.WebImageSource.NormalizeSource(
                 First(Image, ImageUrl, ImageUrlCamel, Artwork, ArtworkUrl, Icon)),
@@ -154,6 +175,8 @@ public sealed class Zipack2CardData
     public string Title { get; set; } = "";
     public string Value { get; set; } = "";
     public string BadgeHeader { get; set; } = "";
+    public string BadgeValue { get; set; } = "";
+    public string BadgeUnit { get; set; } = "";
     public string Description { get; set; } = "";
     public string ImageSource { get; set; } = "";
     public double ImageX { get; set; }

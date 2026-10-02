@@ -215,15 +215,21 @@ public static class AutoThumbnailGenerator
     private static (string Header, string Primary, string Secondary) SplitBadgeText(ComparisonCard card)
     {
         var header = card.BadgeHeader?.Trim() ?? "";
-        var value = card.Value?.Trim() ?? "";
-        if (string.IsNullOrWhiteSpace(value)) value = "?";
+        var primary = card.BadgeValue?.Trim() ?? "";
+        var secondary = card.BadgeUnit?.Trim() ?? "";
 
-        if (!string.IsNullOrWhiteSpace(header))
-            return (header, value, "");
+        // Fall back to the legacy combined Value field for older projects.
+        if (string.IsNullOrWhiteSpace(primary))
+        {
+            var value = card.Value?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(value)) value = "?";
 
-        var parts = value.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 1) return ("", parts[0], "");
-        return ("", parts[0], parts[1]);
+            var parts = value.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            primary = parts.FirstOrDefault() ?? "?";
+            secondary = string.IsNullOrWhiteSpace(secondary) && parts.Length > 1 ? parts[1] : secondary;
+        }
+
+        return (header, primary, secondary);
     }
 
     private static void DrawBadgeLine(SKCanvas canvas, string text, float x, float y, SKPaint paint, float preferred, float minimum, float maxWidth)
