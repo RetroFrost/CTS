@@ -771,7 +771,14 @@ public sealed class DetectedCardViewModel : INotifyPropertyChanged
     {
         get
         {
-            var value = !string.IsNullOrWhiteSpace(Card.Data?.Value) ? $" · {Card.Data!.Value}" : "";
+            var badge = string.Join(' ', new[]
+                {
+                    Card.Data?.BadgeValue,
+                    Card.Data?.BadgeUnit,
+                }.Where(value => !string.IsNullOrWhiteSpace(value)));
+            var value = !string.IsNullOrWhiteSpace(badge)
+                ? $" · {badge}"
+                : (!string.IsNullOrWhiteSpace(Card.Data?.Value) ? $" · {Card.Data!.Value}" : "");
             return $"Sheet {Card.SheetOrder + 1} · {Card.Bounds.Width}×{Card.Bounds.Height}{value} · {Card.Confidence:P0} confidence";
         }
     }
