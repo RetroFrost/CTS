@@ -115,8 +115,10 @@ public static class Zipack2Exporter
     {
         Id = card.Id,
         Title = card.Title,
-        Value = card.Value,
+        Value = string.Join(' ', new[] { card.BadgeValue, card.BadgeUnit }.Where(value => !string.IsNullOrWhiteSpace(value))),
         BadgeHeader = card.BadgeHeader,
+        BadgeValue = card.BadgeValue,
+        BadgeUnit = card.BadgeUnit,
         Description = card.Description,
         Image = WebImageSource.IsRemoteSource(card.ImagePath)
             ? WebImageSource.NormalizeSource(card.ImagePath)
