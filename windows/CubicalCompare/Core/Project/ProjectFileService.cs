@@ -148,8 +148,7 @@ public static class ProjectFileService
                     ? string.Join(' ', legacyParts.Skip(1))
                     : card.BadgeUnit;
             }
-            else if (string.IsNullOrWhiteSpace(card.Value) &&
-                     (!string.IsNullOrWhiteSpace(card.BadgeValue) || !string.IsNullOrWhiteSpace(card.BadgeUnit)))
+            if (!string.IsNullOrWhiteSpace(card.BadgeValue) || !string.IsNullOrWhiteSpace(card.BadgeUnit))
             {
                 card.Value = string.Join(' ', new[] { card.BadgeValue, card.BadgeUnit }
                     .Where(value => !string.IsNullOrWhiteSpace(value)));
