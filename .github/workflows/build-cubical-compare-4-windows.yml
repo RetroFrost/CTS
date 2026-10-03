@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.4"
+          $version = "4.2.5"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.41"
+          $velopackVersion = "4.2.42"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -150,6 +150,11 @@ jobs:
           if ($updateService -notmatch "'/XJ'") { throw 'Portable ZIP updater does not exclude junction traversal during replacement.' }
           if ($updateService -notmatch 'robocopy\.log') { throw 'Portable ZIP updater does not retain Robocopy diagnostics.' }
           if ($updateService -notmatch 'after 3 attempts') { throw 'Portable ZIP updater lacks bounded Robocopy retry handling.' }
+          if ($updateService -notmatch 'FindLatestReleaseFromGitHubPageAsync') { throw 'GitHub ZIP updater still depends on REST API release discovery.' }
+          if ($updateService -notmatch 'releases/latest') { throw 'GitHub release-page discovery URL is missing.' }
+          if ($updateService -notmatch 'releases/download/') { throw 'GitHub release asset URL parsing is missing.' }
+          if ($updateService -notmatch 'SHA256SUMS\.txt') { throw 'GitHub release checksum-manifest discovery is missing.' }
+          if ($updateService -notmatch 'AddMinutes\(10\)') { throw 'GitHub release discovery cache is missing.' }
 
           $nativeSetup = Get-Content 'windows/CubicalCompare.InstallerBootstrap/NativeSetup.cpp' -Raw
           if ($nativeSetup -notmatch 'MoveCurrentDirectoryOutsideInstall') { throw 'Setup does not release an inherited install-folder current-directory lock.' }
@@ -693,6 +698,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
+          - 4.2.5 fixes GitHub ZIP update discovery: release metadata is resolved from the public Releases page instead of the unauthenticated GitHub REST API, eliminating the shared-IP 403 rate-limit failure. Asset SHA-256 verification remains intact via SHA256SUMS.txt.
           - 4.2.4 adds live renderer text-wipe and SmartBadge text-wipe capabilities driven by deterministic frame tracks; text stays project-bound instead of being baked into animation frames.
           ## Cubical Compare $env:CC_VERSION — Windows
 
