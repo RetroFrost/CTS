@@ -263,7 +263,7 @@ public sealed class RendererEngine : IDisposable
         }
 
         foreach (var field in sequence.Fields)
-            DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, 1);
+            DrawSmartBadgeField(canvas, project, spec, card, index, field, selected.TemplateFrame, globalFrame, 1);
 
         if (liveClipSaved)
             canvas.Restore();
@@ -814,7 +814,7 @@ public sealed class RendererEngine : IDisposable
                 DrawV3ProjectCard(canvas, project, obj, resource, bound, (float)opacity);
                 return;
             }
-            if (UsesProjectCardData(spec) && (obj.Kind is "openingText" or "badgeText" or "laterText" or "projectBadgeText" or "project-badge-text" || type is "project-badge-text" or "projectbadgetext")) { DrawV3ProjectBadgeText(canvas, project, obj, resource, bound, (float)opacity); return; }
+            if (UsesProjectCardData(spec) && (obj.Kind is "openingText" or "badgeText" or "laterText" or "projectBadgeText" or "project-badge-text" || type is "project-badge-text" or "projectbadgetext")) { DrawV3ProjectBadgeText(canvas, project, obj, resource, bound, spec, frame, (float)opacity); return; }
             switch (type)
             {
                 case "relationships-card": DrawV3RelationshipsCard(canvas, project, obj, resource, bound, (float)opacity); break;
@@ -1383,7 +1383,7 @@ public sealed class RendererEngine : IDisposable
         }
 
         foreach (var field in sequence.Fields)
-            DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, opacity);
+            DrawSmartBadgeField(canvas, project, spec, card, index, field, selected.TemplateFrame, globalFrame, opacity);
 
         DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, opacity);
 
@@ -1535,9 +1535,12 @@ public sealed class RendererEngine : IDisposable
     private void DrawSmartBadgeField(
         SKCanvas canvas,
         StudioProject project,
+        RendererSpec spec,
         StudioCard card,
+        int cardIndex,
         SmartBadgeFieldDefinition field,
         int templateFrame,
+        int globalFrame,
         float parentOpacity)
     {
         var rect = field.RectAt(templateFrame);
@@ -1548,15 +1551,34 @@ public sealed class RendererEngine : IDisposable
         var text = SmartBadgeFieldValue(card, field.Source);
         if (string.IsNullOrWhiteSpace(text)) return;
 
+        var isBadgeText = field.Source.Trim().ToLowerInvariant() is not ("title" or "description" or "desc");
+        var wipeFeature = isBadgeText ? "ribbon-badge-text-wipe-v1" : "ribbon-text-wipe-v1";
+        var wipeProgress = GetTextWipeProgress(spec, cardIndex, globalFrame, isBadgeText);
+
+        if (wipeProgress <= 0.0001f) return;
+
+        canvas.Save();
+
+        // Wipe is deliberately applied in field-local coordinates so any authored
+        // rotation/translation remains attached to the live text.
+        var rotation = field.RotationAt(templateFrame);
+        if (Math.Abs(rotation) > 0.001f)
+            canvas.RotateDegrees(rotation, rect.MidX, rect.MidY);
+
+        if (wipeProgress < 0.9999f)
+        {
+            var wipeRight = rect.X + rect.Width * wipeProgress;
+            canvas.ClipRect(
+                new SKRect(rect.X, rect.Y, wipeRight, rect.Bottom),
+                SKClipOperation.Intersect,
+                false);
+        }
+
         var color = WithAlpha(ParseColor(field.Color, SKColors.White), fieldOpacity);
 
-        if (field.Source.Trim().Equals("description", StringComparison.OrdinalIgnoreCase))
+        if (field.Source.Trim().Equals("description", StringComparison.OrdinalIgnoreCase) ||
+            field.Source.Trim().Equals("desc", StringComparison.OrdinalIgnoreCase))
         {
-            canvas.Save();
-            var descriptionRotation = field.RotationAt(templateFrame);
-            if (Math.Abs(descriptionRotation) > 0.001f)
-                canvas.RotateDegrees(descriptionRotation, rect.MidX, rect.MidY);
-
             DrawRelationshipsDescription(
                 canvas,
                 project,
@@ -1567,6 +1589,7 @@ public sealed class RendererEngine : IDisposable
             canvas.Restore();
             return;
         }
+
         using var paint = TextPaint(project, field.FontSize, color, field.Bold);
         paint.TextAlign = field.Align.Trim().ToLowerInvariant() switch
         {
@@ -1601,11 +1624,6 @@ public sealed class RendererEngine : IDisposable
             _ => rect.MidY - (fontMetrics.Ascent + fontMetrics.Descent) / 2f,
         };
 
-        canvas.Save();
-        var rotation = field.RotationAt(templateFrame);
-        if (Math.Abs(rotation) > 0.001f)
-            canvas.RotateDegrees(rotation, rect.MidX, rect.MidY);
-
         if (field.Shadow)
         {
             using var shadow = TextPaint(project, size, WithAlpha(ParseColor(field.ShadowColor, new SKColor(0, 0, 0, 170)), fieldOpacity), field.Bold);
@@ -1627,6 +1645,25 @@ public sealed class RendererEngine : IDisposable
 
         canvas.DrawText(text, x, y, paint);
         canvas.Restore();
+    }
+
+    private static float GetTextWipeProgress(RendererSpec spec, int cardIndex, int frame, bool badgeText)
+    {
+        var feature = badgeText ? "ribbon-badge-text-wipe-v1" : "ribbon-text-wipe-v1";
+        if (!spec.RequiredFeatures.Contains(feature, StringComparer.Ordinal))
+            return 1f;
+
+        var specific = badgeText
+            ? $"ribbon.card.{cardIndex}.badge.text.wipe.progress"
+            : $"ribbon.card.{cardIndex}.text.wipe.progress";
+
+        var value = spec.Track(specific, frame);
+        if (value is null)
+            value = spec.Track(badgeText ? "ribbon.badge.text.wipe.progress" : "ribbon.text.wipe.progress", frame);
+
+        // The feature remains backwards-compatible when no authored track exists.
+        // Declaring the feature enables deterministic clipping only where a track exists.
+        return Math.Clamp(value ?? 1f, 0f, 1f);
     }
 
     private static string SmartBadgeFieldValue(StudioCard card, string source)
@@ -1811,57 +1848,48 @@ public sealed class RendererEngine : IDisposable
         }
     }
 
-    private void DrawV3ProjectBadgeText(SKCanvas canvas, StudioProject project, RendererObjectV3 obj, JsonElement resource, Dictionary<string, object?> props, float opacity)
+    private void DrawV3ProjectBadgeText(
+        SKCanvas canvas,
+        StudioProject project,
+        RendererObjectV3 obj,
+        JsonElement resource,
+        Dictionary<string, object?> props,
+        RendererSpec spec,
+        int frame,
+        float opacity)
     {
         var index = CardIndex(obj);
         if (index == null || index < 0 || index >= project.Cards.Count) return;
-
         var card = project.Cards[index.Value];
         var width = (float)Number(Get(props, "width"), resource.Double("width", 477));
+        var height = (float)Number(Get(props, "height"), resource.Double("height", 420));
         var x = (float)Number(Get(props, "x"), resource.Double("x", 0));
         var y = (float)Number(Get(props, "y"), resource.Double("y", 0));
-        var center = x + width / 2f;
-        var maxWidth = width * (float)Number(Get(props, "maxWidthRatio"), resource.Double("maxWidthRatio", 0.72));
+        using var paint = TextPaint(project, 58, WithAlpha(SKColors.White, opacity), true);
+        var center = x + width / 2;
+        var progress = GetTextWipeProgress(spec, index.Value, frame, true);
 
-        var numberY = (float)Number(Get(props, "numberY"), resource.Double("numberY", 188));
-        var headerY = (float)Number(Get(props, "headerY"), resource.Double("headerY", 234));
-        var suffixY = (float)Number(Get(props, "suffixY"), resource.Double("suffixY", 277));
-        var numberSize = (float)Number(Get(props, "numberSize"), resource.Double("numberSize", 80));
-        var headerSize = (float)Number(Get(props, "headerSize"), resource.Double("headerSize", 34));
-        var suffixSize = (float)Number(Get(props, "suffixSize"), resource.Double("suffixSize", 34));
-        var color = WithAlpha(ParseColor(
-            StringValue(Get(props, "color", "textColor")) ?? resource.String("color", "#FFFFFF"),
-            SKColors.White), opacity);
+        if (progress <= 0.0001f) return;
 
-        var words = Regex.Split(card.Value.Trim(), "\\s+")
-            .Where(v => v.Length > 0)
-            .ToArray();
-        var primary = !string.IsNullOrWhiteSpace(card.BadgeValue)
-            ? card.BadgeValue.Trim()
-            : words.FirstOrDefault() ?? "";
-        var suffix = !string.IsNullOrWhiteSpace(card.BadgeUnit)
-            ? card.BadgeUnit.Trim()
-            : (words.Length > 1 ? string.Join(' ', words.Skip(1)) : "");
-
-        using var paint = TextPaint(project, numberSize, color, true);
-
-        if (!string.IsNullOrWhiteSpace(primary))
-        {
-            paint.TextSize = numberSize;
-            DrawCentered(canvas, primary, center, y + numberY, paint, maxWidth);
-        }
+        canvas.Save();
+        if (progress < 0.9999f)
+            canvas.ClipRect(new SKRect(x, y, x + width * progress, y + height), SKClipOperation.Intersect, false);
 
         if (!string.IsNullOrWhiteSpace(card.BadgeHeader))
         {
-            paint.TextSize = headerSize;
-            DrawCentered(canvas, card.BadgeHeader.Trim().ToUpperInvariant(), center, y + headerY, paint, maxWidth);
+            paint.TextSize = 24;
+            DrawCentered(canvas, card.BadgeHeader, center, y + height * 0.41f, paint, width * 0.56f);
         }
 
-        if (!string.IsNullOrWhiteSpace(suffix))
+        var words = Regex.Split(card.Value.Trim(), "\\s+").Where(v => v.Length > 0).ToArray();
+        paint.TextSize = 58;
+        DrawCentered(canvas, words.FirstOrDefault() ?? "", center, y + height * 0.60f, paint, width * 0.56f);
+        if (words.Length > 1)
         {
-            paint.TextSize = suffixSize;
-            DrawCentered(canvas, suffix, center, y + suffixY, paint, maxWidth);
+            paint.TextSize = 28;
+            DrawCentered(canvas, string.Join(' ', words.Skip(1)), center, y + height * 0.72f, paint, width * 0.56f);
         }
+        canvas.Restore();
     }
 
     private void DrawV3Rect(SKCanvas canvas, JsonElement resource, Dictionary<string, object?> props, float opacity)
