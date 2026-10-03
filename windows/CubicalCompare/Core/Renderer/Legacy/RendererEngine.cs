@@ -2104,6 +2104,14 @@ public sealed class RendererEngine : IDisposable
         SKRect? visibleClip = null) =>
         DrawImage(canvas, card, dest, true, 1, visibleClip);
 
+    private void DrawImageCover(
+        SKCanvas canvas,
+        StudioCard card,
+        SKRect dest,
+        SKRect? visibleClip,
+        float opacity) =>
+        DrawImage(canvas, card, dest, true, opacity, visibleClip);
+
     private void DrawImageContain(
         SKCanvas canvas,
         StudioCard card,
