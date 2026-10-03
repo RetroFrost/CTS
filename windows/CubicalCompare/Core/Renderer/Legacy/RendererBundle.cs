@@ -552,6 +552,10 @@ public static class RendererCapabilities
         "smart-badge-per-card-placement-v1", "smart-badge-sequence-offset-v1",
         "smart-badge-field-rect-track-v1", "smart-badge-field-alpha-track-v1",
         "smart-badge-field-rotation-track-v1", "smart-badge-overlay-last-v1",
+        // 4.2.4 text-wipe contracts reveal live card/badge text through
+        // deterministic frame-addressed clip tracks; no glyphs are baked.
+        "ribbon-text-wipe-v1",
+        "ribbon-badge-text-wipe-v1",
     };
 
     public static RendererValidationReport Report(RendererSpec spec)
