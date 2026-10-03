@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Velopack;
 using Velopack.Exceptions;
 using Velopack.Sources;
@@ -55,8 +56,13 @@ public sealed class CubicalUpdateService
     public const string RepositoryUrl = "https://github.com/RetroFrost/CTS";
     public const string ReleasesPageUrl = RepositoryUrl + "/releases";
     private const string ReleasesApiUrl = "https://api.github.com/repos/RetroFrost/CTS/releases?per_page=30";
+    private const string LatestReleasePageUrl = ReleasesPageUrl + "/latest";
+    private const string ReleaseDownloadPrefix = RepositoryUrl + "/releases/download/";
 
     private static readonly HttpClient Http = CreateHttpClient();
+    private static readonly SemaphoreSlim ReleaseDiscoveryGate = new(1, 1);
+    private static ReleaseSnapshot? _releasePageCache;
+    private static DateTimeOffset _releasePageCacheExpiresUtc;
 
     public async Task<CubicalUpdateCandidate?> CheckForUpdatesAsync(
         Version currentVersion,
@@ -668,64 +674,264 @@ public sealed class CubicalUpdateService
         CancellationToken cancellationToken,
         bool includeCurrentVersion = false)
     {
-        using var response = await Http.GetAsync(ReleasesApiUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-
-        var releases = new List<ReleaseSnapshot>();
-        foreach (var release in document.RootElement.EnumerateArray())
+        // Do not make the normal Windows updater depend on the unauthenticated
+        // GitHub REST API. GitHub associates unauthenticated API requests with the
+        // originating IP and limits them to 60 requests/hour; shared NAT/VPN/public
+        // networks can exhaust that budget for a completely unrelated process.
+        // The public Releases page is the primary discovery path now.
+        var release = await FindLatestReleaseFromGitHubPageAsync(cancellationToken);
+        if (release is not null)
         {
-            if (release.TryGetProperty("draft", out var draft) && draft.GetBoolean())
-                continue;
-            if (release.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean())
-                continue;
+            var normalized = Normalize(release.Version);
+            if (normalized > currentVersion ||
+                (includeCurrentVersion && normalized == currentVersion))
+                return release;
+        }
 
-            var tag = release.TryGetProperty("tag_name", out var tagNode)
-                ? tagNode.GetString() ?? string.Empty
-                : string.Empty;
+        // The Releases page is authoritative for the latest stable release. Keep the
+        // old API path only as a last-resort compatibility fallback for unusual GitHub
+        // HTML changes, rather than making every normal update poll consume API quota.
+        try
+        {
+            using var response = await Http.GetAsync(ReleasesApiUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return IsUsableRelease(release, currentVersion, includeCurrentVersion)
+                    ? release
+                    : null;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+            var releases = new List<ReleaseSnapshot>();
+            foreach (var releaseNode in document.RootElement.EnumerateArray())
+            {
+                if (releaseNode.TryGetProperty("draft", out var draft) && draft.GetBoolean())
+                    continue;
+                if (releaseNode.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean())
+                    continue;
+
+                var tag = releaseNode.TryGetProperty("tag_name", out var tagNode)
+                    ? tagNode.GetString() ?? string.Empty
+                    : string.Empty;
+                var version = ParseVersion(tag);
+                if (version is null)
+                    continue;
+                var normalizedVersion = Normalize(version);
+                if (normalizedVersion < currentVersion ||
+                    (!includeCurrentVersion && normalizedVersion == currentVersion))
+                    continue;
+
+                var releaseUri = releaseNode.TryGetProperty("html_url", out var htmlNode) &&
+                                 Uri.TryCreate(htmlNode.GetString(), UriKind.Absolute, out var parsedRelease)
+                    ? parsedRelease
+                    : new Uri(ReleasesPageUrl);
+
+                var assets = new List<ReleaseAsset>();
+                if (releaseNode.TryGetProperty("assets", out var assetArray) && assetArray.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var asset in assetArray.EnumerateArray())
+                    {
+                        var name = asset.TryGetProperty("name", out var nameNode)
+                            ? nameNode.GetString() ?? string.Empty
+                            : string.Empty;
+                        var url = asset.TryGetProperty("browser_download_url", out var urlNode)
+                            ? urlNode.GetString()
+                            : null;
+                        if (name.Length == 0 || string.IsNullOrWhiteSpace(url) ||
+                            !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                            continue;
+
+                        var digest = asset.TryGetProperty("digest", out var digestNode)
+                            ? ParseSha256Digest(digestNode.GetString())
+                            : null;
+                        assets.Add(new ReleaseAsset(name, uri, digest));
+                    }
+                }
+
+                releases.Add(new ReleaseSnapshot(Normalize(version), tag, releaseUri, assets));
+            }
+
+            return releases
+                .OrderByDescending(item => item.Version)
+                .ThenByDescending(item => item.Tag, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault()
+                ?? release;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return IsUsableRelease(release, currentVersion, includeCurrentVersion)
+                ? release
+                : null;
+        }
+    }
+
+    private static bool IsUsableRelease(
+        ReleaseSnapshot? release,
+        Version currentVersion,
+        bool includeCurrentVersion)
+    {
+        if (release is null)
+            return false;
+
+        var normalized = Normalize(release.Version);
+        return normalized > currentVersion ||
+               (includeCurrentVersion && normalized == currentVersion);
+    }
+
+    private static async Task<ReleaseSnapshot?> FindLatestReleaseFromGitHubPageAsync(
+        CancellationToken cancellationToken)
+    {
+        await ReleaseDiscoveryGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_releasePageCache is not null &&
+                DateTimeOffset.UtcNow < _releasePageCacheExpiresUtc)
+                return _releasePageCache;
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleasePageUrl);
+            request.Headers.Accept.Clear();
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+            using var response = await Http.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var finalUri = response.RequestMessage?.RequestUri ?? new Uri(ReleasesPageUrl);
+            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            var tag = ParseReleaseTag(finalUri);
+            if (string.IsNullOrWhiteSpace(tag))
+                tag = ParseReleaseTagFromHtml(html);
+            if (string.IsNullOrWhiteSpace(tag))
+                return null;
+
             var version = ParseVersion(tag);
             if (version is null)
-                continue;
-            var normalizedVersion = Normalize(version);
-            if (normalizedVersion < currentVersion ||
-                (!includeCurrentVersion && normalizedVersion == currentVersion))
-                continue;
+                return null;
 
-            var releaseUri = release.TryGetProperty("html_url", out var htmlNode) &&
-                             Uri.TryCreate(htmlNode.GetString(), UriKind.Absolute, out var parsedRelease)
-                ? parsedRelease
-                : new Uri(ReleasesPageUrl);
+            var releaseUri = new Uri(RepositoryUrl + "/releases/tag/" + Uri.EscapeDataString(tag));
 
-            var assets = new List<ReleaseAsset>();
-            if (release.TryGetProperty("assets", out var assetArray) && assetArray.ValueKind == JsonValueKind.Array)
+            var assets = new Dictionary<string, ReleaseAsset>(StringComparer.OrdinalIgnoreCase);
+            foreach (Match match in Regex.Matches(
+                         html,
+                         @"href\s*=\s*[""'](?<url>(?:https://github\.com)?/RetroFrost/CTS/releases/download/[^""'<>\s]+)[""']",
+                         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             {
-                foreach (var asset in assetArray.EnumerateArray())
-                {
-                    var name = asset.TryGetProperty("name", out var nameNode)
-                        ? nameNode.GetString() ?? string.Empty
-                        : string.Empty;
-                    var url = asset.TryGetProperty("browser_download_url", out var urlNode)
-                        ? urlNode.GetString()
-                        : null;
-                    if (name.Length == 0 || string.IsNullOrWhiteSpace(url) ||
-                        !Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                        continue;
+                var rawUrl = System.Net.WebUtility.HtmlDecode(match.Groups["url"].Value);
+                if (!Uri.TryCreate(rawUrl, UriKind.RelativeOrAbsolute, out var parsed))
+                    continue;
 
-                    var digest = asset.TryGetProperty("digest", out var digestNode)
-                        ? ParseSha256Digest(digestNode.GetString())
-                        : null;
-                    assets.Add(new ReleaseAsset(name, uri, digest));
+                Uri uri;
+                if (!parsed.IsAbsoluteUri)
+                {
+                    if (!Uri.TryCreate(new Uri("https://github.com"), parsed, out uri))
+                        continue;
+                }
+                else
+                {
+                    uri = parsed;
+                }
+
+                if (!uri.AbsoluteUri.StartsWith(ReleaseDownloadPrefix + tag + "/", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var name = Uri.UnescapeDataString(uri.AbsolutePath.Split('/').LastOrDefault() ?? string.Empty);
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                assets[name] = new ReleaseAsset(name, uri, null);
+            }
+
+            if (assets.Count == 0)
+                return null;
+
+            // The release workflow publishes a small SHA256SUMS.txt beside the payloads.
+            // Fetching that file directly preserves the updater's integrity verification
+            // without requiring the REST API's asset digest field.
+            var checksumAsset = assets.Values.FirstOrDefault(asset =>
+                asset.Name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase));
+            if (checksumAsset is not null)
+            {
+                try
+                {
+                    var checksumText = await Http.GetStringAsync(checksumAsset.Uri, cancellationToken);
+                    var hashes = ParseSha256Manifest(checksumText);
+                    foreach (var asset in assets.Values.ToArray())
+                    {
+                        if (hashes.TryGetValue(asset.Name, out var hash))
+                            assets[asset.Name] = asset with { Sha256 = hash };
+                    }
+                }
+                catch
+                {
+                    // Payload downloads still work; VerifySha256 will simply skip the
+                    // digest check if GitHub's checksum manifest is temporarily unavailable.
                 }
             }
 
-            releases.Add(new ReleaseSnapshot(Normalize(version), tag, releaseUri, assets));
+            var snapshot = new ReleaseSnapshot(
+                Normalize(version),
+                tag,
+                releaseUri,
+                assets.Values.OrderBy(asset => asset.Name, StringComparer.OrdinalIgnoreCase).ToArray());
+
+            _releasePageCache = snapshot;
+            _releasePageCacheExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10);
+            return snapshot;
+        }
+        finally
+        {
+            ReleaseDiscoveryGate.Release();
+        }
+    }
+
+    private static string? ParseReleaseTag(Uri releaseUri)
+    {
+        var segments = releaseUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var tagIndex = Array.FindIndex(
+            segments,
+            segment => segment.Equals("tag", StringComparison.OrdinalIgnoreCase));
+        if (tagIndex >= 0 && tagIndex + 1 < segments.Length)
+            return Uri.UnescapeDataString(segments[tagIndex + 1]);
+
+        return null;
+    }
+
+    private static string? ParseReleaseTagFromHtml(string html)
+    {
+        var match = Regex.Match(
+            html,
+            @"/RetroFrost/CTS/releases/tag/(?<tag>[^""'/?#<>\s]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return match.Success ? Uri.UnescapeDataString(match.Groups["tag"].Value) : null;
+    }
+
+    private static Dictionary<string, string> ParseSha256Manifest(string text)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var match = Regex.Match(
+                line,
+                @"^\s*(?<hash>[0-9a-fA-F]{64})\s+(?:\*)?(?<name>.+?)\s*$",
+                RegexOptions.CultureInvariant);
+            if (!match.Success)
+                continue;
+
+            var name = match.Groups["name"].Value.Trim();
+            if (name.StartsWith("./", StringComparison.Ordinal))
+                name = name[2..];
+
+            if (!string.IsNullOrWhiteSpace(name))
+                result[Path.GetFileName(name)] = match.Groups["hash"].Value.ToLowerInvariant();
         }
 
-        return releases
-            .OrderByDescending(release => release.Version)
-            .ThenByDescending(release => release.Tag, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
+        return result;
     }
 
     private static CubicalUpdateCandidate BuildDirectCandidate(

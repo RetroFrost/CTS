@@ -333,7 +333,9 @@ public sealed class RendererEngine : IDisposable
     {
         var centre = spec.Track(target, frame);
         if (centre == null) return null;
-        if (spec.PrecisionMode == "frame-exact") return centre;
+        if (spec.PrecisionMode == "frame-exact" ||
+            spec.Engine.Equals("ribbon-exact", StringComparison.OrdinalIgnoreCase))
+            return centre;
         var previous = spec.Track(target, frame - 1) ?? centre;
         var next = spec.Track(target, frame + 1) ?? centre;
         return previous * 0.20f + centre * 0.60f + next * 0.20f;
@@ -533,9 +535,9 @@ public sealed class RendererEngine : IDisposable
         if (width <= 0 || height <= 0)
             return true;
 
-        // top-to-final is authored by the sequence's per-frame vertical geometry.
-        // final-x is enforced by the runtime so a top-entry sequence cannot drift
-        // sideways just because individual PNG bounds differ by a pixel or two.
+        // For top-to-final/final-x entries, lock the horizontal anchor to the
+        // authored live-text geometry. Do not derive X from opaque bitmap bounds:
+        // shadow/shine/AA can change those bounds and create artificial lateral drift.
         var finalXCorrection = 0f;
         var lockFinalX =
             entryAnchor.Equals("final-x", StringComparison.OrdinalIgnoreCase) ||
@@ -545,14 +547,34 @@ public sealed class RendererEngine : IDisposable
             var final = sequence.FinalFrame();
             if (final is not null)
             {
-                var finalBitmap = DecodeSequenceBitmap(sequence, final.Asset);
-                if (finalBitmap is not null)
+                SmartBadgeRect? currentAnchor = null;
+                SmartBadgeRect? finalAnchor = null;
+
+                // Prefer the primary/value field, then header, then any authored field.
+                foreach (var preferredSource in new[] { "value", "primary", "number", "header" })
                 {
-                    var currentBounds = SequenceOpaqueBounds(sequence, selected.Asset, bitmap);
-                    var finalBounds = SequenceOpaqueBounds(sequence, final.Asset, finalBitmap);
-                    if (currentBounds is SKRect current && finalBounds is SKRect target)
-                        finalXCorrection = target.MidX - current.MidX;
+                    var field = sequence.Fields.FirstOrDefault(candidate =>
+                        candidate.Source.Equals(preferredSource, StringComparison.OrdinalIgnoreCase) ||
+                        candidate.Name.Equals(preferredSource, StringComparison.OrdinalIgnoreCase));
+                    if (field is null)
+                        continue;
+
+                    currentAnchor = field.RectAt(selected.TemplateFrame);
+                    finalAnchor = field.RectAt(final.TemplateFrame);
+                    if (currentAnchor is not null && finalAnchor is not null)
+                        break;
                 }
+
+                if (currentAnchor is null || finalAnchor is null)
+                {
+                    var field = sequence.Fields.FirstOrDefault();
+                    currentAnchor = field?.RectAt(selected.TemplateFrame);
+                    finalAnchor = field?.RectAt(final.TemplateFrame);
+                }
+
+                if (currentAnchor is SmartBadgeRect current &&
+                    finalAnchor is SmartBadgeRect target)
+                    finalXCorrection = target.MidX - current.MidX;
             }
         }
 
@@ -1680,7 +1702,7 @@ public sealed class RendererEngine : IDisposable
         return source.Trim().ToLowerInvariant() switch
         {
             "header" or "badgeheader" or "badge-header" =>
-                string.IsNullOrWhiteSpace(card.BadgeHeader) ? "1 in" : card.BadgeHeader.Trim(),
+                card.BadgeHeader?.Trim() ?? "",
             "value" or "primary" or "number" => primary,
             "unit" or "suffix" => unit,
             "badgevalue" or "badge-value" => primary,
