@@ -1383,7 +1383,7 @@ public sealed class RendererEngine : IDisposable
         }
 
         foreach (var field in sequence.Fields)
-            DrawSmartBadgeField(canvas, project, spec, card, index, field, selected.TemplateFrame, globalFrame, opacity);
+            DrawSmartBadgeField(canvas, project, spec, card, index, field, selected.TemplateFrame, frame, opacity);
 
         DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, opacity);
 
@@ -1893,7 +1893,7 @@ public sealed class RendererEngine : IDisposable
         canvas.Save();
         if (progress < 0.9999f)
             canvas.ClipRect(
-                new SKRect(x, y, x + width * progress, y + Math.Max(1, resource.Double("height", 420))),
+                new SKRect(x, y, x + width * progress, y + (float)Math.Max(1, resource.Double("height", 420))),
                 SKClipOperation.Intersect,
                 false);
 
