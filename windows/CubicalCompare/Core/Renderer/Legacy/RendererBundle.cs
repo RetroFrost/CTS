@@ -605,9 +605,16 @@ public static class RendererCapabilities
 
         if (Has("source-exact-outro-overlay"))
         {
-            if (outro is null || outro.Resource is null || !scene.Resources.TryGetValue(outro.Resource, out var resource))
+            if (scene.Resources.TryGetValue("exact-outro-overlay", out var exactResource) &&
+                exactResource.ValueKind == JsonValueKind.Object)
             {
-                errors.Add("source-exact-outro-overlay requires a frame-addressed outro overlay object.");
+                var exactType = exactResource.String("type", "");
+                if (exactType is not ("exact-outro-overlay" or "source-exact-outro-overlay"))
+                    errors.Add($"Exact outro overlay resource type '{exactType}' is not source-exact.");
+            }
+            else if (outro is null || outro.Resource is null || !scene.Resources.TryGetValue(outro.Resource, out var resource))
+            {
+                errors.Add("source-exact-outro-overlay requires either an exact-outro-overlay resource or a frame-addressed outro overlay object.");
             }
             else
             {
@@ -616,27 +623,21 @@ public static class RendererCapabilities
                     errors.Add($"Outro overlay resource type '{type}' is not source-exact.");
             }
         }
-        if (Has("source-exact-outro-overlay"))
+        if (Has("source-exact-outro-overlay") &&
+            scene.Resources.TryGetValue("exact-outro-overlay", out var exactResourceValidation) &&
+            exactResourceValidation.ValueKind == JsonValueKind.Object)
         {
-            if (!scene.Resources.TryGetValue("exact-outro-overlay", out var exactResource) ||
-                exactResource.ValueKind != JsonValueKind.Object)
-            {
-                errors.Add("source-exact-outro-overlay requires an 'exact-outro-overlay' scene resource.");
-            }
-            else
-            {
-                var startFrame = exactResource.Int("startFrame", -1);
-                var endFrame = exactResource.Int("endFrame", -1);
-                var frames = exactResource.TryGetProperty("frames", out var frameArray) && frameArray.ValueKind == JsonValueKind.Array
-                    ? frameArray.GetArrayLength()
-                    : 0;
-                if (startFrame < 0 || endFrame < startFrame)
-                    errors.Add("exact-outro-overlay has invalid frame bounds.");
-                if (frames != endFrame - startFrame + 1)
-                    errors.Add($"exact-outro-overlay frame count {frames} does not match its declared bounds {startFrame}..{endFrame}.");
-                if (frames == 0)
-                    errors.Add("exact-outro-overlay contains no source frames.");
-            }
+            var startFrame = exactResourceValidation.Int("startFrame", -1);
+            var endFrame = exactResourceValidation.Int("endFrame", -1);
+            var frames = exactResourceValidation.TryGetProperty("frames", out var frameArray) && frameArray.ValueKind == JsonValueKind.Array
+                ? frameArray.GetArrayLength()
+                : 0;
+            if (startFrame < 0 || endFrame < startFrame)
+                errors.Add("exact-outro-overlay has invalid frame bounds.");
+            if (frames != endFrame - startFrame + 1)
+                errors.Add($"exact-outro-overlay frame count {frames} does not match its declared bounds {startFrame}..{endFrame}.");
+            if (frames == 0)
+                errors.Add("exact-outro-overlay contains no source frames.");
         }
 
 
