@@ -1383,7 +1383,7 @@ public sealed class RendererEngine : IDisposable
         }
 
         foreach (var field in sequence.Fields)
-            DrawSmartBadgeField(canvas, project, spec, card, index, field, selected.TemplateFrame, frame, opacity);
+            DrawSmartBadgeField(canvas, project, spec, card, index.Value, field, selected.TemplateFrame, frame, opacity);
 
         DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, opacity);
 
