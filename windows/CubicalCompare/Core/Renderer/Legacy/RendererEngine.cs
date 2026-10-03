@@ -61,7 +61,7 @@ public sealed class RendererEngine : IDisposable
                 return overridden;
             return _relationships.FrameCount(project, spec);
         }
-        if (spec.Engine == "scene-v3" && spec.SceneV3 != null && spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal))
+        if (spec.Engine == "scene-v3" && spec.SceneV3 != null && UsesProjectCardData(spec))
         {
             var lastIndex = Math.Max(0, project.Cards.Count - 1);
             var lastCard = spec.SceneV3.Objects.FirstOrDefault(obj =>
@@ -737,9 +737,13 @@ public sealed class RendererEngine : IDisposable
         DrawV3EndFade(canvas, project, spec, frame);
     }
 
+    private static bool UsesProjectCardData(RendererSpec spec) =>
+        spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) ||
+        spec.RequiredFeatures.Contains("project-badge-text", StringComparer.Ordinal);
+
     private bool ShouldRenderProjectObject(StudioProject project, RendererSpec spec, RendererObjectV3 obj)
     {
-        if (!spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal)) return true;
+        if (!UsesProjectCardData(spec)) return true;
         if (obj.Kind is "endingOverlay" or "fade") return false;
         var index = CardIndex(obj);
         if (index is int i && (i < 0 || i >= project.Cards.Count)) return false;
@@ -803,14 +807,14 @@ public sealed class RendererEngine : IDisposable
         }
         try
         {
-            if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) &&
+            if (UsesProjectCardData(spec) &&
                 obj.Kind is "openingCard" or "card" &&
                 type != "relationships-card")
             {
                 DrawV3ProjectCard(canvas, project, obj, resource, bound, (float)opacity);
                 return;
             }
-            if (spec.RequiredFeatures.Contains("project-card-data", StringComparer.Ordinal) && obj.Kind is "openingText" or "badgeText" or "laterText") { DrawV3ProjectBadgeText(canvas, project, obj, resource, bound, (float)opacity); return; }
+            if (UsesProjectCardData(spec) && (obj.Kind is "openingText" or "badgeText" or "laterText" or "projectBadgeText" or "project-badge-text" || type is "project-badge-text" or "projectbadgetext")) { DrawV3ProjectBadgeText(canvas, project, obj, resource, bound, (float)opacity); return; }
             switch (type)
             {
                 case "relationships-card": DrawV3RelationshipsCard(canvas, project, obj, resource, bound, (float)opacity); break;
