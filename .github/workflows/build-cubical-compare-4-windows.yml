@@ -57,7 +57,7 @@ jobs:
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.3 and advance the
+          # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
           $velopackVersion = "4.2.41"
 
