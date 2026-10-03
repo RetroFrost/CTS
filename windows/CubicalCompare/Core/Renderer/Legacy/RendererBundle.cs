@@ -616,6 +616,29 @@ public static class RendererCapabilities
                     errors.Add($"Outro overlay resource type '{type}' is not source-exact.");
             }
         }
+        if (Has("source-exact-outro-overlay"))
+        {
+            if (!scene.Resources.TryGetValue("exact-outro-overlay", out var exactResource) ||
+                exactResource.ValueKind != JsonValueKind.Object)
+            {
+                errors.Add("source-exact-outro-overlay requires an 'exact-outro-overlay' scene resource.");
+            }
+            else
+            {
+                var startFrame = exactResource.Int("startFrame", -1);
+                var endFrame = exactResource.Int("endFrame", -1);
+                var frames = exactResource.TryGetProperty("frames", out var frameArray) && frameArray.ValueKind == JsonValueKind.Array
+                    ? frameArray.GetArrayLength()
+                    : 0;
+                if (startFrame < 0 || endFrame < startFrame)
+                    errors.Add("exact-outro-overlay has invalid frame bounds.");
+                if (frames != endFrame - startFrame + 1)
+                    errors.Add($"exact-outro-overlay frame count {frames} does not match its declared bounds {startFrame}..{endFrame}.");
+                if (frames == 0)
+                    errors.Add("exact-outro-overlay contains no source frames.");
+            }
+        }
+
 
         if (Has("verified-opening-boundaries"))
         {
