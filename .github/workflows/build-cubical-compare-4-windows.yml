@@ -195,8 +195,8 @@ jobs:
           if ($rendererBundle -notmatch 'ribbon-text-wipe-v1') { throw 'Renderer card text-wipe capability is missing.' }
           if ($rendererBundle -notmatch 'ribbon-badge-text-wipe-v1') { throw 'Renderer badge text-wipe capability is missing.' }
           if ($rendererEngine -notmatch 'GetTextWipeProgress') { throw 'Renderer text-wipe progress evaluator is missing.' }
-          if ($rendererEngine -notmatch 'ribbon\\.card\\.\\{cardIndex\\}\\.text\\.wipe\\.progress') { throw 'Per-card text wipe track contract is missing.' }
-          if ($rendererEngine -notmatch 'ribbon\\.card\\.\\{cardIndex\\}\\.badge\\.text\\.wipe\\.progress') { throw 'Per-card badge text wipe track contract is missing.' }
+          if ($rendererEngine -notmatch 'ribbon\.card\.\{cardIndex\}\.text\.wipe\.progress') { throw 'Per-card text wipe track contract is missing.' }
+          if ($rendererEngine -notmatch 'ribbon\.card\.\{cardIndex\}\.badge\.text\.wipe\.progress') { throw 'Per-card badge text wipe track contract is missing.' }
 
           $webImages = Get-Content 'windows/CubicalCompare/Core/Project/WebImageSource.cs' -Raw
           if ($webImages -notmatch 'TryFlaticonCdnCandidate') { throw 'Flaticon page URL resolution is missing.' }
