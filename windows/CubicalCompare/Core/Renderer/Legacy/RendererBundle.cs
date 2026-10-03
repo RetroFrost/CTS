@@ -527,7 +527,7 @@ public static class RendererCapabilities
         "exact-artwork-transforms", "absolute-integer-frame-clock", "single-scene-preview-export-contract",
         "preview-export-identical-path", "reference-resolution-fps-lock", "frame-checkpoints", "pixel-diff-audit-contract",
         "selector-cascade-inspection", "exact-outro-overlay", "renderer-api-v3-scene-ir", "renderer-v3-sidecar-resources",
-        "renderer-v3-zip-package", "project-card-data", "relationships-exact-v2", "relationships-footer-waveform",
+        "renderer-v3-zip-package", "project-card-data", "project-badge-text", "relationships-exact-v2", "relationships-footer-waveform",
         "relationships-rich-typography", "relationships-shadow-mask-v1", "relationships-shadow-outside-v2",
         "relationships-single-owner-pass-v1", "relationships-windowed-card-tracks-v1", "infinite-timeline-source-v1",
         "infinite-timeline-source-v2", "illustrated-project-layout-v1", "renderer-font-asset-v1",
