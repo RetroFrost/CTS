@@ -146,7 +146,8 @@ public static class Zipack2Exporter
         ImageCropRight = card.ImageCropRight,
         ImageCropBottom = card.ImageCropBottom,
         ImageLayer = card.ImageLayer,
-    };
+        };
+    }
 
     private static async Task<List<ArtworkItem>> BuildArtworkItemsAsync(
         ComparisonProject project,
