@@ -151,7 +151,7 @@ jobs:
           if ($updateService -notmatch 'robocopy\.log') { throw 'Portable ZIP updater does not retain Robocopy diagnostics.' }
           if ($updateService -notmatch 'after 3 attempts') { throw 'Portable ZIP updater lacks bounded Robocopy retry handling.' }
           if ($updateService -notmatch 'FindLatestReleaseFromGitHubPageAsync') { throw 'GitHub ZIP updater still depends on REST API release discovery.' }
-          if ($updateService -notmatch 'releases/latest') { throw 'GitHub release-page discovery URL is missing.' }
+          if ($updateService -notmatch 'LatestReleasePageUrl') { throw 'GitHub release-page discovery URL is missing.' }
           if ($updateService -notmatch 'releases/download/') { throw 'GitHub release asset URL parsing is missing.' }
           if ($updateService -notmatch 'SHA256SUMS\.txt') { throw 'GitHub release checksum-manifest discovery is missing.' }
           if ($updateService -notmatch 'AddMinutes\(10\)') { throw 'GitHub release discovery cache is missing.' }
