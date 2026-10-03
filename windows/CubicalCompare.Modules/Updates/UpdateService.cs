@@ -775,8 +775,11 @@ public sealed class CubicalUpdateService
                 DateTimeOffset.UtcNow < _releasePageCacheExpiresUtc)
                 return _releasePageCache;
 
-            using var response = await Http.GetAsync(
-                LatestReleasePageUrl,
+            using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleasePageUrl);
+            request.Headers.Accept.Clear();
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+            using var response = await Http.SendAsync(
+                request,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
             response.EnsureSuccessStatusCode();
