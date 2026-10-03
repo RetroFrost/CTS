@@ -695,7 +695,9 @@ public sealed class CubicalUpdateService
         {
             using var response = await Http.GetAsync(ReleasesApiUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!response.IsSuccessStatusCode)
-                return release;
+                return IsUsableRelease(release, currentVersion, includeCurrentVersion)
+                    ? release
+                    : null;
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
@@ -761,8 +763,23 @@ public sealed class CubicalUpdateService
         }
         catch
         {
-            return release;
+            return IsUsableRelease(release, currentVersion, includeCurrentVersion)
+                ? release
+                : null;
         }
+    }
+
+    private static bool IsUsableRelease(
+        ReleaseSnapshot? release,
+        Version currentVersion,
+        bool includeCurrentVersion)
+    {
+        if (release is null)
+            return false;
+
+        var normalized = Normalize(release.Version);
+        return normalized > currentVersion ||
+               (includeCurrentVersion && normalized == currentVersion);
     }
 
     private static async Task<ReleaseSnapshot?> FindLatestReleaseFromGitHubPageAsync(
