@@ -592,7 +592,7 @@ public sealed class RendererEngine : IDisposable
         }
 
         foreach (var field in sequence.Fields)
-            DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, 1);
+            DrawSmartBadgeField(canvas, project, spec, card, index, field, selected.TemplateFrame, globalFrame, 1);
 
         DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, 1);
 
@@ -1503,7 +1503,7 @@ public sealed class RendererEngine : IDisposable
         canvas.Translate(drawX + scaledXCorrection, drawY);
         canvas.Scale(drawWidth / Math.Max(1, sequence.Width), drawHeight / Math.Max(1, sequence.Height));
         foreach (var field in sequence.Fields)
-            DrawSmartBadgeField(canvas, project, card, field, selected.TemplateFrame, opacity);
+            DrawSmartBadgeField(canvas, project, spec, card, index.Value, field, selected.TemplateFrame, frame, opacity);
         DrawSmartSequenceOverlay(canvas, sequence, selected.TemplateFrame, opacity);
         canvas.Restore();
     }
