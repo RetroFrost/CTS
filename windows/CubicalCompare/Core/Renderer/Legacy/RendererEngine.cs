@@ -1859,35 +1859,64 @@ public sealed class RendererEngine : IDisposable
     {
         var index = CardIndex(obj);
         if (index == null || index < 0 || index >= project.Cards.Count) return;
+
         var card = project.Cards[index.Value];
         var width = (float)Number(Get(props, "width"), resource.Double("width", 477));
-        var height = (float)Number(Get(props, "height"), resource.Double("height", 420));
         var x = (float)Number(Get(props, "x"), resource.Double("x", 0));
         var y = (float)Number(Get(props, "y"), resource.Double("y", 0));
-        using var paint = TextPaint(project, 58, WithAlpha(SKColors.White, opacity), true);
-        var center = x + width / 2;
-        var progress = GetTextWipeProgress(spec, index.Value, frame, true);
+        var center = x + width / 2f;
+        var maxWidth = width * (float)Number(Get(props, "maxWidthRatio"), resource.Double("maxWidthRatio", 0.72));
 
+        var numberY = (float)Number(Get(props, "numberY"), resource.Double("numberY", 188));
+        var headerY = (float)Number(Get(props, "headerY"), resource.Double("headerY", 234));
+        var suffixY = (float)Number(Get(props, "suffixY"), resource.Double("suffixY", 277));
+        var numberSize = (float)Number(Get(props, "numberSize"), resource.Double("numberSize", 80));
+        var headerSize = (float)Number(Get(props, "headerSize"), resource.Double("headerSize", 34));
+        var suffixSize = (float)Number(Get(props, "suffixSize"), resource.Double("suffixSize", 34));
+        var color = WithAlpha(ParseColor(
+            StringValue(Get(props, "color", "textColor")) ?? resource.String("color", "#FFFFFF"),
+            SKColors.White), opacity);
+
+        var words = Regex.Split(card.Value.Trim(), "\\s+")
+            .Where(v => v.Length > 0)
+            .ToArray();
+        var primary = !string.IsNullOrWhiteSpace(card.BadgeValue)
+            ? card.BadgeValue.Trim()
+            : words.FirstOrDefault() ?? "";
+        var suffix = !string.IsNullOrWhiteSpace(card.BadgeUnit)
+            ? card.BadgeUnit.Trim()
+            : (words.Length > 1 ? string.Join(' ', words.Skip(1)) : "");
+
+        var progress = GetTextWipeProgress(spec, index.Value, frame, true);
         if (progress <= 0.0001f) return;
 
         canvas.Save();
         if (progress < 0.9999f)
-            canvas.ClipRect(new SKRect(x, y, x + width * progress, y + height), SKClipOperation.Intersect, false);
+            canvas.ClipRect(
+                new SKRect(x, y, x + width * progress, y + Math.Max(1, resource.Double("height", 420))),
+                SKClipOperation.Intersect,
+                false);
+
+        using var paint = TextPaint(project, numberSize, color, true);
+
+        if (!string.IsNullOrWhiteSpace(primary))
+        {
+            paint.TextSize = numberSize;
+            DrawCentered(canvas, primary, center, y + numberY, paint, maxWidth);
+        }
 
         if (!string.IsNullOrWhiteSpace(card.BadgeHeader))
         {
-            paint.TextSize = 24;
-            DrawCentered(canvas, card.BadgeHeader, center, y + height * 0.41f, paint, width * 0.56f);
+            paint.TextSize = headerSize;
+            DrawCentered(canvas, card.BadgeHeader.Trim().ToUpperInvariant(), center, y + headerY, paint, maxWidth);
         }
 
-        var words = Regex.Split(card.Value.Trim(), "\\s+").Where(v => v.Length > 0).ToArray();
-        paint.TextSize = 58;
-        DrawCentered(canvas, words.FirstOrDefault() ?? "", center, y + height * 0.60f, paint, width * 0.56f);
-        if (words.Length > 1)
+        if (!string.IsNullOrWhiteSpace(suffix))
         {
-            paint.TextSize = 28;
-            DrawCentered(canvas, string.Join(' ', words.Skip(1)), center, y + height * 0.72f, paint, width * 0.56f);
+            paint.TextSize = suffixSize;
+            DrawCentered(canvas, suffix, center, y + suffixY, paint, maxWidth);
         }
+
         canvas.Restore();
     }
 
