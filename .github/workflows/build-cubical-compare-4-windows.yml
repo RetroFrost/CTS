@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.5"
+          $version = "4.2.6"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.42"
+          $velopackVersion = "4.2.43"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -200,6 +200,9 @@ jobs:
           if ($rendererBundle -notmatch 'ribbon-text-wipe-v1') { throw 'Renderer card text-wipe capability is missing.' }
           if ($rendererBundle -notmatch 'ribbon-badge-text-wipe-v1') { throw 'Renderer badge text-wipe capability is missing.' }
           if ($rendererEngine -notmatch 'GetTextWipeProgress') { throw 'Renderer text-wipe progress evaluator is missing.' }
+          if ($rendererEngine -notmatch 'source-exact-outro-overlay') { throw 'Renderer runtime does not expose the source-exact outro capability.' }
+          if ($rendererEngine -notmatch 'exact-outro-overlay') { throw 'Renderer runtime is missing the exact outro scene resource contract.' }
+          if ($rendererEngine -notmatch 'DrawV3Outro\(canvas, scene, exactResource') { throw 'Ribbon runtime is not wired to render the packaged exact outro frame.' }
           if ($rendererEngine -notmatch 'ribbon\.card\.\{cardIndex\}\.text\.wipe\.progress') { throw 'Per-card text wipe track contract is missing.' }
           if ($rendererEngine -notmatch 'ribbon\.card\.\{cardIndex\}\.badge\.text\.wipe\.progress') { throw 'Per-card badge text wipe track contract is missing.' }
 
@@ -698,6 +701,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
+          - 4.2.6 fixes reference-exact rendering: SmartCard live text is no longer clipped by the artwork reveal mask, SmartBadge v2 can use exact per-card badge start clocks, and ribbon-exact can play a frame-addressed reference outro without procedural substitution.
           - 4.2.5 fixes GitHub ZIP update discovery: release metadata is resolved from the public Releases page instead of the unauthenticated GitHub REST API, eliminating the shared-IP 403 rate-limit failure. Asset SHA-256 verification remains intact via SHA256SUMS.txt.
           - 4.2.4 adds live renderer text-wipe and SmartBadge text-wipe capabilities driven by deterministic frame tracks; text stays project-bound instead of being baked into animation frames.
           ## Cubical Compare $env:CC_VERSION — Windows
