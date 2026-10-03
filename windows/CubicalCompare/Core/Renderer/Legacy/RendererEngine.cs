@@ -1552,7 +1552,6 @@ public sealed class RendererEngine : IDisposable
         if (string.IsNullOrWhiteSpace(text)) return;
 
         var isBadgeText = field.Source.Trim().ToLowerInvariant() is not ("title" or "description" or "desc");
-        var wipeFeature = isBadgeText ? "ribbon-badge-text-wipe-v1" : "ribbon-text-wipe-v1";
         var wipeProgress = GetTextWipeProgress(spec, cardIndex, globalFrame, isBadgeText);
 
         if (wipeProgress <= 0.0001f) return;
