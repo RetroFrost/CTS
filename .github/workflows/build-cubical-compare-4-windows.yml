@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.3"
+          $version = "4.2.4"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
-          # Keep the visible Cubical Compare version at 4.2.3 and advance the
+          # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.40"
+          $velopackVersion = "4.2.41"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -192,6 +192,11 @@ jobs:
           if ($rendererBundle -notmatch 'smart-badge-settled-hold-v1') { throw 'Renderer capability list is missing settled-hold support.' }
           if ($rendererBundle -notmatch 'smart-card-text-outside-artwork-clip-v1') { throw 'Renderer capability list is missing SmartCard text clip support.' }
           if ($rendererBundle -notmatch 'smart-card-full-artwork-mask-v1') { throw 'Renderer capability list is missing full SmartCard artwork-mask support.' }
+          if ($rendererBundle -notmatch 'ribbon-text-wipe-v1') { throw 'Renderer card text-wipe capability is missing.' }
+          if ($rendererBundle -notmatch 'ribbon-badge-text-wipe-v1') { throw 'Renderer badge text-wipe capability is missing.' }
+          if ($rendererEngine -notmatch 'GetTextWipeProgress') { throw 'Renderer text-wipe progress evaluator is missing.' }
+          if ($rendererEngine -notmatch 'ribbon\.card\.\{cardIndex\}\.text\.wipe\.progress') { throw 'Per-card text wipe track contract is missing.' }
+          if ($rendererEngine -notmatch 'ribbon\.card\.\{cardIndex\}\.badge\.text\.wipe\.progress') { throw 'Per-card badge text wipe track contract is missing.' }
 
           $webImages = Get-Content 'windows/CubicalCompare/Core/Project/WebImageSource.cs' -Raw
           if ($webImages -notmatch 'TryFlaticonCdnCandidate') { throw 'Flaticon page URL resolution is missing.' }
@@ -688,6 +693,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
+          - 4.2.4 adds live renderer text-wipe and SmartBadge text-wipe capabilities driven by deterministic frame tracks; text stays project-bound instead of being baked into animation frames.
           ## Cubical Compare $env:CC_VERSION — Windows
 
           - 4.2.1.31 completes web-artwork editing: URL images now work with Fit, direct manipulation, immersive preview selection, move, resize, rotate and crop using the same resolved cache as local artwork.
