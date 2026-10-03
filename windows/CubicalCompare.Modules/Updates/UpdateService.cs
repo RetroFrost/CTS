@@ -678,8 +678,7 @@ public sealed class CubicalUpdateService
         // GitHub REST API. GitHub associates unauthenticated API requests with the
         // originating IP and limits them to 60 requests/hour; shared NAT/VPN/public
         // networks can exhaust that budget for a completely unrelated process.
-        // The public Releases page is not subject to that REST API quota, so it is
-        // the primary discovery path now. cite is intentionally kept out of source comments.
+        // The public Releases page is the primary discovery path now.
         var release = await FindLatestReleaseFromGitHubPageAsync(cancellationToken);
         if (release is not null)
         {
