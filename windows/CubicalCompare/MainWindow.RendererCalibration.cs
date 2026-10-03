@@ -7,6 +7,7 @@ using Windows.Storage;
 using Windows.Storage.FileProperties;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
+using CubicalCompare.Core.Renderer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -76,8 +77,8 @@ public sealed partial class MainWindow
         var pitchSeed = width == 1920 ? 480 : Math.Max(1, width / 4);
         var insetSeed = 9;
         var bodyWidthSeed = Math.Max(1, pitchSeed - insetSeed);
-        var openingIntervalSeed = Math.Max(1, (int)Math.Round(fpsForRenderer * 2));
-        var conveyorStepSeed = Math.Max(1, (int)Math.Round(fpsForRenderer * 4));
+        var openingIntervalSeed = Math.Max(1, (int)Math.Round((double)fpsForRenderer * 2));
+        var conveyorStepSeed = Math.Max(1, (int)Math.Round((double)fpsForRenderer * 4));
         var imageHeightSeed = Math.Clamp((int)Math.Round(height * (872d / 1080d)), 1, height);
         var titleHeightSeed = Math.Clamp((int)Math.Round(height * (93d / 1080d)), 1, height - imageHeightSeed);
 
