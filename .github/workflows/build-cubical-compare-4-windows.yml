@@ -1,5 +1,7 @@
 name: Build Cubical Compare 4 Windows
 
+# Workflow retrigger marker
+
 on:
   push:
     branches:
