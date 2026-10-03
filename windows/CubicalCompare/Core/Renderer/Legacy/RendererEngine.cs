@@ -726,6 +726,39 @@ public sealed class RendererEngine : IDisposable
 
     private void DrawRibbonOutro(SKCanvas canvas, StudioProject project, RendererSpec spec, int local)
     {
+        var scene = spec.SceneV3;
+        var exactFeature = spec.RequiredFeatures.Contains(
+            "source-exact-outro-overlay",
+            StringComparer.Ordinal);
+
+        // When a reference-exact outro overlay is packaged, it is authoritative.
+        // Draw one source frame for one renderer frame; do not regenerate or
+        // approximate the recommendation/end-screen animation procedurally.
+        if (exactFeature &&
+            scene is not null &&
+            scene.Resources.TryGetValue("exact-outro-overlay", out var exactResource) &&
+            exactResource.ValueKind == JsonValueKind.Object)
+        {
+            var contentEnd = FrameCount(project, spec) - spec.OutroFrames;
+            var globalFrame = contentEnd + local;
+            if (globalFrame >= exactResource.Int("startFrame", -1) &&
+                globalFrame <= exactResource.Int("endFrame", -1))
+            {
+                var props = new Dictionary<string, object?>
+                {
+                    ["opacity"] = 1d,
+                    ["x"] = exactResource.Double("x", 0d),
+                    ["y"] = exactResource.Double("y", 0d),
+                    ["width"] = exactResource.Double("width", spec.ReferenceWidth),
+                    ["height"] = exactResource.Double("height", spec.ReferenceHeight),
+                    ["sampling"] = exactResource.String("sampling", "linear"),
+                };
+                canvas.Clear(ParseColor(scene.Root.String("background", "#000000"), SKColors.Black));
+                DrawV3Outro(canvas, scene, exactResource, props, globalFrame, 1f);
+                return;
+            }
+        }
+
         canvas.Clear(ToSkColor(spec.BackgroundColor));
         var fadeStart = spec.EndWipeFrames + spec.EndRiseFrames + spec.EndHoldFrames;
         if (local >= fadeStart)
