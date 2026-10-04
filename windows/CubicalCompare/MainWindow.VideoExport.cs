@@ -176,10 +176,12 @@ public sealed partial class MainWindow
             for (var workerIndex = 0; workerIndex < exportWorkerCount; workerIndex++)
             {
                 var workerRenderer = LegacyRendererAdapter.Load(_legacyRenderer.SourcePath);
+                workerRenderer.SetFastExportSampling(FastExportMenuItem.IsChecked);
                 exportRenderers.Add(workerRenderer);
                 exportSessions.Add(workerRenderer.CreateRenderSession(project));
             }
 
+            var exportTimer = System.Diagnostics.Stopwatch.StartNew();
             pendingFrameRenders = new Dictionary<int, Task<byte[]>>();
 
             var reusableWorkers = new Stack<LegacyRendererAdapter.RenderSession>(exportSessions);
@@ -289,7 +291,9 @@ public sealed partial class MainWindow
                             {
                                 ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
                                 var writtenBytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
-                                var detail = $"Max-power render · {exportWorkerCount} workers · {renderedCount:N0}/{frameCount:N0} frames · {progress:0.0}% · {FormatByteCount(writtenBytes)}";
+                                var renderFps = renderedCount / Math.Max(.001, exportTimer.Elapsed.TotalSeconds);
+                                var eta = TimeSpan.FromSeconds(Math.Max(0, frameCount - renderedCount) / Math.Max(.001, renderFps));
+                                var detail = $"{renderFps:0.0} FPS · {exportWorkerCount} workers · {renderedCount:N0}/{frameCount:N0} frames · {progress:0.0}% · ~{eta:hh\\:mm\\:ss} remaining · {FormatByteCount(writtenBytes)}";
                                 ExportStatusText.Text = detail;
                                 UpdateActivityWatcher("Video export", detail, Math.Clamp(progress, 0, 99.5));
                             });
