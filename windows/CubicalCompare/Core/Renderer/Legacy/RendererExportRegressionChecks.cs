@@ -8,6 +8,7 @@ public static class RendererExportRegressionChecks
     public static void Run()
     {
         RunRibbonTiming();
+        RunTextCache();
         var directory = Path.Combine(Path.GetTempPath(), "CubicalCompare-render-cache-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
@@ -97,6 +98,35 @@ public static class RendererExportRegressionChecks
             if (engine.FrameCount(project, spec) != 3600)
                 throw new InvalidOperationException("Explicit custom duration was overridden.");
         }
+    }
+
+    private static void RunTextCache()
+    {
+        using var engine = new RendererEngine();
+        var card = new StudioCard { Title = "An editable title that needs wrapping", Description = "A longer editable description must retain the same line breaks when fonts and card data change." };
+        var project = new StudioProject { Cards = [card], ShowBadges = false };
+        var spec = new RendererSpec { Engine = "standard" };
+        using var first = engine.Render(project, spec, 0, 320, 180);
+        var faces = engine.CachedTypefaceCount;
+        var layouts = engine.CachedTextLayoutCount;
+        using var repeated = engine.Render(project, spec, 0, 320, 180);
+        if (faces == 0 || layouts == 0 || engine.CachedTypefaceCount != faces || engine.CachedTextLayoutCount != layouts)
+            throw new InvalidOperationException("Repeated frames did not reuse native fonts and text layouts.");
+        for (var y = 0; y < first.Height; y++)
+            for (var x = 0; x < first.Width; x++)
+                if (first.GetPixel(x, y) != repeated.GetPixel(x, y))
+                    throw new InvalidOperationException("Cached text changed rendered pixels.");
+        for (var index = 0; index < 80; index++)
+        {
+            project.FontFamily = "Cache regression font " + index;
+            card.Description = "Changed description " + index;
+            using var frame = engine.Render(project, spec, 0, 320, 180);
+            if (engine.CachedTypefaceCount > 32 || engine.CachedTextLayoutCount > 512)
+                throw new InvalidOperationException("Font or layout caches exceeded their entry budgets.");
+        }
+        engine.Dispose();
+        if (engine.CachedTypefaceCount != 0 || engine.CachedTextLayoutCount != 0)
+            throw new InvalidOperationException("Native fonts were retained after renderer disposal.");
     }
 
 }
