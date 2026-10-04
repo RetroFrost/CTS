@@ -346,7 +346,9 @@ public sealed partial class MainWindow
                 {
                     ExportProgressBar.Value = Math.Max(ExportProgressBar.Value, Math.Clamp(progress, 0, 99.5));
                     var writtenBytes = File.Exists(renderTarget.Path) ? new FileInfo(renderTarget.Path).Length : 0;
-                    var detail = $"Encoding MP4 · {progress:0.0}% · {FormatByteCount(writtenBytes)} written";
+                    var deliveredFrames = Math.Clamp(Volatile.Read(ref nextFrame) + 1, 0, frameCount);
+                    var renderFps = deliveredFrames / Math.Max(.001, exportTimer.Elapsed.TotalSeconds);
+                    var detail = $"Encoding MP4 · {renderFps:0.0} FPS · {progress:0.0}% · {FormatByteCount(writtenBytes)} written";
                     ExportStatusText.Text = detail;
                     UpdateActivityWatcher("Video export", detail, Math.Clamp(progress, 0, 99.5));
                 });
