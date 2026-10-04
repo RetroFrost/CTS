@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.7"
+          $version = "4.2.8"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.44"
+          $velopackVersion = "4.2.45"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -702,6 +702,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
+          - 4.2.8 automatically restores a retained copy of the last loaded renderer after workspace recovery, even if the original file was moved.
+          - CSV import accepts any file extension when the contents are valid CSV, including text and extensionless files.
           - Windows Mica now has translucent editor surfaces and a solid fallback; dropdown popups and flyouts use rounded corners.
           - 4.2.7 improves the editing workspace: preview focus mode, frame timecode and keyboard transport, card duplication/reordering, compact navigation, and a text-first inspector with grouped badge fields.
           - 4.2.6 fixes reference-exact rendering: SmartCard live text is no longer clipped by the artwork reveal mask, SmartBadge v2 can use exact per-card badge start clocks, and ribbon-exact can play a frame-addressed reference outro without procedural substitution.
