@@ -554,6 +554,7 @@ public static class RendererCapabilities
         "smart-badge-field-rotation-track-v1", "smart-badge-overlay-last-v1",
         // 4.2.4 text-wipe contracts reveal live card/badge text through
         // deterministic frame-addressed clip tracks; no glyphs are baked.
+        "smart-badge-compact-value-v1", "ribbon-scene-overlays-v1", "smart-card-live-shell-clip-v1", "smart-badge-authored-opening-clip-v1",
         "ribbon-text-wipe-v1",
         "ribbon-badge-text-wipe-v1",
     };
