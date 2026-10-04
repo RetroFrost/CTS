@@ -236,7 +236,7 @@ jobs:
           $thumbnailWeb = Get-Content 'windows/CubicalCompare/Core/Thumbnail/AutoThumbnailGenerator.cs' -Raw
           if ($thumbnailWeb -notmatch 'WebImageSource\.ResolveToLocalFile') { throw 'Thumbnail generator does not resolve web artwork.' }
 
-          $mainWindow = Get-Content 'windows/CubicalCompare/MainWindow.xaml.cs' -Raw
+          $mainWindow = (Get-Content 'windows/CubicalCompare/MainWindow.xaml.cs' -Raw) + (Get-Content 'windows/CubicalCompare/MainWindow.RendererRetention.cs' -Raw)
           if ($mainWindow -match 'ProjectFrameSlider\.Value = 0;\s*await RenderCurrentFrameAsync\(\);') {
             throw 'Renderer load still hard-resets every package to frame zero.'
           }
