@@ -65,6 +65,30 @@ public sealed partial class MainWindow
             throw new InvalidOperationException("Preview focus did not restore the editing workspace.");
         if (((CornerRadius)Application.Current.Resources["OverlayCornerRadius"]).TopLeft != 12)
             throw new InvalidOperationException("Rounded dropdown resources were not loaded.");
+        var fixture = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CubicalCompare-CSV-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            foreach (var extension in new[] { ".txt", ".data", "" })
+            {
+                var path = fixture + extension;
+                System.IO.File.WriteAllText(path, "Number,Title,Badge Header,Badge Value,Badge Unit,Image,Description\n1,\"Quoted, title\",DISTANCE,42,km,,Description\n");
+                var imported = CubicalCompare.Core.Project.CsvImportService.ImportAsync(path).GetAwaiter().GetResult();
+                if (imported.Cards.Count != 1 || imported.Cards[0].Title != "Quoted, title" || imported.Cards[0].BadgeValue != "42" || imported.Cards[0].BadgeUnit != "km")
+                    throw new InvalidOperationException("CSV content import depends on the file extension or loses quoted fields.");
+                System.IO.File.Delete(path);
+            }
+            System.IO.File.WriteAllText(fixture, "This is plain text without CSV structure.");
+            try
+            {
+                CubicalCompare.Core.Project.CsvImportService.ImportAsync(fixture).GetAwaiter().GetResult();
+                throw new InvalidOperationException("Plain text without CSV structure was accepted.");
+            }
+            catch (System.IO.InvalidDataException) { }
+        }
+        finally
+        {
+            foreach (var extension in new[] { ".txt", ".data", "" }) System.IO.File.Delete(fixture + extension);
+        }
         App.WriteLog("Editor UX interaction smoke passed.");
     }
 
