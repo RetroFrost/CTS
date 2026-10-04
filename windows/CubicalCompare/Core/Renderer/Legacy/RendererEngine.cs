@@ -88,12 +88,23 @@ public sealed class RendererEngine : IDisposable
                 CardIndex(obj) == lastIndex);
             if (lastCard != null) return Math.Clamp(lastCard.LifespanEnd + 1, 1, spec.SceneV3.Frames);
         }
-        if (spec.CanonicalFrameCount > 0) return spec.CanonicalFrameCount;
         if (spec.Engine == "ribbon-exact")
         {
-            var scrollCards = Math.Max(0, project.Cards.Count - 4);
-            return Math.Max(1, spec.ContinuousStartFrame + scrollCards * spec.ContinuousStepFrames + spec.OutroFrames);
+            if (project.Cards.Count == 0) return 1;
+            var step = Math.Max(1, spec.ContinuousStepFrames);
+            // Keep the measured reference's opening, final-card hold and outro,
+            // while adding/removing one conveyor interval per live project card.
+            var referencePadding = spec.CanonicalFrameCount > 0 && spec.CanonicalCardCount > 0
+                ? Math.Max(0L, (long)spec.CanonicalFrameCount - spec.OutroFrames - spec.ContinuousStartFrame -
+                    (long)Math.Max(0, spec.CanonicalCardCount - 4) * step)
+                : 0L;
+            var openingEnd = project.Cards.Count < 4 && project.Cards.Count <= spec.OpeningEnds.Count
+                ? spec.OpeningEnds[project.Cards.Count - 1]
+                : spec.ContinuousStartFrame;
+            var total = openingEnd + (long)Math.Max(0, project.Cards.Count - 4) * step + referencePadding + spec.OutroFrames;
+            return (int)Math.Clamp(total, 1L, int.MaxValue);
         }
+        if (spec.CanonicalFrameCount > 0) return spec.CanonicalFrameCount;
         return Math.Max(1, project.Cards.Count * Math.Max(1, spec.ContinuousStepFrames) + spec.OutroFrames);
     }
 
@@ -115,11 +126,11 @@ public sealed class RendererEngine : IDisposable
     {
         canvas.Clear(RibbonBackground(spec, frame));
         if (project.Cards.Count == 0) return;
-        var contentEnd = Math.Max(spec.ContinuousStartFrame, FrameCount(project, spec) - spec.OutroFrames);
+        var contentEnd = Math.Max(0, FrameCount(project, spec) - spec.OutroFrames);
         if (frame >= contentEnd)
         {
             DrawRibbonOutro(canvas, project, spec, frame - contentEnd);
-            DrawAuthoredRibbonObjects(canvas, project, spec, frame, "outro");
+            DrawAuthoredRibbonObjects(canvas, project, spec, RibbonReferenceOutroFrame(spec, frame - contentEnd), "outro");
             return;
         }
         DrawAuthoredRibbonObjects(canvas, project, spec, frame, "background");
@@ -138,14 +149,36 @@ public sealed class RendererEngine : IDisposable
     {
         if (spec.SceneV3 is not RendererSceneV3 scene ||
             !spec.RequiredFeatures.Contains("ribbon-scene-overlays-v1", StringComparer.Ordinal)) return;
-        foreach (var obj in scene.Objects.Where(obj => obj.Kind == "ribbonOverlay"))
+        foreach (var authored in scene.Objects.Where(obj => obj.Kind == "ribbonOverlay"))
         {
+            // The final live card in an authored outro follows the project's last
+            // card, even when the reference's last index no longer exists.
+            var obj = phase == "outro" && project.Cards.Count > 0 &&
+                CardIndex(authored) == spec.CanonicalCardCount - 1
+                ? RibbonObjectForCard(authored, project.Cards.Count - 1) : authored;
             if (frame < obj.LifespanStart || frame > obj.LifespanEnd ||
                 obj.Raw.String("ribbonPhase", "foreground") != phase ||
                 !ShouldRenderProjectObject(project, spec, obj)) continue;
             var props = V3Evaluator.Properties(scene, obj, frame);
             if (Truthy(Get(props, "visible"), true)) DrawV3Object(canvas, project, spec, obj, props, frame);
         }
+    }
+
+    internal static int RibbonReferenceOutroFrame(RendererSpec spec, int local) =>
+        Math.Max(0, (spec.CanonicalFrameCount > 0 ? spec.CanonicalFrameCount : spec.SceneV3?.Frames ?? 0) - spec.OutroFrames) + local;
+
+    private static RendererObjectV3 RibbonObjectForCard(RendererObjectV3 obj, int index)
+    {
+        var raw = obj.Raw.ValueKind == JsonValueKind.Object
+            ? obj.Raw.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone())
+            : new Dictionary<string, JsonElement>();
+        raw["cardIndex"] = JsonSerializer.SerializeToElement(index);
+        return new RendererObjectV3
+        {
+            Id = obj.Id, Kind = obj.Kind, Frame = obj.Frame, Resource = obj.Resource,
+            LifespanStart = obj.LifespanStart, LifespanEnd = obj.LifespanEnd,
+            Properties = obj.Properties, Raw = JsonSerializer.SerializeToElement(raw),
+        };
     }
 
     private bool TryDrawRibbonSmartCard(
@@ -165,14 +198,23 @@ public sealed class RendererEngine : IDisposable
             candidate.Resource is not null &&
             scene.Resources.TryGetValue(candidate.Resource, out var candidateResource) &&
             candidateResource.String("type", "").Equals("smart-card-animation", StringComparison.OrdinalIgnoreCase));
-        if (obj is null || globalFrame < obj.LifespanStart || globalFrame > obj.LifespanEnd)
-            return false;
+        var evaluationFrame = globalFrame;
+        if (obj is null && index >= spec.CanonicalCardCount && UsesProjectCardData(spec))
+        {
+            // Reuse the measured later-card template for cards beyond the source.
+            obj = scene.Objects.FirstOrDefault(candidate => CardIndex(candidate) == 4 &&
+                candidate.Resource is not null && scene.Resources.TryGetValue(candidate.Resource, out var r) &&
+                r.String("type", "").Equals("smart-card-animation", StringComparison.OrdinalIgnoreCase));
+            if (obj is not null) evaluationFrame = obj.Frame + globalFrame - CardStart(spec, index);
+        }
+        if (obj is null || evaluationFrame < obj.LifespanStart ||
+            (!UsesProjectCardData(spec) && evaluationFrame > obj.LifespanEnd)) return false;
 
         if (obj.Resource is null || !scene.Resources.TryGetValue(obj.Resource, out var resource))
             return false;
 
-        var props = V3Evaluator.Properties(scene, obj, globalFrame)
-            .ToDictionary(pair => pair.Key, pair => BindProjectValue(pair.Value, project, obj), StringComparer.Ordinal);
+        var props = V3Evaluator.Properties(scene, obj, evaluationFrame)
+            .ToDictionary(pair => pair.Key, pair => BindProjectValue(pair.Value, project, obj, index), StringComparer.Ordinal);
 
         var sequenceRoot = StringValue(Get(props, "sequenceRoot")) ?? resource.String("sequenceRoot", "");
         if (string.IsNullOrWhiteSpace(sequenceRoot))
@@ -198,10 +240,10 @@ public sealed class RendererEngine : IDisposable
         if (explicitFrame is not null)
             sequenceFrame = (int)Math.Round(Number(explicitFrame), MidpointRounding.AwayFromZero);
         else if (frameLocked && sequence.Fps == spec.ReferenceFps)
-            sequenceFrame = globalFrame - obj.Frame;
+            sequenceFrame = evaluationFrame - obj.Frame;
         else
             sequenceFrame = (int)Math.Floor(
-                (globalFrame - obj.Frame) * sequence.Fps / (double)Math.Max(1, spec.ReferenceFps));
+                (evaluationFrame - obj.Frame) * sequence.Fps / (double)Math.Max(1, spec.ReferenceFps));
 
         sequenceFrame += (int)Math.Round(
             Number(Get(props, "sequenceOffset"), resource.Int("sequenceOffset", 0)),
@@ -343,8 +385,21 @@ public sealed class RendererEngine : IDisposable
         if (frame >= spec.ContinuousStartFrame && project.Cards.Count > 4)
         {
             var segment = (frame - spec.ContinuousStartFrame) / 512;
-            var exact = Motion(spec, $"ribbon.scroll.{segment}", frame);
+            var exact = spec.TrackWindowed($"ribbon.scroll.{segment}", frame);
             var scroll = exact ?? ((frame - spec.ContinuousStartFrame) / (float)Math.Max(1, spec.ContinuousStepFrames) * spec.SlotPitch);
+            var referenceEnd = spec.CanonicalFrameCount - spec.OutroFrames - 1;
+            if (spec.CanonicalCardCount >= 4 && referenceEnd >= spec.ContinuousStartFrame)
+            {
+                var endSegment = (referenceEnd - spec.ContinuousStartFrame) / 512;
+                var referenceScroll = spec.Track($"ribbon.scroll.{endSegment}", referenceEnd);
+                if (referenceScroll is float measuredEnd)
+                {
+                    if (frame > referenceEnd)
+                        scroll = measuredEnd + (frame - referenceEnd) / (float)Math.Max(1, spec.ContinuousStepFrames) * spec.SlotPitch;
+                    var finalScroll = Math.Max(0, measuredEnd + (project.Cards.Count - spec.CanonicalCardCount) * spec.SlotPitch);
+                    scroll = Math.Min(scroll, finalScroll);
+                }
+            }
             var first = Math.Max(0, (int)(scroll / spec.SlotPitch) - 1);
             var last = Math.Min(project.Cards.Count - 1, (int)((scroll + spec.ReferenceWidth) / spec.SlotPitch) + 1);
             for (var i = first; i <= last; i++)
@@ -792,8 +847,7 @@ public sealed class RendererEngine : IDisposable
             scene.Resources.TryGetValue("exact-outro-overlay", out var exactResource) &&
             exactResource.ValueKind == JsonValueKind.Object)
         {
-            var contentEnd = FrameCount(project, spec) - spec.OutroFrames;
-            var globalFrame = contentEnd + local;
+            var globalFrame = RibbonReferenceOutroFrame(spec, local);
             if (globalFrame >= exactResource.Int("startFrame", -1) &&
                 globalFrame <= exactResource.Int("endFrame", -1))
             {
@@ -2267,10 +2321,10 @@ public sealed class RendererEngine : IDisposable
     private static byte AlphaByte(double opacity) =>
         (byte)Math.Clamp((int)Math.Round(Math.Clamp(opacity, 0d, 1d) * 255d, MidpointRounding.AwayFromZero), 0, 255);
 
-    private object? BindProjectValue(object? value, StudioProject project, RendererObjectV3 obj)
+    private object? BindProjectValue(object? value, StudioProject project, RendererObjectV3 obj, int? cardIndex = null)
     {
         if (value is not string s || !s.StartsWith('$')) return value;
-        var index = CardIndex(obj) ?? 0; var card = index >= 0 && index < project.Cards.Count ? project.Cards[index] : null;
+        var index = cardIndex ?? CardIndex(obj) ?? 0; var card = index >= 0 && index < project.Cards.Count ? project.Cards[index] : null;
         return s switch
         {
             "$card.title" or "$project.card.title" => card?.Title ?? "",
