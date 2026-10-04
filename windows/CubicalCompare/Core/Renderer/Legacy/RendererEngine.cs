@@ -8,6 +8,8 @@ namespace CubicalCompare.Windows;
 
 public sealed class RendererEngine : IDisposable
 {
+    private readonly Dictionary<SKBitmap, SKImage> _decodedImages = new();
+    public bool UseFastImageSampling { get; set; }
     private readonly Dictionary<string, SKBitmap> _imageCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SKRect?> _sequenceOpaqueBoundsCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly InfiniteTimelineRenderer _infinite = new();
@@ -229,7 +231,7 @@ public sealed class RendererEngine : IDisposable
             BlendMode = SKBlendMode.SrcOver,
         })
         {
-            canvas.DrawBitmap(basePlate, new SKRect(0, 0, sequence.Width, sequence.Height), basePaint);
+            canvas.DrawImage(CachedImage(basePlate), new SKRect(0, 0, sequence.Width, sequence.Height), basePaint);
         }
 
         var shellClipSaved = Get(props, "liveContentClip.left") is not null;
@@ -656,12 +658,12 @@ public sealed class RendererEngine : IDisposable
         using (var paint = new SKPaint
         {
             IsAntialias = true,
-            FilterQuality = SKFilterQuality.High,
+            FilterQuality = FilterQuality("high"),
             Color = SKColors.White,
             BlendMode = SKBlendMode.SrcOver,
         })
         {
-            canvas.DrawBitmap(bitmap, new SKRect(0, 0, sequence.Width, sequence.Height), paint);
+            canvas.DrawImage(CachedImage(bitmap), new SKRect(0, 0, sequence.Width, sequence.Height), paint);
         }
 
         foreach (var field in sequence.Fields)
@@ -1442,8 +1444,8 @@ public sealed class RendererEngine : IDisposable
             BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
         })
         {
-            canvas.DrawBitmap(
-                plate,
+            canvas.DrawImage(
+                CachedImage(plate),
                 new SKRect(0, 0, sequence.Width, sequence.Height),
                 platePaint);
         }
@@ -1595,8 +1597,8 @@ public sealed class RendererEngine : IDisposable
             BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
         })
         {
-            canvas.DrawBitmap(
-                bitmap,
+            canvas.DrawImage(
+                CachedImage(bitmap),
                 new SKRect(
                     drawX + scaledXCorrection,
                     drawY,
@@ -1628,12 +1630,12 @@ public sealed class RendererEngine : IDisposable
         using var paint = new SKPaint
         {
             IsAntialias = true,
-            FilterQuality = SKFilterQuality.High,
+            FilterQuality = FilterQuality("high"),
             Color = new SKColor(255, 255, 255, AlphaByte(opacity)),
             BlendMode = SKBlendMode.SrcOver,
         };
-        canvas.DrawBitmap(
-            overlay,
+        canvas.DrawImage(
+            CachedImage(overlay),
             new SKRect(0, 0, sequence.Width, sequence.Height),
             paint);
     }
@@ -2086,7 +2088,7 @@ public sealed class RendererEngine : IDisposable
             Color = new SKColor(255, 255, 255, AlphaByte(opacity)),
             BlendMode = BlendMode(Get(props, "blendMode", "material.blend")),
         };
-        canvas.DrawBitmap(bitmap, src, new SKRect(x, y, x + w, y + h), paint);
+        canvas.DrawImage(CachedImage(bitmap), src, new SKRect(x, y, x + w, y + h), paint);
     }
     private void DrawV3Raster(SKCanvas canvas, RendererSceneV3 scene, JsonElement resource, Dictionary<string, object?> props, float opacity) => DrawV3Image(canvas, scene, resource, props, opacity);
     private void DrawV3Text(SKCanvas canvas, StudioProject project, JsonElement resource, Dictionary<string, object?> props, float opacity)
@@ -2118,7 +2120,7 @@ public sealed class RendererEngine : IDisposable
         using var paint = new SKPaint { Color = new SKColor(255, 255, 255, AlphaByte(opacity)), FilterQuality = FilterQuality(StringValue(Get(props, "sampling", "filterMode")) ?? resource.String("sampling", "high")) };
         var x = (float)Number(Get(props, "x"), resource.Double("x", 0)); var y = (float)Number(Get(props, "y"), resource.Double("y", 0));
         var w = (float)Number(Get(props, "width"), resource.Double("width", bitmap.Width)); var h = (float)Number(Get(props, "height"), resource.Double("height", bitmap.Height));
-        canvas.DrawBitmap(bitmap, new SKRect(x, y, x + w, y + h), paint);
+        canvas.DrawImage(CachedImage(bitmap), new SKRect(x, y, x + w, y + h), paint);
     }
     private void DrawV3IndependentShadow(SKCanvas canvas, StudioProject project, RendererSpec spec, JsonElement resource, Dictionary<string, object?> props, int frame, float opacity)
     {
@@ -2242,13 +2244,25 @@ public sealed class RendererEngine : IDisposable
         return 0;
     }
 
-    private static SKFilterQuality FilterQuality(string? value) => value?.Trim().ToLowerInvariant() switch
+    private SKFilterQuality FilterQuality(string? value)
     {
-        "nearest" or "none" or "point" => SKFilterQuality.None,
-        "low" => SKFilterQuality.Low,
-        "medium" => SKFilterQuality.Medium,
-        _ => SKFilterQuality.High,
-    };
+        var quality = value?.Trim().ToLowerInvariant() switch
+        {
+            "nearest" or "none" or "point" => SKFilterQuality.None,
+            "low" => SKFilterQuality.Low,
+            "medium" => SKFilterQuality.Medium,
+            _ => SKFilterQuality.High,
+        };
+        return UseFastImageSampling && quality > SKFilterQuality.Low ? SKFilterQuality.Low : quality;
+    }
+
+    private SKImage CachedImage(SKBitmap bitmap)
+    {
+        if (_decodedImages.TryGetValue(bitmap, out var image)) return image;
+        image = SKImage.FromBitmap(bitmap) ?? throw new InvalidOperationException("Could not create a drawable artwork image.");
+        _decodedImages.Add(bitmap, image);
+        return image;
+    }
 
     private static byte AlphaByte(double opacity) =>
         (byte)Math.Clamp((int)Math.Round(Math.Clamp(opacity, 0d, 1d) * 255d, MidpointRounding.AwayFromZero), 0, 255);
@@ -2335,10 +2349,10 @@ public sealed class RendererEngine : IDisposable
         using var paint = new SKPaint
         {
             IsAntialias = true,
-            FilterQuality = SKFilterQuality.High,
+            FilterQuality = FilterQuality("high"),
             Color = WithAlpha(SKColors.White, opacity),
         };
-        canvas.DrawBitmap(bitmap, src, target, paint);
+        canvas.DrawImage(CachedImage(bitmap), src, target, paint);
         canvas.Restore();
     }
 
@@ -2535,6 +2549,7 @@ public sealed class RendererEngine : IDisposable
             bytes -= (long)bitmap.RowBytes * bitmap.Height;
             _imageCache.Remove(key);
             _imageLastUse.Remove(key);
+            if (_decodedImages.Remove(bitmap, out var image)) image.Dispose();
             bitmap.Dispose();
         }
     }
@@ -2547,6 +2562,8 @@ public sealed class RendererEngine : IDisposable
             _disposed = true;
             _infinite.Dispose();
             _relationships.Dispose();
+            foreach (var image in _decodedImages.Values) image.Dispose();
+            _decodedImages.Clear();
             foreach (var bitmap in _imageCache.Values.Distinct()) bitmap.Dispose();
             _imageCache.Clear();
             _imageLastUse.Clear();
