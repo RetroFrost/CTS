@@ -53,7 +53,7 @@ public sealed partial class MainWindow
                 if (revision != _rendererLoadRevision) return;
                 File.Move(temporary, cached, overwrite: true);
             }
-            AppPreferences.Set("LastEditorRenderer", cached);
+            AppPreferences.SetString("LastEditorRenderer", cached);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
