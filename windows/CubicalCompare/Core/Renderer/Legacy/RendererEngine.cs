@@ -2086,7 +2086,14 @@ public sealed class RendererEngine : IDisposable
         if (frame < start || frame > end) return; var local = frame - start; string? asset = null;
         if (resource.TryGetProperty("frames", out var frames))
         {
-            if (frames.ValueKind == JsonValueKind.Object && (frames.TryGetProperty(frame.ToString(CultureInfo.InvariantCulture), out var a) || frames.TryGetProperty(local.ToString(CultureInfo.InvariantCulture), out a))) asset = a.GetString();
+            if (frames.ValueKind == JsonValueKind.Object)
+            {
+                // A validated local map starts at zero. Pick its clock once;
+                // probing the absolute frame first aliases overlapping keys.
+                var mapFrame = start > 0 && frames.TryGetProperty("0", out _) ? local : frame;
+                if (frames.TryGetProperty(mapFrame.ToString(CultureInfo.InvariantCulture), out var mappedAsset))
+                    asset = mappedAsset.GetString();
+            }
             else if (frames.ValueKind == JsonValueKind.Array && local >= 0 && local < frames.GetArrayLength()) asset = frames[local].GetString();
         }
         asset ??= resource.String("assetPattern", "").Replace("{frame}", frame.ToString(CultureInfo.InvariantCulture)).Replace("{local}", local.ToString(CultureInfo.InvariantCulture));
