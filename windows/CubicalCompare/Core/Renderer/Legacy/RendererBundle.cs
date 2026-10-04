@@ -630,9 +630,28 @@ public static class RendererCapabilities
         {
             var startFrame = exactResourceValidation.Int("startFrame", -1);
             var endFrame = exactResourceValidation.Int("endFrame", -1);
-            var frames = exactResourceValidation.TryGetProperty("frames", out var frameArray) && frameArray.ValueKind == JsonValueKind.Array
-                ? frameArray.GetArrayLength()
-                : 0;
+            var frames = 0;
+            if (exactResourceValidation.TryGetProperty("frames", out var frameArray))
+            {
+                if (frameArray.ValueKind == JsonValueKind.Array)
+                    frames = frameArray.GetArrayLength();
+                else if (frameArray.ValueKind == JsonValueKind.Object)
+                {
+                    var seen = new HashSet<int>();
+                    foreach (var entry in frameArray.EnumerateObject())
+                    {
+                        frames++;
+                        if (!int.TryParse(entry.Name, out var frameKey) ||
+                            entry.Name != frameKey.ToString(System.Globalization.CultureInfo.InvariantCulture) ||
+                            !seen.Add(frameKey))
+                            errors.Add($"exact-outro-overlay has invalid or duplicate frame key '{entry.Name}'.");
+                    }
+                    var absoluteKeys = seen.All(key => key >= startFrame && key <= endFrame);
+                    var localKeys = seen.All(key => key >= 0 && (long)key <= (long)endFrame - startFrame);
+                    if (!absoluteKeys && !localKeys)
+                        errors.Add("exact-outro-overlay frame keys must consistently use absolute frames or zero-based local frames.");
+                }
+            }
             if (startFrame < 0 || endFrame < startFrame)
                 errors.Add("exact-outro-overlay has invalid frame bounds.");
             if (frames != endFrame - startFrame + 1)
