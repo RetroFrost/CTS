@@ -1276,6 +1276,8 @@ public sealed class LegacyRendererAdapter : IDisposable
                 Math.Max(2, height));
     }
 
+    public void SetFastExportSampling(bool enabled) => _engine.UseFastImageSampling = enabled;
+
     public RenderSession CreateRenderSession(ComparisonProject project)
     {
         ArgumentNullException.ThrowIfNull(project);
