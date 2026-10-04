@@ -62,7 +62,7 @@ public partial class App : Application
             mainWindow.Activate();
             WriteLog("MainWindow activated.");
 
-            mainWindow.DispatcherQueue.TryEnqueue(() =>
+            mainWindow.DispatcherQueue.TryEnqueue(async () =>
             {
                 try
                 {
@@ -78,7 +78,12 @@ public partial class App : Application
                     mainWindow.InitializeAdaptiveExportUi();
                     mainWindow.InitializeInterfaceReview();
                     mainWindow.InitializeEditorWorkspaceUx();
-                    if (Environment.GetCommandLineArgs().Contains("--ci-mainwindow-smoke")) mainWindow.RunEditorWorkspaceSmoke();
+                    if (Environment.GetCommandLineArgs().Contains("--ci-mainwindow-smoke"))
+                    {
+                        mainWindow.RunEditorWorkspaceSmoke();
+                        await Task.Run(CubicalCompare.Windows.RendererExportRegressionChecks.Run);
+                        WriteLog("Renderer export cache regression passed.");
+                    }
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
