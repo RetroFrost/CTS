@@ -51,6 +51,12 @@ public static class CsvImportService
         var mapping = BuildMapping(header);
         var hasRecognizedHeader = mapping.Count >= 2 || mapping.ContainsKey("image") || mapping.ContainsKey("title");
 
+        if (rows.SelectMany(row => row).Any(cell => cell.Any(character =>
+                character == '\uFFFD' || (char.IsControl(character) && character is not ('\t' or '\r' or '\n')))))
+            throw new InvalidDataException("The selected file is not readable CSV text.");
+        if (!hasRecognizedHeader && !rows.Any(row => row.Length > 1))
+            throw new InvalidDataException("The selected file has no CSV columns. Use comma, semicolon or tab-separated data, or a recognized header such as Title.");
+
         var dataStart = hasRecognizedHeader ? 1 : 0;
         if (!hasRecognizedHeader)
         {
@@ -217,7 +223,9 @@ public static class CsvImportService
     private static string DetectDelimiter(string path)
     {
         using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
-        var line = reader.ReadLine() ?? string.Empty;
+        string? line;
+        do { line = reader.ReadLine(); } while (line is not null && string.IsNullOrWhiteSpace(line));
+        line ??= string.Empty;
         var candidates = new[] { ",", ";", "\t" };
         return candidates
             .OrderByDescending(candidate => CountOutsideQuotes(line, candidate[0]))
