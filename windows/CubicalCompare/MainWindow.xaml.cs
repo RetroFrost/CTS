@@ -401,34 +401,10 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            var renderer = await RendererPackageProbe.InspectAsync(file.Path);
-            RendererNameText.Text = renderer.Name;
-            RendererGenerationText.Text = $"Renderer v{(int)renderer.Generation} · API {renderer.Api}";
-            RendererEngineText.Text = $"Engine {renderer.Engine}";
-            RendererCanvasText.Text = $"Reference {renderer.ReferenceWidth}×{renderer.ReferenceHeight} · {renderer.ReferenceFps} FPS";
-            RendererSourceText.Text = renderer.SourcePath;
-
-            if (renderer.Generation is RendererGeneration.V2 or RendererGeneration.V3)
+            if (await LoadEditorRendererAsync(file.Path))
             {
-                var replacement = LegacyRendererAdapter.Load(file.Path);
-                _legacyRenderer?.Dispose();
-                _legacyRenderer = replacement;
-                RendererCompatibilityText.Text = $"Renderer v{replacement.Api} compatibility evaluator active.";
-                RefreshTimelineRange();
-                RefreshSoundtrackUi();
-
-                var initialFrame = replacement.InitialPreviewFrame(BuildProject());
-                ProjectFrameSlider.Value = initialFrame;
-                TimelineStatusText.Text = initialFrame > 0
-                    ? $"Renderer v{replacement.Api} · {replacement.Name} · previewing first visible frame {initialFrame}"
-                    : $"Renderer v{replacement.Api} · {replacement.Name}";
-                await RenderCurrentFrameAsync();
-            }
-            else
-            {
-                RendererCompatibilityText.Text = renderer.Generation == RendererGeneration.V4
-                    ? "Renderer v4 package recognised. Native v4 evaluation is the next engine path."
-                    : "This renderer is not handled by the v2/v3 compatibility evaluator.";
+                try { await RememberEditorRendererAsync(file.Path); }
+                catch (Exception ex) { App.WriteLog("Could not retain the last renderer", ex); }
             }
         }
         catch (Exception ex)
