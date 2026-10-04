@@ -554,6 +554,7 @@ public static class RendererCapabilities
         "smart-badge-field-rotation-track-v1", "smart-badge-overlay-last-v1",
         // 4.2.4 text-wipe contracts reveal live card/badge text through
         // deterministic frame-addressed clip tracks; no glyphs are baked.
+        "smart-badge-compact-value-v1", "ribbon-scene-overlays-v1", "smart-card-live-shell-clip-v1", "smart-badge-authored-opening-clip-v1",
         "ribbon-text-wipe-v1",
         "ribbon-badge-text-wipe-v1",
     };
@@ -605,9 +606,16 @@ public static class RendererCapabilities
 
         if (Has("source-exact-outro-overlay"))
         {
-            if (outro is null || outro.Resource is null || !scene.Resources.TryGetValue(outro.Resource, out var resource))
+            if (scene.Resources.TryGetValue("exact-outro-overlay", out var exactResource) &&
+                exactResource.ValueKind == JsonValueKind.Object)
             {
-                errors.Add("source-exact-outro-overlay requires a frame-addressed outro overlay object.");
+                var exactType = exactResource.String("type", "");
+                if (exactType is not ("exact-outro-overlay" or "source-exact-outro-overlay"))
+                    errors.Add($"Exact outro overlay resource type '{exactType}' is not source-exact.");
+            }
+            else if (outro is null || outro.Resource is null || !scene.Resources.TryGetValue(outro.Resource, out var resource))
+            {
+                errors.Add("source-exact-outro-overlay requires either an exact-outro-overlay resource or a frame-addressed outro overlay object.");
             }
             else
             {
@@ -616,6 +624,42 @@ public static class RendererCapabilities
                     errors.Add($"Outro overlay resource type '{type}' is not source-exact.");
             }
         }
+        if (Has("source-exact-outro-overlay") &&
+            scene.Resources.TryGetValue("exact-outro-overlay", out var exactResourceValidation) &&
+            exactResourceValidation.ValueKind == JsonValueKind.Object)
+        {
+            var startFrame = exactResourceValidation.Int("startFrame", -1);
+            var endFrame = exactResourceValidation.Int("endFrame", -1);
+            var frames = 0;
+            if (exactResourceValidation.TryGetProperty("frames", out var frameArray))
+            {
+                if (frameArray.ValueKind == JsonValueKind.Array)
+                    frames = frameArray.GetArrayLength();
+                else if (frameArray.ValueKind == JsonValueKind.Object)
+                {
+                    var seen = new HashSet<int>();
+                    foreach (var entry in frameArray.EnumerateObject())
+                    {
+                        frames++;
+                        if (!int.TryParse(entry.Name, out var frameKey) ||
+                            entry.Name != frameKey.ToString(System.Globalization.CultureInfo.InvariantCulture) ||
+                            !seen.Add(frameKey))
+                            errors.Add($"exact-outro-overlay has invalid or duplicate frame key '{entry.Name}'.");
+                    }
+                    var absoluteKeys = seen.All(key => key >= startFrame && key <= endFrame);
+                    var localKeys = seen.All(key => key >= 0 && (long)key <= (long)endFrame - startFrame);
+                    if (!absoluteKeys && !localKeys)
+                        errors.Add("exact-outro-overlay frame keys must consistently use absolute frames or zero-based local frames.");
+                }
+            }
+            if (startFrame < 0 || endFrame < startFrame)
+                errors.Add("exact-outro-overlay has invalid frame bounds.");
+            if (frames != endFrame - startFrame + 1)
+                errors.Add($"exact-outro-overlay frame count {frames} does not match its declared bounds {startFrame}..{endFrame}.");
+            if (frames == 0)
+                errors.Add("exact-outro-overlay contains no source frames.");
+        }
+
 
         if (Has("verified-opening-boundaries"))
         {
