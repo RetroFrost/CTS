@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.8"
+          $version = "4.2.9"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.45"
+          $velopackVersion = "4.2.46"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -341,7 +341,7 @@ jobs:
           Remove-Item $log -Force -ErrorAction SilentlyContinue
           $exe = (Resolve-Path 'artifacts/publish/CubicalCompare.exe').Path
           $process = Start-Process -FilePath $exe -ArgumentList '--ci-mainwindow-smoke' -WorkingDirectory (Split-Path $exe) -PassThru
-          Start-Sleep -Seconds 10
+          Start-Sleep -Seconds 20
           $process.Refresh()
           if ($process.HasExited) { throw "Full Cubical Compare window exited during smoke test with code $($process.ExitCode)." }
           if (-not (Test-Path $log)) { throw "Full-window smoke did not create startup.log." }
@@ -356,6 +356,7 @@ jobs:
           if ($text -notmatch "Renderer compatibility app version: $expectedRendererVersion\.") {
             throw ("Renderer compatibility version is not the published app version $env:CC_VERSION. " + $text)
           }
+          if ($text -notmatch 'Renderer export cache regression passed') { throw ("Renderer export cache regression did not complete. " + $text) }
           if ($text -notmatch 'Editor UX interaction smoke passed') { throw ("Editor UX interaction smoke did not complete. " + $text) }
           Write-Host "Full MainWindow/XAML smoke passed with renderer compatibility version $env:CC_VERSION (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
@@ -702,6 +703,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
+          - 4.2.9 bounds decoded image caches per renderer worker, uses immutable artwork, synchronizes render/dispose, reports failed export frames, and avoids thumbnail file locking collisions.
           - 4.2.8 automatically restores a retained copy of the last loaded renderer after workspace recovery, even if the original file was moved.
           - CSV import accepts any file extension when the contents are valid CSV, including text and extensionless files.
           - Windows Mica now has translucent editor surfaces and a solid fallback; dropdown popups and flyouts use rounded corners.

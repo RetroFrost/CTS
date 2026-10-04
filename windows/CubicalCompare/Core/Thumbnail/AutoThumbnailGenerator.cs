@@ -42,7 +42,7 @@ public static class AutoThumbnailGenerator
             "CubicalCompare",
             "Thumbnails");
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "auto-thumbnail.png");
+        var path = Path.Combine(directory, "auto-thumbnail-" + Guid.NewGuid().ToString("N") + ".png");
         File.WriteAllBytes(path, png);
 
         return new GeneratedThumbnail(png, path, indices);
