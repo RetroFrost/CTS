@@ -38,6 +38,7 @@ public sealed partial class MainWindow
 
     private async Task RememberEditorRendererAsync(string source)
     {
+        var revision = _rendererLoadRevision;
         var directory = Path.Combine(AppDataPaths.RootDirectory, "LastRenderer");
         Directory.CreateDirectory(directory);
         var cached = Path.Combine(directory, "last" + Path.GetExtension(source));
@@ -49,6 +50,7 @@ public sealed partial class MainWindow
                 await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true))
                 await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
                     await input.CopyToAsync(output);
+                if (revision != _rendererLoadRevision) return;
                 File.Move(temporary, cached, overwrite: true);
             }
             AppPreferences.Set("LastEditorRenderer", cached);
