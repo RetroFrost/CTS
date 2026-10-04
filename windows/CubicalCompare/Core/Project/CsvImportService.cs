@@ -52,7 +52,7 @@ public static class CsvImportService
         var hasRecognizedHeader = mapping.Count >= 2 || mapping.ContainsKey("image") || mapping.ContainsKey("title");
 
         if (rows.SelectMany(row => row).Any(cell => cell.Any(character =>
-                character == '\uFFFD' || (char.IsControl(character) && character is not ('\t' or '\r' or '\n')))))
+                char.IsControl(character) && character is not ('\t' or '\r' or '\n'))))
             throw new InvalidDataException("The selected file is not readable CSV text.");
         if (!hasRecognizedHeader && !rows.Any(row => row.Length > 1))
             throw new InvalidDataException("The selected file has no CSV columns. Use comma, semicolon or tab-separated data, or a recognized header such as Title.");
