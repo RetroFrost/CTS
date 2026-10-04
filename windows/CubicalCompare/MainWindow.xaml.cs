@@ -64,6 +64,7 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_GlobalKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (HandleEditorKeyboard(e)) return;
         if (e.Key != VirtualKey.Escape) return;
 
         if (_reliablePreviewDragMode != ReliablePreviewDragMode.None)
