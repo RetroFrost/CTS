@@ -77,6 +77,8 @@ public partial class App : Application
                     mainWindow.InitializeFinalReleaseUi();
                     mainWindow.InitializeAdaptiveExportUi();
                     mainWindow.InitializeInterfaceReview();
+                    mainWindow.InitializeEditorWorkspaceUx();
+                    if (Environment.GetCommandLineArgs().Contains("--ci-mainwindow-smoke")) mainWindow.RunEditorWorkspaceSmoke();
                     WriteLog("Post-activation editor controls initialised.");
                 }
                 catch (Exception ex)
