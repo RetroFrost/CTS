@@ -427,7 +427,21 @@ public sealed class RendererEngine : IDisposable
     private int CardStart(RendererSpec spec, int index)
     {
         if (index < spec.OpeningStarts.Count) return spec.OpeningStarts[index];
-        return spec.ContinuousStartFrame + Math.Max(0, index - 4) * spec.ContinuousStepFrames;
+        if (spec.CanonicalCardCount > 4 && index >= spec.CanonicalCardCount)
+        {
+            var lastIndex = spec.CanonicalCardCount - 1;
+            var lastStart = spec.SceneV3?.Objects.FirstOrDefault(obj =>
+                obj.Kind is "smartCard" or "card" && CardIndex(obj) == lastIndex)?.Frame;
+            if (spec.SmartBadgeV2Manifest is JsonElement manifest &&
+                manifest.TryGetProperty("cards", out var selections) &&
+                selections.ValueKind == JsonValueKind.Object &&
+                selections.TryGetProperty(lastIndex.ToString(CultureInfo.InvariantCulture), out var lastSelection) &&
+                lastSelection.ValueKind == JsonValueKind.Object)
+                lastStart = lastSelection.Int("startFrame", lastStart ?? -1);
+            if (lastStart is >= 0)
+                return (int)Math.Clamp(lastStart.Value + (long)(index - lastIndex) * Math.Max(1, spec.ContinuousStepFrames), 0L, int.MaxValue);
+        }
+        return (int)Math.Clamp(spec.ContinuousStartFrame + (long)Math.Max(0, index - 4) * Math.Max(1, spec.ContinuousStepFrames), 0L, int.MaxValue);
     }
 
     private float BodyProgress(RendererSpec spec, int local)
