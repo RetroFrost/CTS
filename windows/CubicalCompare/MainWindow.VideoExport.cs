@@ -156,7 +156,7 @@ public sealed partial class MainWindow
                 1536L * 1024 * 1024);
             var estimatedRendererBytes = Math.Max(
                 32L * 1024 * 1024,
-                rendererPackageBytes * 2);
+                rendererPackageBytes * 2 + CubicalCompare.Windows.RendererEngine.DecodedImageCacheBudgetBytes);
             var maxWorkersByMemory = (int)Math.Clamp(
                 rendererPoolBudget / estimatedRendererBytes,
                 1L,
@@ -202,6 +202,10 @@ public sealed partial class MainWindow
                             width,
                             height),
                         cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    throw new InvalidOperationException($"Renderer failed at frame {frameIndex} ({width}×{height}): {ex.GetBaseException().Message}", ex);
                 }
                 finally
                 {
@@ -349,7 +353,7 @@ public sealed partial class MainWindow
             cancellationToken.ThrowIfCancellationRequested();
 
             if (renderFailure is not null)
-                throw new InvalidOperationException("A renderer frame failed during export.", renderFailure);
+                throw new InvalidOperationException("A renderer frame failed during export: " + renderFailure.Message, renderFailure);
 
             output.Dispose();
 
