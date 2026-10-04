@@ -262,8 +262,18 @@ public sealed partial class MainWindow
     {
         var width = RootNavigation.ActualWidth;
         var height = RootNavigation.ActualHeight;
+        // Focus visibility is independent of the first measured window size.
+        InspectorGapColumn.Width = new GridLength(_previewFocusMode ? 0 : 12);
+        CardInspectorPanel.Visibility = _previewFocusMode ? Visibility.Collapsed : Visibility.Visible;
+        CardRailPanel.Visibility = _previewFocusMode ? Visibility.Collapsed : Visibility.Visible;
+        if (_previewFocusMode && ProjectPage.ColumnDefinitions.Count >= 3)
+            ProjectPage.ColumnDefinitions[2].Width = new GridLength(0);
         if (width <= 0 || height <= 0)
+        {
+            if (!_previewFocusMode && ProjectPage.ColumnDefinitions.Count >= 3)
+                ProjectPage.ColumnDefinitions[2].Width = new GridLength(350);
             return;
+        }
 
         // Keep the live activity card inside the window on narrow layouts.
         ActivityWatcherPanel.Width = Math.Clamp(width - 36, 240, 390);
@@ -286,9 +296,6 @@ public sealed partial class MainWindow
                 _ => 350,
             };
             ProjectPage.ColumnDefinitions[2].Width = new GridLength(_previewFocusMode ? 0 : inspectorWidth);
-            InspectorGapColumn.Width = new GridLength(_previewFocusMode ? 0 : 12);
-            CardInspectorPanel.Visibility = _previewFocusMode ? Visibility.Collapsed : Visibility.Visible;
-            CardRailPanel.Visibility = _previewFocusMode ? Visibility.Collapsed : Visibility.Visible;
         }
 
         if (_workspaceEditorGrid is null || _workspaceEditorGrid.RowDefinitions.Count < 5)
