@@ -100,8 +100,10 @@ public sealed class RendererEngine : IDisposable
         if (frame >= contentEnd)
         {
             DrawRibbonOutro(canvas, project, spec, frame - contentEnd);
+            DrawAuthoredRibbonObjects(canvas, project, spec, frame, "outro");
             return;
         }
+        DrawAuthoredRibbonObjects(canvas, project, spec, frame, "background");
         var positions = RibbonPositions(project, spec, frame);
         foreach (var pair in positions.OrderBy(x => x.Key))
         {
@@ -110,6 +112,21 @@ public sealed class RendererEngine : IDisposable
         }
         foreach (var pair in positions.OrderBy(x => x.Key))
             DrawRibbonBadge(canvas, project, project.Cards[pair.Key], pair.Key, pair.Value, frame, spec);
+        DrawAuthoredRibbonObjects(canvas, project, spec, frame, "foreground");
+    }
+
+    private void DrawAuthoredRibbonObjects(SKCanvas canvas, StudioProject project, RendererSpec spec, int frame, string phase)
+    {
+        if (spec.SceneV3 is not RendererSceneV3 scene ||
+            !spec.RequiredFeatures.Contains("ribbon-scene-overlays-v1", StringComparer.Ordinal)) return;
+        foreach (var obj in scene.Objects.Where(obj => obj.Kind == "ribbonOverlay"))
+        {
+            if (frame < obj.LifespanStart || frame > obj.LifespanEnd ||
+                obj.Raw.String("ribbonPhase", "foreground") != phase ||
+                !ShouldRenderProjectObject(project, spec, obj)) continue;
+            var props = V3Evaluator.Properties(scene, obj, frame);
+            if (Truthy(Get(props, "visible"), true)) DrawV3Object(canvas, project, spec, obj, props, frame);
+        }
     }
 
     private bool TryDrawRibbonSmartCard(
@@ -198,6 +215,18 @@ public sealed class RendererEngine : IDisposable
             canvas.DrawBitmap(basePlate, new SKRect(0, 0, sequence.Width, sequence.Height), basePaint);
         }
 
+        var shellClipSaved = Get(props, "liveContentClip.left") is not null;
+        if (shellClipSaved)
+        {
+            canvas.Save();
+            canvas.ClipRect(new SKRect(
+                (float)Number(Get(props, "liveContentClip.left"), 0),
+                (float)Number(Get(props, "liveContentClip.top"), 0),
+                (float)Number(Get(props, "liveContentClip.right"), sequence.Width),
+                (float)Number(Get(props, "liveContentClip.bottom"), sequence.Height)),
+                SKClipOperation.Intersect, false);
+        }
+
         var clipLiveContent = Truthy(
             Get(props, "clipLiveContent"),
             resource.Bool("clipLiveContent", false));
@@ -267,6 +296,8 @@ public sealed class RendererEngine : IDisposable
 
         if (liveClipSaved)
             canvas.Restore();
+
+        if (shellClipSaved) canvas.Restore();
 
         // Overlay/glass/shine is deliberately outside the live-content clip and
         // composites last so it illuminates both text and artwork.
@@ -463,6 +494,7 @@ public sealed class RendererEngine : IDisposable
         var entryMotion = "";
         var entryAnchor = "";
         var settledHold = false;
+        var clipOpeningToCard = true;
 
         if (packSelection.ValueKind == JsonValueKind.String)
         {
@@ -480,6 +512,7 @@ public sealed class RendererEngine : IDisposable
             entryMotion = packSelection.String("entryMotion", "");
             entryAnchor = packSelection.String("entryAnchor", "");
             settledHold = packSelection.Bool("settledHold", false);
+            clipOpeningToCard = packSelection.Bool("clipOpeningToCard", true);
         }
         else
         {
@@ -498,6 +531,7 @@ public sealed class RendererEngine : IDisposable
             entryMotion = cardSelection.String("entryMotion", entryMotion);
             entryAnchor = cardSelection.String("entryAnchor", entryAnchor);
             settledHold = cardSelection.Bool("settledHold", settledHold);
+            clipOpeningToCard = cardSelection.Bool("clipOpeningToCard", clipOpeningToCard);
         }
 
         if (string.IsNullOrWhiteSpace(asset))
@@ -586,7 +620,7 @@ public sealed class RendererEngine : IDisposable
         // so this preserves the real inter-card gap instead of allowing opening
         // badges to visually merge at the divider. The animation assets and settled
         // badge coordinates remain untouched; cards 5+ keep the continuous-scroll path.
-        if (index < 4)
+        if (index < 4 && clipOpeningToCard)
         {
             var bodyLeft = index * spec.SlotPitch + spec.BodyInset;
             var bodyRight = bodyLeft + spec.BodyWidth;
@@ -1740,6 +1774,7 @@ public sealed class RendererEngine : IDisposable
             "unit" or "suffix" => unit,
             "badgevalue" or "badge-value" => primary,
             "badgeunit" or "badge-unit" => unit,
+            "compactvalue" or "compact-value" => primary + unit,
             "fullvalue" or "full-value" or "raw" => string.Join(' ', new[] { primary, unit }.Where(v => !string.IsNullOrWhiteSpace(v))),
             "title" => card.Title.Trim(),
             "description" or "desc" => card.Description.Trim(),
