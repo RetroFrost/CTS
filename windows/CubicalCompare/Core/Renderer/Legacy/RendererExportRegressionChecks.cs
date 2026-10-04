@@ -86,7 +86,7 @@ public static class RendererExportRegressionChecks
             foreach (var local in new[] { 428, 2, 214, 0, 7, 2 })
             {
                 using var frame = engine.Render(project, spec, contentEnd + local, 64, 36);
-                var expected = local >= 2 ? SKColors.Green : SKColors.Black;
+                var expected = local >= 2 ? new SKColor(0, 255, 0) : SKColors.Black;
                 // The reference background is black. This tests direct/reverse
                 // seeking, absolute outro tracks, and last-card rebinding together.
                 if (frame.GetPixel(32, 18) != expected)
