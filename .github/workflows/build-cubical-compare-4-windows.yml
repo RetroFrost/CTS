@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.10"
+          $version = "4.2.11"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.47"
+          $velopackVersion = "4.2.48"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -703,7 +703,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
-          - 4.2.10 reuses decoded drawable images and adds Fast export with balanced sampling, an original-filtering option in export settings, and throughput/ETA reporting. Resolution and frame timing remain unchanged.
+          - 4.2.11 makes ribbon renderer Auto length follow the live card count, moves authored outros with the final card, and reuses later-card templates beyond the reference card count.
           - 4.2.9 bounds decoded image caches per renderer worker, uses immutable artwork, synchronizes render/dispose, reports failed export frames, and avoids thumbnail file locking collisions.
           - 4.2.8 automatically restores a retained copy of the last loaded renderer after workspace recovery, even if the original file was moved.
           - CSV import accepts any file extension when the contents are valid CSV, including text and extensionless files.
