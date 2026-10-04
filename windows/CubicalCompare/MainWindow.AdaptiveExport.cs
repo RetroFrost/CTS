@@ -268,7 +268,7 @@ public sealed partial class MainWindow
         // Keep the live activity card inside the window on narrow layouts.
         ActivityWatcherPanel.Width = Math.Clamp(width - 36, 240, 390);
 
-        var compactNavigation = width < 1220;
+        var compactNavigation = _previewFocusMode || width < 1420;
         RootNavigation.PaneDisplayMode = compactNavigation
             ? NavigationViewPaneDisplayMode.LeftCompact
             : NavigationViewPaneDisplayMode.Left;
@@ -285,7 +285,10 @@ public sealed partial class MainWindow
                 < 1300 => 310,
                 _ => 350,
             };
-            ProjectPage.ColumnDefinitions[2].Width = new GridLength(inspectorWidth);
+            ProjectPage.ColumnDefinitions[2].Width = new GridLength(_previewFocusMode ? 0 : inspectorWidth);
+            InspectorGapColumn.Width = new GridLength(_previewFocusMode ? 0 : 12);
+            CardInspectorPanel.Visibility = _previewFocusMode ? Visibility.Collapsed : Visibility.Visible;
+            CardRailPanel.Visibility = _previewFocusMode ? Visibility.Collapsed : Visibility.Visible;
         }
 
         if (_workspaceEditorGrid is null || _workspaceEditorGrid.RowDefinitions.Count < 5)
@@ -295,11 +298,11 @@ public sealed partial class MainWindow
         var veryShortScreen = height < 580;
 
         _workspaceEditorGrid.RowDefinitions[0].MinHeight = 0;
-        _workspaceEditorGrid.RowDefinitions[2].Height = new GridLength(veryShortScreen ? 150 : 174);
-        _workspaceEditorGrid.RowDefinitions[3].Height = new GridLength(shortScreen ? 0 : 54);
+        _workspaceEditorGrid.RowDefinitions[2].Height = new GridLength(_previewFocusMode ? 0 : veryShortScreen ? 150 : 174);
+        _workspaceEditorGrid.RowDefinitions[3].Height = new GridLength(_previewFocusMode || shortScreen ? 0 : 54);
 
         if (_workspaceSoundtrackLane is not null)
-            _workspaceSoundtrackLane.Visibility = shortScreen ? Visibility.Collapsed : Visibility.Visible;
+            _workspaceSoundtrackLane.Visibility = _previewFocusMode || shortScreen ? Visibility.Collapsed : Visibility.Visible;
 
         if (_workspacePreviewBorder is not null)
             _workspacePreviewBorder.MinHeight = 0;
