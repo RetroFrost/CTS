@@ -13,7 +13,24 @@ public sealed class RendererEngine : IDisposable
     private readonly InfiniteTimelineRenderer _infinite = new();
     private readonly RelationshipsRenderer _relationships = new();
 
+    public const long DecodedImageCacheBudgetBytes = 64L * 1024 * 1024;
+    private readonly object _renderGate = new();
+    private readonly Dictionary<string, long> _imageLastUse = new(StringComparer.OrdinalIgnoreCase);
+    private long _imageUseClock;
+    private bool _disposed;
+    internal long DecodedImageCacheBytes => _imageCache.Values.Sum(bitmap => (long)bitmap.RowBytes * bitmap.Height);
+
     public SKBitmap Render(StudioProject project, RendererSpec spec, int frame, int width, int height)
+    {
+        lock (_renderGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            try { return RenderCore(project, spec, frame, width, height); }
+            finally { TrimDecodedImages(); }
+        }
+    }
+
+    private SKBitmap RenderCore(StudioProject project, RendererSpec spec, int frame, int width, int height)
     {
         width = Math.Max(2, width);
         height = Math.Max(2, height);
@@ -2329,14 +2346,14 @@ public sealed class RendererEngine : IDisposable
     {
         var source = WebImageSource.NormalizeSource(path);
         if (string.IsNullOrWhiteSpace(source)) return null;
-        if (_imageCache.TryGetValue(source, out var cached)) return cached;
+        if (TryGetCachedBitmap(source, out var cached)) return cached;
 
         try
         {
             var resolved = WebImageSource.ResolveToLocalFile(source);
             if (string.IsNullOrWhiteSpace(resolved) || !File.Exists(resolved)) return null;
             var bitmap = SKBitmap.Decode(resolved);
-            if (bitmap != null) _imageCache[source] = bitmap;
+            if (bitmap != null) CacheBitmap(source, bitmap);
             return bitmap;
         }
         catch
@@ -2346,7 +2363,7 @@ public sealed class RendererEngine : IDisposable
     }
     private SKBitmap? DecodeSceneBitmap(RendererSceneV3 scene, string source)
     {
-        if (string.IsNullOrWhiteSpace(source)) return null; var normalized = source.Replace('\\', '/').TrimStart('.', '/'); var pair = scene.Assets.FirstOrDefault(x => x.Key.Equals(normalized, StringComparison.OrdinalIgnoreCase) || x.Key.EndsWith('/' + normalized, StringComparison.OrdinalIgnoreCase)); if (pair.Value == null) return null; var cacheKey = "asset:" + pair.Key; if (_imageCache.TryGetValue(cacheKey, out var cached)) return cached; try { var bitmap = SKBitmap.Decode(pair.Value); if (bitmap != null) _imageCache[cacheKey] = bitmap; return bitmap; } catch { return null; }
+        if (string.IsNullOrWhiteSpace(source)) return null; var normalized = source.Replace('\\', '/').TrimStart('.', '/'); var pair = scene.Assets.FirstOrDefault(x => x.Key.Equals(normalized, StringComparison.OrdinalIgnoreCase) || x.Key.EndsWith('/' + normalized, StringComparison.OrdinalIgnoreCase)); if (pair.Value == null) return null; var cacheKey = "asset:" + pair.Key; if (TryGetCachedBitmap(cacheKey, out var cached)) return cached; try { var bitmap = SKBitmap.Decode(pair.Value); if (bitmap != null) CacheBitmap(cacheKey, bitmap); return bitmap; } catch { return null; }
     }
 
     private SKBitmap? DecodeSequenceBitmap(SmartBadgeSequenceDefinition sequence, string source)
@@ -2359,11 +2376,11 @@ public sealed class RendererEngine : IDisposable
         if (pair.Value is null) return null;
 
         var cacheKey = "sequence:" + sequence.Root + ":" + pair.Key;
-        if (_imageCache.TryGetValue(cacheKey, out var cached)) return cached;
+        if (TryGetCachedBitmap(cacheKey, out var cached)) return cached;
         try
         {
             var bitmap = SKBitmap.Decode(pair.Value);
-            if (bitmap != null) _imageCache[cacheKey] = bitmap;
+            if (bitmap != null) CacheBitmap(cacheKey, bitmap);
             return bitmap;
         }
         catch
@@ -2488,112 +2505,52 @@ public sealed class RendererEngine : IDisposable
     }
     private static JsonElement EmptyJson() { using var d = JsonDocument.Parse("{}"); return d.RootElement.Clone(); }
 
-    public void Dispose() { _infinite.Dispose(); _relationships.Dispose(); foreach (var bitmap in _imageCache.Values.Distinct()) bitmap.Dispose(); _imageCache.Clear(); _sequenceOpaqueBoundsCache.Clear(); }
-}
-
-internal static class V3Evaluator
-{
-    private sealed record Winner(int Specificity, int Order, object? Value, string Timeline);
-
-    public static Dictionary<string, object?> Properties(RendererSceneV3 scene, RendererObjectV3 obj, int frame)
+    private bool TryGetCachedBitmap(string key, out SKBitmap bitmap)
     {
-        var winners = new Dictionary<string, Winner>(StringComparer.Ordinal);
-        if (obj.Resource != null && scene.Resources.TryGetValue(obj.Resource, out var resource) && resource.TryGetProperty("properties", out var rp) && rp.ValueKind == JsonValueKind.Object)
-            foreach (var pair in Flatten(rp)) winners[pair.Key] = new Winner(0, -1, pair.Value, "absolute");
-        foreach (var selector in scene.Selectors)
+        if (_imageCache.TryGetValue(key, out bitmap!))
         {
-            if (!Matches(selector, obj)) continue;
-            foreach (var pair in Flatten(selector.Properties))
-            {
-                var candidate = new Winner(selector.Specificity, selector.SourceOrder, pair.Value, selector.Timeline);
-                if (!winners.TryGetValue(pair.Key, out var existing) || candidate.Specificity > existing.Specificity || candidate.Specificity == existing.Specificity && candidate.Order >= existing.Order) winners[pair.Key] = candidate;
-            }
+            _imageLastUse[key] = ++_imageUseClock;
+            return true;
         }
-        foreach (var pair in Flatten(obj.Properties)) winners[pair.Key] = new Winner(1000, int.MaxValue, pair.Value, obj.Raw.String("timeline", "relative"));
-        var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var pair in winners)
-        {
-            var value = Evaluate(pair.Value.Value, frame, obj.Frame, pair.Value.Timeline);
-            if (value is not UnsetValue) result[pair.Key] = value;
-        }
-        return result;
+        return false;
     }
 
-    public static Dictionary<string, JsonElement> Flatten(JsonElement root, string prefix = "")
+    private void CacheBitmap(string key, SKBitmap bitmap)
     {
-        var output = new Dictionary<string, JsonElement>(StringComparer.Ordinal); if (root.ValueKind != JsonValueKind.Object) return output;
-        foreach (var property in root.EnumerateObject())
-        {
-            var path = string.IsNullOrWhiteSpace(prefix) ? property.Name : prefix + "." + property.Name; var value = property.Value;
-            if (value.ValueKind == JsonValueKind.Object && !IsTrackDescriptor(value)) foreach (var child in Flatten(value, path)) output[child.Key] = child.Value; else output[path] = value.Clone();
-        }
-        return output;
+        // Immutable pixels let Skia reference the data instead of copying it for each draw.
+        bitmap.SetImmutable();
+        _imageCache[key] = bitmap;
+        _imageLastUse[key] = ++_imageUseClock;
     }
 
-    private static object? Evaluate(object? raw, int globalFrame, int anchorFrame, string defaultTimeline)
+    private void TrimDecodedImages()
     {
-        if (raw is not JsonElement value) return raw; if (value.ValueKind != JsonValueKind.Object) return JsonValue(value);
-        if (value.TryGetProperty("value", out var staticValue) && !value.TryGetProperty("track", out _) && !value.TryGetProperty("dense", out _)) return JsonValue(staticValue);
-        if (!value.TryGetProperty("track", out var track) && !value.TryGetProperty("dense", out var dense)) return value.Clone();
-        var timeline = value.String("timeline", defaultTimeline);
-        var frame = timeline == "relative" ? globalFrame - anchorFrame : globalFrame;
-        frame += value.Int("frameOffset", 0);
-        var extrapolate = value.String("extrapolate", "none");
-        var interpolation = value.String("interpolation", "raw");
-        if (value.TryGetProperty("dense", out dense))
+        var bytes = DecodedImageCacheBytes;
+        if (bytes <= DecodedImageCacheBudgetBytes && _imageCache.Count <= 128) return;
+        // Evict only after a complete frame: nested badge/card draws can still hold a bitmap.
+        foreach (var key in _imageLastUse.OrderBy(entry => entry.Value).Select(entry => entry.Key).ToArray())
         {
-            int start; JsonElement values;
-            if (dense.ValueKind == JsonValueKind.Array) { start = value.Int("start", 0); values = dense; }
-            else if (dense.ValueKind == JsonValueKind.Object && dense.TryGetProperty("values", out values)) start = dense.Int("start", value.Int("start", 0));
-            else return UnsetValue.Instance;
-            var stride = Math.Max(1, value.Int("stride", dense.ValueKind == JsonValueKind.Object ? dense.Int("stride", 1) : 1));
-            var relative = frame - start;
-            if (relative >= 0)
-            {
-                var index = relative / stride;
-                var exactSample = relative % stride == 0;
-                if (index >= 0 && index < values.GetArrayLength())
-                {
-                    if (stride == 1 || exactSample || interpolation is "hold" or "step")
-                        return JsonValue(values[index]);
-                    if (interpolation is "linear" or "smoothstep" or "cubic-in" or "cubic-out" or "cubic-in-out")
-                    {
-                        var next = Math.Min(index + 1, values.GetArrayLength() - 1);
-                        if (values[index].TryGetDouble(out var denseLeft) && values[next].TryGetDouble(out var denseRight))
-                        {
-                            var denseProgress = (relative % stride) / (double)stride;
-                            denseProgress = interpolation switch
-                            {
-                                "smoothstep" => denseProgress * denseProgress * (3 - 2 * denseProgress),
-                                "cubic-in" => denseProgress * denseProgress * denseProgress,
-                                "cubic-out" => 1 - Math.Pow(1 - denseProgress, 3),
-                                "cubic-in-out" => denseProgress < .5 ? 4 * denseProgress * denseProgress * denseProgress : 1 - Math.Pow(-2 * denseProgress + 2, 3) / 2,
-                                _ => denseProgress,
-                            };
-                            return denseLeft + (denseRight - denseLeft) * denseProgress;
-                        }
-                    }
-                    if (interpolation != "raw") return JsonValue(values[index]);
-                }
-            }
-            if (extrapolate == "hold" && values.GetArrayLength() > 0) return JsonValue(values[relative < 0 ? 0 : values.GetArrayLength() - 1]);
-            return UnsetValue.Instance;
+            if (bytes <= DecodedImageCacheBudgetBytes && _imageCache.Count <= 128) break;
+            var bitmap = _imageCache[key];
+            bytes -= (long)bitmap.RowBytes * bitmap.Height;
+            _imageCache.Remove(key);
+            _imageLastUse.Remove(key);
+            bitmap.Dispose();
         }
-        if (track.ValueKind != JsonValueKind.Array || track.GetArrayLength() == 0) return UnsetValue.Instance; var keys = new List<(int Frame, JsonElement Value)>(); foreach (var item in track.EnumerateArray()) if (item.ValueKind == JsonValueKind.Array && item.GetArrayLength() >= 2) keys.Add((item[0].GetInt32(), item[1].Clone())); keys.Sort((a, b) => a.Frame.CompareTo(b.Frame)); if (keys.Count == 0) return UnsetValue.Instance;
-        if (frame < keys[0].Frame) return extrapolate == "hold" ? JsonValue(keys[0].Value) : UnsetValue.Instance; if (frame > keys[^1].Frame) return extrapolate == "hold" ? JsonValue(keys[^1].Value) : UnsetValue.Instance; var exact = keys.FirstOrDefault(k => k.Frame == frame); if (exact.Value.ValueKind != JsonValueKind.Undefined) return JsonValue(exact.Value); if (interpolation == "raw") return UnsetValue.Instance; var right = keys.FindIndex(k => k.Frame > frame); if (right <= 0) return UnsetValue.Instance; var leftKey = keys[right - 1]; var rightKey = keys[right]; if (interpolation is "hold" or "step") return JsonValue(leftKey.Value); if (!leftKey.Value.TryGetDouble(out var lv) || !rightKey.Value.TryGetDouble(out var rv)) return UnsetValue.Instance; var p = (frame - leftKey.Frame) / (double)Math.Max(1, rightKey.Frame - leftKey.Frame); p = interpolation switch { "smoothstep" => p * p * (3 - 2 * p), "cubic-in" => p * p * p, "cubic-out" => 1 - Math.Pow(1 - p, 3), "cubic-in-out" => p < .5 ? 4 * p * p * p : 1 - Math.Pow(-2 * p + 2, 3) / 2, _ => p }; return lv + (rv - lv) * p;
     }
 
-    private static bool Matches(RendererSelectorV3 selector, RendererObjectV3 obj)
+    public void Dispose()
     {
-        if (selector.Kind != obj.Kind) return false; var every = selector.Conditions.FirstOrDefault(c => c.Key == "every" && c.Op == "=")?.Value; var from = selector.Conditions.FirstOrDefault(c => c.Key == "from" && c.Op == "=")?.Value; var to = selector.Conditions.FirstOrDefault(c => c.Key == "to" && c.Op == "=")?.Value;
-        if (every != null) { var step = Convert.ToInt32(every); var start = from == null ? 0 : Convert.ToInt32(from); var end = to == null ? int.MaxValue : Convert.ToInt32(to); if (step <= 0 || obj.Frame < start || obj.Frame > end || (obj.Frame - start) % step != 0) return false; }
-        foreach (var condition in selector.Conditions.Where(c => c.Key is not ("every" or "from" or "to"))) { object? lhs = condition.Key switch { "frame" => obj.Frame, "id" => obj.Id, "kind" => obj.Kind, _ => obj.Raw.ValueKind == JsonValueKind.Object && obj.Raw.TryGetProperty(condition.Key, out var value) ? JsonValue(value) : null }; if (!Compare(lhs, condition.Op, condition.Value)) return false; } return true;
+        lock (_renderGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _infinite.Dispose();
+            _relationships.Dispose();
+            foreach (var bitmap in _imageCache.Values.Distinct()) bitmap.Dispose();
+            _imageCache.Clear();
+            _imageLastUse.Clear();
+            _sequenceOpaqueBoundsCache.Clear();
+        }
     }
-    private static bool Compare(object? lhs, string op, object rhs)
-    {
-        if (op == "=") return string.Equals(lhs?.ToString(), rhs.ToString(), StringComparison.Ordinal); if (op == "!=") return !string.Equals(lhs?.ToString(), rhs.ToString(), StringComparison.Ordinal); if (!double.TryParse(lhs?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var l) || !double.TryParse(rhs.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) return false; return op switch { ">=" => l >= r, "<=" => l <= r, ">" => l > r, "<" => l < r, _ => false };
-    }
-    private static bool IsTrackDescriptor(JsonElement value) => value.ValueKind == JsonValueKind.Object && (value.TryGetProperty("track", out _) || value.TryGetProperty("dense", out _) || value.TryGetProperty("value", out _));
-    private static object? JsonValue(JsonElement value) => value.ValueKind switch { JsonValueKind.Null or JsonValueKind.Undefined => null, JsonValueKind.True => true, JsonValueKind.False => false, JsonValueKind.Number when value.TryGetInt64(out var i) => i, JsonValueKind.Number when value.TryGetDouble(out var d) => d, JsonValueKind.String => value.GetString(), _ => value.Clone() };
-    private sealed class UnsetValue { public static readonly UnsetValue Instance = new(); private UnsetValue() { } }
 }
