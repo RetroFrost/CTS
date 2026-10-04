@@ -47,6 +47,8 @@ public sealed partial class MainWindow
         _adaptiveExportInitialized = true;
 
         LoadExportPreferences();
+        FastExportMenuItem.IsChecked = AppPreferences.GetBool("FastImageExport", true);
+        UpdateExportSpeedTooltip();
         ConfigureExportProfileSelectors();
         CaptureAdaptiveWorkspaceElements();
         RemoveNonFunctionalPrototypeControls();
@@ -56,6 +58,17 @@ public sealed partial class MainWindow
         ApplyAdaptiveWorkspaceLayout();
         RefreshExportProfileUi();
     }
+
+    private void FastExportSetting_Click(object sender, RoutedEventArgs e)
+    {
+        AppPreferences.SetBool("FastImageExport", FastExportMenuItem.IsChecked);
+        UpdateExportSpeedTooltip();
+    }
+
+    private void UpdateExportSpeedTooltip() => ToolTipService.SetToolTip(ExportVideoButton,
+        FastExportMenuItem.IsChecked
+            ? "Fast export: balanced image filtering; original resolution, text and frame timing"
+            : "Original export: renderer-authored image filtering");
 
     private void ConfigureExportProfileSelectors()
     {
