@@ -39,6 +39,7 @@ public sealed partial class MainWindow
         foreach (var card in Cards) card.PropertyChanged += ThumbnailCard_PropertyChanged;
 
         await RestoreWorkspaceAsync();
+        await RestoreLastEditorRendererAsync();
         ScheduleThumbnailRefresh();
         ScheduleWorkspaceSave();
     }
