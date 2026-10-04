@@ -21,9 +21,9 @@ public static class RendererExportRegressionChecks
                 File.WriteAllBytes(path, data.ToArray());
                 paths.Add(path);
             }
-            Parallel.For(0, 2, _ =>
+            Parallel.For(0, 2, workerIndex =>
             {
-                using var engine = new RendererEngine();
+                using var engine = new RendererEngine { UseFastImageSampling = workerIndex == 1 };
                 var card = new StudioCard { Title = "", Value = "" };
                 var project = new StudioProject { Cards = [card], ShowBadges = false };
                 var spec = new RendererSpec { Engine = "standard" };

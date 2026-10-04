@@ -48,6 +48,13 @@
                     <ComboBox Width="92" SelectedIndex="0">
                         <ComboBoxItem Content="60 FPS" />
                     </ComboBox>
+                    <Button Width="34" Padding="0" Content="&#xE713;" FontFamily="Segoe Fluent Icons" ToolTipService.ToolTip="Export settings">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <ToggleMenuFlyoutItem x:Name="FastExportMenuItem" Text="Fast export · balanced image filtering" IsChecked="True" Click="FastExportSetting_Click" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                     <Button x:Name="ExportVideoButton" Content="Export Video" Click="ExportVideo_Click" Padding="18,7" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
                 </StackPanel>
             </Grid>
