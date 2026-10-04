@@ -234,7 +234,7 @@ public sealed partial class MainWindow : Window
 
     private async void ImportCsv_Click(object sender, RoutedEventArgs e)
     {
-        var file = await PickFileAsync([".csv"]);
+        var file = await PickFileAsync(["*"]);
         if (file is null) return;
 
         try
