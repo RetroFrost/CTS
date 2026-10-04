@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.6"
+          $version = "4.2.7"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.43"
+          $velopackVersion = "4.2.44"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -356,6 +356,7 @@ jobs:
           if ($text -notmatch "Renderer compatibility app version: $expectedRendererVersion\.") {
             throw ("Renderer compatibility version is not the published app version $env:CC_VERSION. " + $text)
           }
+          if ($text -notmatch 'Editor UX interaction smoke passed') { throw ("Editor UX interaction smoke did not complete. " + $text) }
           Write-Host "Full MainWindow/XAML smoke passed with renderer compatibility version $env:CC_VERSION (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
 
@@ -701,6 +702,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
+          - Windows Mica now has translucent editor surfaces and a solid fallback; dropdown popups and flyouts use rounded corners.
+          - 4.2.7 improves the editing workspace: preview focus mode, frame timecode and keyboard transport, card duplication/reordering, compact navigation, and a text-first inspector with grouped badge fields.
           - 4.2.6 fixes reference-exact rendering: SmartCard live text is no longer clipped by the artwork reveal mask, SmartBadge v2 can use exact per-card badge start clocks, and ribbon-exact can play a frame-addressed reference outro without procedural substitution.
           - 4.2.5 fixes GitHub ZIP update discovery: release metadata is resolved from the public Releases page instead of the unauthenticated GitHub REST API, eliminating the shared-IP 403 rate-limit failure. Asset SHA-256 verification remains intact via SHA256SUMS.txt.
           - 4.2.4 adds live renderer text-wipe and SmartBadge text-wipe capabilities driven by deterministic frame tracks; text stays project-bound instead of being baked into animation frames.
