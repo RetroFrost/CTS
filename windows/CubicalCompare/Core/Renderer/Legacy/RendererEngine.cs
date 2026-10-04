@@ -9,6 +9,10 @@ namespace CubicalCompare.Windows;
 public sealed class RendererEngine : IDisposable
 {
     private readonly Dictionary<SKBitmap, SKImage> _decodedImages = new();
+    private readonly Dictionary<(string Source, bool Bold), SKTypeface> _typefaces = new();
+    private readonly Dictionary<(string Text, IntPtr Typeface, float Size, float Width), List<string>> _wrappedText = new();
+    internal int CachedTypefaceCount => _typefaces.Count;
+    internal int CachedTextLayoutCount => _wrappedText.Count;
     public bool UseFastImageSampling { get; set; }
     private readonly Dictionary<string, SKBitmap> _imageCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SKRect?> _sequenceOpaqueBoundsCache = new(StringComparer.OrdinalIgnoreCase);
@@ -28,7 +32,7 @@ public sealed class RendererEngine : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             try { return RenderCore(project, spec, frame, width, height); }
-            finally { TrimDecodedImages(); }
+            finally { TrimDecodedImages(); TrimTextCaches(); }
         }
     }
 
@@ -2459,7 +2463,28 @@ public sealed class RendererEngine : IDisposable
 
     private SKPaint TextPaint(StudioProject project, float size, SKColor color, bool bold)
     {
-        SKTypeface typeface; try { typeface = !string.IsNullOrWhiteSpace(project.FontFile) && File.Exists(project.FontFile) ? SKTypeface.FromFile(project.FontFile) : SKTypeface.FromFamilyName(string.IsNullOrWhiteSpace(project.FontFamily) ? "Segoe UI" : project.FontFamily, bold ? SKFontStyle.Bold : SKFontStyle.Normal); } catch { typeface = SKTypeface.Default; }
+        var family = string.IsNullOrWhiteSpace(project.FontFamily) ? "Segoe UI" : project.FontFamily;
+        var source = "family:" + family;
+        var fontFile = project.FontFile;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(fontFile) && File.Exists(fontFile))
+                source = "file:" + Path.GetFullPath(fontFile) + ":" + File.GetLastWriteTimeUtc(fontFile).Ticks.ToString(CultureInfo.InvariantCulture);
+        }
+        catch { fontFile = null; }
+        var key = (source, bold);
+        if (!_typefaces.TryGetValue(key, out var typeface))
+        {
+            try
+            {
+                typeface = source.StartsWith("file:", StringComparison.Ordinal)
+                    ? SKTypeface.FromFile(fontFile!)
+                    : SKTypeface.FromFamilyName(family, bold ? SKFontStyle.Bold : SKFontStyle.Normal);
+            }
+            catch { typeface = SKTypeface.Default; }
+            typeface ??= SKTypeface.Default;
+            _typefaces[key] = typeface;
+        }
         return new SKPaint { IsAntialias = true, SubpixelText = true, Typeface = typeface, TextSize = size, Color = color, TextAlign = SKTextAlign.Left };
     }
     private void DrawFitText(SKCanvas canvas, StudioProject project, string text, SKRect box, SKColor color, float preferred, bool bold, int maxLines)
@@ -2510,10 +2535,39 @@ public sealed class RendererEngine : IDisposable
         paint.TextAlign = SKTextAlign.Left;
     }
 
-    private static List<string> Wrap(string text, SKPaint paint, float width)
+    private List<string> Wrap(string text, SKPaint paint, float width)
     {
-        var output = new List<string>(); foreach (var paragraph in text.Replace("\r", "").Split('\n')) { var current = ""; foreach (var word in paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries)) { var candidate = current.Length == 0 ? word : current + " " + word; if (paint.MeasureText(candidate) <= width || current.Length == 0) current = candidate; else { output.Add(current); current = word; } } if (current.Length > 0) output.Add(current); } return output;
+        var key = (text, paint.Typeface?.Handle ?? IntPtr.Zero, paint.TextSize, width);
+        if (_wrappedText.TryGetValue(key, out var cached)) return cached;
+        var output = new List<string>();
+        foreach (var paragraph in text.Replace("\r", "").Split('\n'))
+        {
+            var current = "";
+            foreach (var word in paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var candidate = current.Length == 0 ? word : current + " " + word;
+                if (paint.MeasureText(candidate) <= width || current.Length == 0) current = candidate;
+                else { output.Add(current); current = word; }
+            }
+            if (current.Length > 0) output.Add(current);
+        }
+        if (text.Length <= 4096) _wrappedText[key] = output;
+        return output;
     }
+
+    private void TrimTextCaches()
+    {
+        // Evict after the frame, when all text paints have released their references.
+        if (_typefaces.Count > 32)
+        {
+            foreach (var face in _typefaces.Values.Distinct())
+                if (!ReferenceEquals(face, SKTypeface.Default)) face.Dispose();
+            _typefaces.Clear();
+            _wrappedText.Clear();
+        }
+        else if (_wrappedText.Count > 512) _wrappedText.Clear();
+    }
+
     private static void DrawCentered(SKCanvas canvas, string text, float x, float y, SKPaint paint, float maxWidth)
     {
         if (string.IsNullOrWhiteSpace(text)) return; var size = paint.TextSize; while (paint.MeasureText(text) > maxWidth && size > 12) { size -= 1; paint.TextSize = size; } paint.TextAlign = SKTextAlign.Center; canvas.DrawText(text, x, y, paint); paint.TextAlign = SKTextAlign.Left;
@@ -2622,6 +2676,10 @@ public sealed class RendererEngine : IDisposable
             _imageCache.Clear();
             _imageLastUse.Clear();
             _sequenceOpaqueBoundsCache.Clear();
+            foreach (var face in _typefaces.Values.Distinct())
+                if (!ReferenceEquals(face, SKTypeface.Default)) face.Dispose();
+            _typefaces.Clear();
+            _wrappedText.Clear();
         }
     }
 }
