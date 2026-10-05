@@ -125,13 +125,13 @@ public sealed class Zipack2CardDefinition
     [JsonPropertyName("image_layer")]
     public string ImageLayer { get; set; } = "behind";
 
-    // MegaPack artwork is intentionally constrained to the established safe subject box.
-    // Older v2 packs omit these fields and therefore inherit the 151×129 defaults.
+    // Deprecated 4.2.13 compatibility fields. They describe source-artwork sizing hints only.
+    // They must never be interpreted as renderer-space pixel caps.
     [JsonPropertyName("image_max_width")]
-    public double ImageMaxWidth { get; set; } = 151;
+    public double ImageMaxWidth { get; set; }
 
     [JsonPropertyName("image_max_height")]
-    public double ImageMaxHeight { get; set; } = 129;
+    public double ImageMaxHeight { get; set; }
 
     public Zipack2CardData Normalize(int index)
     {
@@ -170,8 +170,6 @@ public sealed class Zipack2CardDefinition
             ImageCropRight = Finite(ImageCropRight, 0, 0, .95),
             ImageCropBottom = Finite(ImageCropBottom, 0, 0, .95),
             ImageLayer = ImageLayer.Equals("front", StringComparison.OrdinalIgnoreCase) ? "front" : "behind",
-            ImageMaxWidth = Finite(ImageMaxWidth, 151, 1, 1920),
-            ImageMaxHeight = Finite(ImageMaxHeight, 129, 1, 1080),
             SourceOrder = index,
         };
     }
@@ -199,8 +197,6 @@ public sealed class Zipack2CardData
     public double ImageCropRight { get; set; }
     public double ImageCropBottom { get; set; }
     public string ImageLayer { get; set; } = "behind";
-    public double ImageMaxWidth { get; set; } = 151;
-    public double ImageMaxHeight { get; set; } = 129;
     public int SourceOrder { get; set; }
 }
 

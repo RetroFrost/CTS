@@ -163,8 +163,7 @@ public static class ProjectFileService
             if (!double.IsFinite(card.ImageX) || !double.IsFinite(card.ImageY) ||
                 !double.IsFinite(card.ImageScale) || !double.IsFinite(card.ImageRotation) ||
                 !double.IsFinite(card.ImageCropLeft) || !double.IsFinite(card.ImageCropTop) ||
-                !double.IsFinite(card.ImageCropRight) || !double.IsFinite(card.ImageCropBottom) ||
-                !double.IsFinite(card.ImageMaxWidth) || !double.IsFinite(card.ImageMaxHeight))
+                !double.IsFinite(card.ImageCropRight) || !double.IsFinite(card.ImageCropBottom))
                 throw new InvalidDataException($"Card '{card.Title}' contains an invalid image transform.");
 
             card.ImageX = Math.Clamp(card.ImageX, -100_000, 100_000);
@@ -175,8 +174,6 @@ public static class ProjectFileService
             card.ImageCropTop = Math.Clamp(card.ImageCropTop, 0, 1);
             card.ImageCropRight = Math.Clamp(card.ImageCropRight, 0, 1);
             card.ImageCropBottom = Math.Clamp(card.ImageCropBottom, 0, 1);
-            card.ImageMaxWidth = card.ImageMaxWidth <= 0 ? 0 : Math.Clamp(card.ImageMaxWidth, 1, project.Width);
-            card.ImageMaxHeight = card.ImageMaxHeight <= 0 ? 0 : Math.Clamp(card.ImageMaxHeight, 1, project.Height);
 
             if (card.ImageCropLeft + card.ImageCropRight >= 0.999)
             {

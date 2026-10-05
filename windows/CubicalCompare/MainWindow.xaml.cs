@@ -387,8 +387,6 @@ public sealed partial class MainWindow : Window
                 ImageCropRight = data?.ImageCropRight ?? 0,
                 ImageCropBottom = data?.ImageCropBottom ?? 0,
                 ImageLayer = data?.ImageLayer ?? "behind",
-                ImageMaxWidth = data?.ImageMaxWidth ?? 151,
-                ImageMaxHeight = data?.ImageMaxHeight ?? 129,
             });
         }
 
@@ -523,8 +521,6 @@ public sealed partial class MainWindow : Window
                 ImageCropRight = card.ImageCropRight,
                 ImageCropBottom = card.ImageCropBottom,
                 ImageLayer = card.ImageLayer,
-                ImageMaxWidth = card.ImageMaxWidth,
-                ImageMaxHeight = card.ImageMaxHeight,
                 ThumbnailBackgroundColor = card.ThumbnailBackgroundColor,
                 ThumbnailAccentColor = card.ThumbnailAccentColor,
             });
@@ -684,8 +680,6 @@ public sealed class ProjectCardViewModel : INotifyPropertyChanged
     public double ImageCropRight { get; set; }
     public double ImageCropBottom { get; set; }
     public string ImageLayer { get; set; } = "behind";
-    public double ImageMaxWidth { get; set; }
-    public double ImageMaxHeight { get; set; }
 
     public string ThumbnailBackgroundColor
     {
