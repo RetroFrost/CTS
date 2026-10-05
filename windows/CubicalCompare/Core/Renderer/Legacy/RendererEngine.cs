@@ -2409,6 +2409,7 @@ public sealed class RendererEngine : IDisposable
         var scale = baseScale * (float)Math.Clamp(card.ImageScale, .05, 12);
         var w = src.Width * scale;
         var h = src.Height * scale;
+        ApplyArtworkSizeLimit(card, ref w, ref h);
         var cx = dest.MidX + (float)card.ImageX;
         var cy = dest.MidY + (float)card.ImageY;
         var target = new SKRect(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
@@ -2426,6 +2427,18 @@ public sealed class RendererEngine : IDisposable
         };
         canvas.DrawImage(CachedImage(bitmap), src, target, paint);
         canvas.Restore();
+    }
+
+    private static void ApplyArtworkSizeLimit(StudioCard card, ref float width, ref float height)
+    {
+        var maxWidth = card.ImageMaxWidth > 0 ? (float)card.ImageMaxWidth : float.PositiveInfinity;
+        var maxHeight = card.ImageMaxHeight > 0 ? (float)card.ImageMaxHeight : float.PositiveInfinity;
+        if (!float.IsFinite(maxWidth) && !float.IsFinite(maxHeight)) return;
+
+        var factor = Math.Min(maxWidth / Math.Max(0.0001f, width), maxHeight / Math.Max(0.0001f, height));
+        if (factor >= 1 || !float.IsFinite(factor) || factor <= 0) return;
+        width *= factor;
+        height *= factor;
     }
 
     private SKBitmap? LoadImage(string path)
