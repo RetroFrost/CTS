@@ -44,9 +44,6 @@ public sealed class ComparisonCard
     public double ImageCropRight { get; set; }
     public double ImageCropBottom { get; set; }
     public string ImageLayer { get; set; } = "behind";
-    // Optional logical-pixel cap. Zero means unrestricted; MegaPack imports use 151×129.
-    public double ImageMaxWidth { get; set; }
-    public double ImageMaxHeight { get; set; }
     // Thumbnail-only fill behind transparent/backgroundless artwork.
     public string ThumbnailBackgroundColor { get; set; } = "#05070E";
     public string ThumbnailAccentColor { get; set; } = "#FF0F16";
