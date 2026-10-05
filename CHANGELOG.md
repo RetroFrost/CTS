@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.2.14 — MegaPack source-size scaling fix
+
+- Corrected the 4.2.13 MegaPack artwork regression that treated **151×129 source artwork pixels** as a maximum renderer-space display size.
+- 151×129 artwork now scales normally into each renderer's authored artwork region, just like any other raster source.
+- MegaPack manifest order remains authoritative, so cards still import in exact authored order.
+- Deprecated 4.2.13 image_max_width/image_max_height metadata is tolerated but no longer shrinks rendered artwork.
+
 ## 4.2.13 — MegaPack order + artwork safe bounds
 
 - MegaPack cards now keep the exact order authored in the manifest instead of allowing detection/sheet ordering to become the project sequence.
