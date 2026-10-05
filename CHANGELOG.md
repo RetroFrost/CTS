@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.2.13 — MegaPack order + artwork safe bounds
+
+- MegaPack cards now keep the exact order authored in the manifest instead of allowing detection/sheet ordering to become the project sequence.
+- MegaPack artwork imports carry the established **151×129 logical-pixel subject limit** into the project and renderer.
+- Standard Renderer v3, Infinite Timeline, and Relationships rendering all enforce the same maximum artwork bounds in preview and export.
+- Existing non-MegaPack projects remain unrestricted unless an artwork maximum is explicitly stored on the card.
+
 ## 4.2.3 — Windows updater hotfix
 
 - Hardened portable ZIP updates against lingering Cubical Compare renderer/export helper processes.
