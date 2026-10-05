@@ -27,6 +27,8 @@ public sealed class StudioCard
     public double ImageCropRight { get; set; }
     public double ImageCropBottom { get; set; }
     public string ImageLayer { get; set; } = "behind";
+    public double ImageMaxWidth { get; set; }
+    public double ImageMaxHeight { get; set; }
 
     public override string ToString() => string.IsNullOrWhiteSpace(Title) ? "Untitled" : Title;
 }
@@ -79,6 +81,8 @@ public sealed class StudioProject
                 ["image_crop_right"] = card.ImageCropRight,
                 ["image_crop_bottom"] = card.ImageCropBottom,
                 ["image_layer"] = card.ImageLayer,
+                ["image_max_width"] = card.ImageMaxWidth,
+                ["image_max_height"] = card.ImageMaxHeight,
             }).ToArray()),
             ["settings"] = new JsonObject
             {
@@ -162,6 +166,8 @@ public sealed class StudioProject
                     ImageCropRight = card.Double("image_crop_right", 0),
                     ImageCropBottom = card.Double("image_crop_bottom", 0),
                     ImageLayer = card.String("image_layer", "behind"),
+                    ImageMaxWidth = card.Double("image_max_width", 0),
+                    ImageMaxHeight = card.Double("image_max_height", 0),
                 });
             }
         }
