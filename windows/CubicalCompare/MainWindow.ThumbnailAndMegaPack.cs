@@ -351,6 +351,8 @@ public sealed partial class MainWindow
                     ImageCropRight = card.ImageCropRight,
                     ImageCropBottom = card.ImageCropBottom,
                     ImageLayer = card.ImageLayer,
+                    ImageMaxWidth = card.ImageMaxWidth,
+                    ImageMaxHeight = card.ImageMaxHeight,
                     ThumbnailBackgroundColor = card.ThumbnailBackgroundColor,
                     ThumbnailAccentColor = card.ThumbnailAccentColor,
                 });

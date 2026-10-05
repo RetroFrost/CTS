@@ -1352,6 +1352,8 @@ public sealed class LegacyRendererAdapter : IDisposable
                 ImageCropRight = card.ImageCropRight,
                 ImageCropBottom = card.ImageCropBottom,
                 ImageLayer = card.ImageLayer,
+                ImageMaxWidth = card.ImageMaxWidth,
+                ImageMaxHeight = card.ImageMaxHeight,
             }).ToList(),
         };
         return legacy;

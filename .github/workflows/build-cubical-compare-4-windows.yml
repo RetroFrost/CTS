@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.12"
+          $version = "4.2.13"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.49"
+          $velopackVersion = "4.2.50"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -226,10 +226,15 @@ jobs:
           $megaModels = Get-Content 'windows/CubicalCompare/Core/MegaPack/Zipack2Models.cs' -Raw
           if ($megaModels -notmatch 'JsonPropertyName\("image_url"\)') { throw 'MegaPack image_url metadata support is missing.' }
           if ($megaModels -notmatch 'ImageSource') { throw 'MegaPack normalized web artwork field is missing.' }
+          if ($megaModels -notmatch 'JsonPropertyName\("image_max_width"\)') { throw 'MegaPack safe artwork width metadata is missing.' }
+          if ($megaModels -notmatch 'JsonPropertyName\("image_max_height"\)') { throw 'MegaPack safe artwork height metadata is missing.' }
+          if ($megaModels -notmatch 'SourceOrder') { throw 'MegaPack normalized manifest order is missing.' }
           $megaImporter = Get-Content 'windows/CubicalCompare/Core/MegaPack/Zipack2Importer.cs' -Raw
           if ($megaImporter -notmatch 'hasWebArtwork') { throw 'URL-only MegaPack import is missing.' }
           if ($megaImporter -notmatch 'rejectedWebCards') { throw 'MegaPack import does not validate unsupported remote artwork.' }
           if ($megaImporter -notmatch 'IsAllowedWebSource') { throw 'MegaPack import does not accept general public web artwork.' }
+          if ($megaImporter -notmatch 'OrderBy\(card => card\.Data\?\.SourceOrder') { throw 'MegaPack import does not preserve manifest card order.' }
+          if ($rendererEngine -notmatch 'ApplyArtworkSizeLimit') { throw 'Renderer does not enforce MegaPack artwork safe bounds.' }
 
           $rendererWeb = Get-Content 'windows/CubicalCompare/Core/Renderer/Legacy/RendererEngine.cs' -Raw
           if ($rendererWeb -notmatch 'WebImageSource\.ResolveToLocalFile') { throw 'Renderer does not resolve app-wide web artwork.' }
@@ -703,6 +708,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
+          - 4.2.13 preserves MegaPack manifest card order and enforces the established 151×129 logical-pixel artwork subject limit consistently in preview and export.
           - 4.2.12 includes card-count-based ribbon timing and shifted outros, reuses native fonts and measured text wrapping across export frames, and bounds/disposes the font and layout caches.
           - 4.2.9 bounds decoded image caches per renderer worker, uses immutable artwork, synchronizes render/dispose, reports failed export frames, and avoids thumbnail file locking collisions.
           - 4.2.8 automatically restores a retained copy of the last loaded renderer after workspace recovery, even if the original file was moved.

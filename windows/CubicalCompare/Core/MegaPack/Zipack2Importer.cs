@@ -161,6 +161,15 @@ public static class Zipack2Importer
                 });
             }
 
+            // The manifest array is the source of truth for card sequence. Detection order is
+            // only a transport detail and must never reshuffle authored MegaPack content.
+            allCards = allCards
+                .OrderBy(card => card.Data?.SourceOrder ?? int.MaxValue)
+                .ThenBy(card => card.GlobalIndex)
+                .ToList();
+            for (var index = 0; index < allCards.Count; index++)
+                allCards[index].GlobalIndex = index;
+
             var soundtrackPath = await ExtractSoundtrackAsync(archive, manifest, extractionRoot, cancellationToken);
 
             return new Zipack2ImportResult
