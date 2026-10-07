@@ -578,7 +578,7 @@
                                         <Button x:Name="RemoveInternalCodeOverrideButton" Content="Restore built-in code" Click="RemoveInternalCodeOverride_Click" />
                                     </StackPanel>
                                     <TextBlock Text="Full-app patches" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
-                                    <TextBlock Text="Import unified-diff .patch files to rebuild the complete Windows app, including its UI and renderer. Requires the .NET 10 SDK, PowerShell 7 and Windows desktop build tools. Changes activate after a successful build and restart." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                    <TextBlock Text="Import unified-diff .patch files to rebuild the complete Windows app, including its UI and renderer. Missing build tools are installed automatically with visible setup progress. Changes activate after a successful build and restart." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
                                     <StackPanel Spacing="8">
                                         <Button x:Name="ImportAppPatchButton" Content="Import app patch…" Click="ImportAppPatch_Click" />
                                         <Button x:Name="CancelAppPatchButton" Content="Cancel patch build" Click="CancelAppPatch_Click" IsEnabled="False" />

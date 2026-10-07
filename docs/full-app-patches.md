@@ -1,4 +1,4 @@
-# Full-app patches (Windows 4.2.15)
+# Full-app patches (Windows 4.2.16)
 
 Developer has its own navigation tab. It contains C# renderer overrides, full-app patch import/restore, reference calibration and build diagnostics. Normal renderer loading remains in Style & Model; update settings remain in Settings.
 
@@ -10,7 +10,7 @@ Developer has its own navigation tab. It contains C# renderer overrides, full-ap
 4. The existing app remains active during the build. Cancel stops the compiler and leaves it installed. Build errors retain the log at the path shown in the developer panel.
 5. After a successful build, the workspace is saved and the current app is backed up. The existing ZIP update service validates, stages and activates the new app, then restarts it. **Restore app before last patch** reinstalls the backup and restarts.
 
-Full builds require Windows, .NET 10 SDK (not just the runtime), PowerShell 7 and the Windows desktop build tools used to compile WinUI. Dependency restoration may need network access. A packaged runtime alone cannot compile XAML and replace the entire app. Older releases without the bundled `Assets/AppSource.zip` need a normal app update before they can import patches.
+Full builds require Windows. Missing .NET 10 SDK (not just the runtime), PowerShell 7 and Windows SDK desktop tools are installed automatically through WinGet with visible setup windows. Existing compatible tools are reused. Accept any Windows elevation prompt; installers are never silent. If WinGet itself is unavailable, the importer explains how to install/repair Windows App Installer. Dependency installation/restoration needs network access. A packaged runtime alone cannot compile XAML and replace the entire app. Older releases without the bundled `Assets/AppSource.zip` need a normal app update before they can import patches.
 
 ## Format and version matching
 

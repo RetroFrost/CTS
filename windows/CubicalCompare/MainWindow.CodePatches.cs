@@ -36,7 +36,7 @@ public sealed partial class MainWindow
                 Title = $"Rebuild app with {builder.ChangedFiles.Count} changed files?",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text =
                     "This patch can change the entire Windows app: UI, renderer, imports and updates. Building runs the selected source and project scripts with your permissions. Import patches from a source you trust.\n\n" +
-                    "Requires .NET 10 SDK, PowerShell 7 and Windows desktop build tools. The current app stays active during compilation. A successful build saves your workspace, backs up the app, then replaces it and restarts.\n\n" +
+                    "Missing .NET 10 SDK, PowerShell 7 and Windows SDK build tools are installed automatically through WinGet, with visible setup windows. Windows may ask for administrator approval. The current app stays active during setup and compilation. A successful build saves your workspace, backs up the app, then replaces it and restarts.\n\n" +
                     "Patch order: " + string.Join(", ", files.Select(x => x.Name)) + "\n\n" + string.Join("\n", builder.ChangedFiles) } },
                 PrimaryButtonText = "Build & restart",
                 CloseButtonText = "Cancel",
@@ -61,7 +61,7 @@ public sealed partial class MainWindow
             }
             else throw new InvalidOperationException("The updater did not stage the patched app.");
         }
-        catch (OperationCanceledException) { AppPatchStatusText.Text = "Build cancelled. Current app unchanged."; CompleteActivityWatcher("App patch", AppPatchStatusText.Text); }
+        catch (OperationCanceledException) { AppPatchStatusText.Text = "Patch build cancelled. Current app unchanged. Close any setup window that is still running."; CompleteActivityWatcher("App patch", AppPatchStatusText.Text); }
         catch (Exception ex)
         {
             App.WriteLog("Full-app patch import failed", ex);
