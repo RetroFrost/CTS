@@ -14,3 +14,9 @@ dist/
 *.video-part.mp4
 qa/*.mp4
 qa/model-assets/
+
+# Generated full-app patch source snapshot
+windows/CubicalCompare/Assets/AppSource.zip
+
+windows/CubicalCompare.PatchTests/bin/
+windows/CubicalCompare.PatchTests/obj/

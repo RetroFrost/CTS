@@ -169,7 +169,7 @@ public static class ProjectFileService
             card.ImageX = Math.Clamp(card.ImageX, -100_000, 100_000);
             card.ImageY = Math.Clamp(card.ImageY, -100_000, 100_000);
             card.ImageRotation = Math.Clamp(card.ImageRotation, -360_000, 360_000);
-            if (card.ImageScale <= 0 || card.ImageScale > 100) card.ImageScale = 1;
+            card.ImageScale = ImageTransformScale.Normalize(card.ImageScale);
             card.ImageCropLeft = Math.Clamp(card.ImageCropLeft, 0, 1);
             card.ImageCropTop = Math.Clamp(card.ImageCropTop, 0, 1);
             card.ImageCropRight = Math.Clamp(card.ImageCropRight, 0, 1);

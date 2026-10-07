@@ -122,7 +122,7 @@ public static class CsvImportService
                 ImagePath = image,
                 ImageX = ParseDouble(Cell("image_x"), 0),
                 ImageY = ParseDouble(Cell("image_y"), 0),
-                ImageScale = Math.Clamp(ParseDouble(Cell("image_scale"), 1), .05, 12),
+                ImageScale = ImageTransformScale.Normalize(ParseDouble(Cell("image_scale"), 1)),
                 ImageRotation = Math.Clamp(ParseDouble(Cell("image_rotation"), 0), -360, 360),
                 ImageCropLeft = Math.Clamp(ParseDouble(Cell("crop_left"), 0), 0, .95),
                 ImageCropTop = Math.Clamp(ParseDouble(Cell("crop_top"), 0), 0, .95),

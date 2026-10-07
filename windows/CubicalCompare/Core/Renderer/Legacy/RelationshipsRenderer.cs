@@ -1,3 +1,4 @@
+using CubicalCompare.Core.Project;
 using SkiaSharp;
 using System.Text.RegularExpressions;
 
@@ -54,7 +55,7 @@ public sealed class RelationshipsRenderer : IDisposable
 
     private void DrawArtwork(SKCanvas c,StudioCard card,SKRect dest,bool cover)
     {
-        var bitmap=Load(card.Image);if(bitmap==null)return;var src=new SKRect((float)(bitmap.Width*Math.Clamp(card.ImageCropLeft,0,.95)),(float)(bitmap.Height*Math.Clamp(card.ImageCropTop,0,.95)),(float)(bitmap.Width*(1-Math.Clamp(card.ImageCropRight,0,.95))),(float)(bitmap.Height*(1-Math.Clamp(card.ImageCropBottom,0,.95))));if(src.Width<1||src.Height<1)return;var baseScale=(cover?Math.Max(dest.Width/src.Width,dest.Height/src.Height):Math.Min(dest.Width/src.Width,dest.Height/src.Height));var scale=baseScale*(float)Math.Clamp(card.ImageScale,.05,12);var w=src.Width*scale;var h=src.Height*scale;var cx=dest.MidX+(float)card.ImageX;var cy=dest.MidY+(float)card.ImageY;var target=new SKRect(cx-w/2,cy-h/2,cx+w/2,cy+h/2);c.Save();c.ClipRect(dest);if(card.ImageRotation!=0)c.RotateDegrees((float)card.ImageRotation,cx,cy);using var paint=new SKPaint{IsAntialias=true,FilterQuality=SKFilterQuality.High};c.DrawBitmap(bitmap,src,target,paint);c.Restore();
+        var bitmap=Load(card.Image);if(bitmap==null)return;var src=new SKRect((float)(bitmap.Width*Math.Clamp(card.ImageCropLeft,0,.95)),(float)(bitmap.Height*Math.Clamp(card.ImageCropTop,0,.95)),(float)(bitmap.Width*(1-Math.Clamp(card.ImageCropRight,0,.95))),(float)(bitmap.Height*(1-Math.Clamp(card.ImageCropBottom,0,.95))));if(src.Width<1||src.Height<1)return;var baseScale=(cover?Math.Max(dest.Width/src.Width,dest.Height/src.Height):Math.Min(dest.Width/src.Width,dest.Height/src.Height));var scale=baseScale*(float)ImageTransformScale.Normalize(card.ImageScale);var w=src.Width*scale;var h=src.Height*scale;var cx=dest.MidX+(float)card.ImageX;var cy=dest.MidY+(float)card.ImageY;var target=new SKRect(cx-w/2,cy-h/2,cx+w/2,cy+h/2);c.Save();c.ClipRect(dest);if(card.ImageRotation!=0)c.RotateDegrees((float)card.ImageRotation,cx,cy);using var paint=new SKPaint{IsAntialias=true,FilterQuality=SKFilterQuality.High};c.DrawBitmap(bitmap,src,target,paint);c.Restore();
     }
 
     private void DrawBadge(SKCanvas c,StudioProject project,int index,float cardX,int frame,RendererSpec spec)

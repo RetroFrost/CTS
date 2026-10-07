@@ -457,10 +457,7 @@ public sealed partial class MainWindow
                     4000);
                 break;
             case ReliablePreviewDragMode.Scale:
-                _reliableWorkScale = Math.Clamp(
-                    _reliableStartScale * ReliableDistance(point, center) / _reliableStartDistance,
-                    0.05,
-                    12.0);
+                _reliableWorkScale = ImageTransformScale.Normalize(_reliableStartScale * ReliableDistance(point, center) / _reliableStartDistance);
                 break;
             case ReliablePreviewDragMode.Rotate:
                 _reliableWorkRotation = NormalizeReliablePreviewDegrees(
@@ -642,7 +639,7 @@ public sealed partial class MainWindow
                     ? Math.Max(localSlotWidth / cropWidth, localSlotHeight / cropHeight)
                     : Math.Min(localSlotWidth / cropWidth, localSlotHeight / cropHeight);
 
-                var imageScale = Math.Clamp(card.ImageScale, .05, 12);
+                var imageScale = ImageTransformScale.Normalize(card.ImageScale);
                 var halfWidth = cropWidth * baseScale * imageScale * localScaleX / 2.0;
                 var halfHeight = cropHeight * baseScale * imageScale * localScaleY / 2.0;
                 var centerX = imageBase.X + imageBase.Width / 2.0 + card.ImageX * g.ImageCoordinateScaleX;
@@ -896,7 +893,7 @@ public sealed partial class MainWindow
             var baseScale = g.ArtworkCover
                 ? Math.Max(localSlotWidth / cropWidth, localSlotHeight / cropHeight)
                 : Math.Min(localSlotWidth / cropWidth, localSlotHeight / cropHeight);
-            var effective = baseScale * Math.Clamp(imageScale, .05, 12);
+            var effective = baseScale * ImageTransformScale.Normalize(imageScale);
 
             var width = Math.Max(1, cropWidth * effective * coordX * sx);
             var height = Math.Max(1, cropHeight * effective * coordY * sy);

@@ -7,6 +7,7 @@ public static class RendererExportRegressionChecks
 {
     public static void Run()
     {
+        RunArtworkScaling();
         RunRibbonTiming();
         RunTextCache();
         var directory = Path.Combine(Path.GetTempPath(), "CubicalCompare-render-cache-" + Guid.NewGuid().ToString("N"));
@@ -51,6 +52,41 @@ public static class RendererExportRegressionChecks
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
+    private static void RunArtworkScaling()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "CubicalCompare-scale-" + Guid.NewGuid().ToString("N") + ".png");
+        try
+        {
+            using (var source = new SKBitmap(10, 10))
+            {
+                source.Erase(SKColors.Red);
+                using var image = SKImage.FromBitmap(source);
+                using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+                File.WriteAllBytes(path, data.ToArray());
+            }
+            var draw = typeof(RendererEngine).GetMethod("DrawImage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            foreach (var fast in new[] { false, true })
+            {
+                using var engine = new RendererEngine { UseFastImageSampling = fast };
+                foreach (var scale in new[] { 0d, .01, .04, 1, 12, 20, 10000 })
+                {
+                    using var bitmap = new SKBitmap(512, 512);
+                    using var canvas = new SKCanvas(bitmap);
+                    canvas.Clear(SKColors.Black);
+                    float baseSize = scale < 1 ? 100 : 10;
+                    var dest = new SKRect(256 - baseSize / 2, 256 - baseSize / 2, 256 + baseSize / 2, 256 + baseSize / 2);
+                    draw.Invoke(engine, [canvas, new StudioCard { Image = path, ImageScale = scale }, dest, false, 1f, (SKRect?)new SKRect(0, 0, 512, 512)]);
+                    var count = 0;
+                    for (var x = 0; x < 512; x++) if (bitmap.GetPixel(x, 256).Red > 30) count++;
+                    var expected = Math.Min(512, baseSize * scale);
+                    if (Math.Abs(count - expected) > 2)
+                        throw new InvalidOperationException($"Artwork scale {scale} rendered {count}px, expected {expected}px (fast={fast}).");
+                }
+            }
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
     private static void RunRibbonTiming()
     {
         static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
