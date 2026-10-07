@@ -94,12 +94,12 @@ public sealed partial class MainWindow
         ShowPage("developer");
         if (DeveloperPage.Visibility != Visibility.Visible || RendererPage.Visibility != Visibility.Collapsed || ProjectPage.Visibility != Visibility.Collapsed)
             throw new InvalidOperationException("Developer tools are not isolated on their own page.");
-        for (DependencyObject? parent = DeveloperCodeOverridePanel; parent is not null; parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent))
-        {
-            if (parent == RendererPage) throw new InvalidOperationException("Developer overrides still belong to Style & Model.");
-            if (parent == DeveloperPage) break;
-            if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent) is null) throw new InvalidOperationException("Developer overrides do not belong to Developer page.");
-        }
+        // Collapsed ScrollViewer content may not have a materialized visual parent yet.
+        // Check the actual content/children ownership rather than template realization timing.
+        if (!DeveloperToolsPanel.Children.Contains(DeveloperCodeOverridePanel) ||
+            !ReferenceEquals(DeveloperScrollViewer.Content, DeveloperToolsPanel) ||
+            !DeveloperPage.Children.Contains(DeveloperScrollViewer))
+            throw new InvalidOperationException("Developer overrides do not belong to Developer page.");
         if (ImportAppPatchButton is null || CancelAppPatchButton is null || RestoreAppPatchButton is null)
             throw new InvalidOperationException("Full-app patch controls are missing.");
         ShowPage("project");
