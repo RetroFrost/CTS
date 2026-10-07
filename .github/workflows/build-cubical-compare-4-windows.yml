@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.15"
+          $version = "4.2.16"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.52"
+          $velopackVersion = "4.2.53"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -717,6 +717,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
           ## Features
+          - 4.2.16 automatically installs missing .NET 10 SDK, PowerShell 7 and Windows SDK build tools during full-app patch setup, with visible installers.
           - Dedicated Developer tab for runtime C# overrides, reference calibration, build diagnostics and full-app .patch importing.
           - Full-app text patches rebuild the UI and modules from bundled source, with changed-file review, visible progress, cancellation and restore.
           - Artwork scale accepts values below 0.05 and above 12 in the editor and imports.

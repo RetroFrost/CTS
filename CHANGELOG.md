@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.16 — Automatic patch build-tool setup
+
+### Features
+
+- Patch importing detects and installs missing .NET 10 SDK, PowerShell 7 and Windows SDK through WinGet using visible, interactive installers.
+
+### Bug fixes
+
+- Newly installed tools are resolved from fresh machine/user paths without restarting the app. Existing compatible tools are reused.
+- Cancelled or failed tool setup stops the patch build without replacing app code.
+
 ## 4.2.15 — Artwork scale and developer workspace
 
 ### Features

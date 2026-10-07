@@ -69,16 +69,15 @@ public sealed class AppPatchBuilder : IDisposable
     public async Task<string> BuildAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Full WinUI app patch builds require Windows.");
-        progress?.Report("Checking .NET SDK and PowerShell build tools…");
-        var sdks = await RunAsync("dotnet", ["--list-sdks"], cancellationToken: cancellationToken);
-        if (!sdks.Split('\n').Any(line => int.TryParse(line.Split('.')[0], out var major) && major >= 10))
-            throw new InvalidOperationException("Install the .NET 10 SDK, PowerShell 7 and Windows desktop build tools, then retry. The app's bundled .NET runtime cannot compile source.");
-        await RunAsync("pwsh", ["-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"], cancellationToken: cancellationToken);
+        await File.AppendAllTextAsync(BuildLogPath, "Checking and setting up build tools…" + Environment.NewLine, cancellationToken);
+        BuildToolEnvironment tools;
+        try { tools = await BuildToolBootstrap.EnsureAsync(progress, cancellationToken); }
+        catch (Exception ex) { await File.AppendAllTextAsync(BuildLogPath, ex + Environment.NewLine); throw; }
         var architecture = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "ARM64" : "x64";
         var runtime = architecture == "ARM64" ? "win-arm64" : "win-x64";
         var publish = Path.Combine(JobDirectory, "publish");
         progress?.Report("Restoring dependencies and compiling the full app…");
-        await RunAsync("dotnet", ["publish", Path.Combine("windows", "CubicalCompare", "CubicalCompare.csproj"), "-c", "Release", "-r", runtime,
+        await RunAsync(tools.Dotnet, ["publish", Path.Combine("windows", "CubicalCompare", "CubicalCompare.csproj"), "-c", "Release", "-r", runtime,
             "-p:Platform=" + architecture, "--self-contained", "true", "-o", publish], progress, cancellationToken);
         foreach (var required in new[] { "CubicalCompare.exe", "CubicalCompare.dll", "CubicalCompare.pri", "CubicalCompare.runtimeconfig.json" })
             if (!File.Exists(Path.Combine(publish, required))) throw new InvalidDataException($"Build is incomplete: {required} is missing. See {BuildLogPath}.");
@@ -96,6 +95,9 @@ public sealed class AppPatchBuilder : IDisposable
     private async Task<string> RunAsync(string executable, IReadOnlyList<string> arguments, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         var info = new ProcessStartInfo(executable) { WorkingDirectory = SourceDirectory, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        info.Environment["PATH"] = BuildToolBootstrap.BuildPath;
+        if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            info.Environment["DOTNET_ROOT"] = Path.GetDirectoryName(executable)!;
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
         using var process = new Process { StartInfo = info };
         try { process.Start(); }

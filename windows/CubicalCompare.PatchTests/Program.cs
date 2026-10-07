@@ -106,6 +106,56 @@ try
         if(!text.ReadToEnd().Contains("Developer patch smoke"))throw new Exception("Patched source was not bundled");
         Console.WriteLine("PASS full-app XAML patch built and repackaged successfully.");
     }
+    var ready=new FakeSetupHost(true,true,true);
+    var environment=await BuildToolBootstrap.EnsureAsync(host:ready);
+    Equal(ready.Installed.Count,0);Equal(environment.Dotnet,"dotnet-ready.exe");passed++;
+    var missing=new FakeSetupHost(false,false,false);
+    environment=await BuildToolBootstrap.EnsureAsync(host:missing);
+    Equal(string.Join(",",missing.Installed),"Microsoft.DotNet.SDK.10,Microsoft.PowerShell,Microsoft.WindowsSDK.10.0.26100");
+    Equal(environment.PowerShell,"pwsh-ready.exe");passed++;
+    foreach(var state in new[]{(false,true,true),(true,false,true),(true,true,false)}) {
+        var host=new FakeSetupHost(state.Item1,state.Item2,state.Item3);
+        await BuildToolBootstrap.EnsureAsync(host:host);Equal(host.Installed.Count,1);passed++;
+    }
+    var noManager=new FakeSetupHost(false,true,true){PackageManager=null};
+    try {await BuildToolBootstrap.EnsureAsync(host:noManager);throw new Exception("Missing package manager accepted");}
+    catch(InvalidOperationException){Equal(noManager.Installed.Count,0);passed++;}
+    var failed=new FakeSetupHost(false,false,false){FailInstall=true};
+    try {await BuildToolBootstrap.EnsureAsync(host:failed);throw new Exception("Failed install accepted");}
+    catch(InvalidOperationException){Equal(failed.Installed.Count,1);passed++;}
+    var noDetection=new FakeSetupHost(false,true,true){InstallChangesDetection=false};
+    try {await BuildToolBootstrap.EnsureAsync(host:noDetection);throw new Exception("Missing tool after installer accepted");}
+    catch(InvalidOperationException){Equal(noDetection.Installed.Count,1);passed++;}
+    var cancelled=new FakeSetupHost(false,false,false){CancelInstall=true};
+    try {await BuildToolBootstrap.EnsureAsync(host:cancelled);throw new Exception("Cancelled installation continued");}
+    catch(OperationCanceledException){Equal(cancelled.Installed.Count,1);passed++;}
+    foreach(var id in new[]{"Microsoft.DotNet.SDK.10","Microsoft.PowerShell","Microsoft.WindowsSDK.10.0.26100"}) {
+        var arguments=BuildToolBootstrap.InstallArguments(id);
+        Equal(arguments.Contains("--interactive"),true);Equal(arguments.Contains("--silent"),false);
+        Equal(arguments.Contains("--source"),true);Equal(arguments.Contains(id),true);passed++;
+    }
+    Console.WriteLine("PASS 12 build-tool bootstrap checks: reuse, selective installs, detection after setup, failure/cancellation and visible installer flags.");
     Console.WriteLine($"PASS {passed} patch checks: exact context, create/delete/rename, multi-hunk, EOF/CRLF, paths/links, atomic preparation, sequential imports, cancellation and source isolation.");
 }
 finally { Directory.Delete(root,true); }
+
+sealed class FakeSetupHost(bool dotnet, bool powershell, bool windowsSdk) : IBuildToolSetupHost
+{
+    public List<string> Installed { get; } = [];
+    public string? PackageManager { get; init; }="winget-test.exe";
+    public bool FailInstall { get; init; }
+    public bool CancelInstall { get; init; }
+    public bool InstallChangesDetection { get; init; }=true;
+    public Task<string?> FindDotnetSdkAsync(CancellationToken token) {token.ThrowIfCancellationRequested();return Task.FromResult(dotnet ? "dotnet-ready.exe" : null);}
+    public Task<string?> FindPowerShellAsync(CancellationToken token) {token.ThrowIfCancellationRequested();return Task.FromResult(powershell ? "pwsh-ready.exe" : null);}
+    public bool HasWindowsSdk()=>windowsSdk;
+    public string? FindPackageManager()=>PackageManager;
+    public Task InstallAsync(string manager,string id,string name,IProgress<string>? progress,CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();Installed.Add(id);
+        if(CancelInstall)throw new OperationCanceledException();
+        if(FailInstall)throw new InvalidOperationException("Installer failed");
+        if(InstallChangesDetection){if(id=="Microsoft.DotNet.SDK.10")dotnet=true;if(id=="Microsoft.PowerShell")powershell=true;if(id=="Microsoft.WindowsSDK.10.0.26100")windowsSdk=true;}
+        return Task.CompletedTask;
+    }
+}
