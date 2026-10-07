@@ -563,8 +563,8 @@
                     </Border>
                 </Grid>
                 <Grid x:Name="DeveloperPage" Visibility="Collapsed" Loaded="DeveloperPage_Loaded">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <StackPanel MaxWidth="1000" HorizontalAlignment="Left" Spacing="18">
+                    <ScrollViewer x:Name="DeveloperScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="DeveloperToolsPanel" MaxWidth="1000" HorizontalAlignment="Left" Spacing="18">
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Developer" FontSize="28" FontWeight="SemiBold" />
                                 <TextBlock Text="Source overrides, full-app patches and renderer development tools." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
