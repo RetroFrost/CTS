@@ -89,6 +89,21 @@ public sealed partial class MainWindow
         {
             foreach (var extension in new[] { ".txt", ".data", "" }) System.IO.File.Delete(fixture + extension);
         }
+        var developerItems = RootNavigation.MenuItems.OfType<NavigationViewItem>().Where(item => Equals(item.Tag, "developer")).ToArray();
+        if (developerItems.Length != 1) throw new InvalidOperationException("Developer navigation item is missing or duplicated.");
+        ShowPage("developer");
+        if (DeveloperPage.Visibility != Visibility.Visible || RendererPage.Visibility != Visibility.Collapsed || ProjectPage.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Developer tools are not isolated on their own page.");
+        for (DependencyObject? parent = DeveloperCodeOverridePanel; parent is not null; parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent))
+        {
+            if (parent == RendererPage) throw new InvalidOperationException("Developer overrides still belong to Style & Model.");
+            if (parent == DeveloperPage) break;
+            if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent) is null) throw new InvalidOperationException("Developer overrides do not belong to Developer page.");
+        }
+        if (ImportAppPatchButton is null || CancelAppPatchButton is null || RestoreAppPatchButton is null)
+            throw new InvalidOperationException("Full-app patch controls are missing.");
+        ShowPage("project");
+        App.WriteLog("Developer tab isolation smoke passed.");
         App.WriteLog("Editor UX interaction smoke passed.");
     }
 

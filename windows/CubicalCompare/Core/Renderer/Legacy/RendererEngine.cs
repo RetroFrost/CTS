@@ -2406,7 +2406,7 @@ public sealed class RendererEngine : IDisposable
         var baseScale = cover
             ? Math.Max(dest.Width / src.Width, dest.Height / src.Height)
             : Math.Min(dest.Width / src.Width, dest.Height / src.Height);
-        var scale = baseScale * (float)Math.Clamp(card.ImageScale, .05, 12);
+        var scale = baseScale * (float)ImageTransformScale.Normalize(card.ImageScale);
         var w = src.Width * scale;
         var h = src.Height * scale;
         var cx = dest.MidX + (float)card.ImageX;

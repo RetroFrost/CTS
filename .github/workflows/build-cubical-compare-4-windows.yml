@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.14"
+          $version = "4.2.15"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.51"
+          $velopackVersion = "4.2.52"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -288,6 +288,14 @@ jobs:
             -o artifacts/publish
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
 
+      - name: Validate patch application and full-app rebuild
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $snapshot = (Resolve-Path 'artifacts/publish/Assets/AppSource.zip').Path
+          dotnet run --project windows/CubicalCompare.PatchTests/CubicalCompare.PatchTests.csproj -c Release -- --full-build "$snapshot"
+          if ($LASTEXITCODE -ne 0) { throw "Full-app patch regression failed with exit code $LASTEXITCODE." }
+
       - name: Verify update restart does not block on Velopack OK
         shell: pwsh
         run: |
@@ -361,6 +369,7 @@ jobs:
             throw ("Renderer compatibility version is not the published app version $env:CC_VERSION. " + $text)
           }
           if ($text -notmatch 'Renderer export cache regression passed') { throw ("Renderer export cache regression did not complete. " + $text) }
+          if ($text -notmatch 'Developer tab isolation smoke passed') { throw ("Developer page smoke did not complete. " + $text) }
           if ($text -notmatch 'Editor UX interaction smoke passed') { throw ("Editor UX interaction smoke did not complete. " + $text) }
           Write-Host "Full MainWindow/XAML smoke passed with renderer compatibility version $env:CC_VERSION (PID $($process.Id))."
           Stop-Process -Id $process.Id -Force
@@ -707,6 +716,12 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $notes = @"
+          ## Features
+          - Dedicated Developer tab for runtime C# overrides, reference calibration, build diagnostics and full-app .patch importing.
+          - Full-app text patches rebuild the UI and modules from bundled source, with changed-file review, visible progress, cancellation and restore.
+          - Artwork scale accepts values below 0.05 and above 12 in the editor and imports.
+          ## Bug fixes
+          - 4.2.15 keeps artwork size consistent across manipulation, preview, thumbnails, saving, and export.
           - 4.2.14 fixes MegaPack source scaling: 151×129 artwork is a source raster size, not a renderer-space display cap, so small artwork scales normally into the authored card image area.
           - 4.2.13 preserves MegaPack manifest card order.
           - 4.2.12 includes card-count-based ribbon timing and shifted outros, reuses native fonts and measured text wrapping across export frames, and bounds/disposes the font and layout caches.

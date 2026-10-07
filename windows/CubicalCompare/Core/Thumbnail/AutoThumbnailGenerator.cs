@@ -281,7 +281,7 @@ public static class AutoThumbnailGenerator
             var baseScale = transparent
                 ? Math.Min(destination.Width * .92f / src.Width, destination.Height * .92f / src.Height)
                 : Math.Max(destination.Width / src.Width, destination.Height / src.Height);
-            var scale = baseScale * (float)Math.Clamp(card.ImageScale, .45, 2.5);
+            var scale = baseScale * (float)ImageTransformScale.Normalize(card.ImageScale);
             var width = src.Width * scale;
             var height = src.Height * scale;
             var offsetScale = destination.Width / 471f;

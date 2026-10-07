@@ -86,6 +86,9 @@
                 <NavigationViewItem Content="Style &amp; Model" Tag="renderer">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Developer" Tag="developer">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Repair" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <NavigationView.FooterMenuItems>
@@ -339,7 +342,7 @@
                                                 </StackPanel>
                                                 <StackPanel Grid.Row="1" Grid.Column="0" Spacing="3">
                                                     <TextBlock Text="Scale" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
-                                                    <NumberBox x:Name="ImageScaleBox" Value="{Binding ImageScale, Mode=TwoWay}" Minimum="0.05" Maximum="12" SmallChange="0.05" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
+                                                    <NumberBox x:Name="ImageScaleBox" Value="{Binding ImageScale, Mode=TwoWay}" Minimum="0" SmallChange="0.05" SpinButtonPlacementMode="Compact" ValueChanged="ArtworkTransform_ValueChanged" />
                                                 </StackPanel>
                                                 <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3">
                                                     <TextBlock Text="Rotation" FontSize="11" Foreground="{StaticResource EditorTextSecondaryBrush}" />
@@ -525,9 +528,8 @@
                     </Grid>
                 </Grid>
 
-                <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="1000" HorizontalAlignment="Left" Loaded="RendererPage_Loaded">
+                <Grid x:Name="RendererPage" Visibility="Collapsed" MaxWidth="1000" HorizontalAlignment="Left">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -537,23 +539,10 @@
                         <TextBlock Text="Load and inspect Renderer v2/v3 packages or prepare the native Cubical Compare 4 renderer path." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" Margin="0,4,0,0" />
                     </StackPanel>
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,18,0,0">
-        <Button Content="Load renderer package" Click="InspectRenderer_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
-        <Button Content="Prototype: calibrate from video…" Click="CalibrateReferenceVideo_Click" />
-    </StackPanel>
+                        <Button Content="Load renderer package" Click="InspectRenderer_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
+                    </StackPanel>
 
-                    <Border x:Name="DeveloperCodeOverridePanel" Grid.Row="2" Margin="0,18,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="18" Visibility="Visible">
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="Developer code override" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Text="Import one or many C# files as a live source bundle. Any valid .cs filename is accepted; helper files and partial classes compile together, and recognised internal renderer types hot-swap automatically." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="ReplaceInternalCodeButton" Content="Import C# bundle…" Click="ReplaceInternalCode_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
-                                <Button x:Name="RemoveInternalCodeOverrideButton" Content="Restore built-in code" Click="RemoveInternalCodeOverride_Click" />
-                            </StackPanel>
-                            <TextBlock x:Name="InternalCodeOverrideStatusText" Text="Using built-in code" TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Grid.Row="3" Margin="0,18,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
+                    <Border Grid.Row="2" Margin="0,18,0,0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
                         <Grid ColumnSpacing="18">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="230" />
@@ -572,6 +561,43 @@
                             </Border>
                         </Grid>
                     </Border>
+                </Grid>
+                <Grid x:Name="DeveloperPage" Visibility="Collapsed" Loaded="DeveloperPage_Loaded">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel MaxWidth="1000" HorizontalAlignment="Left" Spacing="18">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Developer" FontSize="28" FontWeight="SemiBold" />
+                                <TextBlock Text="Source overrides, full-app patches and renderer development tools." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                            </StackPanel>
+                            <Border x:Name="DeveloperCodeOverridePanel" Margin="0" Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="18" Visibility="Visible">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Developer code override" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="Import one or many C# files as a live source bundle. Any valid .cs filename is accepted; helper files and partial classes compile together, and recognised internal renderer types hot-swap automatically." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button x:Name="ReplaceInternalCodeButton" Content="Import C# bundle…" Click="ReplaceInternalCode_Click" Background="{StaticResource EditorAccentBrush}" Foreground="White" />
+                                        <Button x:Name="RemoveInternalCodeOverrideButton" Content="Restore built-in code" Click="RemoveInternalCodeOverride_Click" />
+                                    </StackPanel>
+                                    <TextBlock Text="Full-app patches" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                    <TextBlock Text="Import unified-diff .patch files to rebuild the complete Windows app, including its UI and renderer. Requires the .NET 10 SDK, PowerShell 7 and Windows desktop build tools. Changes activate after a successful build and restart." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                    <StackPanel Spacing="8">
+                                        <Button x:Name="ImportAppPatchButton" Content="Import app patch…" Click="ImportAppPatch_Click" />
+                                        <Button x:Name="CancelAppPatchButton" Content="Cancel patch build" Click="CancelAppPatch_Click" IsEnabled="False" />
+                                        <Button x:Name="RestoreAppPatchButton" Content="Restore app before last patch" Click="RestoreAppPatch_Click" IsEnabled="False" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="AppPatchStatusText" Text="No app patch running" TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                    <TextBlock x:Name="InternalCodeOverrideStatusText" Text="Using built-in code" TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource EditorSurfaceRaisedBrush}" BorderBrush="{StaticResource EditorBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="18">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Reference calibration" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="Prototype tools for calibrating a renderer against a reference video." TextWrapping="Wrap" Foreground="{StaticResource EditorTextSecondaryBrush}" />
+                                    <Button Content="Calibrate from video…" Click="CalibrateReferenceVideo_Click" />
+                                </StackPanel>
+                            </Border>
+                            <StackPanel x:Name="DeveloperDiagnosticsPanel" Spacing="18" />
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </Grid>
         </NavigationView>

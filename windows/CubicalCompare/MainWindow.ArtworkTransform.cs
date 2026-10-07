@@ -75,7 +75,7 @@ public sealed partial class MainWindow
             {
                 ImageXBox.Value = 0;
                 ImageYBox.Value = 0;
-                ImageScaleBox.Value = Math.Clamp(rendererScale, 0.05, 12.0);
+                ImageScaleBox.Value = ImageTransformScale.Normalize(rendererScale);
                 ImageRotationBox.Value = 0;
                 ClearCropBoxes();
             }

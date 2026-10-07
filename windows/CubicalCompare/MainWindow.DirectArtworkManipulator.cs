@@ -290,7 +290,7 @@ public sealed partial class MainWindow
         var cropWidth = _artworkSourceWidth * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropLeft, 0, .95) - Math.Clamp(card.ImageCropRight, 0, .95));
         var cropHeight = _artworkSourceHeight * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropTop, 0, .95) - Math.Clamp(card.ImageCropBottom, 0, .95));
         var baseScale = Math.Max(ArtworkSlotWidth / cropWidth, ArtworkSlotHeight / cropHeight);
-        var scale = baseScale * Math.Clamp(card.ImageScale, .05, 12);
+        var scale = baseScale * ImageTransformScale.Normalize(card.ImageScale);
         var width = Math.Max(1, cropWidth * scale);
         var height = Math.Max(1, cropHeight * scale);
         var centerX = ArtworkSlotWidth / 2 + card.ImageX;
@@ -395,7 +395,7 @@ public sealed partial class MainWindow
                 card.ImageY = Math.Clamp(_artworkStartY + point.Y - _artworkPointerStart.Y, -4000, 4000);
                 break;
             case ArtworkPointerMode.Scale:
-                card.ImageScale = Math.Clamp(_artworkStartScale * Distance(point, center) / _artworkStartDistance, .05, 12);
+                card.ImageScale = ImageTransformScale.Normalize(_artworkStartScale * Distance(point, center) / _artworkStartDistance);
                 break;
             case ArtworkPointerMode.Rotate:
                 card.ImageRotation = NormalizeDegrees(AngleDegrees(point, center) + _artworkRotationOffset);

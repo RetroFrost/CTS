@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.2.15 — Artwork scale and developer workspace
+
+### Features
+
+- Dedicated Developer tab for C# overrides, full-app patch importing, calibration and build diagnostics.
+- Unified-diff .patch imports can change Windows UI and app modules. Patches apply to an isolated bundled source snapshot, rebuild using local Windows build tools, then activate through the rollback-capable ZIP updater.
+- Changed-file review, build logs, cancellation and restoring the app before the last patch are available.
+- Artwork scale accepts finite nonnegative values without the previous 0.05–12 cap.
+
+### Bug fixes
+
+- Editor handles, preview, CSV/MegaPack import, thumbnails, and export use the same scale validation.
+- Invalid negative/nonfinite scale values fall back to 1; scale 0 hides artwork.
+
 ## 4.2.14 — MegaPack source-size scaling fix
 
 - Corrected the 4.2.13 MegaPack artwork regression that treated **151×129 source artwork pixels** as a maximum renderer-space display size.

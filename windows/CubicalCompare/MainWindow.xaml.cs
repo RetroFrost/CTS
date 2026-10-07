@@ -57,6 +57,7 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            _patchBuildCancellation?.Cancel();
             FlushWorkspaceOnClose();
             _legacyRenderer?.Dispose();
         };
@@ -101,6 +102,7 @@ public sealed partial class MainWindow : Window
         AssetsPage.Visibility = tag == "assets" ? Visibility.Visible : Visibility.Collapsed;
         ThumbnailPage.Visibility = tag == "thumbnail" ? Visibility.Visible : Visibility.Collapsed;
         RendererPage.Visibility = tag == "renderer" ? Visibility.Visible : Visibility.Collapsed;
+        DeveloperPage.Visibility = tag == "developer" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void NewProject_Click(object sender, RoutedEventArgs e)

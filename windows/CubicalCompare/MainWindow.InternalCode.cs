@@ -10,42 +10,15 @@ namespace CubicalCompare;
 
 public sealed partial class MainWindow
 {
-    private bool _developerModeUnlocked = true;
-    private Border? _developerSettingsCard;
-    private TextBlock? _developerUnlockStatus;
-
-    private void RendererPage_Loaded(object sender, RoutedEventArgs e)
+    private void DeveloperPage_Loaded(object sender, RoutedEventArgs e)
     {
-        ApplyDeveloperVisibility();
         RefreshInternalCodeOverrideStatus();
-    }
-
-    private void ConfigureDeveloperUnlock(
-        TextBlock versionText,
-        Border developerSettingsCard,
-        TextBlock developerUnlockStatus)
-    {
-        _developerSettingsCard = developerSettingsCard;
-        _developerUnlockStatus = developerUnlockStatus;
-        _developerModeUnlocked = true;
-        ToolTipService.SetToolTip(versionText, "Developer Options are available in Settings and Style & Model.");
-        if (_developerUnlockStatus is not null)
-            _developerUnlockStatus.Text = "Developer Options are enabled and always visible.";
-        ApplyDeveloperVisibility();
-    }
-
-    private void ApplyDeveloperVisibility()
-    {
-        DeveloperCodeOverridePanel.Visibility = Visibility.Visible;
-        if (_developerSettingsCard is not null)
-            _developerSettingsCard.Visibility = Visibility.Visible;
+        SetPatchControls(_patchBuildCancellation is not null, updateControls: false);
     }
 
     private async void ReplaceInternalCode_Click(object sender, RoutedEventArgs e)
     {
-        if (!_developerModeUnlocked)
-            return;
-
+        if (_patchBuildCancellation is not null) return;
         var files = await PickFilesAsync([".cs"]);
         if (files.Count == 0) return;
 
@@ -119,9 +92,7 @@ public sealed partial class MainWindow
 
     private async void RemoveInternalCodeOverride_Click(object sender, RoutedEventArgs e)
     {
-        if (!_developerModeUnlocked)
-            return;
-
+        if (_patchBuildCancellation is not null) return;
         try
         {
             var removed = InternalCodeOverrideManager.RemoveAll();

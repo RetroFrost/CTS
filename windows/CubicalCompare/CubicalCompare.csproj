@@ -26,7 +26,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>14</LangVersion>
-    <Version>4.2.14</Version>
+    <Version>4.2.15</Version>
     <Authors>RetroFrost</Authors>
   </PropertyGroup>
 
@@ -62,7 +62,12 @@
     <Content Include="Assets\SplashScreen.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Assets\AppSource.zip" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="GenerateCubicalComparePackageAssets" BeforeTargets="PrepareForBuild">
     <Exec Command="pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\build\GeneratePackageAssets.ps1&quot; -OutputDirectory &quot;$(MSBuildProjectDirectory)\Assets&quot;" />
+    <Exec Command="pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\build\GenerateSourceSnapshot.ps1&quot; -RepositoryRoot &quot;$(MSBuildProjectDirectory)\..\..&quot; -OutputPath &quot;$(MSBuildProjectDirectory)\Assets\AppSource.zip&quot;" />
   </Target>
 </Project>

@@ -1,3 +1,4 @@
+using CubicalCompare.Core.Project;
 using System.Text.Json.Serialization;
 
 namespace CubicalCompare.Core.MegaPack;
@@ -163,7 +164,7 @@ public sealed class Zipack2CardDefinition
                 First(Image, ImageUrl, ImageUrlCamel, Artwork, ArtworkUrl, Icon)),
             ImageX = Finite(ImageX, 0, -4000, 4000),
             ImageY = Finite(ImageY, 0, -4000, 4000),
-            ImageScale = Finite(ImageScale, 1, .05, 12),
+            ImageScale = ImageTransformScale.Normalize(ImageScale),
             ImageRotation = Finite(ImageRotation, 0, -360, 360),
             ImageCropLeft = Finite(ImageCropLeft, 0, 0, .95),
             ImageCropTop = Finite(ImageCropTop, 0, 0, .95),

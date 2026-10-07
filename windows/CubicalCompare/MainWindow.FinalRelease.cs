@@ -49,6 +49,8 @@ public sealed partial class MainWindow
         RootNavigation.MenuItems.Add(CreateNavigationItem("Audio", "audio", Symbol.Audio));
         RootNavigation.MenuItems.Add(CreateNavigationItem("Style & Model", "renderer", Symbol.Setting));
 
+        RootNavigation.MenuItems.Add(CreateNavigationItem("Developer", "developer", Symbol.Repair));
+
         RootNavigation.FooterMenuItems.Clear();
         RootNavigation.FooterMenuItems.Add(CreateNavigationItem("Settings", "settings", Symbol.Setting));
     }
@@ -210,7 +212,7 @@ public sealed partial class MainWindow
             Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
         });
         pageStack.Children.Add(CreateSettingsCard(updatesPanel));
-        pageStack.Children.Add(CreateSettingsCard(buildPanel));
+        DeveloperDiagnosticsPanel.Children.Add(CreateSettingsCard(buildPanel));
 
         _settingsPage = new Grid { Visibility = Visibility.Collapsed };
         _settingsPage.Children.Add(new ScrollViewer
@@ -318,6 +320,7 @@ public sealed partial class MainWindow
 
     private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
     {
+        if (_patchBuildCancellation is not null) return;
         if (_availableUpdate is null)
         {
             await OpenLatestReleaseAsync();
@@ -388,6 +391,7 @@ public sealed partial class MainWindow
 
     private async void UpdateFromZip_Click(object sender, RoutedEventArgs e)
     {
+        if (_patchBuildCancellation is not null) return;
         var sourceDialog = new ContentDialog
         {
             XamlRoot = RootNavigation.XamlRoot,

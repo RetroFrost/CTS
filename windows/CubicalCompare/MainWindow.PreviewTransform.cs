@@ -271,7 +271,7 @@ public sealed partial class MainWindow
                 _previewWorkingY = Math.Clamp(_previewStartY + (point.Y - _previewTransformPointerStart.Y) / sy, -4000, 4000);
                 break;
             case PreviewTransformMode.Scale:
-                _previewWorkingScale = Math.Clamp(_previewStartScale * DistancePreview(point, center) / _previewStartDistance, 0.05, 12.0);
+                _previewWorkingScale = ImageTransformScale.Normalize(_previewStartScale * DistancePreview(point, center) / _previewStartDistance);
                 break;
             case PreviewTransformMode.Rotate:
                 _previewWorkingRotation = NormalizePreviewDegrees(AnglePreview(point, center) + _previewRotationOffset);
@@ -454,7 +454,7 @@ public sealed partial class MainWindow
             var cropWidth = bitmap.Width * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropLeft, 0, .95) - Math.Clamp(card.ImageCropRight, 0, .95));
             var cropHeight = bitmap.Height * Math.Max(0.01, 1 - Math.Clamp(card.ImageCropTop, 0, .95) - Math.Clamp(card.ImageCropBottom, 0, .95));
             var baseScale = Math.Max(PreviewBodyWidth / cropWidth, PreviewImageHeight / cropHeight);
-            var scale = baseScale * Math.Clamp(imageScale, .05, 12);
+            var scale = baseScale * ImageTransformScale.Normalize(imageScale);
             var width = Math.Max(1, cropWidth * scale * sx);
             var height = Math.Max(1, cropHeight * scale * sy);
             var centerX = (bodyLeft + PreviewBodyWidth / 2 + imageX) * sx;
