@@ -87,6 +87,7 @@ public sealed partial class MainWindow
             project.SoundtrackPath = _soundtrackPath;
             project.SoundtrackVolume = _soundtrackVolume;
             project.SoundtrackLoop = _soundtrackLoop;
+            project.SoundtrackFadeOut = _soundtrackFadeOut;
             await ProjectFileService.SaveAsync(project, path);
             TimelineStatusText.Text = $"Saved {Path.GetFileName(path)}";
             return true;
@@ -117,6 +118,7 @@ public sealed partial class MainWindow
             _soundtrackPath = _soundtrackPaths.FirstOrDefault() ?? string.Empty;
             _soundtrackVolume = project.SoundtrackVolume;
             _soundtrackLoop = project.SoundtrackLoop;
+            _soundtrackFadeOut = project.SoundtrackFadeOut;
             RenderFontSelection.ApplyProjectFont(project.RenderFontFamily, project.RenderFontFile);
             SetThumbnailCardCountUi(project.ThumbnailCardCount);
 

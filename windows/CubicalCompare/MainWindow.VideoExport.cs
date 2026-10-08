@@ -75,6 +75,7 @@ public sealed partial class MainWindow
             var soundtrackPath = soundtrackPaths.FirstOrDefault() ?? string.Empty;
             var soundtrackVolume = _soundtrackVolume;
             var soundtrackLoop = _soundtrackLoop;
+            var soundtrackFadeOut = _soundtrackFadeOut;
             if (string.IsNullOrWhiteSpace(soundtrackPath) || !File.Exists(soundtrackPath))
             {
                 var embeddedAudio = renderer.EmbeddedAudio;
@@ -380,6 +381,7 @@ public sealed partial class MainWindow
                     soundtrackPaths,
                     soundtrackVolume,
                     soundtrackLoop,
+                    soundtrackFadeOut,
                     cancellationToken);
             }
 

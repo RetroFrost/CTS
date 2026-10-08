@@ -1,3 +1,9 @@
+## 4.2.21
+
+- Audio fade-out is enabled by default and can be toggled in Audio; the setting is saved with projects.
+- Playlists and renderer audio fade smoothly over their final two audible seconds, shortened for shorter audio. Works with repeat, early endings and video cutoffs, including fades across track boundaries.
+- Only the ending audio region is decoded for fading; source files remain unchanged.
+
 ## 4.2.20
 
 - Audio imports validate playable content and display individual errors instead of silently accepting unusable files.
