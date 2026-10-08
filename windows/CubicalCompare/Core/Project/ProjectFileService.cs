@@ -117,6 +117,11 @@ public static class ProjectFileService
         project.RenderFontFile = NormalizeText(project.RenderFontFile, string.Empty, MaxPathLength);
         RenderFontSelection.ApplyProjectFont(project.RenderFontFamily, project.RenderFontFile);
         project.SoundtrackPath = NormalizeText(project.SoundtrackPath, string.Empty, MaxPathLength);
+        project.SoundtrackPaths ??= [];
+        if (project.SoundtrackPaths.Count > 256) throw new InvalidDataException("A soundtrack list can contain at most 256 tracks.");
+        project.SoundtrackPaths = project.SoundtrackPaths.Select(p => NormalizeText(p, string.Empty, MaxPathLength)).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (project.SoundtrackPaths.Count == 0 && !string.IsNullOrWhiteSpace(project.SoundtrackPath)) project.SoundtrackPaths.Add(project.SoundtrackPath);
+        project.SoundtrackPath = project.SoundtrackPaths.FirstOrDefault() ?? string.Empty;
         if (!double.IsFinite(project.SoundtrackVolume)) project.SoundtrackVolume = 1.0;
         project.SoundtrackVolume = Math.Clamp(project.SoundtrackVolume, 0, 1);
         project.ThumbnailCardCount = project.ThumbnailCardCount == 4 ? 4 : 3;

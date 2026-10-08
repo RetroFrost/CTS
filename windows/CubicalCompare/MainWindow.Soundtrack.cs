@@ -6,6 +6,12 @@ namespace CubicalCompare;
 
 public sealed partial class MainWindow
 {
+    private readonly List<string> _soundtrackPaths = [];
+    private StackPanel? _soundtrackListPanel;
+    private TextBlock? _audioImportStatus;
+    private Windows.Media.Playback.MediaPlayer? _audioAuditionPlayer;
+    private bool _audioImportBusy;
+    private readonly Dictionary<string, TimeSpan> _soundtrackDurations = new(StringComparer.OrdinalIgnoreCase);
     private string _soundtrackPath = string.Empty;
     private double _soundtrackVolume = 1.0;
     private bool _soundtrackLoop = true;
@@ -40,7 +46,7 @@ public sealed partial class MainWindow
 
         var chooseButton = new Button
         {
-            Content = "Choose audio…",
+            Content = "Add soundtracks…",
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         chooseButton.Click += ChooseSoundtrack_Click;
@@ -71,7 +77,7 @@ public sealed partial class MainWindow
 
         _soundtrackLoopCheckBox = new CheckBox
         {
-            Content = "Loop soundtrack to video length",
+            Content = "Repeat playlist to video length",
             IsChecked = true,
         };
         _soundtrackLoopCheckBox.Checked += (_, _) => SetSoundtrackLoopFromUi(true);
@@ -116,7 +122,7 @@ public sealed partial class MainWindow
 
         var chooseButton = new Button
         {
-            Content = "Choose audio…",
+            Content = "Add soundtracks…",
             Padding = new Thickness(16, 7, 16, 7),
         };
         chooseButton.Click += ChooseSoundtrack_Click;
@@ -154,7 +160,7 @@ public sealed partial class MainWindow
 
         _audioPageLoopCheckBox = new CheckBox
         {
-            Content = "Loop soundtrack to video length",
+            Content = "Repeat playlist to video length",
         };
         _audioPageLoopCheckBox.Checked += (_, _) =>
         {
@@ -180,6 +186,14 @@ public sealed partial class MainWindow
         });
         soundtrackPanel.Children.Add(_audioPagePathText);
         soundtrackPanel.Children.Add(buttons);
+        soundtrackPanel.Children.Add(new TextBlock { Text = "Tracks play consecutively in this order. Preview listens to one track; export uses the whole list.", TextWrapping = TextWrapping.Wrap });
+        _audioImportStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        _soundtrackListPanel = new StackPanel { Spacing = 8 };
+        soundtrackPanel.Children.Add(_audioImportStatus);
+        soundtrackPanel.Children.Add(_soundtrackListPanel);
+        var stop = new Button { Content = "Stop audio preview" };
+        stop.Click += (_, _) => _audioAuditionPlayer?.Pause();
+        soundtrackPanel.Children.Add(stop);
         soundtrackPanel.Children.Add(new TextBlock
         {
             Text = "Volume",
@@ -212,13 +226,14 @@ public sealed partial class MainWindow
         });
         stack.Children.Add(new TextBlock
         {
-            Text = "Choose the soundtrack used for preview/export. Renderer-embedded audio is shown separately so it is never hidden inside the inspector.",
+            Text = "Choose multiple soundtracks for export and listen to them here. Renderer-embedded audio is shown separately so it is never hidden inside the inspector.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
         });
         stack.Children.Add(CreateAudioCard(soundtrackPanel));
         stack.Children.Add(CreateAudioCard(rendererAudioPanel));
 
+        Closed += (_, _) => { _audioAuditionPlayer?.Dispose(); _audioAuditionPlayer = null; };
         _audioPage = new Grid { Visibility = Visibility.Collapsed };
         _audioPage.Children.Add(new ScrollViewer
         {
@@ -243,18 +258,167 @@ public sealed partial class MainWindow
 
     private async void ChooseSoundtrack_Click(object sender, RoutedEventArgs e)
     {
-        var file = await PickFileAsync([".mp3", ".wav", ".m4a", ".aac", ".wma"]);
-        if (file is null)
-            return;
+        if (_audioImportBusy) return;
+        _audioImportBusy = true;
+        try
+        {
+            var files = await PickFilesAsync(["*"]);
+            if (files.Count == 0) { TimelineStatusText.Text = "Audio selection cancelled"; return; }
+            TimelineStatusText.Text = "Checking selected audio…";
+            var failures = await ImportSoundtracksAsync(files);
+            if (failures.Count > 0) await ShowErrorAsync("Some audio files could not be imported", string.Join("\n\n", failures));
+        }
+        catch (Exception ex)
+        {
+            TimelineStatusText.Text = "Audio import failed";
+            if (_audioImportStatus is not null) _audioImportStatus.Text = ex.Message;
+            await ShowErrorAsync("Could not import audio", ex.Message);
+        }
+        finally { _audioImportBusy = false; }
+    }
 
-        _soundtrackPath = file.Path;
+    internal async Task<List<string>> ImportSoundtracksAsync(IReadOnlyList<Windows.Storage.StorageFile> files)
+    {
+        var failures = new List<string>();
+        var added = 0;
+        foreach (var file in files)
+        {
+            try
+            {
+                if (CurrentSoundtrackPaths().Contains(file.Path, StringComparer.OrdinalIgnoreCase)) continue;
+                if (_soundtrackPaths.Count >= 256) throw new InvalidDataException("The playlist is limited to 256 tracks.");
+                var track = await Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
+                if (track.OriginalDuration <= TimeSpan.Zero) throw new InvalidDataException("No playable audio was found.");
+                if (string.IsNullOrWhiteSpace(file.Path)) throw new InvalidDataException("The selected file has no accessible local path.");
+                if (_soundtrackPaths.Count == 0 && !string.IsNullOrWhiteSpace(_soundtrackPath)) _soundtrackPaths.Add(_soundtrackPath);
+                _soundtrackDurations[file.Path] = track.OriginalDuration;
+                _soundtrackPaths.Add(file.Path);
+                added++;
+            }
+            catch (Exception ex) { failures.Add($"{file.Name}: {ex.Message} (0x{ex.HResult:X8}). Try a locally downloaded MP3, WAV or M4A file supported by Windows."); }
+        }
+        _soundtrackPath = _soundtrackPaths.FirstOrDefault() ?? _soundtrackPath;
         RefreshSoundtrackUi();
         ScheduleWorkspaceSave();
-        TimelineStatusText.Text = $"Soundtrack set · {file.Name}";
+        var status = $"Added {added} soundtrack(s) · {failures.Count} failed · {CurrentSoundtrackPaths().Count} in playlist";
+        TimelineStatusText.Text = status;
+        if (_audioImportStatus is not null) _audioImportStatus.Text = status + "\n" + AudioDurationStatus();
+        return failures;
+    }
+
+    private IReadOnlyList<string> CurrentSoundtrackPaths() => _soundtrackPaths.Count > 0
+        ? _soundtrackPaths.ToArray() : string.IsNullOrWhiteSpace(_soundtrackPath) ? [] : [_soundtrackPath];
+
+    private void RefreshSoundtrackList()
+    {
+        if (_soundtrackListPanel is null) return;
+        _soundtrackListPanel.Children.Clear();
+        var paths = CurrentSoundtrackPaths();
+        for (var index = 0; index < paths.Count; index++)
+        {
+            var rowIndex = index;
+            var path = paths[index];
+            var row = new StackPanel { Spacing = 6 };
+            row.Children.Add(new TextBlock { Text = $"{index + 1}. {Path.GetFileName(path)}{(File.Exists(path) ? "" : " · MISSING")}", TextWrapping = TextWrapping.Wrap });
+            var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            void Action(string label, Action action, bool enabled = true)
+            {
+                var button = new Button { Content = label, IsEnabled = enabled };
+                button.Click += (_, _) => action();
+                controls.Children.Add(button);
+            }
+            Action("Preview", async () =>
+            {
+                try
+                {
+                    var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+                    _audioAuditionPlayer?.Dispose();
+                    _audioAuditionPlayer = new Windows.Media.Playback.MediaPlayer { Volume = _soundtrackVolume };
+                    _audioAuditionPlayer.MediaFailed += (_, args) => DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_audioImportStatus is not null) _audioImportStatus.Text = $"Audio preview failed: {args.ErrorMessage}";
+                    });
+                    _audioAuditionPlayer.Source = Windows.Media.Core.MediaSource.CreateFromStorageFile(file);
+                    _audioAuditionPlayer.Play();
+                }
+                catch (Exception ex) { await ShowErrorAsync("Could not preview audio", ex.Message); }
+            });
+            Action("Up", () => MoveSoundtrack(rowIndex, -1), index > 0);
+            Action("Down", () => MoveSoundtrack(rowIndex, 1), index + 1 < paths.Count);
+            Action("Remove", () =>
+            {
+                var copy = CurrentSoundtrackPaths().ToList(); copy.RemoveAt(rowIndex);
+                SetSoundtrackPaths(copy);
+            });
+            row.Children.Add(controls);
+            _soundtrackListPanel.Children.Add(row);
+        }
+    }
+
+    private void MoveSoundtrack(int index, int delta)
+    {
+        var paths = CurrentSoundtrackPaths().ToList();
+        (paths[index], paths[index + delta]) = (paths[index + delta], paths[index]);
+        SetSoundtrackPaths(paths);
+    }
+
+    private void SetSoundtrackPaths(IEnumerable<string> paths)
+    {
+        _audioAuditionPlayer?.Pause();
+        _soundtrackPaths.Clear(); _soundtrackPaths.AddRange(paths);
+        _soundtrackPath = _soundtrackPaths.FirstOrDefault() ?? string.Empty;
+        RefreshSoundtrackUi(); ScheduleWorkspaceSave();
+    }
+
+    private string AudioDurationStatus()
+    {
+        var paths = CurrentSoundtrackPaths();
+        if (paths.Count == 0) return "No project soundtrack. Renderer audio is used when available.";
+        if (paths.Any(p => !File.Exists(p))) return "Warning: a soundtrack is missing; export will stop until it is replaced or removed.";
+        if (paths.Any(p => !_soundtrackDurations.ContainsKey(p))) return "Audio durations will be checked before export.";
+        var total = TimeSpan.FromTicks(paths.Sum(p => _soundtrackDurations[p].Ticks));
+        var video = TimeSpan.FromSeconds((_legacyRenderer?.FrameCount(BuildProject()) ?? 1) / (double)Math.Max(1, SelectedExportFps));
+        return DescribeAudioCoverage(total, video, _soundtrackLoop);
+    }
+
+    internal static string DescribeAudioCoverage(TimeSpan audio, TimeSpan video, bool repeat)
+    {
+        if (audio > video) return $"Warning: playlist is {audio.TotalSeconds:0.##}s; video is {video.TotalSeconds:0.##}s. Audio is cut at the video end ({(audio-video).TotalSeconds:0.##}s unused).";
+        if (audio < video) return repeat
+            ? $"Playlist is {audio.TotalSeconds:0.##}s; it repeats to cover the {video.TotalSeconds:0.##}s video and stops at the video end."
+            : $"Warning: audio ends {(video-audio).TotalSeconds:0.##}s before the video. The remaining video will be silent.";
+        return "Audio and video durations match. Audio stops at the video end.";
+    }
+
+    private void RefreshAudioDurationStatus()
+    {
+        if (_audioImportStatus is not null && !_audioImportBusy) _audioImportStatus.Text = AudioDurationStatus();
+    }
+
+    private async Task CheckAudioCoverageBeforeExportAsync(IReadOnlyList<string> paths, TimeSpan video, bool repeat)
+    {
+        long ticks = 0;
+        foreach (var path in paths)
+        {
+            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+            var audio = await Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
+            if (audio.OriginalDuration <= TimeSpan.Zero) throw new InvalidDataException($"No playable audio: {Path.GetFileName(path)}");
+            _soundtrackDurations[path] = audio.OriginalDuration;
+            ticks = checked(ticks + audio.OriginalDuration.Ticks);
+        }
+        var total = TimeSpan.FromTicks(ticks);
+        if (_audioImportStatus is not null) _audioImportStatus.Text = DescribeAudioCoverage(total, video, repeat);
+        if (total > video || (total < video && !repeat))
+        {
+            var dialog = new ContentDialog { XamlRoot = RootNavigation.XamlRoot, Title = "Soundtrack duration", Content = DescribeAudioCoverage(total, video, repeat), PrimaryButtonText = "Export anyway", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) throw new OperationCanceledException();
+        }
     }
 
     private void ClearSoundtrack_Click(object sender, RoutedEventArgs e)
     {
+        _soundtrackPaths.Clear();
+        _audioAuditionPlayer?.Pause();
         _soundtrackPath = string.Empty;
         RefreshSoundtrackUi();
         ScheduleWorkspaceSave();
@@ -278,6 +442,8 @@ public sealed partial class MainWindow
             return;
 
         _appliedMegaPackSoundtrack = pack;
+        _soundtrackPaths.Clear();
+        if (!string.IsNullOrWhiteSpace(pack.SoundtrackPath)) _soundtrackPaths.Add(pack.SoundtrackPath);
         _soundtrackPath = pack.SoundtrackPath;
         _soundtrackLoop = pack.SoundtrackLoop;
         _soundtrackVolume = double.IsFinite(pack.SoundtrackVolume) ? Math.Clamp(pack.SoundtrackVolume, 0, 1) : 1.0;
@@ -306,13 +472,12 @@ public sealed partial class MainWindow
 
     private void RefreshSoundtrackUi()
     {
-        if (_soundtrackPathText is null)
-            return;
-
+        RefreshSoundtrackList();
+        RefreshAudioDurationStatus();
         _soundtrackUiUpdating = true;
         try
         {
-            _soundtrackPathText.Text = string.IsNullOrWhiteSpace(_soundtrackPath)
+            if (_soundtrackPathText is not null) _soundtrackPathText.Text = string.IsNullOrWhiteSpace(_soundtrackPath)
                 ? "No soundtrack selected. Export will contain video only."
                 : File.Exists(_soundtrackPath)
                     ? _soundtrackPath
