@@ -9,7 +9,38 @@ namespace CubicalCompare;
 public sealed partial class MainWindow
 {
     private bool _soundtrackFadeOut = true;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _audioAuditionFadeTimer;
     private Microsoft.UI.Xaml.Controls.CheckBox? _audioFadeOutCheckBox;
+
+    private void UpdateAudioAuditionVolume()
+    {
+        var player = _audioAuditionPlayer;
+        if (player is null) return;
+        var session = player.PlaybackSession;
+        var duration = session.NaturalDuration;
+        var remaining = (duration - session.Position).TotalSeconds;
+        var gain = _soundtrackFadeOut && duration > TimeSpan.Zero
+            ? Math.Clamp(remaining / Math.Min(2, duration.TotalSeconds), 0, 1) : 1;
+        player.Volume = Math.Clamp(_soundtrackVolume * gain, 0, 1);
+    }
+
+    private void StartAudioAuditionFade()
+    {
+        if (_audioAuditionFadeTimer is null)
+        {
+            _audioAuditionFadeTimer = DispatcherQueue.CreateTimer();
+            _audioAuditionFadeTimer.Interval = TimeSpan.FromMilliseconds(20);
+            _audioAuditionFadeTimer.Tick += (_, _) => UpdateAudioAuditionVolume();
+        }
+        _audioAuditionFadeTimer.Start();
+    }
+
+    private void StopAudioAudition()
+    {
+        _audioAuditionFadeTimer?.Stop();
+        _audioAuditionPlayer?.Dispose();
+        _audioAuditionPlayer = null;
+    }
 
     internal static async Task<IReadOnlyList<BackgroundAudioTrack>> FadePlaylistEndingAsync(
         IReadOnlyList<BackgroundAudioTrack> tracks, IReadOnlyList<string> paths,
