@@ -13,6 +13,7 @@ public sealed class AppPatchBuilder : IDisposable
     public string BuildLogPath => Path.Combine(JobDirectory, "build.log");
     public IReadOnlyList<string> ChangedFiles { get; private set; } = [];
     public IReadOnlyList<string> SkippedFiles { get; private set; } = [];
+    public IReadOnlyList<string> AlreadyAppliedFiles { get; private set; } = [];
     private AppPatchBuilder(string jobDirectory) => JobDirectory = jobDirectory;
 
     public static async Task<AppPatchBuilder> PrepareAsync(string sourceZip, IEnumerable<string> patchPaths, string jobRoot, CancellationToken cancellationToken = default)
@@ -27,6 +28,7 @@ public sealed class AppPatchBuilder : IDisposable
                 ExtractSource(sourceZip, job.SourceDirectory, cancellationToken);
                 var changed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var skipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var alreadyApplied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var patchPath in patchPaths)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -34,14 +36,14 @@ public sealed class AppPatchBuilder : IDisposable
                     if (new FileInfo(patchPath).Length > 32 * 1024 * 1024) throw new InvalidDataException("Patch exceeds 32 MB.");
                     var patch = File.ReadAllText(patchPath, new UTF8Encoding(false, true));
                     var changes = UnifiedPatch.Prepare(job.SourceDirectory, patch, (oldPath, newPath) =>
-                        (oldPath is null || !IsRepositoryMetadata(oldPath)) && (newPath is null || !IsRepositoryMetadata(newPath)), skipped);
+                        (oldPath is null || !IsRepositoryMetadata(oldPath)) && (newPath is null || !IsRepositoryMetadata(newPath)), skipped, alreadyApplied);
                     UnifiedPatch.Apply(job.SourceDirectory, changes);
                     foreach (var change in changes)
                         foreach (var path in new[] { change.OldPath, change.NewPath }) if (path is not null) changed.Add(path);
                 }
-                if (changed.Count == 0) throw new InvalidDataException("This patch only changes repository documentation or GitHub release files; it contains no app code to rebuild.");
                 if (!File.Exists(Path.Combine(job.SourceDirectory, "windows", "CubicalCompare", "CubicalCompare.csproj")))
                     throw new InvalidDataException("Patch removed the app project; it cannot build a replacement.");
+                job.AlreadyAppliedFiles = alreadyApplied.OrderBy(x => x, StringComparer.Ordinal).ToArray();
                 job.SkippedFiles = skipped.OrderBy(x => x, StringComparer.Ordinal).ToArray();
                 job.ChangedFiles = changed.OrderBy(x => x, StringComparer.Ordinal).ToArray();
             }, cancellationToken);
@@ -53,6 +55,8 @@ public sealed class AppPatchBuilder : IDisposable
     public static bool IsRepositoryMetadata(string path) =>
         path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase) ||
         path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("windows/CubicalCompare.PatchTests/", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("windows/CubicalCompare.UpdateSmoke/", StringComparison.OrdinalIgnoreCase) ||
         path.Equals("CHANGELOG.md", StringComparison.OrdinalIgnoreCase) ||
         path.Equals("README.md", StringComparison.OrdinalIgnoreCase) ||
         path.Equals(".gitignore", StringComparison.OrdinalIgnoreCase);
@@ -79,6 +83,7 @@ public sealed class AppPatchBuilder : IDisposable
 
     public async Task<string> BuildAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
+        if (ChangedFiles.Count == 0) throw new InvalidOperationException("No app code needs rebuilding for this patch.");
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Full WinUI app patch builds require Windows.");
         await File.AppendAllTextAsync(BuildLogPath, "Checking and setting up build tools…" + Environment.NewLine, cancellationToken);
         BuildToolEnvironment tools;
