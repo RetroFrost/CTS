@@ -783,7 +783,7 @@ void PaintProgress(HWND hwnd, HDC dc) {
         FillRounded(dc, rect, RGB(235, 233, 242), 8);
         const auto percent = static_cast<int>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
         if (percent > 0) {
-            auto filled = rect; filled.right = std::max(Px(8), rect.right * percent / 100);
+            auto filled = rect; filled.right = std::max<LONG>(Px(8), rect.right * percent / 100);
             FillRounded(dc, filled, RGB(108, 77, 226), 8);
         }
 }
