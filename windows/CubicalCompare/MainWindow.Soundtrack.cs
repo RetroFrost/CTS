@@ -204,6 +204,17 @@ public sealed partial class MainWindow
         });
         soundtrackPanel.Children.Add(_audioPageVolumeSlider);
         soundtrackPanel.Children.Add(_audioPageLoopCheckBox);
+        _audioFadeOutCheckBox = new CheckBox { Content = "Fade out audio at its ending (2 seconds)", IsChecked = _soundtrackFadeOut };
+        void SetFadeOut(bool enabled)
+        {
+            if (_soundtrackUiUpdating) return;
+            _soundtrackFadeOut = enabled;
+            ScheduleWorkspaceSave();
+        }
+        _audioFadeOutCheckBox.Checked += (_, _) => SetFadeOut(true);
+        _audioFadeOutCheckBox.Unchecked += (_, _) => SetFadeOut(false);
+        soundtrackPanel.Children.Add(_audioFadeOutCheckBox);
+        soundtrackPanel.Children.Add(new TextBlock { Text = "Applies to playlists and renderer audio, including repeat, video cutoffs and audio that ends early. Short audio uses a shorter fade.", TextWrapping = TextWrapping.Wrap });
 
         var rendererAudioPanel = new StackPanel { Spacing = 8 };
         rendererAudioPanel.Children.Add(new TextBlock
@@ -511,6 +522,7 @@ public sealed partial class MainWindow
                         : $"Missing audio file: {_soundtrackPath}";
             if (_audioPageVolumeSlider is not null)
                 _audioPageVolumeSlider.Value = Math.Clamp(_soundtrackVolume * 100.0, 0, 100);
+            if (_audioFadeOutCheckBox is not null) _audioFadeOutCheckBox.IsChecked = _soundtrackFadeOut;
             if (_audioPageLoopCheckBox is not null)
                 _audioPageLoopCheckBox.IsChecked = _soundtrackLoop;
 

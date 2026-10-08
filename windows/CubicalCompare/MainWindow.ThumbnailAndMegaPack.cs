@@ -203,6 +203,7 @@ public sealed partial class MainWindow
         snapshot.SoundtrackPath = _soundtrackPath;
         snapshot.SoundtrackVolume = _soundtrackVolume;
         snapshot.SoundtrackLoop = _soundtrackLoop;
+        snapshot.SoundtrackFadeOut = _soundtrackFadeOut;
         return snapshot;
     }
 
@@ -332,6 +333,7 @@ public sealed partial class MainWindow
             _soundtrackPath = _soundtrackPaths.FirstOrDefault() ?? string.Empty;
             _soundtrackVolume = project.SoundtrackVolume;
             _soundtrackLoop = project.SoundtrackLoop;
+            _soundtrackFadeOut = project.SoundtrackFadeOut;
 
             foreach (var card in project.Cards)
             {

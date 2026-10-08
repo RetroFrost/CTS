@@ -15,6 +15,7 @@ public sealed class ComparisonProject
     public List<string> SoundtrackPaths { get; set; } = [];
     public string SoundtrackPath { get; set; } = "";
     public double SoundtrackVolume { get; set; } = 1.0;
+    public bool SoundtrackFadeOut { get; set; } = true;
     public bool SoundtrackLoop { get; set; } = true;
     // Thumbnail-only layout settings. These never affect renderer/video output.
     public int ThumbnailCardCount { get; set; } = 3;

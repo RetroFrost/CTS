@@ -16,6 +16,7 @@ public sealed partial class MainWindow
             CurrentSoundtrackPaths(),
             _soundtrackVolume,
             _soundtrackLoop,
+            _soundtrackFadeOut,
             cancellationToken);
     }
 
@@ -25,16 +26,28 @@ public sealed partial class MainWindow
         IReadOnlyList<string> soundtrackPaths,
         double soundtrackVolume,
         bool soundtrackLoop,
+        bool soundtrackFadeOut,
         CancellationToken cancellationToken)
     {
         if (soundtrackPaths.Count == 0) throw new InvalidDataException("No soundtrack selected.");
         var composition = new MediaComposition();
         var clip = await MediaClip.CreateFromFileAsync(videoFile);
         composition.Clips.Add(clip);
-        foreach (var track in await BuildPlaylistTracksAsync(soundtrackPaths, clip.OriginalDuration, soundtrackVolume, soundtrackLoop, cancellationToken))
-            composition.BackgroundAudioTracks.Add(track);
-        await RenderSoundtrackCompositionAsync(composition, outputFile, cancellationToken);
+        var temporaryFiles = new List<string>();
+        try
+        {
+            var tracks = await BuildPlaylistTracksAsync(soundtrackPaths, clip.OriginalDuration, soundtrackVolume, soundtrackLoop, cancellationToken);
+            if (soundtrackFadeOut) tracks = await FadePlaylistEndingAsync(tracks, soundtrackPaths, temporaryFiles, cancellationToken);
+            foreach (var track in tracks) composition.BackgroundAudioTracks.Add(track);
+            await RenderSoundtrackCompositionAsync(composition, outputFile, cancellationToken);
+        }
+        finally
+        {
+            composition.BackgroundAudioTracks.Clear();
+            foreach (var path in temporaryFiles) TryDeleteExport(path);
+        }
     }
+
     internal static async Task<IReadOnlyList<BackgroundAudioTrack>> BuildPlaylistTracksAsync(
         IReadOnlyList<string> soundtrackPaths, TimeSpan videoDuration, double soundtrackVolume, bool soundtrackLoop, CancellationToken cancellationToken)
     {
