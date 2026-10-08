@@ -83,6 +83,7 @@ public sealed partial class MainWindow
             TimelineStatusText.Text = $"Saving {Path.GetFileName(path)}…";
             var project = BuildProject();
             project.Name = string.IsNullOrWhiteSpace(projectName) ? _projectDisplayName : projectName;
+            project.SoundtrackPaths = CurrentSoundtrackPaths().ToList();
             project.SoundtrackPath = _soundtrackPath;
             project.SoundtrackVolume = _soundtrackVolume;
             project.SoundtrackLoop = _soundtrackLoop;
@@ -111,7 +112,9 @@ public sealed partial class MainWindow
             _projectShowBadges = project.ShowBadges;
             _projectCreditsEnabled = project.CreditsEnabled;
             _projectDurationSeconds = project.AutoLength ? 0 : Math.Max(0, project.CustomLengthSeconds);
-            _soundtrackPath = project.SoundtrackPath;
+            _soundtrackPaths.Clear();
+            _soundtrackPaths.AddRange(project.SoundtrackPaths.Count > 0 ? project.SoundtrackPaths : string.IsNullOrWhiteSpace(project.SoundtrackPath) ? [] : [project.SoundtrackPath]);
+            _soundtrackPath = _soundtrackPaths.FirstOrDefault() ?? string.Empty;
             _soundtrackVolume = project.SoundtrackVolume;
             _soundtrackLoop = project.SoundtrackLoop;
             RenderFontSelection.ApplyProjectFont(project.RenderFontFamily, project.RenderFontFile);

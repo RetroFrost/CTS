@@ -12,6 +12,7 @@ public sealed class ComparisonProject
     public double CustomLengthSeconds { get; set; } = 90.0;
     public string RenderFontFamily { get; set; } = RenderFontSelection.CurrentFamily;
     public string RenderFontFile { get; set; } = RenderFontSelection.CurrentFile;
+    public List<string> SoundtrackPaths { get; set; } = [];
     public string SoundtrackPath { get; set; } = "";
     public double SoundtrackVolume { get; set; } = 1.0;
     public bool SoundtrackLoop { get; set; } = true;

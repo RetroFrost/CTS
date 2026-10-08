@@ -69,7 +69,10 @@ public sealed partial class MainWindow
             var fps = project.Fps;
             var frameCount = Math.Max(1, renderer.FrameCount(project));
 
-            var soundtrackPath = _soundtrackPath;
+            var soundtrackPaths = CurrentSoundtrackPaths().ToArray();
+            foreach (var path in soundtrackPaths)
+                if (!File.Exists(path)) throw new FileNotFoundException("A playlist soundtrack is missing. Remove or replace it in Audio before exporting.", path);
+            var soundtrackPath = soundtrackPaths.FirstOrDefault() ?? string.Empty;
             var soundtrackVolume = _soundtrackVolume;
             var soundtrackLoop = _soundtrackLoop;
             if (string.IsNullOrWhiteSpace(soundtrackPath) || !File.Exists(soundtrackPath))
@@ -85,10 +88,14 @@ public sealed partial class MainWindow
                         CreationCollisionOption.ReplaceExisting);
                     await FileIO.WriteBytesAsync(temporaryRendererAudio, embeddedAudio.Data);
                     soundtrackPath = temporaryRendererAudio.Path;
+                    soundtrackPaths = [soundtrackPath];
                     soundtrackVolume = embeddedAudio.Volume;
                     soundtrackLoop = embeddedAudio.Loop;
                 }
             }
+
+            if (soundtrackPaths.Length > 0)
+                await CheckAudioCoverageBeforeExportAsync(soundtrackPaths, TimeSpan.FromSeconds(frameCount / (double)fps), soundtrackLoop);
 
             var hasSoundtrack = !string.IsNullOrWhiteSpace(soundtrackPath) && File.Exists(soundtrackPath);
 
@@ -370,7 +377,7 @@ public sealed partial class MainWindow
                 await AddSoundtrackAsync(
                     stagedRenderVideo,
                     stagedFinalVideo,
-                    soundtrackPath!,
+                    soundtrackPaths,
                     soundtrackVolume,
                     soundtrackLoop,
                     cancellationToken);

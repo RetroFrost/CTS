@@ -1,3 +1,9 @@
+## 4.2.20
+
+- Audio imports validate playable content and display individual errors instead of silently accepting unusable files.
+- Audio tab now has an ordered soundtrack playlist with multi-select, preview, reorder and removal; saved projects retain the list.
+- Export plays tracks consecutively and repeats the playlist when enabled; missing selected tracks fail visibly.
+
 # Changelog
 
 ## 4.2.19 — Repeat patch imports

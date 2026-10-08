@@ -81,6 +81,7 @@ public partial class App : Application
                     if (Environment.GetCommandLineArgs().Contains("--ci-mainwindow-smoke"))
                     {
                         mainWindow.RunEditorWorkspaceSmoke();
+                        await mainWindow.RunAudioSmokeAsync();
                         await Task.Run(CubicalCompare.Windows.RendererExportRegressionChecks.Run);
                         WriteLog("Renderer export cache regression passed.");
                     }
