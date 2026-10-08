@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$VelopackSetup,
-    [Parameter(Mandatory=$true)][string]$Output
+    [Parameter(Mandatory=$true)][string]$Output,
+    [Parameter(Mandatory=$true)][string]$PublishDirectory,
+    [Parameter(Mandatory=$true)][string]$AppVersion
 )
 $ErrorActionPreference = 'Stop'
 
@@ -19,13 +21,26 @@ if ([string]::IsNullOrWhiteSpace($vs)) { throw 'Visual C++ build tools were not 
 $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
 if (-not (Test-Path $vcvars)) { throw 'vcvars64.bat was not found.' }
 
+$PublishDirectory = (Resolve-Path $PublishDirectory).Path
+if ($AppVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid visible app version.' }
+$checks = @('CubicalCompare.dll', 'CubicalCompare.Core.dll', 'CubicalCompare.Renderer.dll', 'CubicalCompare.MegaPack.dll', 'CubicalCompare.Thumbnail.dll', 'CubicalCompare.Updates.dll', 'resources.pri', 'Assets/AppSource.zip')
+$header = @('struct PayloadFile { const wchar_t* path; const char* sha256; };', "constexpr wchar_t kAppVersion[] = L`"$AppVersion`";", 'constexpr PayloadFile kPayloadFiles[] = {')
+foreach ($relative in $checks) {
+    $file = Join-Path $PublishDirectory $relative
+    if (-not (Test-Path $file)) { throw "Missing setup verification payload: $relative" }
+    $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+    $header += "    { L`"$relative`", `"$hash`" },"
+}
+$header += '};'
+$header | Set-Content (Join-Path $tempDir 'SetupPayload.h') -Encoding ASCII
+$manifest = (Resolve-Path (Join-Path $PSScriptRoot 'setup.manifest')).Path
 $launcher = Join-Path $tempDir 'CubicalCompare.Setup.exe'
 $cmdFile = Join-Path $tempDir 'build.cmd'
 @"
 @echo off
 call "$vcvars"
 if errorlevel 1 exit /b %errorlevel%
-cl.exe /nologo /std:c++17 /O2 /MT /EHsc "$source" /link /SUBSYSTEM:WINDOWS /OUT:"$launcher" user32.lib gdi32.lib comctl32.lib shell32.lib ole32.lib
+cl.exe /nologo /std:c++17 /O2 /MT /EHsc /I"$tempDir" "$source" /link /MANIFEST:EMBED /MANIFESTINPUT:"$manifest" /SUBSYSTEM:WINDOWS /OUT:"$launcher" user32.lib gdi32.lib comctl32.lib shell32.lib ole32.lib bcrypt.lib advapi32.lib dwmapi.lib
 exit /b %errorlevel%
 "@ | Set-Content $cmdFile -Encoding ASCII
 

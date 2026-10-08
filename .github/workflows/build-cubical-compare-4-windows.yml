@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.17"
+          $version = "4.2.18"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.54"
+          $velopackVersion = "4.2.55"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -436,7 +436,9 @@ jobs:
           $versionedPortable = "artifacts/velopack/CubicalCompare-$env:CC_VERSION-Windows-x64-Portable.zip"
           & pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File windows/CubicalCompare.InstallerBootstrap/Build-NativeSetup.ps1 `
             -VelopackSetup "$($setup.FullName)" `
-            -Output "$versionedSetup"
+            -Output "$versionedSetup" `
+            -PublishDirectory artifacts/publish `
+            -AppVersion "$env:CC_VERSION"
           if ($LASTEXITCODE -ne 0) { throw "Native setup build failed with exit code $LASTEXITCODE." }
 
           Move-Item $portable.FullName $versionedPortable -Force
@@ -587,6 +589,31 @@ jobs:
           Write-Host "Visible setup repaired the malformed install and auto-launched Cubical Compare (PID $($launched.Id))."
           Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
+          # Repair the SAME real installation, with a valid sq.version and stale files.
+          # The old smoke only tested a malformed tree; it never checked real replacement.
+          $checks = @('CubicalCompare.dll', 'CubicalCompare.Core.dll', 'CubicalCompare.Renderer.dll', 'CubicalCompare.MegaPack.dll', 'CubicalCompare.Thumbnail.dll', 'CubicalCompare.Updates.dll', 'resources.pri', 'Assets/AppSource.zip')
+          foreach ($relative in $checks) { 'stale release sentinel' | Set-Content (Join-Path $installRoot "current/$relative") -Encoding ASCII }
+          # An obsolete remembered copy must not override the explicit updater destination.
+          $staleRoot = Join-Path $env:LOCALAPPDATA 'CubicalCompare-StaleSmoke'
+          New-Item -ItemType Directory (Join-Path $staleRoot 'current') -Force | Out-Null
+          'obsolete copy sentinel' | Set-Content (Join-Path $staleRoot 'current/CubicalCompare.exe') -Encoding ASCII
+          $pointer = Join-Path $env:LOCALAPPDATA 'RetroFrost/CubicalCompare/Installer/active-root.txt'
+          $staleRoot | Set-Content $pointer
+          $repair = Start-Process -FilePath "$env:CC_SETUP" -ArgumentList @('--installto', "`"$installRoot`"") -PassThru
+          if (-not $repair.WaitForExit(120000)) { Stop-Process -Id $repair.Id -Force; throw 'Same-root Setup repair timed out.' }
+          if ($repair.ExitCode -ne 0) { throw "Same-root Setup repair failed: $($repair.ExitCode)" }
+          foreach ($relative in $checks) {
+            $expected = (Get-FileHash (Join-Path 'artifacts/publish' $relative) -Algorithm SHA256).Hash
+            $actual = (Get-FileHash (Join-Path $installRoot "current/$relative") -Algorithm SHA256).Hash
+            if ($actual -ne $expected) { throw "Setup did not replace $relative in the existing install." }
+          }
+          $pointer = Join-Path $env:LOCALAPPDATA 'RetroFrost/CubicalCompare/Installer/active-root.txt'
+          if ((Get-Content $pointer -Raw).Trim() -ne $installRoot) { throw 'Same-root Setup unexpectedly switched installations.' }
+          Get-Process CubicalCompare -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          if ((Get-Content (Join-Path $staleRoot 'current/CubicalCompare.exe') -Raw).Trim() -ne 'obsolete copy sentinel') { throw 'Setup modified the obsolete remembered copy instead of the explicit target.' }
+          Remove-Item $staleRoot -Recurse -Force
+          Write-Host 'Setup replaced stale real app, module, XAML and source files in the same installation.'
+
           $process = Start-Process -FilePath $installedExe -ArgumentList '--ci-shell-smoke' -WorkingDirectory (Split-Path $installedExe) -PassThru
           Start-Sleep -Seconds 8
           $process.Refresh()
@@ -722,6 +749,8 @@ jobs:
           - Full-app text patches rebuild the UI and modules from bundled source, with changed-file review, visible progress, cancellation and restore.
           - Artwork scale accepts values below 0.05 and above 12 in the editor and imports.
           ## Bug fixes
+          - 4.2.18 adds a dedicated Updates tab with GitHub and local ZIP updates, and a modern rounded, DPI-aware visible Setup.
+          - Setup updates the running managed copy or the explicit in-app destination, verifies installed app/module/XAML/source files against release SHA-256 values, and reports failures with a nonzero exit code.
           - 4.2.17 skips repository-only workflow/docs/release metadata during app patch import, while validating actual app code against the installed source.
           - 4.2.15 keeps artwork size consistent across manipulation, preview, thumbnails, saving, and export.
           - 4.2.14 fixes MegaPack source scaling: 151×129 artwork is a source raster size, not a renderer-space display cap, so small artwork scales normally into the authored card image area.

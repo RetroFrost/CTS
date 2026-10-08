@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.2.18 — Updates visibility and Setup replacement
+
+- Added a dedicated Updates navigation tab for checking, installing, fetching GitHub ZIPs and applying local ZIPs. Settings also links directly to Updates.
+- Setup uses the explicitly requested in-app install folder, otherwise the running managed installation, with remembered/registered install locations as fallbacks.
+- Setup verifies the installed main app, modules, XAML resources and bundled source against the release hashes before launching. Failures now return a nonzero exit code and log the destination and failed file.
+- Replaced the classic installer with a rounded, DPI-aware layout, Segoe UI typography and purple progress bar. Setup remains visible, closes on success and launches the updated app.
+- Added Windows CI coverage for replacing stale files in an existing valid installation at the same path.
+
 ## 4.2.17 — App patch metadata filtering
 
 ### Bug fixes

@@ -103,6 +103,9 @@ public sealed partial class MainWindow : Window
         ThumbnailPage.Visibility = tag == "thumbnail" ? Visibility.Visible : Visibility.Collapsed;
         RendererPage.Visibility = tag == "renderer" ? Visibility.Visible : Visibility.Collapsed;
         DeveloperPage.Visibility = tag == "developer" ? Visibility.Visible : Visibility.Collapsed;
+        if (_updatesPage is not null) _updatesPage.Visibility = tag == "updates" ? Visibility.Visible : Visibility.Collapsed;
+        if (_settingsPage is not null) _settingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
+        if (_finalAudioPage is not null) _finalAudioPage.Visibility = tag == "audio" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void NewProject_Click(object sender, RoutedEventArgs e)

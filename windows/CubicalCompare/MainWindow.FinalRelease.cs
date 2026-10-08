@@ -13,6 +13,7 @@ public sealed partial class MainWindow
 {
     private readonly CubicalUpdateService _updateService = new();
     private Grid? _settingsPage;
+    private Grid? _updatesPage;
     private Grid? _finalAudioPage;
     private TextBlock? _currentVersionText;
     private TextBlock? _latestVersionText;
@@ -52,6 +53,7 @@ public sealed partial class MainWindow
         RootNavigation.MenuItems.Add(CreateNavigationItem("Developer", "developer", Symbol.Repair));
 
         RootNavigation.FooterMenuItems.Clear();
+        RootNavigation.FooterMenuItems.Add(CreateNavigationItem("Updates", "updates", Symbol.Download));
         RootNavigation.FooterMenuItems.Add(CreateNavigationItem("Settings", "settings", Symbol.Setting));
     }
 
@@ -108,7 +110,7 @@ public sealed partial class MainWindow
 
         _updateStatusText = new TextBlock
         {
-            Text = "Updates automatically choose the safest available path: verified Velopack package, visible Setup.exe, or portable ZIP fallback.",
+            Text = "Check for a new version, update this copy from GitHub, or repair it with a local ZIP.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
         };
@@ -146,7 +148,8 @@ public sealed partial class MainWindow
 
         var updateButtons = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
+            Orientation = Orientation.Vertical,
+            HorizontalAlignment = HorizontalAlignment.Left,
             Spacing = 8,
         };
         updateButtons.Children.Add(_checkUpdatesButton);
@@ -163,7 +166,7 @@ public sealed partial class MainWindow
         });
         updatesPanel.Children.Add(new TextBlock
         {
-            Text = "GitHub Releases · Velopack install/update · portable ZIP fallback · no certificate dependency",
+            Text = "Updates replace the files for this copy of Cubical Compare and restart it. Your projects and settings are preserved.",
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
@@ -208,10 +211,19 @@ public sealed partial class MainWindow
         });
         pageStack.Children.Add(new TextBlock
         {
-            Text = "Application, update and release settings.",
+            Text = "Appearance, language and application preferences.",
             Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
         });
-        pageStack.Children.Add(CreateSettingsCard(updatesPanel));
+        var updatesStack = new StackPanel { Spacing = 16, MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left };
+        updatesStack.Children.Add(new TextBlock { Text = "Updates", FontSize = 30, FontWeight = global::Windows.UI.Text.FontWeights.SemiBold });
+        updatesStack.Children.Add(CreateSettingsCard(updatesPanel));
+        _updatesPage = new Grid { Visibility = Visibility.Collapsed };
+        _updatesPage.Children.Add(new ScrollViewer { Content = updatesStack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        Canvas.SetZIndex(_updatesPage, 100);
+        contentHost.Children.Add(_updatesPage);
+        var openUpdates = new Button { Content = "Open Updates", HorizontalAlignment = HorizontalAlignment.Left };
+        openUpdates.Click += (_, _) => RootNavigation.SelectedItem = RootNavigation.FooterMenuItems.OfType<NavigationViewItem>().Single(item => Equals(item.Tag, "updates"));
+        pageStack.Children.Add(CreateSettingsCard(openUpdates));
         DeveloperDiagnosticsPanel.Children.Add(CreateSettingsCard(buildPanel));
 
         _settingsPage = new Grid { Visibility = Visibility.Collapsed };
@@ -255,6 +267,8 @@ public sealed partial class MainWindow
         var tag = args.SelectedItemContainer?.Tag as string
             ?? (args.SelectedItem as NavigationViewItem)?.Tag as string;
         var isSettings = string.Equals(tag, "settings", StringComparison.Ordinal);
+        var isUpdates = string.Equals(tag, "updates", StringComparison.Ordinal);
+        if (_updatesPage is not null) _updatesPage.Visibility = isUpdates ? Visibility.Visible : Visibility.Collapsed;
         var isAudio = string.Equals(tag, "audio", StringComparison.Ordinal);
         _settingsPage.Visibility = isSettings ? Visibility.Visible : Visibility.Collapsed;
         if (_finalAudioPage is not null)
@@ -262,7 +276,7 @@ public sealed partial class MainWindow
         if (isAudio)
             RefreshSoundtrackUi();
 
-        if (isSettings && !_settingsAutoChecked)
+        if (isUpdates && !_settingsAutoChecked)
         {
             _settingsAutoChecked = true;
             await CheckForUpdatesAsync(userInitiated: false);
@@ -321,6 +335,7 @@ public sealed partial class MainWindow
     private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
     {
         if (_patchBuildCancellation is not null) return;
+        if (_videoExportInProgress) { await ShowErrorAsync("Export in progress", "Finish or cancel the export before updating the app."); return; }
         if (_availableUpdate is null)
         {
             await OpenLatestReleaseAsync();
@@ -340,6 +355,7 @@ public sealed partial class MainWindow
 
         try
         {
+            await FlushWorkspaceBeforePatchAsync();
             ShowActivityWatcher("Windows update", "Starting download…", 0);
             var progress = new Progress<CubicalUpdateProgress>(state =>
             {
@@ -392,6 +408,7 @@ public sealed partial class MainWindow
     private async void UpdateFromZip_Click(object sender, RoutedEventArgs e)
     {
         if (_patchBuildCancellation is not null) return;
+        if (_videoExportInProgress) { await ShowErrorAsync("Export in progress", "Finish or cancel the export before updating the app."); return; }
         var sourceDialog = new ContentDialog
         {
             XamlRoot = RootNavigation.XamlRoot,
@@ -469,6 +486,7 @@ public sealed partial class MainWindow
             _updateStatusText!.Text = githubZip is not null
                 ? $"Downloading ZIP from GitHub · {githubZip.AssetName}"
                 : $"Preparing local ZIP · {localZip!.Name}";
+            await FlushWorkspaceBeforePatchAsync();
             ShowActivityWatcher("Windows ZIP update", $"Preparing {sourceLabel}…", 0);
 
             var progress = new Progress<CubicalUpdateProgress>(state =>
