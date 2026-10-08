@@ -30,6 +30,16 @@ public sealed partial class MainWindow
         {
             ShowActivityWatcher("App patch", "Checking patch context against this app's source…", null, true);
             builder = await AppPatchBuilder.PrepareAsync(Path.Combine(AppContext.BaseDirectory, "Assets", "AppSource.zip"), files.Select(x => x.Path), Path.Combine(PatchStorage, "jobs"), token);
+            if (builder.ChangedFiles.Count == 0)
+            {
+                var message = builder.AlreadyAppliedFiles.Count > 0
+                    ? "This patch's app changes are already present. No rebuild or restart is needed."
+                    : "This patch only changes repository documentation, workflows or test projects. It contains no app code to rebuild.";
+                AppPatchStatusText.Text = message;
+                CompleteActivityWatcher("App patch checked", message);
+                await new ContentDialog { XamlRoot = RootNavigation.XamlRoot, Title = "No app changes needed", Content = message, CloseButtonText = "Close" }.ShowAsync();
+                return;
+            }
             var review = new ContentDialog
             {
                 XamlRoot = RootNavigation.XamlRoot,
@@ -38,7 +48,8 @@ public sealed partial class MainWindow
                     "This patch can change the entire Windows app: UI, renderer, imports and updates. Building runs the selected source and project scripts with your permissions. Import patches from a source you trust.\n\n" +
                     "Missing .NET 10 SDK, PowerShell 7 and Windows SDK build tools are installed automatically through WinGet, with visible setup windows. Windows may ask for administrator approval. The current app stays active during setup and compilation. A successful build saves your workspace, backs up the app, then replaces it and restarts.\n\n" +
                     "Patch order: " + string.Join(", ", files.Select(x => x.Name)) + "\n\n" + string.Join("\n", builder.ChangedFiles) +
-                    (builder.SkippedFiles.Count == 0 ? "" : "\n\nRepository-only files skipped (not installed app code):\n" + string.Join("\n", builder.SkippedFiles)) } },
+                    (builder.SkippedFiles.Count == 0 ? "" : "\n\nRepository/test-only files skipped (not installed app code):\n" + string.Join("\n", builder.SkippedFiles)) +
+                    (builder.AlreadyAppliedFiles.Count == 0 ? "" : "\n\nAlready applied (left unchanged):\n" + string.Join("\n", builder.AlreadyAppliedFiles)) } },
                 PrimaryButtonText = "Build & restart",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,

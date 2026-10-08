@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.18"
+          $version = "4.2.19"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.55"
+          $velopackVersion = "4.2.56"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -789,6 +789,7 @@ jobs:
           - Full-app text patches rebuild the UI and modules from bundled source, with changed-file review, visible progress, cancellation and restore.
           - Artwork scale accepts values below 0.05 and above 12 in the editor and imports.
           ## Bug fixes
+          - 4.2.19 skips test-only projects during installed app patch imports and recognizes identical existing files or exact already-applied edits without rebuilding. Conflicting runtime code remains rejected.
           - 4.2.18 adds a dedicated Updates tab with GitHub and local ZIP updates, and a modern rounded, DPI-aware visible Setup.
           - Setup updates the running managed copy or the explicit in-app destination, verifies installed app/module/XAML/source files against release SHA-256 values, and reports failures with a nonzero exit code.
           - 4.2.17 skips repository-only workflow/docs/release metadata during app patch import, while validating actual app code against the installed source.

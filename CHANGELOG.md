@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.2.19 — Repeat patch imports
+
+- Exclude the PatchTests and UpdateSmoke projects from installed app rebuild patches; their existing files no longer block app imports.
+- Recognize identical file creations, including checkout CRLF/BOM differences, and already-applied edits proven by an exact reverse check. Leave those files untouched and list them in review.
+- No-op imports report that no app changes are needed instead of rebuilding or showing a failure.
+- Conflicting runtime files still reject the entire preparation. End-of-file markers now validate the actual source newline as well as its position.
+
 ## 4.2.18 — Updates visibility and Setup replacement
 
 - Added a dedicated Updates navigation tab for checking, installing, fetching GitHub ZIPs and applying local ZIPs. Settings also links directly to Updates.

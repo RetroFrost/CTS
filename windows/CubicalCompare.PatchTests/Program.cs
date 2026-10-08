@@ -118,6 +118,44 @@ try
     Equal(filtered.Count,0);Equal(skippedHeader.Count,1);passed++;
     try {UnifiedPatch.Prepare(root,metadata+Diff("test.txt","test.txt","@@ -1 +1 @@\n-wrong-runtime-context\n+bad\n"),(a,b)=>(b is null || !AppPatchBuilder.IsRepositoryMetadata(b)),new List<string>());throw new Exception("Runtime mismatch accepted");}catch(InvalidDataException){passed++;}
     Console.WriteLine("PASS repository metadata filtering; real app code context remains strict.");
+    var repeated = new List<string>();
+    File.WriteAllText(Path.Combine(root,"created.cs"),"same\n");
+    filtered = UnifiedPatch.Prepare(root, Diff("/dev/null","created.cs","@@ -0,0 +1 @@\n+same\n"), alreadyAppliedFiles: repeated);
+    Equal(filtered.Count,0);Equal(repeated.Single(),"created.cs");passed++;
+    File.WriteAllText(Path.Combine(root,"created.cs"),"same\r\n",new UTF8Encoding(true));
+    filtered = UnifiedPatch.Prepare(root, Diff("/dev/null","created.cs","@@ -0,0 +1 @@\n+same\n"), alreadyAppliedFiles: new List<string>());
+    Equal(filtered.Count,0);Equal(File.ReadAllText(Path.Combine(root,"created.cs")),"same\r\n");passed++;
+    File.WriteAllText(Path.Combine(root,"test.txt"),"new\n");
+    filtered=UnifiedPatch.Prepare(root,Diff("test.txt","test.txt","@@ -1 +1 @@\n-old\n+new\n"),alreadyAppliedFiles:new List<string>());
+    Equal(filtered.Count,0);Equal(File.ReadAllText(Path.Combine(root,"test.txt")),"new\n");passed++;
+    File.WriteAllText(Path.Combine(root,"test.txt"),"A\nb\nC\n");
+    filtered=UnifiedPatch.Prepare(root,Diff("test.txt","test.txt","@@ -1 +1 @@\n-a\n+A\n@@ -3 +3 @@\n-c\n+C\n"),alreadyAppliedFiles:new List<string>());
+    Equal(filtered.Count,0);passed++;
+    File.WriteAllText(Path.Combine(root,"test.txt"),"new");
+    filtered=UnifiedPatch.Prepare(root,Diff("test.txt","test.txt","@@ -1 +1 @@\n-old\n+new\n\\ No newline at end of file\n"),alreadyAppliedFiles:new List<string>());
+    Equal(filtered.Count,0);passed++;
+    foreach (var conflict in new[] {
+        Diff("/dev/null","created.cs","@@ -0,0 +1 @@\n+different\n"),
+        Diff("test.txt","test.txt","@@ -1 +1 @@\n-other\n+something\n"),
+        Diff("test.txt","test.txt","@@ -1 +1 @@\n-old\n+unchanged\n\\ No newline at end of file\n"),
+        Diff("test.txt","test.txt","@@ -1 +1 @@\n-unchanged\n+new\n") + Diff("/dev/null","created.cs","@@ -0,0 +1 @@\n+conflict\n")
+    }) Rejected(conflict);
+    // Already applied files must not stop remaining new work in a mixed patch.
+    File.WriteAllText(Path.Combine(root,"test.txt"),"old\n");
+    filtered=UnifiedPatch.Prepare(root,Diff("/dev/null","created.cs","@@ -0,0 +1 @@\n+same\n")+Diff("test.txt","test.txt","@@ -1 +1 @@\n-old\n+new\n"),alreadyAppliedFiles:new List<string>());
+    Equal(filtered.Count,1);UnifiedPatch.Apply(root,filtered);Equal(File.ReadAllText(Path.Combine(root,"test.txt")),"new\n");passed++;
+    Equal(AppPatchBuilder.IsRepositoryMetadata("windows/CubicalCompare.PatchTests/CubicalCompare.PatchTests.csproj"),true);
+    Equal(AppPatchBuilder.IsRepositoryMetadata("windows/CubicalCompare.UpdateSmoke/Program.cs"),true);
+    Equal(AppPatchBuilder.IsRepositoryMetadata("windows/CubicalCompare.Modules/Updates/UpdateService.cs"),false);passed++;
+    File.WriteAllText(first,Diff("/dev/null","windows/CubicalCompare.PatchTests/CubicalCompare.PatchTests.csproj","@@ -0,0 +1 @@\n+older-test-project\n"));
+    using(var session=await AppPatchBuilder.PrepareAsync(zip,[first],Path.Combine(root,"jobs"))) {
+        Equal(session.ChangedFiles.Count,0);Equal(session.SkippedFiles.Count,1);passed++;
+    }
+    File.WriteAllText(first,Diff("test.txt","test.txt","@@ -1 +1 @@\n-zero\n+one\n"));
+    using(var session=await AppPatchBuilder.PrepareAsync(zip,[first],Path.Combine(root,"jobs"))) {
+        Equal(session.ChangedFiles.Count,0);Equal(session.AlreadyAppliedFiles.Count,1);passed++;
+    }
+    Console.WriteLine("PASS repeat imports: identical creation, CRLF/BOM, exact reverse checks, conflicts, mixed patches and test-project filtering.");
     var ready=new FakeSetupHost(true,true,true);
     var environment=await BuildToolBootstrap.EnsureAsync(host:ready);
     Equal(ready.Installed.Count,0);Equal(environment.Dotnet,"dotnet-ready.exe");passed++;

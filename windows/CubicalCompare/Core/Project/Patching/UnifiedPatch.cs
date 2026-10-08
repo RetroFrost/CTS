@@ -11,17 +11,22 @@ public static class UnifiedPatch
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private static readonly Regex Hunk = new(@"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", RegexOptions.CultureInvariant);
 
-    public static IReadOnlyList<PatchChange> Prepare(string root, string patch, Func<string?, string?, bool>? includeFile = null, ICollection<string>? skippedFiles = null)
+    public static IReadOnlyList<PatchChange> Prepare(string root, string patch, Func<string?, string?, bool>? includeFile = null, ICollection<string>? skippedFiles = null, ICollection<string>? alreadyAppliedFiles = null)
+        => PrepareCore(root, patch, includeFile, skippedFiles, alreadyAppliedFiles, true);
+
+    private static IReadOnlyList<PatchChange> PrepareCore(string root, string patch, Func<string?, string?, bool>? includeFile, ICollection<string>? skippedFiles, ICollection<string>? alreadyAppliedFiles, bool detectAlreadyApplied)
     {
         if (patch.Length > 32 * 1024 * 1024) throw new InvalidDataException("Patch exceeds 32 MB.");
         var lines = patch.Replace("\r\n", "\n").Split('\n');
         var changes = new List<PatchChange>();
+        var alreadyAppliedCount = 0;
         var touched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < lines.Length; i++)
         {
             if (lines[i].StartsWith("GIT binary patch", StringComparison.Ordinal) || lines[i].StartsWith("Binary files ", StringComparison.Ordinal))
                 throw new InvalidDataException("Binary patches are not supported. Use a release ZIP for binary assets.");
             if (!lines[i].StartsWith("--- ", StringComparison.Ordinal)) continue;
+            var fileStart = i;
             var old = ReadPath(lines[i][4..], "a/");
             if (++i >= lines.Length || !lines[i].StartsWith("+++ ", StringComparison.Ordinal)) throw new InvalidDataException("Missing patch destination header.");
             var next = ReadPath(lines[i][4..], "b/");
@@ -55,9 +60,12 @@ public static class UnifiedPatch
                 }
                 continue;
             }
+            var fileEnd = FindFileEnd(lines, i + 1);
+            try
+            {
             var oldFile = old is null ? null : Resolve(root, old);
             if (oldFile is not null && !File.Exists(oldFile)) throw new InvalidDataException($"Source file not found: {old}");
-            if (next is not null && next != old && File.Exists(Resolve(root, next))) throw new InvalidDataException($"Destination already exists: {next}");
+            if (old is not null && next is not null && next != old && File.Exists(Resolve(root, next))) throw new InvalidDataException($"Destination already exists: {next}");
             var bytes = oldFile is null ? [] : File.ReadAllBytes(oldFile);
             if (bytes.Length > 32 * 1024 * 1024) throw new InvalidDataException("Patched source file exceeds 32 MB.");
             var bom = bytes.AsSpan().StartsWith(new byte[] { 239, 187, 191 });
@@ -95,7 +103,7 @@ public static class UnifiedPatch
                     var line = lines[i];
                     if (line == "\\ No newline at end of file")
                     {
-                        ValidateNoNewline(previous, cursor, source.Count);
+                        ValidateNoNewline(previous, cursor, source.Count, sourceEndsWithNewline);
                         if (previous != '-') endsWithNewline = false;
                         continue;
                     }
@@ -116,7 +124,7 @@ public static class UnifiedPatch
                 if (i + 1 < lines.Length && lines[i + 1] == "\\ No newline at end of file")
                 {
                     i++;
-                    ValidateNoNewline(previous, cursor, source.Count);
+                    ValidateNoNewline(previous, cursor, source.Count, sourceEndsWithNewline);
                     if (previous != '-') endsWithNewline = false;
                 }
                 hunks++;
@@ -127,15 +135,79 @@ public static class UnifiedPatch
             if (next is null && output.Count != 0) throw new InvalidDataException("Deleted file has remaining content.");
             var result = Utf8.GetBytes(string.Join(newline, output) + (output.Count > 0 && endsWithNewline ? newline : ""));
             if (bom) result = new byte[] { 239, 187, 191 }.Concat(result).ToArray();
+            if (detectAlreadyApplied && old is null && next is not null && File.Exists(Resolve(root, next)))
+            {
+                if (!SameText(File.ReadAllBytes(Resolve(root, next)), result))
+                    throw new InvalidDataException($"Destination already exists with different content: {next}. Use a patch for this app version.");
+                alreadyAppliedFiles?.Add(next); alreadyAppliedCount++;
+                continue;
+            }
             changes.Add(new(old, next, next is null ? null : result));
+            }
+            catch (InvalidDataException) when (detectAlreadyApplied && old is not null && old == next && CanReverse(root, lines, fileStart, fileEnd, old))
+            {
+                alreadyAppliedFiles?.Add(old); alreadyAppliedCount++;
+                i = fileEnd - 1;
+            }
         }
-        if (changes.Count == 0 && (skippedFiles is null || skippedFiles.Count == 0)) throw new InvalidDataException("No supported unified-diff changes were found.");
+        if (changes.Count == 0 && alreadyAppliedCount == 0 && (skippedFiles is null || skippedFiles.Count == 0)) throw new InvalidDataException("No supported unified-diff changes were found.");
         return changes;
     }
 
-    private static void ValidateNoNewline(char previous, int cursor, int count)
+    // Consume declared counts rather than guessing at --- lines inside deleted content.
+    private static int FindFileEnd(string[] lines, int position)
     {
-        if (previous == '\0' || (previous is ' ' or '-' && cursor != count)) throw new InvalidDataException("Invalid end-of-file marker.");
+        while (position < lines.Length && lines[position].StartsWith("@@ ", StringComparison.Ordinal))
+        {
+            var hunk = Hunk.Match(lines[position++]);
+            if (!hunk.Success) throw new InvalidDataException("Malformed patch hunk.");
+            var oldCount = hunk.Groups[2].Success ? int.Parse(hunk.Groups[2].Value) : 1;
+            var newCount = hunk.Groups[4].Success ? int.Parse(hunk.Groups[4].Value) : 1;
+            while (oldCount > 0 || newCount > 0)
+            {
+                if (position >= lines.Length || lines[position].Length == 0) throw new InvalidDataException("Truncated patch hunk.");
+                var line = lines[position++];
+                if (line == "\\ No newline at end of file") continue;
+                if (line[0] is ' ' or '-') oldCount--;
+                if (line[0] is ' ' or '+') newCount--;
+                if (line[0] is not (' ' or '+' or '-') || oldCount < 0 || newCount < 0) throw new InvalidDataException("Invalid patch hunk counts.");
+            }
+            if (position < lines.Length && lines[position] == "\\ No newline at end of file") position++;
+        }
+        return position;
+    }
+
+    private static bool SameText(byte[] existing, byte[] expected)
+    {
+        if (existing.Length > 32 * 1024 * 1024) return false;
+        static string Decode(byte[] bytes) => Utf8.GetString(bytes.AsSpan(bytes.AsSpan().StartsWith(new byte[] { 239, 187, 191 }) ? 3 : 0)).Replace("\r\n", "\n");
+        try { return Decode(existing) == Decode(expected); }
+        catch (DecoderFallbackException) { return false; }
+    }
+
+    private static bool CanReverse(string root, string[] lines, int start, int end, string path)
+    {
+        var reverse = new StringBuilder();
+        reverse.Append("--- ").AppendLine(System.Text.Json.JsonSerializer.Serialize("a/" + path));
+        reverse.Append("+++ ").AppendLine(System.Text.Json.JsonSerializer.Serialize("b/" + path));
+        for (var i = start + 2; i < end; i++)
+        {
+            var line = lines[i];
+            if (line.StartsWith("@@ ", StringComparison.Ordinal))
+            {
+                var hunk = Hunk.Match(line);
+                reverse.Append("@@ -").Append(hunk.Groups[3].Value).Append(',').Append(hunk.Groups[4].Success ? hunk.Groups[4].Value : "1")
+                    .Append(" +").Append(hunk.Groups[1].Value).Append(',').Append(hunk.Groups[2].Success ? hunk.Groups[2].Value : "1").AppendLine(" @@");
+            }
+            else reverse.AppendLine(line.StartsWith('+') ? "-" + line[1..] : line.StartsWith('-') ? "+" + line[1..] : line);
+        }
+        try { return PrepareCore(root, reverse.ToString(), null, null, null, false).Count == 1; }
+        catch (InvalidDataException) { return false; }
+    }
+
+    private static void ValidateNoNewline(char previous, int cursor, int count, bool sourceEndsWithNewline)
+    {
+        if (previous == '\0' || (previous is ' ' or '-' && (cursor != count || sourceEndsWithNewline))) throw new InvalidDataException("Invalid end-of-file marker.");
     }
 
     private static string? ReadPath(string value, string prefix)
