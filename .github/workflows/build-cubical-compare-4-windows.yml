@@ -53,13 +53,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "4.2.16"
+          $version = "4.2.17"
           $assemblyVersion = $version
 
           # Velopack uses SemVer2 and does not support four-part app versions.
           # Keep the visible Cubical Compare version at 4.2.4 and advance the
           # package/feed version independently for each Windows release.
-          $velopackVersion = "4.2.53"
+          $velopackVersion = "4.2.54"
 
           "CC_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CC_ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -722,6 +722,7 @@ jobs:
           - Full-app text patches rebuild the UI and modules from bundled source, with changed-file review, visible progress, cancellation and restore.
           - Artwork scale accepts values below 0.05 and above 12 in the editor and imports.
           ## Bug fixes
+          - 4.2.17 skips repository-only workflow/docs/release metadata during app patch import, while validating actual app code against the installed source.
           - 4.2.15 keeps artwork size consistent across manipulation, preview, thumbnails, saving, and export.
           - 4.2.14 fixes MegaPack source scaling: 151×129 artwork is a source raster size, not a renderer-space display cap, so small artwork scales normally into the authored card image area.
           - 4.2.13 preserves MegaPack manifest card order.

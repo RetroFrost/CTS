@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.2.17 — App patch metadata filtering
+
+### Bug fixes
+
+- GitHub workflow/release metadata and repository documentation no longer block app patch import when they differ from the bundled snapshot. Skipped files are shown in the review.
+- Actual app source, XAML and build targets retain exact-context checks; mismatched code is never overwritten.
+
 ## 4.2.16 — Automatic patch build-tool setup
 
 ### Features

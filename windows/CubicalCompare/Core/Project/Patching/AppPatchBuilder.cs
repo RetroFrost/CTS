@@ -12,6 +12,7 @@ public sealed class AppPatchBuilder : IDisposable
     public string SourceDirectory => Path.Combine(JobDirectory, "source");
     public string BuildLogPath => Path.Combine(JobDirectory, "build.log");
     public IReadOnlyList<string> ChangedFiles { get; private set; } = [];
+    public IReadOnlyList<string> SkippedFiles { get; private set; } = [];
     private AppPatchBuilder(string jobDirectory) => JobDirectory = jobDirectory;
 
     public static async Task<AppPatchBuilder> PrepareAsync(string sourceZip, IEnumerable<string> patchPaths, string jobRoot, CancellationToken cancellationToken = default)
@@ -25,26 +26,36 @@ public sealed class AppPatchBuilder : IDisposable
             {
                 ExtractSource(sourceZip, job.SourceDirectory, cancellationToken);
                 var changed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var skipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var patchPath in patchPaths)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (!patchPath.EndsWith(".patch", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Select .patch files.");
                     if (new FileInfo(patchPath).Length > 32 * 1024 * 1024) throw new InvalidDataException("Patch exceeds 32 MB.");
                     var patch = File.ReadAllText(patchPath, new UTF8Encoding(false, true));
-                    var changes = UnifiedPatch.Prepare(job.SourceDirectory, patch);
+                    var changes = UnifiedPatch.Prepare(job.SourceDirectory, patch, (oldPath, newPath) =>
+                        (oldPath is null || !IsRepositoryMetadata(oldPath)) && (newPath is null || !IsRepositoryMetadata(newPath)), skipped);
                     UnifiedPatch.Apply(job.SourceDirectory, changes);
                     foreach (var change in changes)
                         foreach (var path in new[] { change.OldPath, change.NewPath }) if (path is not null) changed.Add(path);
                 }
-                if (changed.Count == 0) throw new InvalidDataException("No patches selected.");
+                if (changed.Count == 0) throw new InvalidDataException("This patch only changes repository documentation or GitHub release files; it contains no app code to rebuild.");
                 if (!File.Exists(Path.Combine(job.SourceDirectory, "windows", "CubicalCompare", "CubicalCompare.csproj")))
                     throw new InvalidDataException("Patch removed the app project; it cannot build a replacement.");
+                job.SkippedFiles = skipped.OrderBy(x => x, StringComparer.Ordinal).ToArray();
                 job.ChangedFiles = changed.OrderBy(x => x, StringComparer.Ordinal).ToArray();
             }, cancellationToken);
             return job;
         }
         catch { job.Dispose(); throw; }
     }
+
+    public static bool IsRepositoryMetadata(string path) =>
+        path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("CHANGELOG.md", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("README.md", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals(".gitignore", StringComparison.OrdinalIgnoreCase);
 
     private static void ExtractSource(string sourceZip, string root, CancellationToken cancellationToken)
     {
