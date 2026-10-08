@@ -777,15 +777,7 @@ void Text(HDC dc, const wchar_t* value, RECT rect, int size, COLORREF color, int
     SelectObject(dc, old); DeleteObject(font);
 }
 
-LRESULT CALLBACK ProgressProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    if (message == PBM_SETPOS) {
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, std::clamp(static_cast<int>(wParam), 0, 100));
-        InvalidateRect(hwnd, nullptr, FALSE); return 0;
-    }
-    if (message == PBM_SETRANGE32) return 0;
-    if (message == WM_ERASEBKGND) return 1;
-    if (message == WM_PAINT) {
-        PAINTSTRUCT paint{}; const auto dc = BeginPaint(hwnd, &paint);
+void PaintProgress(HWND hwnd, HDC dc) {
         RECT rect{}; GetClientRect(hwnd, &rect);
         FillRect(dc, &rect, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
         FillRounded(dc, rect, RGB(235, 233, 242), 8);
@@ -794,9 +786,37 @@ LRESULT CALLBACK ProgressProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
             auto filled = rect; filled.right = std::max(Px(8), rect.right * percent / 100);
             FillRounded(dc, filled, RGB(108, 77, 226), 8);
         }
+}
+
+LRESULT CALLBACK ProgressProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == PBM_SETPOS) {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, std::clamp(static_cast<int>(wParam), 0, 100));
+        InvalidateRect(hwnd, nullptr, FALSE); return 0;
+    }
+    if (message == PBM_SETRANGE32) return 0;
+    if (message == WM_ERASEBKGND) return 1;
+    if (message == WM_PRINTCLIENT) { PaintProgress(hwnd, reinterpret_cast<HDC>(wParam)); return 0; }
+    if (message == WM_PAINT) {
+        PAINTSTRUCT paint{}; const auto dc = BeginPaint(hwnd, &paint);
+        PaintProgress(hwnd, dc);
         EndPaint(hwnd, &paint); return 0;
     }
     return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+void PaintSetup(HWND hwnd, HDC dc) {
+            RECT client{}; GetClientRect(hwnd, &client);
+            const auto background = CreateSolidBrush(RGB(246, 245, 250));
+            FillRect(dc, &client, background); DeleteObject(background);
+            RECT icon{Px(32), Px(30), Px(84), Px(82)};
+            FillRounded(dc, icon, RGB(108, 77, 226), 14);
+            Text(dc, L"C", {Px(46), Px(32), Px(78), Px(78)}, 24, RGB(255,255,255), FW_SEMIBOLD);
+            Text(dc, L"Cubical Compare", {Px(102), Px(27), Px(588), Px(64)}, 22, RGB(35,30,49), FW_SEMIBOLD);
+            const std::wstring version = L"Windows setup  /  " + std::wstring(kAppVersion);
+            Text(dc, version.c_str(), {Px(104), Px(67), Px(580), Px(90)}, 10, RGB(113,105,128));
+            FillRounded(dc, {Px(28), Px(112), Px(592), Px(286)}, RGB(255,255,255), 20);
+            Text(dc, gFailed ? L"Setup needs attention" : L"Getting everything ready", {Px(48), Px(133), Px(572), Px(170)}, 15, RGB(35,30,49), FW_SEMIBOLD);
+            Text(dc, gFailed ? L"Details: Local AppData / RetroFrost / CubicalCompare / Installer / setup.log" : L"Your projects and settings stay with you.", {Px(32), Px(307), Px(gFailed ? 472 : 560), Px(342)}, 10, RGB(113,105,128));
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -832,20 +852,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             }
             InvalidateRect(hwnd, nullptr, FALSE); return 0;
         }
+        case WM_PRINTCLIENT:
+            PaintSetup(hwnd, reinterpret_cast<HDC>(wParam)); return 0;
         case WM_PAINT: {
             PAINTSTRUCT paint{}; const auto dc = BeginPaint(hwnd, &paint);
-            RECT client{}; GetClientRect(hwnd, &client);
-            const auto background = CreateSolidBrush(RGB(246, 245, 250));
-            FillRect(dc, &client, background); DeleteObject(background);
-            RECT icon{Px(32), Px(30), Px(84), Px(82)};
-            FillRounded(dc, icon, RGB(108, 77, 226), 14);
-            Text(dc, L"C", {Px(46), Px(32), Px(78), Px(78)}, 24, RGB(255,255,255), FW_SEMIBOLD);
-            Text(dc, L"Cubical Compare", {Px(102), Px(27), Px(588), Px(64)}, 22, RGB(35,30,49), FW_SEMIBOLD);
-            const std::wstring version = L"Windows setup  /  " + std::wstring(kAppVersion);
-            Text(dc, version.c_str(), {Px(104), Px(67), Px(580), Px(90)}, 10, RGB(113,105,128));
-            FillRounded(dc, {Px(28), Px(112), Px(592), Px(286)}, RGB(255,255,255), 20);
-            Text(dc, gFailed ? L"Setup needs attention" : L"Getting everything ready", {Px(48), Px(133), Px(572), Px(170)}, 15, RGB(35,30,49), FW_SEMIBOLD);
-            Text(dc, gFailed ? L"Details: Local AppData / RetroFrost / CubicalCompare / Installer / setup.log" : L"Your projects and settings stay with you.", {Px(32), Px(307), Px(gFailed ? 472 : 560), Px(342)}, 10, RGB(113,105,128));
+            PaintSetup(hwnd, dc);
             EndPaint(hwnd, &paint); return 0;
         }
         case WM_CTLCOLORSTATIC:

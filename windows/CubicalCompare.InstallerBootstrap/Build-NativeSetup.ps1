@@ -23,7 +23,10 @@ if (-not (Test-Path $vcvars)) { throw 'vcvars64.bat was not found.' }
 
 $PublishDirectory = (Resolve-Path $PublishDirectory).Path
 if ($AppVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid visible app version.' }
-$checks = @('CubicalCompare.dll', 'CubicalCompare.Core.dll', 'CubicalCompare.Renderer.dll', 'CubicalCompare.MegaPack.dll', 'CubicalCompare.Thumbnail.dll', 'CubicalCompare.Updates.dll', 'resources.pri', 'Assets/AppSource.zip')
+$checks = @('CubicalCompare.dll', 'CubicalCompare.Core.dll', 'CubicalCompare.Renderer.dll', 'CubicalCompare.MegaPack.dll', 'CubicalCompare.Thumbnail.dll', 'CubicalCompare.Updates.dll', 'Assets/AppSource.zip')
+$priFiles = @(Get-ChildItem $PublishDirectory -Filter '*.pri' -File -Recurse)
+if ($priFiles.Count -eq 0) { throw 'No compiled XAML resource indexes were published.' }
+$checks += $priFiles | ForEach-Object { [IO.Path]::GetRelativePath($PublishDirectory, $_.FullName).Replace('\', '/') }
 $header = @('struct PayloadFile { const wchar_t* path; const char* sha256; };', "constexpr wchar_t kAppVersion[] = L`"$AppVersion`";", 'constexpr PayloadFile kPayloadFiles[] = {')
 foreach ($relative in $checks) {
     $file = Join-Path $PublishDirectory $relative
