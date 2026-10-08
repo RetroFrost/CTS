@@ -155,6 +155,7 @@ try
     using(var session=await AppPatchBuilder.PrepareAsync(zip,[first],Path.Combine(root,"jobs"))) {
         Equal(session.ChangedFiles.Count,0);Equal(session.AlreadyAppliedFiles.Count,1);passed++;
     }
+    Rejected(Diff("test.txt","test.txt","@@ -1 +0,0 @@\n-other\n"));
     Console.WriteLine("PASS repeat imports: identical creation, CRLF/BOM, exact reverse checks, conflicts, mixed patches and test-project filtering.");
     var ready=new FakeSetupHost(true,true,true);
     var environment=await BuildToolBootstrap.EnsureAsync(host:ready);

@@ -63,86 +63,86 @@ public static class UnifiedPatch
             var fileEnd = FindFileEnd(lines, i + 1);
             try
             {
-            var oldFile = old is null ? null : Resolve(root, old);
-            if (oldFile is not null && !File.Exists(oldFile)) throw new InvalidDataException($"Source file not found: {old}");
-            if (old is not null && next is not null && next != old && File.Exists(Resolve(root, next))) throw new InvalidDataException($"Destination already exists: {next}");
-            var bytes = oldFile is null ? [] : File.ReadAllBytes(oldFile);
-            if (bytes.Length > 32 * 1024 * 1024) throw new InvalidDataException("Patched source file exceeds 32 MB.");
-            var bom = bytes.AsSpan().StartsWith(new byte[] { 239, 187, 191 });
-            var text = Utf8.GetString(bytes.AsSpan(bom ? 3 : 0));
-            if (text.Contains('\0')) throw new InvalidDataException($"Binary source file: {old}");
-            var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-            var normalized = text.Replace("\r\n", "\n");
-            var source = normalized.Length == 0 ? new List<string>() : normalized.Split('\n').ToList();
-            var sourceEndsWithNewline = normalized.EndsWith('\n');
-            var endsWithNewline = sourceEndsWithNewline;
-            if (sourceEndsWithNewline) source.RemoveAt(source.Count - 1);
-            var output = new List<string>();
-            var cursor = 0;
-            var hunks = 0;
-            while (i + 1 < lines.Length && lines[i + 1].StartsWith("@@ ", StringComparison.Ordinal))
-            {
-                var match = Hunk.Match(lines[++i]);
-                if (!match.Success) throw new InvalidDataException("Malformed patch hunk.");
-                var oldStart = int.Parse(match.Groups[1].Value);
-                var oldCount = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 1;
-                var newStart = int.Parse(match.Groups[3].Value);
-                var newCount = match.Groups[4].Success ? int.Parse(match.Groups[4].Value) : 1;
-                var start = oldCount == 0 ? oldStart : oldStart - 1;
-                if (start < cursor || start > source.Count) throw new InvalidDataException($"Hunk position does not match {old ?? next}.");
-                output.AddRange(source.GetRange(cursor, start - cursor));
-                if (start > cursor) endsWithNewline = start < source.Count || sourceEndsWithNewline;
-                cursor = start;
-                if (output.Count != (newCount == 0 ? newStart : newStart - 1)) throw new InvalidDataException("Patch destination line number does not match.");
-                var removed = 0;
-                var added = 0;
-                char previous = '\0';
-                while (removed < oldCount || added < newCount)
+                var oldFile = old is null ? null : Resolve(root, old);
+                if (oldFile is not null && !File.Exists(oldFile)) throw new InvalidDataException($"Source file not found: {old}");
+                if (old is not null && next is not null && next != old && File.Exists(Resolve(root, next))) throw new InvalidDataException($"Destination already exists: {next}");
+                var bytes = oldFile is null ? [] : File.ReadAllBytes(oldFile);
+                if (bytes.Length > 32 * 1024 * 1024) throw new InvalidDataException("Patched source file exceeds 32 MB.");
+                var bom = bytes.AsSpan().StartsWith(new byte[] { 239, 187, 191 });
+                var text = Utf8.GetString(bytes.AsSpan(bom ? 3 : 0));
+                if (text.Contains('\0')) throw new InvalidDataException($"Binary source file: {old}");
+                var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+                var normalized = text.Replace("\r\n", "\n");
+                var source = normalized.Length == 0 ? new List<string>() : normalized.Split('\n').ToList();
+                var sourceEndsWithNewline = normalized.EndsWith('\n');
+                var endsWithNewline = sourceEndsWithNewline;
+                if (sourceEndsWithNewline) source.RemoveAt(source.Count - 1);
+                var output = new List<string>();
+                var cursor = 0;
+                var hunks = 0;
+                while (i + 1 < lines.Length && lines[i + 1].StartsWith("@@ ", StringComparison.Ordinal))
                 {
-                    if (++i >= lines.Length || lines[i].Length == 0) throw new InvalidDataException("Truncated patch hunk.");
-                    var line = lines[i];
-                    if (line == "\\ No newline at end of file")
+                    var match = Hunk.Match(lines[++i]);
+                    if (!match.Success) throw new InvalidDataException("Malformed patch hunk.");
+                    var oldStart = int.Parse(match.Groups[1].Value);
+                    var oldCount = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 1;
+                    var newStart = int.Parse(match.Groups[3].Value);
+                    var newCount = match.Groups[4].Success ? int.Parse(match.Groups[4].Value) : 1;
+                    var start = oldCount == 0 ? oldStart : oldStart - 1;
+                    if (start < cursor || start > source.Count) throw new InvalidDataException($"Hunk position does not match {old ?? next}.");
+                    output.AddRange(source.GetRange(cursor, start - cursor));
+                    if (start > cursor) endsWithNewline = start < source.Count || sourceEndsWithNewline;
+                    cursor = start;
+                    if (output.Count != (newCount == 0 ? newStart : newStart - 1)) throw new InvalidDataException("Patch destination line number does not match.");
+                    var removed = 0;
+                    var added = 0;
+                    char previous = '\0';
+                    while (removed < oldCount || added < newCount)
                     {
+                        if (++i >= lines.Length || lines[i].Length == 0) throw new InvalidDataException("Truncated patch hunk.");
+                        var line = lines[i];
+                        if (line == "\\ No newline at end of file")
+                        {
+                            ValidateNoNewline(previous, cursor, source.Count, sourceEndsWithNewline);
+                            if (previous != '-') endsWithNewline = false;
+                            continue;
+                        }
+                        previous = line[0];
+                        if (previous is ' ' or '-')
+                        {
+                            if (++removed > oldCount || cursor >= source.Count || source[cursor++] != line[1..])
+                                throw new InvalidDataException($"Patch context differs in {old ?? next}. Use a patch for this app version.");
+                        }
+                        if (previous is ' ' or '+')
+                        {
+                            if (++added > newCount) throw new InvalidDataException("Patch hunk line count is invalid.");
+                            output.Add(line[1..]);
+                            endsWithNewline = previous == '+' || cursor < source.Count || sourceEndsWithNewline;
+                        }
+                        if (previous is not (' ' or '+' or '-')) throw new InvalidDataException("Unsupported patch hunk line.");
+                    }
+                    if (i + 1 < lines.Length && lines[i + 1] == "\\ No newline at end of file")
+                    {
+                        i++;
                         ValidateNoNewline(previous, cursor, source.Count, sourceEndsWithNewline);
                         if (previous != '-') endsWithNewline = false;
-                        continue;
                     }
-                    previous = line[0];
-                    if (previous is ' ' or '-')
-                    {
-                        if (++removed > oldCount || cursor >= source.Count || source[cursor++] != line[1..])
-                            throw new InvalidDataException($"Patch context differs in {old ?? next}. Use a patch for this app version.");
-                    }
-                    if (previous is ' ' or '+')
-                    {
-                        if (++added > newCount) throw new InvalidDataException("Patch hunk line count is invalid.");
-                        output.Add(line[1..]);
-                        endsWithNewline = previous == '+' || cursor < source.Count || sourceEndsWithNewline;
-                    }
-                    if (previous is not (' ' or '+' or '-')) throw new InvalidDataException("Unsupported patch hunk line.");
+                    hunks++;
                 }
-                if (i + 1 < lines.Length && lines[i + 1] == "\\ No newline at end of file")
+                if (hunks == 0) throw new InvalidDataException("A text patch must contain a hunk; mode-only and rename-only patches are not supported.");
+                if (cursor < source.Count) endsWithNewline = sourceEndsWithNewline;
+                output.AddRange(source.Skip(cursor));
+                if (next is null && output.Count != 0) throw new InvalidDataException("Deleted file has remaining content.");
+                var result = Utf8.GetBytes(string.Join(newline, output) + (output.Count > 0 && endsWithNewline ? newline : ""));
+                if (bom) result = new byte[] { 239, 187, 191 }.Concat(result).ToArray();
+                if (detectAlreadyApplied && old is null && next is not null && File.Exists(Resolve(root, next)))
                 {
-                    i++;
-                    ValidateNoNewline(previous, cursor, source.Count, sourceEndsWithNewline);
-                    if (previous != '-') endsWithNewline = false;
+                    if (!SameText(File.ReadAllBytes(Resolve(root, next)), result))
+                        throw new InvalidDataException($"Destination already exists with different content: {next}. Use a patch for this app version.");
+                    alreadyAppliedFiles?.Add(next); alreadyAppliedCount++;
+                    continue;
                 }
-                hunks++;
-            }
-            if (hunks == 0) throw new InvalidDataException("A text patch must contain a hunk; mode-only and rename-only patches are not supported.");
-            if (cursor < source.Count) endsWithNewline = sourceEndsWithNewline;
-            output.AddRange(source.Skip(cursor));
-            if (next is null && output.Count != 0) throw new InvalidDataException("Deleted file has remaining content.");
-            var result = Utf8.GetBytes(string.Join(newline, output) + (output.Count > 0 && endsWithNewline ? newline : ""));
-            if (bom) result = new byte[] { 239, 187, 191 }.Concat(result).ToArray();
-            if (detectAlreadyApplied && old is null && next is not null && File.Exists(Resolve(root, next)))
-            {
-                if (!SameText(File.ReadAllBytes(Resolve(root, next)), result))
-                    throw new InvalidDataException($"Destination already exists with different content: {next}. Use a patch for this app version.");
-                alreadyAppliedFiles?.Add(next); alreadyAppliedCount++;
-                continue;
-            }
-            changes.Add(new(old, next, next is null ? null : result));
+                changes.Add(new(old, next, next is null ? null : result));
             }
             catch (InvalidDataException) when (detectAlreadyApplied && old is not null && old == next && CanReverse(root, lines, fileStart, fileEnd, old))
             {
@@ -196,6 +196,9 @@ public static class UnifiedPatch
             if (line.StartsWith("@@ ", StringComparison.Ordinal))
             {
                 var hunk = Hunk.Match(line);
+                // A context-free deletion has no post-image to verify. Reverse
+                // insertion would succeed on unrelated content, so never call it applied.
+                if (hunk.Groups[4].Success && int.Parse(hunk.Groups[4].Value) == 0) return false;
                 reverse.Append("@@ -").Append(hunk.Groups[3].Value).Append(',').Append(hunk.Groups[4].Success ? hunk.Groups[4].Value : "1")
                     .Append(" +").Append(hunk.Groups[1].Value).Append(',').Append(hunk.Groups[2].Success ? hunk.Groups[2].Value : "1").AppendLine(" @@");
             }
