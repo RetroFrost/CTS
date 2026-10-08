@@ -558,6 +558,27 @@ jobs:
             throw 'Public Setup.exe did not expose a visible installer window within five seconds.'
           }
           Write-Host "Visible Cubical Compare setup window detected after $([math]::Round($launchTimer.Elapsed.TotalMilliseconds)) ms (PID $($setupProcess.Id), HWND $($setupProcess.MainWindowHandle))."
+          Add-Type -AssemblyName System.Drawing
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class SetupCapture {
+              [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+              [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
+              [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
+          }
+          '@
+          $bounds = New-Object SetupCapture+Rect
+          [void][SetupCapture]::GetWindowRect($setupProcess.MainWindowHandle, [ref]$bounds)
+          $bitmap = New-Object System.Drawing.Bitmap ($bounds.Right - $bounds.Left), ($bounds.Bottom - $bounds.Top)
+          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+          $dc = $graphics.GetHdc()
+          try { $captured = [SetupCapture]::PrintWindow($setupProcess.MainWindowHandle, $dc, 2) }
+          finally { $graphics.ReleaseHdc($dc); $graphics.Dispose() }
+          New-Item artifacts/diagnostics -ItemType Directory -Force | Out-Null
+          if ($captured) { $bitmap.Save((Join-Path (Resolve-Path 'artifacts/diagnostics') 'Setup.png')) }
+          $bitmap.Dispose()
+
 
           if (-not $setupProcess.WaitForExit(120000)) {
             Stop-Process -Id $setupProcess.Id -Force -ErrorAction SilentlyContinue
@@ -591,7 +612,9 @@ jobs:
 
           # Repair the SAME real installation, with a valid sq.version and stale files.
           # The old smoke only tested a malformed tree; it never checked real replacement.
-          $checks = @('CubicalCompare.dll', 'CubicalCompare.Core.dll', 'CubicalCompare.Renderer.dll', 'CubicalCompare.MegaPack.dll', 'CubicalCompare.Thumbnail.dll', 'CubicalCompare.Updates.dll', 'resources.pri', 'Assets/AppSource.zip')
+          $checks = @('CubicalCompare.dll', 'CubicalCompare.Core.dll', 'CubicalCompare.Renderer.dll', 'CubicalCompare.MegaPack.dll', 'CubicalCompare.Thumbnail.dll', 'CubicalCompare.Updates.dll', 'Assets/AppSource.zip')
+          $publishRoot = (Resolve-Path 'artifacts/publish').Path
+          $checks += Get-ChildItem $publishRoot -Filter '*.pri' -File -Recurse | ForEach-Object { [IO.Path]::GetRelativePath($publishRoot, $_.FullName).Replace('\', '/') }
           foreach ($relative in $checks) { 'stale release sentinel' | Set-Content (Join-Path $installRoot "current/$relative") -Encoding ASCII }
           # An obsolete remembered copy must not override the explicit updater destination.
           $staleRoot = Join-Path $env:LOCALAPPDATA 'CubicalCompare-StaleSmoke'
@@ -707,6 +730,23 @@ jobs:
           finally {
             $externalLock.Dispose()
           }
+
+      - name: Collect setup diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item artifacts/diagnostics -ItemType Directory -Force | Out-Null
+          Copy-Item (Join-Path $env:LOCALAPPDATA 'RetroFrost/CubicalCompare/Installer/setup.log') artifacts/diagnostics -ErrorAction SilentlyContinue
+          Copy-Item (Join-Path $env:LOCALAPPDATA 'velopack/velopack.log') artifacts/diagnostics -ErrorAction SilentlyContinue
+
+      - name: Upload setup diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CubicalCompare-setup-diagnostics
+          path: artifacts/diagnostics/**
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Write SHA256 manifest
         shell: pwsh
