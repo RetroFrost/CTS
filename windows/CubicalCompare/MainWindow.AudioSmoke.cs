@@ -10,7 +10,9 @@ public sealed partial class MainWindow
     internal async Task RunAudioSmokeAsync()
     {
         var saved = CurrentSoundtrackPaths().ToArray();
-        var folder = await ApplicationData.Current.TemporaryFolder.CreateFolderAsync("audio-smoke-" + Guid.NewGuid().ToString("N"));
+        var rootPath = Path.Combine(Path.GetTempPath(), "audio-smoke-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(rootPath);
+        var folder = await StorageFolder.GetFolderFromPathAsync(rootPath);
         try
         {
             async Task<StorageFile> Wave(string name, int seconds)
