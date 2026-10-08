@@ -472,7 +472,7 @@ public sealed partial class MainWindow
             Foreground = (Brush)Application.Current.Resources["EditorTextSecondaryBrush"],
         });
 
-        var buildIndex = Math.Max(2, pageStack.Children.Count - 1);
+        var buildIndex = 2;
         pageStack.Children.Insert(buildIndex, CreateSettingsCard(appearancePanel));
         pageStack.Children.Insert(buildIndex + 1, CreateSettingsCard(languagePanel));
         pageStack.Children.Insert(buildIndex + 2, CreateSettingsCard(smartFeaturesPanel));

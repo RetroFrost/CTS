@@ -292,6 +292,7 @@ public sealed class CubicalUpdateService
             CubicalUpdateDelivery.SetupExe => await ApplySetupAsync(
                 candidate.DownloadUri ?? throw new InvalidOperationException("The setup update does not have a download URL."),
                 candidate.ExpectedSha256,
+                applicationDirectory,
                 progress,
                 cancellationToken),
 
@@ -381,6 +382,7 @@ public sealed class CubicalUpdateService
             CubicalUpdateDelivery.SetupExe => await ApplySetupAsync(
                 uri,
                 candidate.FallbackExpectedSha256,
+                applicationDirectory,
                 progress,
                 cancellationToken),
 
@@ -399,6 +401,7 @@ public sealed class CubicalUpdateService
     private static async Task<bool> ApplySetupAsync(
         Uri uri,
         string? expectedSha256,
+        string applicationDirectory,
         IProgress<CubicalUpdateProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -414,7 +417,7 @@ public sealed class CubicalUpdateService
             var length = new FileInfo(setupPath).Length;
             progress?.Report(new CubicalUpdateProgress("Launching visible installer", 100, length, length));
 
-            _ = Process.Start(new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = setupPath,
                 WorkingDirectory = Path.GetDirectoryName(setupPath)!,
@@ -423,7 +426,15 @@ public sealed class CubicalUpdateService
                 // fallbacks from being invoked for the installer.
                 UseShellExecute = false,
                 WindowStyle = ProcessWindowStyle.Normal,
-            }) ?? throw new InvalidOperationException("Windows could not start the Cubical Compare installer.");
+            };
+            var target = ResolveUpdateTargetDirectory(applicationDirectory);
+            var root = Directory.GetParent(target)?.FullName;
+            if (root is null || !Path.GetFileName(target).Equals("current", StringComparison.OrdinalIgnoreCase) ||
+                !File.Exists(Path.Combine(root, "Update.exe")) || File.Exists(Path.Combine(root, ".portable")))
+                throw new InvalidOperationException("Setup requires a managed installation. Use Update from ZIP to replace this portable copy.");
+            startInfo.ArgumentList.Add("--installto");
+            startInfo.ArgumentList.Add(root);
+            _ = Process.Start(startInfo) ?? throw new InvalidOperationException("Windows could not start the Cubical Compare installer.");
 
             started = true;
             return true;

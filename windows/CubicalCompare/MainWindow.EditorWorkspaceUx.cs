@@ -103,6 +103,19 @@ public sealed partial class MainWindow
         if (ImportAppPatchButton is null || CancelAppPatchButton is null || RestoreAppPatchButton is null)
             throw new InvalidOperationException("Full-app patch controls are missing.");
         ShowPage("project");
+        var updatesItems = RootNavigation.FooterMenuItems.OfType<NavigationViewItem>().Where(item => Equals(item.Tag, "updates")).ToArray();
+        if (updatesItems.Length != 1 || _updatesPage is null || _updateFromZipButton is null || _checkUpdatesButton is null || _installUpdateButton is null)
+            throw new InvalidOperationException("Updates page or update controls are missing.");
+        if (!_updatesPage.Children.OfType<ScrollViewer>().Any())
+            throw new InvalidOperationException("Updates page cannot scroll on small windows.");
+        ShowPage("updates");
+        if (_updatesPage.Visibility != Visibility.Visible || _settingsPage?.Visibility != Visibility.Collapsed || DeveloperPage.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Updates navigation does not show the dedicated update page.");
+        ShowPage("settings");
+        if (_settingsPage?.Visibility != Visibility.Visible || _updatesPage.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Settings does not hide the Updates page.");
+        ShowPage("project");
+        App.WriteLog("Dedicated Updates page smoke passed.");
         App.WriteLog("Developer tab isolation smoke passed.");
         App.WriteLog("Editor UX interaction smoke passed.");
     }

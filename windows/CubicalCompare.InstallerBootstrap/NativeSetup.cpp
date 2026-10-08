@@ -12,11 +12,17 @@
 #include <algorithm>
 #include <cwctype>
 #include <set>
+#include <bcrypt.h>
+#include <dwmapi.h>
+#include "SetupPayload.h"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "bcrypt.lib")
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "dwmapi.lib")
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CubicalCompareNativeSetup";
@@ -24,14 +30,34 @@ constexpr char kFooterMagic[8] = {'C','C','V','P','K','0','0','1'};
 constexpr UINT WM_INSTALL_DONE = WM_APP + 1;
 constexpr UINT WM_INSTALL_FAILED = WM_APP + 2;
 constexpr UINT WM_INSTALL_PROGRESS = WM_APP + 3;
+constexpr UINT WM_INSTALL_STATUS = WM_APP + 4;
 
 HWND gWindow = nullptr;
 HWND gStatus = nullptr;
 HWND gProgress = nullptr;
 std::wstring gError;
+std::filesystem::path gRequestedRoot;
+std::filesystem::path gRunningRoot;
+std::wstring gStatusText = L"Preparing installer...";
+HFONT gBodyFont = nullptr;
+int gDpi = 96;
+bool gFailed = false;
+int Px(int value) { return MulDiv(value, gDpi, 96); }
+
+void LogSetup(const std::wstring& message) {
+    wchar_t local[32768]{};
+    if (!GetEnvironmentVariableW(L"LOCALAPPDATA", local, 32768)) return;
+    std::error_code ec;
+    const auto folder = std::filesystem::path(local) / L"RetroFrost" / L"CubicalCompare" / L"Installer";
+    std::filesystem::create_directories(folder, ec);
+    std::wofstream log(folder / L"setup.log", std::ios::app);
+    log << message << L"\n";
+}
 
 void SetStatus(const wchar_t* text) {
-    if (gStatus) SetWindowTextW(gStatus, text);
+    LogSetup(text);
+    auto status = new std::wstring(text);
+    if (!gWindow || !PostMessageW(gWindow, WM_INSTALL_STATUS, 0, reinterpret_cast<LPARAM>(status))) delete status;
 }
 
 void SetProgress(int value) {
@@ -168,6 +194,7 @@ DWORD RunProcessAndWait(
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     SetProgress(progressCap);
+    LogSetup(L"Installer engine exit: " + std::to_wstring(exitCode));
     return exitCode;
 }
 
@@ -200,6 +227,14 @@ std::filesystem::path ReadPreferredInstallRoot() {
         std::error_code ec;
         if (std::filesystem::exists(candidate / L"current" / L"CubicalCompare.exe", ec))
             return candidate;
+    }
+    wchar_t registered[32768]{};
+    DWORD bytes = sizeof(registered);
+    if (RegGetValueW(HKEY_CURRENT_USER,
+            L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CubicalCompare",
+            L"InstallLocation", RRF_RT_REG_SZ, nullptr, registered, &bytes) == ERROR_SUCCESS) {
+        const auto root = std::filesystem::path(registered);
+        if (std::filesystem::exists(root / L"current" / L"CubicalCompare.exe")) return root;
     }
     return DefaultInstallRoot();
 }
@@ -338,9 +373,86 @@ bool IsPathInside(const std::wstring& candidate, const std::filesystem::path& ro
            normalizedCandidate[normalizedRoot.size()] == L'/';
 }
 
+std::filesystem::path ManagedRootForExecutable(const std::wstring& executable) {
+    if (executable.empty()) return {};
+    auto cursor = std::filesystem::path(executable).parent_path();
+    std::filesystem::path result;
+    for (int depth = 0; depth < 8 && !cursor.empty(); ++depth) {
+        const auto parent = cursor.parent_path();
+        if (_wcsicmp(cursor.filename().c_str(), L"current") == 0 &&
+            std::filesystem::exists(parent / L"Update.exe") &&
+            !std::filesystem::exists(parent / L".portable")) result = parent;
+        if (parent == cursor) break;
+        cursor = parent;
+    }
+    return result;
+}
+
+void DiscoverRunningInstall() {
+    std::set<std::filesystem::path> roots;
+    for (const auto& process : SnapshotProcesses()) {
+        if (_wcsicmp(process.name.c_str(), L"CubicalCompare.exe") != 0) continue;
+        const auto root = ManagedRootForExecutable(process.imagePath);
+        if (!root.empty()) roots.insert(root);
+    }
+    if (roots.size() == 1) gRunningRoot = *roots.begin();
+}
+
+std::string Sha256File(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw std::runtime_error("An installed application file is missing or unreadable.");
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    BCRYPT_HASH_HANDLE hash = nullptr;
+    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
+        throw std::runtime_error("Could not initialize installed-file verification.");
+    std::string result;
+    try {
+        if (BCryptCreateHash(algorithm, &hash, nullptr, 0, nullptr, 0, 0) < 0)
+            throw std::runtime_error("Could not create installed-file verification hash.");
+        std::vector<unsigned char> buffer(1024 * 1024);
+        while (input) {
+            input.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
+            const auto count = input.gcount();
+            if (count > 0 && BCryptHashData(hash, buffer.data(), static_cast<ULONG>(count), 0) < 0)
+                throw std::runtime_error("Could not hash the installed application.");
+        }
+        if (!input.eof()) throw std::runtime_error("Could not read the installed application.");
+        unsigned char digest[32]{};
+        if (BCryptFinishHash(hash, digest, sizeof(digest), 0) < 0)
+            throw std::runtime_error("Could not finish installed-file verification.");
+        constexpr char hex[] = "0123456789abcdef";
+        for (const auto value : digest) { result += hex[value >> 4]; result += hex[value & 15]; }
+    } catch (...) {
+        if (hash) BCryptDestroyHash(hash);
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw;
+    }
+    BCryptDestroyHash(hash);
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+    return result;
+}
+
+void VerifyInstalledPayload(const std::filesystem::path& root) {
+    SetStatus(L"Checking the installed application files...");
+    size_t index = 0;
+    for (const auto& file : kPayloadFiles) {
+        const auto path = root / L"current" / file.path;
+        if (Sha256File(path) != file.sha256) {
+            LogSetup(L"Installed file mismatch: " + path.wstring());
+            throw std::runtime_error("Setup did not replace all application files. See the setup log for the mismatched file.");
+        }
+        SetProgress(94 + static_cast<int>((++index * 2) / std::size(kPayloadFiles)));
+    }
+    if (!std::filesystem::exists(root / L"Update.exe") || !std::filesystem::exists(root / L"current" / L"sq.version"))
+        throw std::runtime_error("The installed update metadata is incomplete.");
+    LogSetup(L"Verified release " + std::wstring(kAppVersion) + L" in " + root.wstring());
+}
+
 void StopConflictingCubicalCompareProcesses() {
     const DWORD currentPid = GetCurrentProcessId();
-    const auto installRoots = KnownInstallRoots();
+    auto installRoots = KnownInstallRoots();
+    if (!gRequestedRoot.empty()) installRoots.push_back(gRequestedRoot);
+    if (!gRunningRoot.empty()) installRoots.push_back(gRunningRoot);
     const auto records = SnapshotProcesses();
     std::set<DWORD> targets;
 
@@ -544,9 +656,11 @@ DWORD WINAPI InstallWorker(void*) {
         const std::wstring payload = workspace + L"\\CubicalCompare-Velopack-Setup.exe";
         ExtractPayload(GetModulePath(), payload);
 
+        DiscoverRunningInstall();
+        primaryRoot = !gRequestedRoot.empty() ? gRequestedRoot :
+            !gRunningRoot.empty() ? gRunningRoot : ReadPreferredInstallRoot();
+        SetStatus((L"Updating application files in " + primaryRoot.wstring()).c_str());
         StopConflictingCubicalCompareProcesses();
-
-        primaryRoot = ReadPreferredInstallRoot();
         quarantinedInstall = TryQuarantineBrokenInstall(primaryRoot, workspace);
         SetProgress(40);
 
@@ -557,7 +671,7 @@ DWORD WINAPI InstallWorker(void*) {
 
         if (primaryExit == 0) {
             installedRoot = primaryRoot;
-            WritePreferredInstallRoot(installedRoot);
+
         } else {
             if (!quarantinedInstall.empty()) {
                 try {
@@ -591,9 +705,11 @@ DWORD WINAPI InstallWorker(void*) {
             }
 
             installedRoot = recoveryRoot;
-            WritePreferredInstallRoot(installedRoot);
+
         }
 
+        VerifyInstalledPayload(installedRoot);
+        WritePreferredInstallRoot(installedRoot);
         SetStatus(L"Starting Cubical Compare...");
         SetProgress(96);
         const std::wstring installed = FindInstalledExe(installedRoot);
@@ -633,73 +749,137 @@ DWORD WINAPI InstallWorker(void*) {
             }
         }
 
+        LogSetup(L"Installation failed: " + gError);
         PostMessageW(gWindow, WM_INSTALL_FAILED, 0, 0);
         return 1;
     }
 }
 
+void FillRounded(HDC dc, const RECT& rect, COLORREF color, int radius) {
+    const auto brush = CreateSolidBrush(color);
+    const auto oldBrush = SelectObject(dc, brush);
+    const auto oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
+    RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, Px(radius), Px(radius));
+    SelectObject(dc, oldPen); SelectObject(dc, oldBrush); DeleteObject(brush);
+}
+
+HFONT Font(int size, int weight = FW_NORMAL) {
+    return CreateFontW(-MulDiv(size, gDpi, 72), 0, 0, 0, weight, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        DEFAULT_PITCH, L"Segoe UI");
+}
+
+void Text(HDC dc, const wchar_t* value, RECT rect, int size, COLORREF color, int weight = FW_NORMAL) {
+    auto font = Font(size, weight);
+    auto old = SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT); SetTextColor(dc, color);
+    DrawTextW(dc, value, -1, &rect, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX);
+    SelectObject(dc, old); DeleteObject(font);
+}
+
+LRESULT CALLBACK ProgressProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == PBM_SETPOS) {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, std::clamp(static_cast<int>(wParam), 0, 100));
+        InvalidateRect(hwnd, nullptr, FALSE); return 0;
+    }
+    if (message == PBM_SETRANGE32) return 0;
+    if (message == WM_ERASEBKGND) return 1;
+    if (message == WM_PAINT) {
+        PAINTSTRUCT paint{}; const auto dc = BeginPaint(hwnd, &paint);
+        RECT rect{}; GetClientRect(hwnd, &rect);
+        FillRect(dc, &rect, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
+        FillRounded(dc, rect, RGB(235, 233, 242), 8);
+        const auto percent = static_cast<int>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+        if (percent > 0) {
+            auto filled = rect; filled.right = std::max(Px(8), rect.right * percent / 100);
+            FillRounded(dc, filled, RGB(108, 77, 226), 8);
+        }
+        EndPaint(hwnd, &paint); return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_CREATE: {
-            HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-
-            HWND title = CreateWindowExW(
-                0, L"STATIC", L"Installing Cubical Compare",
-                WS_CHILD | WS_VISIBLE,
-                24, 20, 450, 28,
-                hwnd, nullptr, nullptr, nullptr);
-            SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-
-            gStatus = CreateWindowExW(
-                0, L"STATIC", L"Preparing installer...",
-                WS_CHILD | WS_VISIBLE,
-                24, 58, 452, 44,
-                hwnd, nullptr, nullptr, nullptr);
-            SendMessageW(gStatus, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-
-            gProgress = CreateWindowExW(
-                0, PROGRESS_CLASSW, nullptr,
-                WS_CHILD | WS_VISIBLE,
-                24, 112, 452, 18,
-                hwnd, nullptr, nullptr, nullptr);
+            gWindow = hwnd;
+            gDpi = static_cast<int>(GetDpiForWindow(hwnd));
+            gBodyFont = Font(10);
+            gStatus = CreateWindowExW(0, L"STATIC", gStatusText.c_str(), WS_CHILD | WS_VISIBLE,
+                Px(48), Px(180), Px(524), Px(64), hwnd, nullptr, nullptr, nullptr);
+            SendMessageW(gStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
+            gProgress = CreateWindowExW(0, L"CubicalCompareSetupProgress", nullptr, WS_CHILD | WS_VISIBLE,
+                Px(48), Px(254), Px(524), Px(8), hwnd, nullptr, nullptr, nullptr);
             SendMessageW(gProgress, PBM_SETRANGE32, 0, 100);
             SendMessageW(gProgress, PBM_SETPOS, 0, 0);
-
             HANDLE thread = CreateThread(nullptr, 0, InstallWorker, nullptr, 0, nullptr);
             if (thread) CloseHandle(thread);
-            else PostMessageW(hwnd, WM_INSTALL_FAILED, 0, 0);
+            else { gError = L"Could not start the installer."; PostMessageW(hwnd, WM_INSTALL_FAILED, 0, 0); }
             return 0;
+        }
+        case WM_DPICHANGED: {
+            gDpi = HIWORD(wParam);
+            const auto suggested = reinterpret_cast<RECT*>(lParam);
+            SetWindowPos(hwnd, nullptr, suggested->left, suggested->top, suggested->right - suggested->left, suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
+            auto previous = gBodyFont; gBodyFont = Font(10);
+            SendMessageW(gStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
+            if (previous) DeleteObject(previous);
+            MoveWindow(gStatus, Px(48), Px(180), Px(524), Px(64), TRUE);
+            MoveWindow(gProgress, Px(48), Px(254), Px(524), Px(8), TRUE);
+            if (const auto close = GetDlgItem(hwnd, 1)) {
+                MoveWindow(close, Px(496), Px(299), Px(96), Px(32), TRUE);
+                SendMessageW(close, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
+            }
+            InvalidateRect(hwnd, nullptr, FALSE); return 0;
+        }
+        case WM_PAINT: {
+            PAINTSTRUCT paint{}; const auto dc = BeginPaint(hwnd, &paint);
+            RECT client{}; GetClientRect(hwnd, &client);
+            const auto background = CreateSolidBrush(RGB(246, 245, 250));
+            FillRect(dc, &client, background); DeleteObject(background);
+            RECT icon{Px(32), Px(30), Px(84), Px(82)};
+            FillRounded(dc, icon, RGB(108, 77, 226), 14);
+            Text(dc, L"C", {Px(46), Px(32), Px(78), Px(78)}, 24, RGB(255,255,255), FW_SEMIBOLD);
+            Text(dc, L"Cubical Compare", {Px(102), Px(27), Px(588), Px(64)}, 22, RGB(35,30,49), FW_SEMIBOLD);
+            const std::wstring version = L"Windows setup  /  " + std::wstring(kAppVersion);
+            Text(dc, version.c_str(), {Px(104), Px(67), Px(580), Px(90)}, 10, RGB(113,105,128));
+            FillRounded(dc, {Px(28), Px(112), Px(592), Px(286)}, RGB(255,255,255), 20);
+            Text(dc, gFailed ? L"Setup needs attention" : L"Getting everything ready", {Px(48), Px(133), Px(572), Px(170)}, 15, RGB(35,30,49), FW_SEMIBOLD);
+            Text(dc, gFailed ? L"Details: Local AppData / RetroFrost / CubicalCompare / Installer / setup.log" : L"Your projects and settings stay with you.", {Px(32), Px(307), Px(gFailed ? 472 : 560), Px(342)}, 10, RGB(113,105,128));
+            EndPaint(hwnd, &paint); return 0;
+        }
+        case WM_CTLCOLORSTATIC:
+            SetBkMode(reinterpret_cast<HDC>(wParam), TRANSPARENT);
+            SetTextColor(reinterpret_cast<HDC>(wParam), RGB(96,88,111));
+            return reinterpret_cast<LRESULT>(GetStockObject(WHITE_BRUSH));
+        case WM_ERASEBKGND: return 1;
+        case WM_INSTALL_STATUS: {
+            auto status = reinterpret_cast<std::wstring*>(lParam);
+            gStatusText = *status; delete status;
+            SetWindowTextW(gStatus, gStatusText.c_str()); return 0;
         }
         case WM_CLOSE:
-            // Installation owns the window lifecycle. There is no success OK button.
+            if (gFailed) DestroyWindow(hwnd);
             return 0;
         case WM_INSTALL_PROGRESS:
-            SendMessageW(gProgress, PBM_SETPOS, wParam, 0);
-            return 0;
+            SendMessageW(gProgress, PBM_SETPOS, wParam, 0); return 0;
         case WM_INSTALL_DONE:
             SendMessageW(gProgress, PBM_SETPOS, 100, 0);
-            DestroyWindow(hwnd);
-            return 0;
+            DestroyWindow(hwnd); return 0;
         case WM_INSTALL_FAILED: {
-            SetStatus(gError.empty() ? L"Installation failed." : gError.c_str());
-
-            HWND closeButton = CreateWindowExW(
-                0, L"BUTTON", L"Close",
-                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                400, 148, 76, 28,
-                hwnd, reinterpret_cast<HMENU>(1), nullptr, nullptr);
-            SendMessageW(closeButton, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
-            return 0;
+            gFailed = true;
+            SetWindowTextW(gStatus, gError.empty() ? L"Installation failed. See the setup log in Local AppData / RetroFrost / CubicalCompare / Installer." : gError.c_str());
+            InvalidateRect(hwnd, nullptr, FALSE);
+            auto closeButton = CreateWindowExW(0, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                Px(496), Px(299), Px(96), Px(32), hwnd, reinterpret_cast<HMENU>(1), nullptr, nullptr);
+            SendMessageW(closeButton, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE); return 0;
         }
         case WM_COMMAND:
-            if (LOWORD(wParam) == 1) {
-                DestroyWindow(hwnd);
-                return 0;
-            }
+            if (LOWORD(wParam) == 1) { DestroyWindow(hwnd); return 0; }
             break;
         case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
+            if (gBodyFont) DeleteObject(gBodyFont);
+            PostQuitMessage(gFailed ? 1 : 0); return 0;
     }
     return DefWindowProcW(hwnd, message, wParam, lParam);
 }
@@ -721,6 +901,22 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 4;
     }
 
+    int argc = 0;
+    auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    bool invalidArgs = false;
+    for (int i = 1; argv && i < argc; ++i) {
+        if (std::wstring(argv[i]) == L"--installto" && i + 1 < argc) {
+            gRequestedRoot = argv[++i];
+            if (!gRequestedRoot.is_absolute() || !std::filesystem::exists(gRequestedRoot / L"Update.exe") ||
+                std::filesystem::exists(gRequestedRoot / L".portable")) invalidArgs = true;
+        } else invalidArgs = true;
+    }
+    if (argv) LocalFree(argv);
+    if (invalidArgs) {
+        MessageBoxW(nullptr, L"Setup could not identify the requested managed installation. Use Update from ZIP for a portable copy.", L"Cubical Compare Setup", MB_OK | MB_ICONERROR);
+        ReleaseMutex(setupMutex); CloseHandle(setupMutex); return 5;
+    }
+
     INITCOMMONCONTROLSEX controls{};
     controls.dwSize = sizeof(controls);
     controls.dwICC = ICC_PROGRESS_CLASS;
@@ -731,12 +927,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = instance;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    wc.hbrBackground = nullptr;
     wc.lpszClassName = kWindowClass;
     RegisterClassExW(&wc);
 
-    const int width = 520;
-    const int height = 225;
+    WNDCLASSEXW progressClass = wc;
+    progressClass.lpfnWndProc = ProgressProc;
+    progressClass.lpszClassName = L"CubicalCompareSetupProgress";
+    RegisterClassExW(&progressClass);
+    gDpi = static_cast<int>(GetDpiForSystem());
+    RECT dimensions{0, 0, Px(620), Px(350)};
+    AdjustWindowRectExForDpi(&dimensions, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, FALSE, 0, gDpi);
+    const int width = dimensions.right - dimensions.left;
+    const int height = dimensions.bottom - dimensions.top;
     const int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
     const int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 
@@ -749,6 +952,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         nullptr, nullptr, instance, nullptr);
 
     if (!gWindow) return 1;
+    const int rounded = 2;
+    DwmSetWindowAttribute(gWindow, 33, &rounded, sizeof(rounded));
+    const COLORREF caption = RGB(246,245,250);
+    DwmSetWindowAttribute(gWindow, 35, &caption, sizeof(caption));
     ShowWindow(gWindow, SW_SHOW);
     UpdateWindow(gWindow);
 
@@ -759,5 +966,5 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
     ReleaseMutex(setupMutex);
     CloseHandle(setupMutex);
-    return 0;
+    return static_cast<int>(msg.wParam);
 }
