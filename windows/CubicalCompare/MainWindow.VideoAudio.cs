@@ -45,7 +45,7 @@ public sealed partial class MainWindow
         {
             cancellationToken.ThrowIfCancellationRequested();
             var file = await StorageFile.GetFileFromPathAsync(path);
-            var track = await BackgroundAudioTrack.CreateFromFileAsync(file);
+            var track = await ReadSoundtrackAsync(file, cancellationToken);
             if (track.OriginalDuration <= TimeSpan.Zero) throw new InvalidDataException($"No playable audio: {Path.GetFileName(path)}");
             templates.Add(track);
         }

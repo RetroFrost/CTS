@@ -454,6 +454,7 @@ public sealed partial class MainWindow : Window
         if (ProjectFrameSlider.Value > ProjectFrameSlider.Maximum)
             ProjectFrameSlider.Value = ProjectFrameSlider.Maximum;
         FrameCounterText.Text = $"Frame {(int)Math.Round(ProjectFrameSlider.Value)} / {count - 1}";
+        RefreshAudioDurationStatus();
     }
 
     private Task RenderCurrentFrameAsync()
