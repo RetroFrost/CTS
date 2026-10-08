@@ -1,7 +1,7 @@
-using Windows.Storage;
-using Windows.Media.Editing;
-using Windows.Media.MediaProperties;
-using Windows.Media.Transcoding;
+using global::Windows.Storage;
+using global::Windows.Media.Editing;
+using global::Windows.Media.MediaProperties;
+using global::Windows.Media.Transcoding;
 using CubicalCompare.Core.Project;
 
 namespace CubicalCompare;
@@ -39,7 +39,7 @@ public sealed partial class MainWindow
             var repeated=await BuildPlaylistTracksAsync([first.Path,second.Path],TimeSpan.FromSeconds(7),1,true,CancellationToken.None);
             if(repeated.Count!=5 || repeated[^1].Delay!=TimeSpan.FromSeconds(6))throw new Exception("Playlist repeat failed");
             if(!DescribeAudioCoverage(TimeSpan.FromSeconds(3),TimeSpan.FromSeconds(2),true).Contains("Warning") || !DescribeAudioCoverage(TimeSpan.FromSeconds(2),TimeSpan.FromSeconds(3),false).Contains("silent"))throw new Exception("Coverage warning failed");
-            var composition = new MediaComposition();composition.Clips.Add(MediaClip.CreateFromColor(Windows.UI.Color.FromArgb(255,0,0,0),TimeSpan.FromSeconds(2)));
+            var composition = new MediaComposition();composition.Clips.Add(MediaClip.CreateFromColor(global::Windows.UI.Color.FromArgb(255,0,0,0),TimeSpan.FromSeconds(2)));
             foreach(var track in tracks)composition.BackgroundAudioTracks.Add(track);
             var output=await folder.CreateFileAsync("mux.mp4");var profile=MediaEncodingProfile.CreateMp4(VideoEncodingQuality.Qvga);
             if(await composition.RenderToFileAsync(output,MediaTrimmingPreference.Precise,profile)!=TranscodeFailureReason.None)throw new Exception("Playlist mux failed");

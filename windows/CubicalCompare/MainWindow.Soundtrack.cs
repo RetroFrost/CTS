@@ -9,7 +9,7 @@ public sealed partial class MainWindow
     private readonly List<string> _soundtrackPaths = [];
     private StackPanel? _soundtrackListPanel;
     private TextBlock? _audioImportStatus;
-    private Windows.Media.Playback.MediaPlayer? _audioAuditionPlayer;
+    private global::Windows.Media.Playback.MediaPlayer? _audioAuditionPlayer;
     private bool _audioImportBusy;
     private readonly Dictionary<string, TimeSpan> _soundtrackDurations = new(StringComparer.OrdinalIgnoreCase);
     private string _soundtrackPath = string.Empty;
@@ -277,7 +277,7 @@ public sealed partial class MainWindow
         finally { _audioImportBusy = false; }
     }
 
-    internal async Task<List<string>> ImportSoundtracksAsync(IReadOnlyList<Windows.Storage.StorageFile> files)
+    internal async Task<List<string>> ImportSoundtracksAsync(IReadOnlyList<global::Windows.Storage.StorageFile> files)
     {
         var failures = new List<string>();
         var added = 0;
@@ -287,7 +287,7 @@ public sealed partial class MainWindow
             {
                 if (CurrentSoundtrackPaths().Contains(file.Path, StringComparer.OrdinalIgnoreCase)) continue;
                 if (_soundtrackPaths.Count >= 256) throw new InvalidDataException("The playlist is limited to 256 tracks.");
-                var track = await Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
+                var track = await global::Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
                 if (track.OriginalDuration <= TimeSpan.Zero) throw new InvalidDataException("No playable audio was found.");
                 if (string.IsNullOrWhiteSpace(file.Path)) throw new InvalidDataException("The selected file has no accessible local path.");
                 if (_soundtrackPaths.Count == 0 && !string.IsNullOrWhiteSpace(_soundtrackPath)) _soundtrackPaths.Add(_soundtrackPath);
@@ -295,7 +295,7 @@ public sealed partial class MainWindow
                 _soundtrackPaths.Add(file.Path);
                 added++;
             }
-            catch (Exception ex) { failures.Add($"{file.Name}: {ex.Message} (0x{ex.HResult:X8}). Try a locally downloaded MP3, WAV or M4A file supported by Windows."); }
+            catch (Exception ex) { failures.Add($"{file.Name}: {ex.Message} (0x{ex.HResult:X8}). Try a locally downloaded MP3, WAV or M4A file supported by global::Windows."); }
         }
         _soundtrackPath = _soundtrackPaths.FirstOrDefault() ?? _soundtrackPath;
         RefreshSoundtrackUi();
@@ -331,14 +331,14 @@ public sealed partial class MainWindow
             {
                 try
                 {
-                    var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+                    var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(path);
                     _audioAuditionPlayer?.Dispose();
-                    _audioAuditionPlayer = new Windows.Media.Playback.MediaPlayer { Volume = _soundtrackVolume };
+                    _audioAuditionPlayer = new global::Windows.Media.Playback.MediaPlayer { Volume = _soundtrackVolume };
                     _audioAuditionPlayer.MediaFailed += (_, args) => DispatcherQueue.TryEnqueue(() =>
                     {
                         if (_audioImportStatus is not null) _audioImportStatus.Text = $"Audio preview failed: {args.ErrorMessage}";
                     });
-                    _audioAuditionPlayer.Source = Windows.Media.Core.MediaSource.CreateFromStorageFile(file);
+                    _audioAuditionPlayer.Source = global::Windows.Media.Core.MediaSource.CreateFromStorageFile(file);
                     _audioAuditionPlayer.Play();
                 }
                 catch (Exception ex) { await ShowErrorAsync("Could not preview audio", ex.Message); }
@@ -400,8 +400,8 @@ public sealed partial class MainWindow
         long ticks = 0;
         foreach (var path in paths)
         {
-            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
-            var audio = await Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
+            var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+            var audio = await global::Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
             if (audio.OriginalDuration <= TimeSpan.Zero) throw new InvalidDataException($"No playable audio: {Path.GetFileName(path)}");
             _soundtrackDurations[path] = audio.OriginalDuration;
             ticks = checked(ticks + audio.OriginalDuration.Ticks);
