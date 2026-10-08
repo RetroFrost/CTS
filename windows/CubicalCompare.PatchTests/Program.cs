@@ -106,6 +106,18 @@ try
         if(!text.ReadToEnd().Contains("Developer patch smoke"))throw new Exception("Patched source was not bundled");
         Console.WriteLine("PASS full-app XAML patch built and repackaged successfully.");
     }
+    var ignored=new List<string>();
+    var metadata=Diff(".github/workflows/build.yml",".github/workflows/build.yml","@@ -1 +1 @@\n-old-release\n+new-release\n");
+    File.WriteAllText(Path.Combine(root,"test.txt"),"old\n");
+    var filtered=UnifiedPatch.Prepare(root,metadata+Diff("test.txt","test.txt","@@ -1 +1 @@\n-old\n+new\n"),
+        (oldPath,newPath)=>(oldPath is null || !AppPatchBuilder.IsRepositoryMetadata(oldPath)) && (newPath is null || !AppPatchBuilder.IsRepositoryMetadata(newPath)),ignored);
+    Equal(filtered.Count,1);Equal(ignored.Count,1);UnifiedPatch.Apply(root,filtered);Equal(File.ReadAllText(Path.Combine(root,"test.txt")),"new\n");passed++;
+    Equal(AppPatchBuilder.IsRepositoryMetadata("Directory.Build.targets"),false);Equal(AppPatchBuilder.IsRepositoryMetadata("windows/CubicalCompare/MainWindow.xaml"),false);passed++;
+    var skippedHeader=new List<string>();
+    filtered=UnifiedPatch.Prepare(root,Diff("docs/guide.md","docs/guide.md","@@ -1 +1 @@\n--- old text\n+new text\n"),(a,b)=>false,skippedHeader);
+    Equal(filtered.Count,0);Equal(skippedHeader.Count,1);passed++;
+    try {UnifiedPatch.Prepare(root,metadata+Diff("test.txt","test.txt","@@ -1 +1 @@\n-wrong-runtime-context\n+bad\n"),(a,b)=>(b is null || !AppPatchBuilder.IsRepositoryMetadata(b)),new List<string>());throw new Exception("Runtime mismatch accepted");}catch(InvalidDataException){passed++;}
+    Console.WriteLine("PASS repository metadata filtering; real app code context remains strict.");
     var ready=new FakeSetupHost(true,true,true);
     var environment=await BuildToolBootstrap.EnsureAsync(host:ready);
     Equal(ready.Installed.Count,0);Equal(environment.Dotnet,"dotnet-ready.exe");passed++;

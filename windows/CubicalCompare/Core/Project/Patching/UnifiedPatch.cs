@@ -11,7 +11,7 @@ public static class UnifiedPatch
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private static readonly Regex Hunk = new(@"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", RegexOptions.CultureInvariant);
 
-    public static IReadOnlyList<PatchChange> Prepare(string root, string patch)
+    public static IReadOnlyList<PatchChange> Prepare(string root, string patch, Func<string?, string?, bool>? includeFile = null, ICollection<string>? skippedFiles = null)
     {
         if (patch.Length > 32 * 1024 * 1024) throw new InvalidDataException("Patch exceeds 32 MB.");
         var lines = patch.Replace("\r\n", "\n").Split('\n');
@@ -30,6 +30,30 @@ public static class UnifiedPatch
             {
                 Resolve(root, name!);
                 if (!touched.Add(name!)) throw new InvalidDataException($"Duplicate patch target: {name}");
+            }
+            if (includeFile is not null && !includeFile(old, next))
+            {
+                skippedFiles?.Add(next ?? old!);
+                // Consume hunk data by declared counts so a deleted line beginning
+                // with --- cannot be misread as another file header.
+                while (i + 1 < lines.Length && lines[i + 1].StartsWith("@@ ", StringComparison.Ordinal))
+                {
+                    var hunk = Hunk.Match(lines[++i]);
+                    if (!hunk.Success) throw new InvalidDataException("Malformed skipped-file hunk.");
+                    var removed = hunk.Groups[2].Success ? int.Parse(hunk.Groups[2].Value) : 1;
+                    var added = hunk.Groups[4].Success ? int.Parse(hunk.Groups[4].Value) : 1;
+                    while (removed > 0 || added > 0)
+                    {
+                        if (++i >= lines.Length || lines[i].Length == 0) throw new InvalidDataException("Truncated skipped-file hunk.");
+                        if (lines[i] == "\\ No newline at end of file") continue;
+                        var kind = lines[i][0];
+                        if (kind is ' ' or '-') removed--;
+                        if (kind is ' ' or '+') added--;
+                        if (kind is not (' ' or '+' or '-') || removed < 0 || added < 0) throw new InvalidDataException("Invalid skipped-file hunk counts.");
+                    }
+                    if (i + 1 < lines.Length && lines[i + 1] == "\\ No newline at end of file") i++;
+                }
+                continue;
             }
             var oldFile = old is null ? null : Resolve(root, old);
             if (oldFile is not null && !File.Exists(oldFile)) throw new InvalidDataException($"Source file not found: {old}");
@@ -105,7 +129,7 @@ public static class UnifiedPatch
             if (bom) result = new byte[] { 239, 187, 191 }.Concat(result).ToArray();
             changes.Add(new(old, next, next is null ? null : result));
         }
-        if (changes.Count == 0) throw new InvalidDataException("No supported unified-diff changes were found.");
+        if (changes.Count == 0 && (skippedFiles is null || skippedFiles.Count == 0)) throw new InvalidDataException("No supported unified-diff changes were found.");
         return changes;
     }
 

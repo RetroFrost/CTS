@@ -37,7 +37,8 @@ public sealed partial class MainWindow
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text =
                     "This patch can change the entire Windows app: UI, renderer, imports and updates. Building runs the selected source and project scripts with your permissions. Import patches from a source you trust.\n\n" +
                     "Missing .NET 10 SDK, PowerShell 7 and Windows SDK build tools are installed automatically through WinGet, with visible setup windows. Windows may ask for administrator approval. The current app stays active during setup and compilation. A successful build saves your workspace, backs up the app, then replaces it and restarts.\n\n" +
-                    "Patch order: " + string.Join(", ", files.Select(x => x.Name)) + "\n\n" + string.Join("\n", builder.ChangedFiles) } },
+                    "Patch order: " + string.Join(", ", files.Select(x => x.Name)) + "\n\n" + string.Join("\n", builder.ChangedFiles) +
+                    (builder.SkippedFiles.Count == 0 ? "" : "\n\nRepository-only files skipped (not installed app code):\n" + string.Join("\n", builder.SkippedFiles)) } },
                 PrimaryButtonText = "Build & restart",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
