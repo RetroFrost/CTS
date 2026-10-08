@@ -72,6 +72,7 @@ public sealed partial class MainWindow
         {
             if (_soundtrackUiUpdating) return;
             _soundtrackVolume = Math.Clamp(args.NewValue / 100.0, 0, 1);
+            if (_audioAuditionPlayer is not null) _audioAuditionPlayer.Volume = _soundtrackVolume;
             ScheduleWorkspaceSave();
         };
 
@@ -154,6 +155,7 @@ public sealed partial class MainWindow
         {
             if (_soundtrackUiUpdating) return;
             _soundtrackVolume = Math.Clamp(args.NewValue / 100.0, 0, 1);
+            if (_audioAuditionPlayer is not null) _audioAuditionPlayer.Volume = _soundtrackVolume;
             RefreshSoundtrackUi();
             ScheduleWorkspaceSave();
         };
@@ -287,7 +289,9 @@ public sealed partial class MainWindow
             {
                 if (CurrentSoundtrackPaths().Contains(file.Path, StringComparer.OrdinalIgnoreCase)) continue;
                 if (_soundtrackPaths.Count >= 256) throw new InvalidDataException("The playlist is limited to 256 tracks.");
-                var track = await global::Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
+                TimelineStatusText.Text = $"Checking audio · {file.Name}";
+                if (_audioImportStatus is not null) _audioImportStatus.Text = TimelineStatusText.Text;
+                var track = await ReadSoundtrackAsync(file);
                 if (track.OriginalDuration <= TimeSpan.Zero) throw new InvalidDataException("No playable audio was found.");
                 if (string.IsNullOrWhiteSpace(file.Path)) throw new InvalidDataException("The selected file has no accessible local path.");
                 if (_soundtrackPaths.Count == 0 && !string.IsNullOrWhiteSpace(_soundtrackPath)) _soundtrackPaths.Add(_soundtrackPath);
@@ -295,7 +299,7 @@ public sealed partial class MainWindow
                 _soundtrackPaths.Add(file.Path);
                 added++;
             }
-            catch (Exception ex) { failures.Add($"{file.Name}: {ex.Message} (0x{ex.HResult:X8}). Try a locally downloaded MP3, WAV or M4A file supported by global::Windows."); }
+            catch (Exception ex) { failures.Add($"{file.Name}: {ex.Message} (0x{ex.HResult:X8}). Try a locally downloaded MP3, WAV or M4A file supported by Windows."); }
         }
         _soundtrackPath = _soundtrackPaths.FirstOrDefault() ?? _soundtrackPath;
         RefreshSoundtrackUi();
@@ -304,6 +308,16 @@ public sealed partial class MainWindow
         TimelineStatusText.Text = status;
         if (_audioImportStatus is not null) _audioImportStatus.Text = status + "\n" + AudioDurationStatus();
         return failures;
+    }
+
+    internal static async Task<global::Windows.Media.Editing.BackgroundAudioTrack> ReadSoundtrackAsync(
+        global::Windows.Storage.StorageFile file, CancellationToken cancellationToken = default)
+    {
+        var operation = global::Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
+        async Task<global::Windows.Media.Editing.BackgroundAudioTrack> DecodeAsync() => await operation;
+        using var registration = cancellationToken.Register(() => operation.Cancel());
+        try { return await DecodeAsync().WaitAsync(TimeSpan.FromSeconds(30), cancellationToken); }
+        catch { operation.Cancel(); throw; }
     }
 
     private IReadOnlyList<string> CurrentSoundtrackPaths() => _soundtrackPaths.Count > 0
@@ -401,7 +415,7 @@ public sealed partial class MainWindow
         foreach (var path in paths)
         {
             var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(path);
-            var audio = await global::Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(file);
+            var audio = await ReadSoundtrackAsync(file);
             if (audio.OriginalDuration <= TimeSpan.Zero) throw new InvalidDataException($"No playable audio: {Path.GetFileName(path)}");
             _soundtrackDurations[path] = audio.OriginalDuration;
             ticks = checked(ticks + audio.OriginalDuration.Ticks);
@@ -429,6 +443,7 @@ public sealed partial class MainWindow
     {
         if (_soundtrackUiUpdating) return;
         _soundtrackLoop = value;
+        RefreshSoundtrackUi();
         ScheduleWorkspaceSave();
     }
 
