@@ -51,6 +51,10 @@ public sealed partial class MainWindow
             try
             {
                 if (!new ComparisonProject().SoundtrackFadeOut || _audioFadeOutCheckBox?.IsChecked != true) throw new Exception("Audio fade default is off");
+                _audioFadeOutCheckBox.IsChecked = false;
+                if (_soundtrackFadeOut) throw new Exception("Fade toggle did not disable");
+                _audioFadeOutCheckBox.IsChecked = true;
+                if (!_soundtrackFadeOut) throw new Exception("Fade toggle did not enable");
                 var off = new ComparisonProject { SoundtrackFadeOut = false, Cards = [new()] };
                 var offPath = Path.Combine(folder.Path, "fade-off.ccproject");
                 await ProjectFileService.SaveAsync(off, offPath);

@@ -72,7 +72,7 @@ public sealed partial class MainWindow
         {
             if (_soundtrackUiUpdating) return;
             _soundtrackVolume = Math.Clamp(args.NewValue / 100.0, 0, 1);
-            if (_audioAuditionPlayer is not null) _audioAuditionPlayer.Volume = _soundtrackVolume;
+            UpdateAudioAuditionVolume();
             ScheduleWorkspaceSave();
         };
 
@@ -155,7 +155,7 @@ public sealed partial class MainWindow
         {
             if (_soundtrackUiUpdating) return;
             _soundtrackVolume = Math.Clamp(args.NewValue / 100.0, 0, 1);
-            if (_audioAuditionPlayer is not null) _audioAuditionPlayer.Volume = _soundtrackVolume;
+            UpdateAudioAuditionVolume();
             RefreshSoundtrackUi();
             ScheduleWorkspaceSave();
         };
@@ -194,7 +194,7 @@ public sealed partial class MainWindow
         soundtrackPanel.Children.Add(_audioImportStatus);
         soundtrackPanel.Children.Add(_soundtrackListPanel);
         var stop = new Button { Content = "Stop audio preview" };
-        stop.Click += (_, _) => _audioAuditionPlayer?.Pause();
+        stop.Click += (_, _) => StopAudioAudition();
         soundtrackPanel.Children.Add(stop);
         soundtrackPanel.Children.Add(new TextBlock
         {
@@ -209,6 +209,7 @@ public sealed partial class MainWindow
         {
             if (_soundtrackUiUpdating) return;
             _soundtrackFadeOut = enabled;
+            UpdateAudioAuditionVolume();
             ScheduleWorkspaceSave();
         }
         _audioFadeOutCheckBox.Checked += (_, _) => SetFadeOut(true);
@@ -246,7 +247,7 @@ public sealed partial class MainWindow
         stack.Children.Add(CreateAudioCard(soundtrackPanel));
         stack.Children.Add(CreateAudioCard(rendererAudioPanel));
 
-        Closed += (_, _) => { _audioAuditionPlayer?.Dispose(); _audioAuditionPlayer = null; };
+        Closed += (_, _) => StopAudioAudition();
         _audioPage = new Grid { Visibility = Visibility.Collapsed };
         _audioPage.Children.Add(new ScrollViewer
         {
@@ -357,14 +358,20 @@ public sealed partial class MainWindow
                 try
                 {
                     var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(path);
-                    _audioAuditionPlayer?.Dispose();
+                    StopAudioAudition();
                     _audioAuditionPlayer = new global::Windows.Media.Playback.MediaPlayer { Volume = _soundtrackVolume };
                     _audioAuditionPlayer.MediaFailed += (_, args) => DispatcherQueue.TryEnqueue(() =>
                     {
                         if (_audioImportStatus is not null) _audioImportStatus.Text = $"Audio preview failed: {args.ErrorMessage}";
                     });
+                    _audioAuditionPlayer.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_audioAuditionPlayer?.PlaybackSession.PlaybackState == global::Windows.Media.Playback.MediaPlaybackState.Playing) StartAudioAuditionFade();
+                        else _audioAuditionFadeTimer?.Stop();
+                    });
                     _audioAuditionPlayer.Source = global::Windows.Media.Core.MediaSource.CreateFromStorageFile(file);
                     _audioAuditionPlayer.Play();
+                    StartAudioAuditionFade();
                 }
                 catch (Exception ex) { await ShowErrorAsync("Could not preview audio", ex.Message); }
             });
@@ -389,7 +396,7 @@ public sealed partial class MainWindow
 
     private void SetSoundtrackPaths(IEnumerable<string> paths)
     {
-        _audioAuditionPlayer?.Pause();
+        StopAudioAudition();
         _soundtrackPaths.Clear(); _soundtrackPaths.AddRange(paths);
         _soundtrackPath = _soundtrackPaths.FirstOrDefault() ?? string.Empty;
         RefreshSoundtrackUi(); ScheduleWorkspaceSave();
@@ -443,7 +450,7 @@ public sealed partial class MainWindow
     private void ClearSoundtrack_Click(object sender, RoutedEventArgs e)
     {
         _soundtrackPaths.Clear();
-        _audioAuditionPlayer?.Pause();
+        StopAudioAudition();
         _soundtrackPath = string.Empty;
         RefreshSoundtrackUi();
         ScheduleWorkspaceSave();
