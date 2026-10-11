@@ -24,6 +24,8 @@ public sealed class ComparisonProject
     // Keep this settable so projects can be safely round-tripped by System.Text.Json
     // for workspace recovery, file persistence and future interchange formats.
     public List<ComparisonCard> Cards { get; set; } = [];
+    // Source records stay outside card text and never render as visible credits.
+    public List<ProjectArtworkSource> ArtworkSources { get; set; } = [];
 }
 
 public sealed class ComparisonCard
@@ -49,4 +51,12 @@ public sealed class ComparisonCard
     // Thumbnail-only fill behind transparent/backgroundless artwork.
     public string ThumbnailBackgroundColor { get; set; } = "#05070E";
     public string ThumbnailAccentColor { get; set; } = "#FF0F16";
+}
+
+public sealed class ProjectArtworkSource
+{
+    public string CardId { get; set; } = "";
+    public string PageUrl { get; set; } = "";
+    // The free-icon page alone does not establish publication rights or attribution terms.
+    public string LicenseStatus { get; set; } = "NeedsReview";
 }

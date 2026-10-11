@@ -1,0 +1,31 @@
+name: V5 AI Build and Smoke
+
+on:
+  push:
+    branches:
+      - v5/development
+    paths:
+      - 'windows/CubicalCompare/**'
+      - 'windows/CubicalCompare.Modules/**'
+      - 'windows/CubicalCompare.AiSmoke/**'
+      - '.github/workflows/v5-ai-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore WinUI application
+        run: dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64
+      - name: Build WinUI application
+        run: dotnet build windows/CubicalCompare/CubicalCompare.csproj -c Release -r win-x64 -p:Platform=x64 --no-restore
+      - name: Run offline AI project smoke tests
+        run: dotnet run --project windows/CubicalCompare.AiSmoke/CubicalCompare.AiSmoke.csproj -c Release

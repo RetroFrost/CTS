@@ -42,6 +42,9 @@
                     <Button Content="New" Click="NewProjectWithFileState_Click" Padding="12,6" />
                     <Button Content="Open" Click="OpenProject_Click" Padding="12,6" />
                     <Button Content="Save" Click="SaveProject_Click" Padding="12,6" />
+                    <Button x:Name="AiBuildButton" Content="AI Build" Click="AiBuild_Click" Padding="12,6" />
+                    <Button x:Name="AiUndoButton" Content="Undo AI" Click="UndoAiBuild_Click" Visibility="Collapsed" Padding="12,6" />
+                    <ProgressRing x:Name="AiBuildRing" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
                     <ComboBox Width="174" SelectedIndex="0">
                         <ComboBoxItem Content="1920 × 1080 (Full HD)" />
                     </ComboBox>

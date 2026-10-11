@@ -193,6 +193,21 @@ public static class ProjectFileService
         }
 
         var validCardIds = project.Cards.Select(card => card.Id).ToHashSet(StringComparer.Ordinal);
+        project.ArtworkSources = (project.ArtworkSources ?? [])
+            .Where(source => source is not null &&
+                validCardIds.Contains(source.CardId) &&
+                WebImageSource.IsAllowedFlaticonSource(source.PageUrl) &&
+                Uri.TryCreate(source.PageUrl, UriKind.Absolute, out var uri) &&
+                uri.AbsolutePath.StartsWith("/free-icon/", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(source => source.CardId, StringComparer.Ordinal)
+            .Select(group => new ProjectArtworkSource
+            {
+                CardId = group.Key,
+                PageUrl = group.Last().PageUrl,
+                LicenseStatus = "NeedsReview",
+            })
+            .Take(1000)
+            .ToList();
         project.ThumbnailSelectedCardIds = (project.ThumbnailSelectedCardIds ?? [])
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Select(id => id.Trim())

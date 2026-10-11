@@ -104,6 +104,11 @@ public sealed partial class MainWindow
     private void ApplyProjectFile(ComparisonProject project)
     {
         ProjectFileService.ValidateAndNormalize(project);
+        _aiBuildCancellation?.Cancel();
+        _aiUndoProject = null;
+        AiUndoButton.Visibility = Visibility.Collapsed;
+        _aiArtworkSources.Clear();
+        _aiArtworkSources.AddRange(project.ArtworkSources);
 
         _restoringWorkspace = true;
         try

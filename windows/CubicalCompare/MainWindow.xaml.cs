@@ -110,6 +110,10 @@ public sealed partial class MainWindow : Window
 
     private void NewProject_Click(object sender, RoutedEventArgs e)
     {
+        _aiBuildCancellation?.Cancel();
+        _aiArtworkSources.Clear();
+        _aiUndoProject = null;
+        AiUndoButton.Visibility = Visibility.Collapsed;
         ClearProjectCards();
         _pendingZipack2 = null;
         _thumbnailSelectedCardIds.Clear();
@@ -505,6 +509,14 @@ public sealed partial class MainWindow : Window
             RenderFontFile = RenderFontSelection.CurrentFile,
             ThumbnailCardCount = GetThumbnailCardCount(),
             ThumbnailSelectedCardIds = _thumbnailSelectedCardIds.ToList(),
+            ArtworkSources = _aiArtworkSources
+                .Where(source => Cards.Any(card => card.Id == source.CardId))
+                .Select(source => new ProjectArtworkSource
+                {
+                    CardId = source.CardId,
+                    PageUrl = source.PageUrl,
+                    LicenseStatus = "NeedsReview",
+                }).ToList(),
         };
         foreach (var card in Cards)
         {
