@@ -1,0 +1,154 @@
+name: V5 M1 Preview Installer (Velopack)
+
+on:
+  push:
+    branches:
+      - v5/development
+    paths:
+      - '.github/workflows/v5-m1-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v5-m1-preview-release
+  cancel-in-progress: false
+
+jobs:
+  package-and-release:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      M1_VERSION: '5.0.0-m1.1'
+      M1_TAG: 'v5.0.0-m1-preview.1'
+    steps:
+      - name: Check out V5 source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore Windows app
+        shell: pwsh
+        run: |
+          dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64 -p:V5Preview=true
+          if ($LASTEXITCODE -ne 0) { throw "Restore failed." }
+
+      - name: Run AI project smoke tests
+        shell: pwsh
+        run: |
+          dotnet run --project windows/CubicalCompare.AiSmoke/CubicalCompare.AiSmoke.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "AI smoke tests failed." }
+
+      - name: Publish isolated V5 M1 Windows build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish windows/CubicalCompare/CubicalCompare.csproj -c Release -r win-x64 -p:Platform=x64 -p:V5Preview=true -p:Version="$env:M1_VERSION" -p:AssemblyVersion=5.0.0.0 -p:FileVersion=5.0.0.0 -p:InformationalVersion="$env:M1_VERSION+$env:GITHUB_SHA" -o artifacts/publish
+          if ($LASTEXITCODE -ne 0) { throw "Windows publish failed." }
+          if (-not (Test-Path artifacts/publish/CubicalCompare.exe)) {
+            throw "The Windows executable was not published."
+          }
+
+      - name: Smoke test the real WinUI main window
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:LOCALAPPDATA 'RetroFrost\CubicalCompareV5Preview\startup.log'
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+          $exe = (Resolve-Path 'artifacts/publish/CubicalCompare.exe').Path
+          $process = Start-Process -FilePath $exe -ArgumentList '--ci-mainwindow-smoke' -WorkingDirectory (Split-Path $exe) -PassThru
+          try {
+            for ($attempt = 0; $attempt -lt 90; $attempt++) {
+              Start-Sleep -Seconds 2
+              if ((Test-Path $log) -and ((Get-Content $log -Raw) -match 'Post-activation editor controls initialised|Post-activation editor control initialisation failed')) { break }
+              $process.Refresh()
+              if ($process.HasExited) { throw "WinUI app exited with code $($process.ExitCode)." }
+            }
+            if (-not (Test-Path $log)) { throw "WinUI app did not write its startup log." }
+            $content = Get-Content $log -Raw
+            if ($content -notmatch 'Post-activation editor controls initialised') {
+              throw "WinUI window failed to initialize. $content"
+            }
+            Write-Host "V5 M1 WinUI main window initialized successfully."
+          }
+          finally {
+            $process.Refresh()
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
+
+      - name: Install Velopack CLI
+        shell: pwsh
+        run: |
+          dotnet tool install --global vpk --version 1.2.0
+          if ($LASTEXITCODE -ne 0) { throw "Velopack installation failed." }
+
+      - name: Package setup-only V5 M1 preview
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path artifacts/velopack -Force | Out-Null
+          New-Item -ItemType Directory -Path artifacts/release -Force | Out-Null
+          vpk pack --packId CubicalCompareV5Preview --packVersion "$env:M1_VERSION" --packDir artifacts/publish --mainExe CubicalCompare.exe --packTitle "Cubical Compare V5 M1 Preview" --runtime win-x64 --outputDir artifacts/velopack
+          if ($LASTEXITCODE -ne 0) { throw "Velopack packaging failed." }
+          $setup = Get-ChildItem artifacts/velopack -File | Where-Object Name -Like '*Setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw "Velopack did not produce a Windows installer." }
+          $target = 'artifacts/release/CubicalCompare-V5-M1-Windows-x64-Setup.exe'
+          Copy-Item $setup.FullName $target
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  CubicalCompare-V5-M1-Windows-x64-Setup.exe" |
+            Set-Content artifacts/release/SHA256SUMS.txt -Encoding ascii
+          # Velopack generates a portable ZIP internally; it is deliberately NOT published.
+          if (-not (Test-Path $target)) { throw "Preview installer missing." }
+          Write-Host "Packaged installer-only preview: $target"
+
+      - name: Prepare preview release notes
+        shell: pwsh
+        run: |
+          @'
+          ## Cubical Compare V5 — Milestone 1 Preview
+
+          This is an early Windows x64 preview, not the completed V5 release.
+
+          ### Included
+          - Native WinUI AI Project Builder entry point.
+          - Bring your own Google Gemini API key (stored in Windows Credential Locker when available).
+          - Automatic selection of an accessible Google Search-grounded Gemini text model.
+          - Generation of editable comparison cards in batches.
+          - Search for Flaticon free-icon pages and artwork assignment where available.
+          - Cancel AI generation and undo the last AI build.
+          - AI artwork source records in .ccproject files.
+          - Separate preview installation identity and app-data folder from stable V4.
+
+          ### Known limitations
+          - Live Gemini generation and Flaticon artwork assignment still need hands-on testing.
+          - Flaticon licensing and required credits must be reviewed before publishing videos.
+          - Renderer4, the online renderer library, the full V5 Fluent redesign, and the final installer experience are not included.
+          - Preview automatic updates are disabled to avoid installing stable V4 over V5.
+          - Gemini requests can consume API quota.
+
+          Installation: Download and run the Windows x64 Setup.exe attached below.
+          There is no portable distribution for V5.
+          '@ | Set-Content artifacts/release/RELEASE_NOTES.md -Encoding utf8
+
+      - name: Publish M1 preview prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseArgs = @(
+            'release', 'create', $env:M1_TAG,
+            'artifacts/release/CubicalCompare-V5-M1-Windows-x64-Setup.exe',
+            'artifacts/release/SHA256SUMS.txt',
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--target', $env:GITHUB_SHA,
+            '--title', 'Cubical Compare V5 — M1 Preview',
+            '--notes-file', 'artifacts/release/RELEASE_NOTES.md',
+            '--prerelease'
+          )
+          & gh @releaseArgs
+          if ($LASTEXITCODE -ne 0) { throw "GitHub prerelease creation failed." }

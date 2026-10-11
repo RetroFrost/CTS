@@ -20,6 +20,8 @@
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- Preview-only compilation is explicitly enabled by the M1 packaging workflow. -->
+    <DefineConstants Condition="'$(V5Preview)' == 'true'">$(DefineConstants);V5_M1_PREVIEW</DefineConstants>
 
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>

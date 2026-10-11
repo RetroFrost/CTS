@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>14</LangVersion>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants Condition="'$(V5Preview)' == 'true'">$(DefineConstants);V5_M1_PREVIEW</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\CubicalCompare\Core\Project\**\*.cs" Link="Project\%(RecursiveDir)%(Filename)%(Extension)" />

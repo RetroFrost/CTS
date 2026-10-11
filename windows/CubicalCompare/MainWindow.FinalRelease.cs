@@ -53,7 +53,10 @@ public sealed partial class MainWindow
         RootNavigation.MenuItems.Add(CreateNavigationItem("Developer", "developer", Symbol.Repair));
 
         RootNavigation.FooterMenuItems.Clear();
+#if !V5_M1_PREVIEW
+        // Stable V4 releases are not an update source for the V5 M1 preview.
         RootNavigation.FooterMenuItems.Add(CreateNavigationItem("Updates", "updates", Symbol.Download));
+#endif
         RootNavigation.FooterMenuItems.Add(CreateNavigationItem("Settings", "settings", Symbol.Setting));
     }
 
@@ -223,7 +226,9 @@ public sealed partial class MainWindow
         contentHost.Children.Add(_updatesPage);
         var openUpdates = new Button { Content = "Open Updates", HorizontalAlignment = HorizontalAlignment.Left };
         openUpdates.Click += (_, _) => RootNavigation.SelectedItem = RootNavigation.FooterMenuItems.OfType<NavigationViewItem>().Single(item => Equals(item.Tag, "updates"));
+#if !V5_M1_PREVIEW
         pageStack.Children.Add(CreateSettingsCard(openUpdates));
+#endif
         DeveloperDiagnosticsPanel.Children.Add(CreateSettingsCard(buildPanel));
 
         _settingsPage = new Grid { Visibility = Visibility.Collapsed };

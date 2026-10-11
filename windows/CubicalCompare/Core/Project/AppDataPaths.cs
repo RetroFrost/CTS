@@ -7,7 +7,12 @@ public static class AppDataPaths
     public static string RootDirectory { get; } = Ensure(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RetroFrost",
+#if V5_M1_PREVIEW
+        // Keep preview settings, autosaves and logs separate from stable V4.
+        "CubicalCompareV5Preview"));
+#else
         "CubicalCompare"));
+#endif
 
     public static string FontsDirectory { get; } = Ensure(Path.Combine(RootDirectory, "Fonts"));
     public static string PreferencesFile { get; } = Path.Combine(RootDirectory, "preferences.json");
