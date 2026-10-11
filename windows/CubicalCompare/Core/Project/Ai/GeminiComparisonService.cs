@@ -88,17 +88,17 @@ public sealed class GeminiComparisonService
             var batchCount = Math.Min(CardBatchSize, count - start);
             progress?.Report($"Researching and writing cards {start + 1}–{start + batchCount} of {count}…");
             var prior = string.Join("; ", cards.TakeLast(5).Select(c => c.Title));
-            var prompt = $"""
-                Create cards {{start + 1}} through {{start + batchCount}} of exactly {{count}}
-                ordered comparison cards about: {{topic}}
-
-                Research relevant facts with Google Search. Use coherent progression
-                and do not repeat previous cards. Previous titles: {{prior}}
-                Return ONLY a JSON object:
-                {"cards":[{"title":"short title","badgeValue":"number or concise value",
-                "badgeUnit":"unit, if applicable","description":"informative card description"}]}
-                Exactly {{batchCount}} cards, in order. Do not include icon URLs or credits.
-                """;
+            var prompt = string.Join("\n", new[]
+            {
+                $"Create cards {start + 1} through {start + batchCount} of exactly {count}",
+                $"ordered comparison cards about: {topic}",
+                "Research relevant facts with Google Search. Use coherent progression",
+                $"and do not repeat previous cards. Previous titles: {prior}",
+                "Return ONLY a JSON object:",
+                "{\"cards\":[{\"title\":\"short title\",\"badgeValue\":\"number or concise value\",",
+                "\"badgeUnit\":\"unit, if applicable\",\"description\":\"informative card description\"}]}",
+                $"Exactly {batchCount} cards, in order. Do not include icon URLs or credits.",
+            });
 
             IReadOnlyList<AiCardDraft>? batch = null;
             for (var attempt = 0; attempt < 2; attempt++)
@@ -136,18 +136,18 @@ public sealed class GeminiComparisonService
             progress?.Report($"Finding Flaticon pages {start + 1}–{start + batch.Length} of {cards.Count}…");
             var items = string.Join("\n", batch.Select((card, i) =>
                 $"{i}: {card.Title} — {card.Description}"));
-            var prompt = $"""
-                Use Google Search to find an actual relevant Flaticon free-icon page
-                for each comparison card below. Prefer consistent colorful icons
-                and avoid reusing the same icon. Do not invent IDs or URLs.
-                Cards (zero-based indices within this batch):
-                {{items}}
-
-                Return ONLY JSON:
-                {"icons":[{"index":0,"url":"https://www.flaticon.com/free-icon/name_12345"}]}
-                Include one entry for every index 0 through {{batch.Length - 1}}.
-                If you cannot verify a suitable page, use an empty URL.
-                """;
+            var prompt = string.Join("\n", new[]
+            {
+                "Use Google Search to find an actual relevant Flaticon free-icon page",
+                "for each comparison card below. Prefer consistent colorful icons",
+                "and avoid reusing the same icon. Do not invent IDs or URLs.",
+                "Cards (zero-based indices within this batch):",
+                items,
+                "Return ONLY JSON:",
+                "{\"icons\":[{\"index\":0,\"url\":\"https://www.flaticon.com/free-icon/name_12345\"}]}",
+                $"Include one entry for every index 0 through {batch.Length - 1}.",
+                "If you cannot verify a suitable page, use an empty URL.",
+            });
 
             try
             {
