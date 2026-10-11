@@ -104,6 +104,16 @@ public sealed partial class MainWindow
             throw new InvalidOperationException("Full-app patch controls are missing.");
         ShowPage("project");
         var updatesItems = RootNavigation.FooterMenuItems.OfType<NavigationViewItem>().Where(item => Equals(item.Tag, "updates")).ToArray();
+#if V5_M1_PREVIEW
+        // M1 is a separate prerelease, so its navigation must not expose V4 updates.
+        if (updatesItems.Length != 0)
+            throw new InvalidOperationException("Preview must not expose stable V4 updates.");
+        ShowPage("settings");
+        if (_settingsPage?.Visibility != Visibility.Visible)
+            throw new InvalidOperationException("Preview Settings page is missing.");
+        ShowPage("project");
+        App.WriteLog("V5 preview update-channel isolation smoke passed.");
+#else
         if (updatesItems.Length != 1 || _updatesPage is null || _updateFromZipButton is null || _checkUpdatesButton is null || _installUpdateButton is null)
             throw new InvalidOperationException("Updates page or update controls are missing.");
         if (!_updatesPage.Children.OfType<ScrollViewer>().Any())
@@ -116,6 +126,7 @@ public sealed partial class MainWindow
             throw new InvalidOperationException("Settings does not hide the Updates page.");
         ShowPage("project");
         App.WriteLog("Dedicated Updates page smoke passed.");
+#endif
         App.WriteLog("Developer tab isolation smoke passed.");
         App.WriteLog("Editor UX interaction smoke passed.");
     }

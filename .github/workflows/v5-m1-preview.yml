@@ -6,6 +6,7 @@ on:
       - v5/development
     paths:
       - '.github/workflows/v5-m1-preview.yml'
+      - 'windows/CubicalCompare/MainWindow.EditorWorkspaceUx.cs'
   workflow_dispatch:
 
 permissions:
