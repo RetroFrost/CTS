@@ -89,15 +89,15 @@ public sealed class GeminiComparisonService
             progress?.Report($"Researching and writing cards {start + 1}–{start + batchCount} of {count}…");
             var prior = string.Join("; ", cards.TakeLast(5).Select(c => c.Title));
             var prompt = $"""
-                Create cards {start + 1} through {start + batchCount} of exactly {count}
-                ordered comparison cards about: {topic}
+                Create cards {{start + 1}} through {{start + batchCount}} of exactly {{count}}
+                ordered comparison cards about: {{topic}}
 
                 Research relevant facts with Google Search. Use coherent progression
-                and do not repeat previous cards. Previous titles: {prior}
+                and do not repeat previous cards. Previous titles: {{prior}}
                 Return ONLY a JSON object:
-                {{"cards":[{{"title":"short title","badgeValue":"number or concise value",
-                "badgeUnit":"unit, if applicable","description":"informative card description"}}]}}
-                Exactly {batchCount} cards, in order. Do not include icon URLs or credits.
+                {"cards":[{"title":"short title","badgeValue":"number or concise value",
+                "badgeUnit":"unit, if applicable","description":"informative card description"}]}
+                Exactly {{batchCount}} cards, in order. Do not include icon URLs or credits.
                 """;
 
             IReadOnlyList<AiCardDraft>? batch = null;
@@ -141,11 +141,11 @@ public sealed class GeminiComparisonService
                 for each comparison card below. Prefer consistent colorful icons
                 and avoid reusing the same icon. Do not invent IDs or URLs.
                 Cards (zero-based indices within this batch):
-                {items}
+                {{items}}
 
                 Return ONLY JSON:
-                {{"icons":[{{"index":0,"url":"https://www.flaticon.com/free-icon/name_12345"}}]}}
-                Include one entry for every index 0 through {batch.Length - 1}.
+                {"icons":[{"index":0,"url":"https://www.flaticon.com/free-icon/name_12345"}]}
+                Include one entry for every index 0 through {{batch.Length - 1}}.
                 If you cannot verify a suitable page, use an empty URL.
                 """;
 
@@ -318,6 +318,8 @@ public static class AiResponseParser
         var result = new List<AiCardDraft>(expectedCount);
         foreach (var card in cards.EnumerateArray())
         {
+            if (card.ValueKind != JsonValueKind.Object)
+                throw new InvalidDataException("AI returned a malformed card.");
             var title = GetText(card, "title", 1000);
             var value = GetText(card, "badgeValue", 1000);
             var unit = GetText(card, "badgeUnit", 1000);
@@ -339,7 +341,9 @@ public static class AiResponseParser
         var result = new Dictionary<int, string>();
         foreach (var icon in icons.EnumerateArray())
         {
-            if (!icon.TryGetProperty("index", out var indexElement) ||
+            if (icon.ValueKind != JsonValueKind.Object ||
+                !icon.TryGetProperty("index", out var indexElement) ||
+                indexElement.ValueKind != JsonValueKind.Number ||
                 !indexElement.TryGetInt32(out var index) ||
                 index < 0 || index >= batchCount)
                 continue;
