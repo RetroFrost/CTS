@@ -148,7 +148,13 @@ internal class RendererV3RibbonPlayer(
     }
     @Synchronized fun render(canvas: Canvas, seconds: Float, outWidth: Int, outHeight: Int) {
         val frame = (seconds.coerceAtLeast(0f)*bundle.selection.fps).toInt().coerceIn(0,frames-1)
-        canvas.drawColor(legacy.optInt("backgroundColor", Color.rgb(18,18,18)))
+        val authoredColor = legacy.opt("backgroundColor")
+        val background = when (authoredColor) {
+            is Number -> authoredColor.toInt()
+            is String -> runCatching { Color.parseColor(authoredColor) }.getOrDefault(Color.rgb(18,18,18))
+            else -> Color.rgb(18,18,18)
+        }
+        canvas.drawColor(background)
         canvas.save()
         try {
             canvas.scale(outWidth/w,outHeight/h)

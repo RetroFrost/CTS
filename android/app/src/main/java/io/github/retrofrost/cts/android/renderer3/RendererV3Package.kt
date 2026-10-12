@@ -250,7 +250,7 @@ internal object RendererV3Container {
                 val sequenceRoots = LinkedHashSet<String>()
                 for (key in resources.keys()) {
                     val resource = resources.optJSONObject(key) ?: continue
-                    if (resource.optString("type") == "smart-card-animation") {
+                    if (resource.optString("type") in setOf("smart-card-animation", "smart-badge-animation")) {
                         val folder = safeName(resource.optString("sequenceRoot"))
                         sequenceRoots += folder
                     }

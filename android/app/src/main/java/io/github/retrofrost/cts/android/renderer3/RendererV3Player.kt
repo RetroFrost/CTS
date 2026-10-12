@@ -38,9 +38,10 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
     private val layers = root.optJSONArray("layers")
     private val nodes = parseNodes(root.optJSONArray("objects") ?: JSONArray())
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val images = object : LinkedHashMap<String, Bitmap>(6, 0.75f, true) {
+    private val images = object : LinkedHashMap<String, Bitmap>(12, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
-            val overflow = size > 4
+            val bytes = values.sumOf { if (it.isRecycled) 0L else it.allocationByteCount.toLong() }
+            val overflow = size > 28 || bytes > 24L * 1024 * 1024
             if (overflow) eldest?.value?.takeUnless(Bitmap::isRecycled)?.recycle()
             return overflow
         }
