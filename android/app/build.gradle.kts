@@ -35,8 +35,8 @@ android {
         applicationId = "io.github.retrofrost.cts.android.v5"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5000002
-        versionName = "5.0.0-android-m2"
+        versionCode = 5000003
+        versionName = "5.0.0-android-m3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -101,4 +101,5 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
 }

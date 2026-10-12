@@ -28,7 +28,7 @@ class ReferenceFrameRenderer(
     private val width: Int,
     private val height: Int,
 ) : AutoCloseable {
-    private val rendererV3 = project.rendererV3?.let { RendererV3Player(context, it) }
+    private val rendererV3 = project.rendererV3?.let { RendererV3Player(context, it, project) }
     private val images = BitmapSourceCache(context)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val text = TextBlockPainter()

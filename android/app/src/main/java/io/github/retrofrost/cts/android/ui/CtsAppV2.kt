@@ -311,12 +311,22 @@ fun CtsAndroidAppV2(
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             runCatching {
-                withContext(Dispatchers.IO) { RendererV3Container.install(context, uri) }
-            }.onSuccess { selected ->
-                applyProject(project.copy(rendererV3 = selected))
+                withContext(Dispatchers.IO) {
+                    val selected = RendererV3Container.install(context, uri)
+                    val audio = runCatching {
+                        RendererV3Container.embeddedAudio(context, selected)
+                    }.getOrNull()
+                    selected to audio
+                }
+            }.onSuccess { (selected, audio) ->
+                val soundtrack = if (project.soundtrack.uri.isNullOrBlank() && audio != null)
+                    project.soundtrack.copy(uri = audio, displayName = "Renderer3 embedded audio")
+                else project.soundtrack
+                applyProject(project.copy(rendererV3 = selected, soundtrack = soundtrack))
                 positionSeconds = 0f
                 isPlaying = false
-                message("Renderer3 loaded: " + selected.name + " · " + selected.frames + " frames")
+                message("Renderer3 loaded: " + selected.name +
+                    if (audio != null) " · embedded audio available" else " · " + selected.frames + " frames")
             }.onFailure { error ->
                 message(error.message ?: "This Renderer3 scene cannot be played on Android")
             }

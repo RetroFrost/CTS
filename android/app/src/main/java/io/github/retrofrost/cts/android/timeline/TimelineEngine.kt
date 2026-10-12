@@ -223,7 +223,7 @@ object TimelineEngine {
     }
 
     fun duration(project: CtsProject): Float {
-        project.rendererV3?.let { return it.durationSeconds }
+        project.rendererV3?.let { return it.durationForCards(project.cards.size) }
         val parts = timelineParts(project)
         val automatic = automaticDuration(project)
         if (isSealedReference(project) || project.modelMode == ModelMode.ExactReference) return automatic

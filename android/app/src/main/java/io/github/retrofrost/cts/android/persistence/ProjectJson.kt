@@ -72,6 +72,12 @@ object ProjectJson {
                     .put("height", selection.height)
                     .put("fps", selection.fps)
                     .put("frames", selection.frames)
+                    .put("wrapped_engine", selection.wrappedEngine ?: JSONObject.NULL)
+                    .put("canonical_cards", selection.canonicalCards)
+                    .put("ribbon_start", selection.ribbonStart)
+                    .put("ribbon_step", selection.ribbonStep)
+                    .put("outro_frames", selection.outroFrames)
+                    .put("opening_ends", JSONArray(selection.openingEnds))
             } ?: JSONObject.NULL)
             .put("video_bitrate", normalized.export.videoBitrate)
             .put("audio_bitrate", normalized.export.audioBitrate)
@@ -405,7 +411,17 @@ object ProjectJson {
         val width = source.optInt("width")
         val height = source.optInt("height")
         if (fps !in 1..240 || frames !in 1..2_000_000 || width !in 1..8192 || height !in 1..8192) return null
-        return RendererV3Selection(file, id, source.optString("name", id), width, height, fps, frames)
+        return RendererV3Selection(
+            file, id, source.optString("name", id), width, height, fps, frames,
+            wrappedEngine = source.optString("wrapped_engine").takeIf { it == "ribbon-exact" },
+            canonicalCards = source.optInt("canonical_cards", 0),
+            ribbonStart = source.optInt("ribbon_start", 0),
+            ribbonStep = source.optInt("ribbon_step", 0),
+            outroFrames = source.optInt("outro_frames", 0),
+            openingEnds = source.optJSONArray("opening_ends")?.let { array ->
+                (0 until array.length()).map { array.optInt(it) }
+            } ?: emptyList(),
+        )
     }
 
     private fun JSONObject.nullableString(key: String): String? =

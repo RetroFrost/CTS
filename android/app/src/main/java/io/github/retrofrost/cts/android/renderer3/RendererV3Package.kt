@@ -36,9 +36,9 @@ internal object RendererV3Container {
         return name
     }
 
-    fun decode(input: ByteArray): String {
+    fun decode(input: ByteArray, expectedMagic: String = HEADER): String {
         require(input.size >= 20 && input.size.toLong() <= MAX_CONTAINER) { "Renderer3 exceeds its size limit" }
-        require(String(input, 0, 8, StandardCharsets.US_ASCII) == HEADER) {
+        require(String(input, 0, 8, StandardCharsets.US_ASCII) == expectedMagic) {
             "Not a Renderer3 container (CCRNDR03 required)"
         }
         val bytes = ByteBuffer.wrap(input).order(ByteOrder.BIG_ENDIAN)
@@ -78,7 +78,7 @@ internal object RendererV3Container {
         return output.toByteArray()
     }
 
-    fun open(file: File): RendererV3Package {
+    fun open(file: File, validateAnimations: Boolean = true): RendererV3Package {
         require(file.exists() && file.length() in 1..MAX_CONTAINER) { "Invalid or oversized Renderer3 file" }
         val signature = file.inputStream().use { it.read() to it.read() }
         var archive: ZipFile? = null
@@ -115,9 +115,26 @@ internal object RendererV3Container {
             require(id.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Renderer3 has an invalid ID" }
             val engine = json.optString("engine", "scene-v3")
             require(engine == "scene-v3") { "Renderer3 engine " + engine + " is not supported on Android" }
-            require(json.optString("wrappedRenderer").isBlank()) {
-                "This Renderer3 wraps a legacy Windows renderer and needs its desktop engine"
-            }
+
+            val wrappedPath = json.optString("wrappedRenderer")
+            val wrapped = if (wrappedPath.isNotBlank()) {
+                val name = safeName(wrappedPath)
+                val entry = entries.entries.firstOrNull { it.key.equals(name, true) }
+                    ?: error("Renderer3 package is missing its wrapped legacy engine: " + name)
+                val data = boundedRead(archive!!.getInputStream(entry.value), MAX_CONTAINER)
+                val legacy = JSONObject(decode(data, "CCRNDR01"))
+                require(legacy.optInt("rendererApi", -1) == 2 &&
+                    legacy.optString("engine") == "ribbon-exact") {
+                    "Wrapped renderer uses an unsupported legacy engine (only ribbon-exact is portable)"
+                }
+                legacy
+            } else null
+            val badgeConfig = if (wrapped != null) {
+                entries.entries.firstOrNull { it.key.equals("smartbadge-v2.json", true) }?.let {
+                    JSONObject(boundedRead(archive!!.getInputStream(it.value), MAX_ENTRY)
+                        .toString(StandardCharsets.UTF_8))
+                }
+            } else null
             val clock = json.optJSONObject("timeline") ?: error("Renderer3 has no timeline")
             require(clock.optString("clock", "absolute") == "absolute" &&
                 !clock.optBoolean("implicitAnimation", false)) { "Renderer3 requires an absolute explicit frame clock" }
@@ -130,7 +147,10 @@ internal object RendererV3Container {
             require(fps in 1..240 && width in 1..8192 && height in 1..8192 &&
                 frames in 1..2_000_000) { "Invalid Renderer3 frame clock or canvas" }
 
-            val supported = setOf("rect", "ellipse", "polygon", "text", "image",
+            val supported = if (wrapped != null) {
+                setOf("smart-card-animation", "smart-badge-animation",
+                    "rect", "ellipse", "polygon", "text", "image", "audio")
+            } else setOf("rect", "ellipse", "polygon", "text", "image",
                 "text-raster", "source-text-raster", "source-card-raster",
                 "source-component-raster", "component-raster")
             val objects = json.optJSONArray("objects") ?: error("Renderer3 has no scene objects")
@@ -141,13 +161,16 @@ internal object RendererV3Container {
                 val features = json.optJSONArray(featureList) ?: continue
                 for (i in 0 until features.length()) {
                     val feature = features.optString(i)
-                    if (feature in setOf("project-card-data", "project-badge-text",
+                    if (wrapped == null && feature in setOf("project-card-data", "project-badge-text",
                             "smart-badge-animation", "smart-card-animation", "smartbadge-v2"))
                         unsupported += feature
                 }
             }
             for (i in 0 until objects.length()) {
                 val obj = objects.optJSONObject(i) ?: error("Malformed Renderer3 scene object")
+                if (wrapped != null && obj.optString("kind") !in setOf("smartCard", "ribbonOverlay")) {
+                    unsupported += "unsupported ribbon layer " + obj.optString("kind")
+                }
                 val resourceId = obj.optString("resource")
                 val resource = resources.optJSONObject(resourceId)
                 val type = (resource?.optString("type") ?: obj.optString("kind")).lowercase()
@@ -169,17 +192,110 @@ internal object RendererV3Container {
                     }
                 }
             }
+            if (wrapped != null) {
+                val legacyFeatures = wrapped.optJSONArray("requiredFeatures")
+                val allowedFeatures = setOf("frame-exact", "exact-scroll-track", "affine-badge-transform",
+                    "per-frame-keyframes", "frame-addressed-shine", "custom-outro", "preview-frames",
+                    "ribbon-artwork-region-v1", "ribbon-smart-card-v1", "ribbon-smart-badge-v2",
+                    "ribbon-badge-text-v1", "ribbon-background-track-v1",
+                    "ribbon-card-motion-v1", "ribbon-scroll-track-v1",
+                    "ribbon-scene-overlays-v1")
+                // Unknown required features must not disappear silently in an Android export.
+                // The explicitly ported renderer covers the ribbon/SmartBadge tracks.
+                require(badgeConfig == null || badgeConfig.optInt("version") == 2) {
+                    "Unsupported SmartBadge manifest version"
+                }
+                for (i in 0 until (legacyFeatures?.length() ?: 0)) {
+                    val feature = legacyFeatures!!.optString(i)
+                    if (feature.startsWith("ribbon-") && feature !in allowedFeatures) {
+                        // A known ribbon function may be implemented through authored tracks;
+                        // unrecognised renderer functions need explicit support.
+                        if (feature.contains("overlay") || feature.contains("group"))
+                            unsupported += feature
+                    }
+                }
+                if (badgeConfig != null) {
+                    val packs = badgeConfig.optJSONObject("packs")
+                        ?: error("SmartBadge v2 manifest has no packs")
+                    for (key in packs.keys()) {
+                        val pack = packs.opt(key)
+                        val asset = if (pack is JSONObject) pack.optString("asset") else pack?.toString().orEmpty()
+                        val safe = safeName(asset)
+                        if (entries.keys.none { it.equals(safe, true) })
+                            unsupported += "missing SmartBadge ZIP " + safe
+                    }
+                }
+            }
             require(unsupported.isEmpty()) {
                 "Renderer3 uses features not yet supported on Android: " + unsupported.take(6).joinToString(", ")
             }
-            return RendererV3Package(json, archive, entries, RendererV3Selection(
+            val result = RendererV3Package(json, archive, entries, RendererV3Selection(
                 filePath = file.absolutePath, id = id,
                 name = json.optString("name", id).take(160),
                 width = width, height = height, fps = fps, frames = frames,
-            ))
+                wrappedEngine = wrapped?.optString("engine"),
+                canonicalCards = wrapped?.optInt("canonicalCardCount", 0) ?: 0,
+                ribbonStart = wrapped?.optInt("continuousStartFrame", 0) ?: 0,
+                ribbonStep = wrapped?.optInt("continuousStepFrames", 0) ?: 0,
+                outroFrames = wrapped?.let {
+                    it.optInt("endWipeFrames") + it.optInt("endRiseFrames") +
+                    it.optInt("endHoldFrames") + it.optInt("fadeFrames") +
+                    it.optInt("blackTailFrames")
+                } ?: 0,
+                openingEnds = wrapped?.optJSONArray("openingEnds")?.let { array ->
+                    (0 until array.length()).map { array.optInt(it) }
+                } ?: emptyList(),
+            ), wrapped, badgeConfig)
+            if (wrapped != null && validateAnimations) {
+                val sequenceRoots = LinkedHashSet<String>()
+                for (key in resources.keys()) {
+                    val resource = resources.optJSONObject(key) ?: continue
+                    if (resource.optString("type") in setOf("smart-card-animation", "smart-badge-animation")) {
+                        val folder = safeName(resource.optString("sequenceRoot"))
+                        sequenceRoots += folder
+                    }
+                }
+                require(sequenceRoots.isNotEmpty()) { "Ribbon Renderer3 has no SmartCard animation" }
+                for (folder in sequenceRoots) SmartSequenceV3.fromSidecars(result, folder)
+                val packs = badgeConfig?.optJSONObject("packs")
+                if (packs != null) {
+                    for (key in packs.keys()) {
+                        val pack = packs.opt(key)
+                        val path = if (pack is JSONObject) pack.optString("asset") else pack?.toString().orEmpty()
+                        SmartSequenceV3.fromNestedZip(result.asset(path)
+                            ?: error("Missing SmartBadge v2 pack " + path))
+                    }
+                }
+            }
+            return result
         } catch (error: Exception) {
             archive?.close()
             throw error
+        }
+    }
+
+    /**
+     * Extract renderer-authored audio into private app storage for the existing
+     * MediaExtractor/AAC soundtrack path. This does not change the user's selection
+     * when a soundtrack is already present and never trusts arbitrary asset paths.
+     */
+    fun embeddedAudio(context: Context, selection: RendererV3Selection): String? {
+        open(checkedProjectFile(context, selection), validateAnimations = false).use { renderer ->
+            val audio = renderer.root.optJSONObject("audio") ?: return null
+            val resourceId = audio.optString("source")
+            val source = audio.optString("asset").ifBlank {
+                renderer.root.optJSONObject("resources")
+                    ?.optJSONObject(resourceId)?.optString("path").orEmpty()
+            }
+            if (source.isBlank()) return null
+            val asset = renderer.asset(safeName(source)) ?: return null
+            require(asset.size in 1..(32 * 1024 * 1024)) {
+                "Renderer3 embedded audio exceeds 32 MiB safety limit"
+            }
+            val destination = File(File(context.filesDir, "renderer3"),
+                File(selection.filePath).nameWithoutExtension + "-soundtrack.m4a")
+            destination.outputStream().use { it.write(asset) }
+            return Uri.fromFile(destination).toString()
         }
     }
 
@@ -228,8 +344,27 @@ data class RendererV3Selection(
     val height: Int,
     val fps: Int,
     val frames: Int,
+    val wrappedEngine: String? = null,
+    val canonicalCards: Int = 0,
+    val ribbonStart: Int = 0,
+    val ribbonStep: Int = 0,
+    val outroFrames: Int = 0,
+    val openingEnds: List<Int> = emptyList(),
 ) {
     val durationSeconds: Float get() = frames.toFloat() / fps.coerceAtLeast(1)
+    fun frameCountForCards(cardCount: Int): Int {
+        if (wrappedEngine != "ribbon-exact" || canonicalCards < 4 || ribbonStep <= 0)
+            return frames
+        if (cardCount <= 0) return 1
+        val padding = (frames.toLong() - outroFrames - ribbonStart -
+            (canonicalCards - 4).toLong() * ribbonStep).coerceAtLeast(0)
+        val opening = if (cardCount < 4) openingEnds.getOrNull(cardCount - 1) ?: ribbonStart
+            else ribbonStart
+        return (opening + maxOf(0, cardCount-4).toLong() * ribbonStep + padding + outroFrames)
+            .coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
+    }
+    fun durationForCards(cardCount: Int): Float =
+        frameCountForCards(cardCount).toFloat() / fps.coerceAtLeast(1)
 }
 
 internal class RendererV3Package(
@@ -237,7 +372,10 @@ internal class RendererV3Package(
     private val zip: ZipFile?,
     private val entries: Map<String, ZipEntry>,
     val selection: RendererV3Selection,
+    val wrappedRibbon: JSONObject? = null,
+    val smartBadge: JSONObject? = null,
 ) : Closeable {
+    fun assetPaths(): List<String> = entries.keys.toList()
     fun asset(path: String): ByteArray? {
         val safe = RendererV3Container.safeName(path)
         val match = entries.entries.firstOrNull { (name, _) ->

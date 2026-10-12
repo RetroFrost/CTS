@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.renderer3
 
 import android.content.Context
+import io.github.retrofrost.cts.android.model.CtsProject
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -24,8 +25,9 @@ import kotlin.math.pow
  * Complex Windows-only SmartBadge and source-specific engines fail validation at import,
  * rather than silently producing an inaccurate video.
  */
-internal class RendererV3Player(context: Context, selection: RendererV3Selection) : Closeable {
-    private val bundle = RendererV3Container.open(RendererV3Container.checkedProjectFile(context, selection))
+internal class RendererV3Player(context: Context, selection: RendererV3Selection, project: CtsProject) : Closeable {
+    private val bundle = RendererV3Container.open(RendererV3Container.checkedProjectFile(context, selection), validateAnimations = false)
+    private val ribbon = if (bundle.wrappedRibbon != null) RendererV3RibbonPlayer(context, bundle, project) else null
     private val root = bundle.root
     private val width = bundle.selection.width
     private val height = bundle.selection.height
@@ -36,15 +38,51 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
     private val layers = root.optJSONArray("layers")
     private val nodes = parseNodes(root.optJSONArray("objects") ?: JSONArray())
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val images = object : LinkedHashMap<String, Bitmap>(6, 0.75f, true) {
+    private val images = object : LinkedHashMap<String, Bitmap>(12, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
-            val overflow = size > 4
+            val bytes = values.sumOf { if (it.isRecycled) 0L else it.allocationByteCount.toLong() }
+            val overflow = size > 28 || bytes > 24L * 1024 * 1024
             if (overflow) eldest?.value?.takeUnless(Bitmap::isRecycled)?.recycle()
             return overflow
         }
     }
     @Synchronized
     fun render(canvas: Canvas, seconds: Float, outputWidth: Int, outputHeight: Int) {
+        if (ribbon != null) {
+            ribbon.render(canvas, seconds, outputWidth, outputHeight)
+            val outputFrame = (seconds.coerceAtLeast(0f) * fps).toInt()
+            val (sourceFrame, phase) = ribbon.authoredOverlayTiming(outputFrame)
+            canvas.save()
+            try {
+                canvas.scale(outputWidth.toFloat() / width, outputHeight.toFloat() / height)
+                for (node in nodes) {
+                    if (node.kind != "ribbonOverlay" ||
+                        node.source.optString("ribbonPhase", "foreground") != phase ||
+                        sourceFrame < node.start || sourceFrame > node.end) continue
+                    val resource = resources.optJSONObject(node.resource) ?: continue
+                    val props = properties(node, resource, sourceFrame)
+                    if (!asBool(props["visible"], true)) continue
+                    val opacity = asFloat(props["opacity"] ?: props["material.alpha"], 1f).coerceIn(0f, 1f)
+                    if (opacity <= 0f) continue
+                    canvas.save()
+                    try {
+                        val localClip = asBool(props["clip.local"] ?: props["clip.afterTransform"], false)
+                        if (!localClip) clip(canvas, props)
+                        transform(canvas, props)
+                        if (localClip) clip(canvas, props)
+                        when (val type = resource.optString("type").lowercase()) {
+                            "rect", "ellipse", "polygon" -> vector(canvas, type, props, resource, opacity)
+                            "text" -> text(canvas, props, resource, opacity)
+                            "image" -> bitmap(canvas, props, resource, opacity)
+                            "smart-card-animation", "smart-badge-animation" ->
+                                ribbon.drawAuthoredOverlay(canvas, type, resource, props,
+                                    node.frame, sourceFrame, opacity)
+                        }
+                    } finally { canvas.restore() }
+                }
+            } finally { canvas.restore() }
+            return
+        }
         val frame = ((seconds.coerceAtLeast(0f) * fps).toInt()).coerceIn(0, frames - 1)
         canvas.drawColor(color(root.optString("background", "#000000"), Color.BLACK))
         canvas.save()
@@ -81,6 +119,7 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
 
     @Synchronized
     override fun close() {
+        ribbon?.close()
         images.values.forEach { if (!it.isRecycled) it.recycle() }
         images.clear()
         bundle.close()
