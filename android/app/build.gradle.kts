@@ -35,8 +35,8 @@ android {
         applicationId = "io.github.retrofrost.cts.android.v5"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5000001
-        versionName = "5.0.0-android-m1"
+        versionCode = 5000002
+        versionName = "5.0.0-android-m2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
