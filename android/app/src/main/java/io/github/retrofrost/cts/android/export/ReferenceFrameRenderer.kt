@@ -10,6 +10,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import io.github.retrofrost.cts.android.model.CtsProject
+import io.github.retrofrost.cts.android.renderer3.RendererV3Player
 import io.github.retrofrost.cts.android.rendering.BitmapPainter
 import io.github.retrofrost.cts.android.rendering.BitmapSourceCache
 import io.github.retrofrost.cts.android.rendering.ReferenceCardPainter
@@ -27,6 +28,7 @@ class ReferenceFrameRenderer(
     private val width: Int,
     private val height: Int,
 ) : AutoCloseable {
+    private val rendererV3 = project.rendererV3?.let { RendererV3Player(context, it) }
     private val images = BitmapSourceCache(context)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val text = TextBlockPainter()
@@ -40,6 +42,10 @@ class ReferenceFrameRenderer(
     fun render(target: Bitmap, outputTimeSeconds: Float) {
         check(!closed) { "Renderer is closed" }
         require(target.width == width && target.height == height)
+        if (rendererV3 != null) {
+            rendererV3.render(Canvas(target), outputTimeSeconds, width, height)
+            return
+        }
         // No Paint state may leak from one encoded frame into the next.
         paint.reset()
         paint.isAntiAlias = true
@@ -99,6 +105,7 @@ class ReferenceFrameRenderer(
         if (closed) return
         closed = true
         images.close()
+        rendererV3?.close()
         introRetriever?.release()
     }
 
