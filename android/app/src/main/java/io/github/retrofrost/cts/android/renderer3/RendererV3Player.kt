@@ -49,6 +49,37 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
     fun render(canvas: Canvas, seconds: Float, outputWidth: Int, outputHeight: Int) {
         if (ribbon != null) {
             ribbon.render(canvas, seconds, outputWidth, outputHeight)
+            val outputFrame = (seconds.coerceAtLeast(0f) * fps).toInt()
+            val (sourceFrame, phase) = ribbon.authoredOverlayTiming(outputFrame)
+            canvas.save()
+            try {
+                canvas.scale(outputWidth.toFloat() / width, outputHeight.toFloat() / height)
+                for (node in nodes) {
+                    if (node.kind != "ribbonOverlay" ||
+                        node.source.optString("ribbonPhase", "foreground") != phase ||
+                        sourceFrame < node.start || sourceFrame > node.end) continue
+                    val resource = resources.optJSONObject(node.resource) ?: continue
+                    val props = properties(node, resource, sourceFrame)
+                    if (!asBool(props["visible"], true)) continue
+                    val opacity = asFloat(props["opacity"] ?: props["material.alpha"], 1f).coerceIn(0f, 1f)
+                    if (opacity <= 0f) continue
+                    canvas.save()
+                    try {
+                        val localClip = asBool(props["clip.local"] ?: props["clip.afterTransform"], false)
+                        if (!localClip) clip(canvas, props)
+                        transform(canvas, props)
+                        if (localClip) clip(canvas, props)
+                        when (val type = resource.optString("type").lowercase()) {
+                            "rect", "ellipse", "polygon" -> vector(canvas, type, props, resource, opacity)
+                            "text" -> text(canvas, props, resource, opacity)
+                            "image" -> bitmap(canvas, props, resource, opacity)
+                            "smart-card-animation", "smart-badge-animation" ->
+                                ribbon.drawAuthoredOverlay(canvas, type, resource, props,
+                                    node.frame, sourceFrame, opacity)
+                        }
+                    } finally { canvas.restore() }
+                }
+            } finally { canvas.restore() }
             return
         }
         val frame = ((seconds.coerceAtLeast(0f) * fps).toInt()).coerceIn(0, frames - 1)
