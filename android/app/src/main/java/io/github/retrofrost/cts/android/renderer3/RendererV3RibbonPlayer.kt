@@ -203,7 +203,12 @@ internal class RendererV3RibbonPlayer(
         val props = node.optJSONObject("properties") ?: JSONObject()
         val resource = resources.optJSONObject(node.optString("resource")) ?: return
         val seq = sequence(resource.optString("sequenceRoot"),false)
-        val local = frame-cardStart(index)+props.optInt("sequenceOffset",resource.optInt("sequenceOffset",0))
+        // Each measured SmartCard declares its own source start frame. In particular,
+        // card 5 starts at 703 rather than the fallback 742. Using a generated
+        // step here desynchronises the base, live jsparse text and its badge.
+        val authoredStart = if (index in nodes) node.optInt("frame", cardStart(index))
+            else cardStart(index)
+        val local = frame-authoredStart+props.optInt("sequenceOffset",resource.optInt("sequenceOffset",0))
         val selected = seq.select(local) ?: return
         val drawWidth = props.optDouble("drawWidth",resource.optDouble("drawWidth",seq.width.toDouble())).toFloat()
         val drawHeight = props.optDouble("drawHeight",resource.optDouble("drawHeight",seq.height.toDouble())).toFloat()
