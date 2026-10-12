@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.renderer3
 
 import android.content.Context
+import io.github.retrofrost.cts.android.model.CtsProject
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -24,8 +25,9 @@ import kotlin.math.pow
  * Complex Windows-only SmartBadge and source-specific engines fail validation at import,
  * rather than silently producing an inaccurate video.
  */
-internal class RendererV3Player(context: Context, selection: RendererV3Selection) : Closeable {
+internal class RendererV3Player(context: Context, selection: RendererV3Selection, project: CtsProject) : Closeable {
     private val bundle = RendererV3Container.open(RendererV3Container.checkedProjectFile(context, selection))
+    private val ribbon = if (bundle.wrappedRibbon != null) RendererV3RibbonPlayer(context, bundle, project) else null
     private val root = bundle.root
     private val width = bundle.selection.width
     private val height = bundle.selection.height
@@ -45,6 +47,10 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
     }
     @Synchronized
     fun render(canvas: Canvas, seconds: Float, outputWidth: Int, outputHeight: Int) {
+        if (ribbon != null) {
+            ribbon.render(canvas, seconds, outputWidth, outputHeight)
+            return
+        }
         val frame = ((seconds.coerceAtLeast(0f) * fps).toInt()).coerceIn(0, frames - 1)
         canvas.drawColor(color(root.optString("background", "#000000"), Color.BLACK))
         canvas.save()
@@ -81,6 +87,7 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
 
     @Synchronized
     override fun close() {
+        ribbon?.close()
         images.values.forEach { if (!it.isRecycled) it.recycle() }
         images.clear()
         bundle.close()
