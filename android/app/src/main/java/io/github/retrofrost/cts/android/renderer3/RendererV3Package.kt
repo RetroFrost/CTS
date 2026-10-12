@@ -78,7 +78,7 @@ internal object RendererV3Container {
         return output.toByteArray()
     }
 
-    fun open(file: File): RendererV3Package {
+    fun open(file: File, validateAnimations: Boolean = true): RendererV3Package {
         require(file.exists() && file.length() in 1..MAX_CONTAINER) { "Invalid or oversized Renderer3 file" }
         val signature = file.inputStream().use { it.read() to it.read() }
         var archive: ZipFile? = null
@@ -224,7 +224,7 @@ internal object RendererV3Container {
             require(unsupported.isEmpty()) {
                 "Renderer3 uses features not yet supported on Android: " + unsupported.take(6).joinToString(", ")
             }
-            return RendererV3Package(json, archive, entries, RendererV3Selection(
+            val result = RendererV3Package(json, archive, entries, RendererV3Selection(
                 filePath = file.absolutePath, id = id,
                 name = json.optString("name", id).take(160),
                 width = width, height = height, fps = fps, frames = frames,
@@ -241,6 +241,28 @@ internal object RendererV3Container {
                     (0 until array.length()).map { array.optInt(it) }
                 } ?: emptyList(),
             ), wrapped, badgeConfig)
+            if (wrapped != null && validateAnimations) {
+                val sequenceRoots = LinkedHashSet<String>()
+                for (key in resources.keys()) {
+                    val resource = resources.optJSONObject(key) ?: continue
+                    if (resource.optString("type") == "smart-card-animation") {
+                        val folder = safeName(resource.optString("sequenceRoot"))
+                        sequenceRoots += folder
+                    }
+                }
+                require(sequenceRoots.isNotEmpty()) { "Ribbon Renderer3 has no SmartCard animation" }
+                for (folder in sequenceRoots) SmartSequenceV3.fromSidecars(result, folder)
+                val packs = badgeConfig?.optJSONObject("packs")
+                if (packs != null) {
+                    for (key in packs.keys()) {
+                        val pack = packs.opt(key)
+                        val path = if (pack is JSONObject) pack.optString("asset") else pack?.toString().orEmpty()
+                        SmartSequenceV3.fromNestedZip(result.asset(path)
+                            ?: error("Missing SmartBadge v2 pack " + path))
+                    }
+                }
+            }
+            return result
         } catch (error: Exception) {
             archive?.close()
             throw error
