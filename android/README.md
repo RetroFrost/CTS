@@ -44,5 +44,7 @@ reinstallation; permanent production signing is a future milestone.
 - Native ribbon player uses the wrapped source animation tracks, including opening-card positions and segmented conveyor scroll.
 - Live SmartCard text/artwork and overlays are composed from `desc.txt` + `smart.json` sidecars, and per-card SmartBadge v2 ZIP packages are selected from `smartbadge-v2.json`.
 - Badge frames/shine, settled holds and author-specified frame text rectangles are sampled by integer frame; image layers are decoded using a small bounded cache suitable for the Snapdragon 429 class.
-- Video length adapts to the number of cards instead of forcing the original 78-card length. The renderer is shared by preview and MP4 export.
+- Video length adapts to the number of cards instead of forcing the original reference card count. The renderer is shared by preview and MP4 export.
+- Where present, the Renderer3 package's embedded M4A soundtrack is extracted to private app storage and selected automatically when no other soundtrack is already chosen.
+- Renderer3 packages that use other Windows-only legacy engines still receive an explanatory error instead of an inaccurate approximation.
 - Requires a genuine wrapped **ribbon-exact** engine. Non-ribbon Windows engine types and packages requiring unsupported overlays are still rejected instead of incorrectly rendering.
