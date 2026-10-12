@@ -29,8 +29,8 @@ class WrappedRibbonV3Test {
     }
     private val desc = "64 100 60\np 1 0 base\n"
     private val smart = """{"marker":"jsparse","transparentBackground":true,"emptyText":true,"fields":[{"name":"title","source":"title","token":"jsparse","rect":[0,0,64,100]}]}"""
-    private val wrapped = """{"id":"ribbon.sample","rendererApi":2,"engine":"ribbon-exact","canonicalCardCount":4,"canonicalFrameCount":120,"continuousStartFrame":60,"continuousStepFrames":30,"openingEnds":[20,40,60,80],"endHoldFrames":20}"""
-    private val scene = """{"api":3,"id":"renderer3.wrap.test","timeline":{"clock":"absolute","frames":120,"implicitAnimation":false},"canvas":{"width":640,"height":360,"fps":60},"wrappedRenderer":"renderer.renderer","features":["project-card-data"],"resources":{"main":{"type":"smart-card-animation","sequenceRoot":"cards/demo"}},"objects":[{"id":"smartCard@0","kind":"smartCard","frame":0,"cardIndex":0,"resource":"main"}]}"""
+    private val wrapped = """{"id":"ribbon.sample","rendererApi":2,"engine":"ribbon-exact","canonicalCardCount":4,"canonicalFrameCount":80,"continuousStartFrame":60,"continuousStepFrames":30,"openingEnds":[20,40,60,80],"endHoldFrames":20}"""
+    private val scene = """{"api":3,"id":"renderer3.wrap.test","timeline":{"clock":"absolute","frames":80,"implicitAnimation":false},"canvas":{"width":640,"height":360,"fps":60},"wrappedRenderer":"renderer.renderer","features":["project-card-data"],"resources":{"main":{"type":"smart-card-animation","sequenceRoot":"cards/demo"}},"objects":[{"id":"smartCard@0","kind":"smartCard","frame":0,"cardIndex":0,"resource":"main"}]}"""
     private fun archive(includeWrapped: Boolean = true): File {
         val temp = File.createTempFile("cts-wrapped", ".renderer3")
         ZipOutputStream(temp.outputStream()).use { zip ->
