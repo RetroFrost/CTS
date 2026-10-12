@@ -1,8 +1,8 @@
-name: CTS V5 Android M2 Renderer3 Preview
+name: CTS V5 Android M3 Wrapped Renderer3
 
 on:
   push:
-    branches: [v5/development, v5/renderer3-android]
+    branches: [v5/development, v5/renderer3-android, v5/android-renderer3-wrapped-ribbon]
     paths:
       - 'android/**'
       - 'shared/**'
@@ -50,20 +50,20 @@ jobs:
       - name: Run tests and build signed debug APK
         run: gradle --project-dir android :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace --console=plain
       - name: Name APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk CTS-V5-Android-M2-Renderer3-debug.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk CTS-V5-Android-M3-Renderer3-Wrapped-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: CTS-V5-Android-M2-Renderer3-debug
-          path: CTS-V5-Android-M2-Renderer3-debug.apk
+          name: CTS-V5-Android-M3-Renderer3-Wrapped-debug
+          path: CTS-V5-Android-M3-Renderer3-Wrapped-debug.apk
           if-no-files-found: error
       - name: Publish Android V5 prerelease
         if: github.event_name == 'push' && github.ref == 'refs/heads/v5/development'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG=v5.0.0-android-m2-renderer3-preview.1
+          TAG=v5.0.0-android-m3-renderer3-wrapped-preview.1
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Android M2 Renderer3 preview was already published; preserving its release assets."
             exit 0
           fi
-          gh release create "$TAG" CTS-V5-Android-M2-Renderer3-debug.apk --target "$GITHUB_SHA" --title "Cubical Compare V5 Android M2 — Renderer3" --prerelease --notes "Native Android Renderer3 reader and scene playback for supported raster/vector/text scene-v3 packages, preview and MP4 export, with CRC/ZIP safety checks. SmartBadge/complex desktop Renderer3 features remain unsupported and show an import error. Debug signed APK; stable release signing is not configured."
+          gh release create "$TAG" CTS-V5-Android-M3-Renderer3-Wrapped-debug.apk --target "$GITHUB_SHA" --title "Cubical Compare V5 Android M3 — Wrapped Renderer3" --prerelease --notes "Android V5 M3: supports wrapped CCRNDR01 ribbon-exact renderers inside Renderer3 ZIP packages, SmartCard live jsparse text and artwork, per-card SmartBadge v2 sequence packs, source frame motion and adaptive duration. Unsupported non-ribbon legacy engines still fail explicitly. Debug signed APK; production signing is not configured."

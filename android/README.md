@@ -37,3 +37,12 @@ gradle --project-dir android :app:testDebugUnitTest :app:assembleDebug
 GitHub Actions compiles, tests and publishes the Android M2 GitHub prerelease
 with a **debug-signed APK**. An APK from a different signing key will need
 reinstallation; permanent production signing is a future milestone.
+
+## M3: Wrapped legacy ribbon Renderer3 compatibility
+
+- The import now reads embedded `CCRNDR01` ribbon-exact renderers referenced by the outer `CCRNDR03` scene, instead of rejecting all wrappers.
+- Native ribbon player uses the wrapped source animation tracks, including opening-card positions and segmented conveyor scroll.
+- Live SmartCard text/artwork and overlays are composed from `desc.txt` + `smart.json` sidecars, and per-card SmartBadge v2 ZIP packages are selected from `smartbadge-v2.json`.
+- Badge frames/shine, settled holds and author-specified frame text rectangles are sampled by integer frame; image layers are decoded using a small bounded cache suitable for the Snapdragon 429 class.
+- Video length adapts to the number of cards instead of forcing the original 78-card length. The renderer is shared by preview and MP4 export.
+- Requires a genuine wrapped **ribbon-exact** engine. Non-ribbon Windows engine types and packages requiring unsupported overlays are still rejected instead of incorrectly rendering.
