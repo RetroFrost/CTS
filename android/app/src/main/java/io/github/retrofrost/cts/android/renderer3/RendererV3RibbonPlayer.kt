@@ -227,6 +227,17 @@ internal class RendererV3RibbonPlayer(
                 props.optDouble("drawY",resource.optDouble("drawY",0.0)).toFloat())
             canvas.scale(drawWidth/seq.width,drawHeight/seq.height)
             plate(canvas,seq,selected.asset)
+            // Source-measured cards can reveal the live content from right to left
+            // independently of their base plate. Keep this shell clip on text and
+            // artwork, but never on the shine/overlay composited afterwards.
+            val shell = props.optJSONObject("liveContentClip")
+            if (shell != null) {
+                canvas.save()
+                fun bound(key: String, fallback: Float): Float =
+                    sampleValue(shell.opt(key), frame-authoredStart, fallback)
+                canvas.clipRect(bound("left", 0f), bound("top", 0f),
+                    bound("right", seq.width.toFloat()), bound("bottom", seq.height.toFloat()))
+            }
             val artwork = seq.artwork
             if (artwork!=null) {
                 val dest = rectAt(artwork,"dest","destRects",selected.template)
@@ -249,6 +260,7 @@ internal class RendererV3RibbonPlayer(
                 }
             }
             for (field in seq.fields) drawField(canvas,field,selected.template,card)
+            if (shell != null) canvas.restore()
             plate(canvas,seq,seq.overlayAsset(selected.template))
         } finally { canvas.restore() }
     }
@@ -302,6 +314,25 @@ internal class RendererV3RibbonPlayer(
             plate(canvas,seq,seq.overlayAsset(frameSelection.template))
         } finally { canvas.restore() }
     }
+    private fun sampleValue(value: Any?, frame: Int, default: Float): Float {
+        val descriptor = value as? JSONObject ?: return (value as? Number)?.toFloat() ?: default
+        val dense = descriptor.opt("dense")
+        val values = if (dense is JSONArray) dense else (dense as? JSONObject)?.optJSONArray("values")
+        if (values == null || values.length() == 0) return default
+        val start = (dense as? JSONObject)?.optInt("start", descriptor.optInt("start", 0))
+            ?: descriptor.optInt("start", 0)
+        val stride = max(1, descriptor.optInt("stride",
+            (dense as? JSONObject)?.optInt("stride", 1) ?: 1))
+        val index = (frame - start) / stride
+        val sample = when {
+            frame < start -> if (descriptor.optString("extrapolate") == "hold") 0 else return default
+            index >= values.length() -> if (descriptor.optString("extrapolate") == "hold")
+                values.length()-1 else return default
+            else -> index
+        }
+        return values.optDouble(sample, default.toDouble()).toFloat()
+    }
+
     private fun rectAt(source: JSONObject, constant: String, tracked: String, frame: Int): RectF? {
         val track=source.optJSONArray(tracked)
         val item=if(track!=null && track.length()>0) track.opt(min(frame,track.length()-1))
@@ -327,7 +358,7 @@ internal class RendererV3RibbonPlayer(
         val value=when(label) {
             "title" -> card.title
             "description" -> card.description
-            "value","number","primary" -> card.badgePrimary
+            "value","number","primary","compactvalue" -> card.badgePrimary
             "unit","secondary" -> if(old) words.dropLast(1).joinToString(" ") else card.badgeSecondary
             "header" -> if(old) "OLD" else ""
             else -> ""
