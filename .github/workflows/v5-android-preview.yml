@@ -39,7 +39,7 @@ jobs:
             SDK_MANAGER="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
           fi
           test -x "$SDK_MANAGER"
-          yes | "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null
+          ( set +o pipefail; yes | "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null )
           "$SDK_MANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-36' 'build-tools;36.0.0'
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
