@@ -444,8 +444,8 @@ fun CtsAndroidAppV2(
             message("An export is already running.")
             return
         }
-        if (project.cards.isEmpty()) {
-            message("Add at least one card before exporting.")
+        if (project.cards.isEmpty() && project.rendererV3 == null) {
+            message("Add cards or import a Renderer3 file before exporting.")
             return
         }
         if (
@@ -1866,7 +1866,7 @@ private fun ExportWorkspace(
         item {
             Button(
                 onClick = onExport,
-                enabled = project.cards.isNotEmpty() && exportWork == null,
+                enabled = (project.cards.isNotEmpty() || project.rendererV3 != null) && exportWork == null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),

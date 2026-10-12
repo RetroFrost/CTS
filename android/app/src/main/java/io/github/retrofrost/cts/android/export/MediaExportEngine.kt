@@ -26,7 +26,9 @@ class MediaExportEngine(
     private val onProgress: (percent: Int, stage: String, detail: String) -> Unit = { _, _, _ -> },
 ) {
     fun export(destination: Uri) {
-        require(project.cards.isNotEmpty()) { "Add at least one card before exporting." }
+        require(project.cards.isNotEmpty() || project.rendererV3 != null) {
+            "Add at least one card or import Renderer3 before exporting."
+        }
         val token = System.currentTimeMillis().toString()
         val videoFile = File(context.cacheDir, "cts-$token-video.mp4")
         val audioFile = File(context.cacheDir, "cts-$token-audio.m4a")

@@ -137,12 +137,14 @@ internal object RendererV3Container {
             require(objects.length() in 1..65536) { "Renderer3 has no scene objects or too many objects" }
             val resources = json.optJSONObject("resources") ?: JSONObject()
             val unsupported = LinkedHashSet<String>()
-            val features = json.optJSONArray("requiredFeatures")
-            if (features != null) for (i in 0 until features.length()) {
-                val feature = features.optString(i)
-                if (feature in setOf("project-card-data", "project-badge-text",
-                        "smart-badge-animation", "smart-card-animation", "smartbadge-v2"))
-                    unsupported += feature
+            for (featureList in listOf("features", "requiredFeatures")) {
+                val features = json.optJSONArray(featureList) ?: continue
+                for (i in 0 until features.length()) {
+                    val feature = features.optString(i)
+                    if (feature in setOf("project-card-data", "project-badge-text",
+                            "smart-badge-animation", "smart-card-animation", "smartbadge-v2"))
+                        unsupported += feature
+                }
             }
             for (i in 0 until objects.length()) {
                 val obj = objects.optJSONObject(i) ?: error("Malformed Renderer3 scene object")
