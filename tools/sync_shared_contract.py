@@ -366,28 +366,57 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
                 errors.append(f"Android adapter is missing sample value {value!r}")
 
     monitor = PROGRAM_MONITOR_PATH.read_text(encoding="utf-8")
-    for key, class_name in {
-        "image_frame": "ImageFrame",
-        "title_frame": "TitleFrame",
-        "description_frame": "DescriptionFrame",
-        "badge_frame": "BadgeFrame",
-    }.items():
-        match = re.search(rf"private val {class_name}\s*=\s*NormalizedRect\(([^)]+)\)", monitor)
-        actual = None
-        if match:
-            actual = tuple(
-                float(value.strip().rstrip("fF")) for value in match.group(1).split(",")
-            )
-        expected = tuple(float(value) for value in layout[key])
-        if actual != expected:
-            errors.append(f"Android ProgramMonitor {class_name} does not match the shared layout")
-    monitor_upper = monitor.upper()
-    for name, value in spec["colors"].items():
-        if value.upper() in {"#000000", "#FFFFFF"}:
-            continue
-        compose_hex = ("0xFF" + value.lstrip("#")).upper()
-        if compose_hex not in monitor_upper:
-            errors.append(f"Android ProgramMonitor is missing shared color {name}={value}")
+    # Modern Android uses CardContentLayout plus ReferenceBadgePainter instead of
+    # the older ProgramMonitor static frames. The Males-only exact-reference renderer
+    # has its own video-measured geometry/palette; the shared generic model remains
+    # checked above via SharedContract.kt. Do not conflate those two design contracts.
+    if "CardContentLayout.frames(model, card)" in monitor and "ReferenceBadgePainter.draw(" in monitor:
+        layout_file = ROOT / "android/app/src/main/java/io/github/retrofrost/cts/android/layout/CardContentLayout.kt"
+        badge_file = ROOT / "android/app/src/main/java/io/github/retrofrost/cts/android/render/ReferenceBadgePainter.kt"
+        layout = layout_file.read_text(encoding="utf-8")
+        badge_painter = badge_file.read_text(encoding="utf-8")
+        for name, expected in {
+            "MALES_LEFT_PX": 9.0,
+            "MALES_WIDTH_PX": 471.0,
+            "MALES_IMAGE_HEIGHT_PX": 872.0,
+            "MALES_TITLE_HEIGHT_PX": 93.0,
+            "MALES_DESCRIPTION_HEIGHT_PX": 115.0,
+        }.items():
+            match = re.search(rf"private const val {name}\s*=\s*([0-9.]+)f", layout)
+            if match is None or float(match.group(1)) != expected:
+                errors.append(f"Android Males reference layout {name} differs from its measured geometry")
+        for color in ("0xFF138DDB", "0xFF0B74BE", "0xFFF2F2F2",
+                      "0xFF020202", "0xFF635E57", "0xFF11100C"):
+            if color not in monitor.upper():
+                errors.append(f"Android Males reference preview is missing {color}")
+        for color in ("Color.rgb(211, 8, 9)", "Color.rgb(185, 0, 8)"):
+            if color not in badge_painter:
+                errors.append(f"Android Males reference badge has lost {color}")
+    else:
+        # Backward-compatible validation for Android implementations still using
+        # generic shared-contract rectangles directly inside ProgramMonitor.
+        for key, class_name in {
+            "image_frame": "ImageFrame",
+            "title_frame": "TitleFrame",
+            "description_frame": "DescriptionFrame",
+            "badge_frame": "BadgeFrame",
+        }.items():
+            match = re.search(rf"private val {class_name}\s*=\s*NormalizedRect\(([^)]+)\)", monitor)
+            actual = None
+            if match:
+                actual = tuple(
+                    float(value.strip().rstrip("fF")) for value in match.group(1).split(",")
+                )
+            expected = tuple(float(value) for value in layout[key])
+            if actual != expected:
+                errors.append(f"Android ProgramMonitor {class_name} does not match the shared layout")
+        monitor_upper = monitor.upper()
+        for name, value in spec["colors"].items():
+            if value.upper() in {"#000000", "#FFFFFF"}:
+                continue
+            compose_hex = ("0xFF" + value.lstrip("#")).upper()
+            if compose_hex not in monitor_upper:
+                errors.append(f"Android ProgramMonitor is missing shared color {name}={value}")
 
     return errors
 
