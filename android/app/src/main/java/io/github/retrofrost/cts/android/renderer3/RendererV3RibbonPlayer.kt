@@ -69,7 +69,10 @@ internal class RendererV3RibbonPlayer(
         legacy.optInt("endHoldFrames", 300) + legacy.optInt("fadeFrames", 62) +
         legacy.optInt("blackTailFrames", 41)
     private val frames = frameCount(project.cards.size)
-    private val sequences = LinkedHashMap<String, SmartSequenceV3>()
+    private val sequences = object : LinkedHashMap<String, SmartSequenceV3>(16, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SmartSequenceV3>?): Boolean =
+            size > 12
+    }
     private val art = BitmapSourceCache(context, 3)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val plates = object : LinkedHashMap<String, Bitmap>(10, .75f, true) {
@@ -375,6 +378,72 @@ internal class RendererV3RibbonPlayer(
         if(line.isNotBlank()) lines+=line
         return lines.take(5).ifEmpty { listOf(raw) }
     }
+    /** Maps shortened project timing back onto the authored reference outro. */
+    fun authoredOverlayTiming(outputFrame: Int): Pair<Int, String> {
+        val contentEnd = max(0, frames - outroFrames)
+        return if (outputFrame >= contentEnd)
+            (referenceFrames - outroFrames + outputFrame - contentEnd).coerceIn(0, referenceFrames - 1) to "outro"
+        else outputFrame to "foreground"
+    }
+
+    /** Special overlay objects use the same SmartSequence player and jsparse compositor. */
+    fun drawAuthoredOverlay(
+        canvas: Canvas, type: String, resource: JSONObject, props: Map<String, Any?>,
+        objectFrame: Int, sourceFrame: Int, alpha: Float,
+    ) {
+        val root = resource.optString("sequenceRoot")
+        if (root.isBlank()) return
+        val seq = sequence(root, false)
+        val explicit = props["sequenceFrame"] as? Number
+        val current = explicit?.toInt() ?: (sourceFrame - objectFrame +
+            resource.optInt("sequenceOffset", 0))
+        val frame = seq.select(current) ?: return
+        val card = project.cards.lastOrNull() ?: return
+        fun value(key: String, default: Float): Float = when (val raw = props[key]) {
+            is Number -> raw.toFloat()
+            else -> resource.optDouble(key, default.toDouble()).toFloat()
+        }
+        val x = value("baseX", 0f) + value("drawX", 0f)
+        val y = value("drawY", 0f)
+        val width = value("drawWidth", seq.width.toFloat())
+        val height = value("drawHeight", seq.height.toFloat())
+        if (width <= 0f || height <= 0f) return
+        canvas.save()
+        try {
+            canvas.translate(x, y)
+            canvas.scale(width / seq.width, height / seq.height)
+            if (alpha < .999f) {
+                paint.reset()
+                paint.alpha = (alpha.coerceIn(0f, 1f) * 255).toInt()
+                canvas.saveLayer(RectF(0f, 0f, seq.width.toFloat(), seq.height.toFloat()), paint)
+            }
+            plate(canvas, seq, frame.asset)
+            if (type == "smart-card-animation") {
+                val artwork = seq.artwork
+                val dest = artwork?.let { rectAt(it, "dest", "destRects", frame.template) }
+                val clip = artwork?.let { rectAt(it, "clip", "clipRects", frame.template) } ?: dest
+                val image = art.load(card.imageSubcard.source)
+                if (dest != null && clip != null && image != null) {
+                    canvas.save()
+                    canvas.clipRect(clip)
+                    paint.reset()
+                    paint.isAntiAlias = true
+                    paint.isFilterBitmap = true
+                    val cropScale = min(image.width / max(1f, dest.width()),
+                        image.height / max(1f, dest.height()))
+                    val sw = dest.width() * cropScale; val sh = dest.height() * cropScale
+                    canvas.drawBitmap(image, Rect(((image.width-sw)/2).toInt(),
+                        ((image.height-sh)/2).toInt(), ((image.width+sw)/2).toInt(),
+                        ((image.height+sh)/2).toInt()), dest, paint)
+                    canvas.restore()
+                }
+            }
+            for (field in seq.fields) drawField(canvas,field,frame.template,card)
+            plate(canvas,seq,seq.overlayAsset(frame.template))
+            if (alpha < .999f) canvas.restore()
+        } finally { canvas.restore() }
+    }
+
     override fun close() {
         art.close()
         plates.values.forEach { if(!it.isRecycled) it.recycle() }
