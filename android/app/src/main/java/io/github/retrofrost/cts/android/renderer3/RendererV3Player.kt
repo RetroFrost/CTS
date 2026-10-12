@@ -27,6 +27,10 @@ import kotlin.math.pow
 internal class RendererV3Player(context: Context, selection: RendererV3Selection) : Closeable {
     private val bundle = RendererV3Container.open(RendererV3Container.checkedProjectFile(context, selection))
     private val root = bundle.root
+    private val width = bundle.selection.width
+    private val height = bundle.selection.height
+    private val fps = bundle.selection.fps
+    private val frames = bundle.selection.frames
     private val resources = root.optJSONObject("resources") ?: JSONObject()
     private val selectors = parseSelectors(root.optJSONArray("selectors"))
     private val layers = root.optJSONArray("layers")
@@ -39,11 +43,6 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
             return overflow
         }
     }
-    private val width = bundle.selection.width
-    private val height = bundle.selection.height
-    private val fps = bundle.selection.fps
-    private val frames = bundle.selection.frames
-
     @Synchronized
     fun render(canvas: Canvas, seconds: Float, outputWidth: Int, outputHeight: Int) {
         val frame = ((seconds.coerceAtLeast(0f) * fps).toInt()).coerceIn(0, frames - 1)
