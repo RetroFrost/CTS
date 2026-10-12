@@ -148,7 +148,8 @@ internal object RendererV3Container {
                 frames in 1..2_000_000) { "Invalid Renderer3 frame clock or canvas" }
 
             val supported = if (wrapped != null) {
-                setOf("smart-card-animation")
+                setOf("smart-card-animation", "smart-badge-animation",
+                    "rect", "ellipse", "polygon", "text", "image", "audio")
             } else setOf("rect", "ellipse", "polygon", "text", "image",
                 "text-raster", "source-text-raster", "source-card-raster",
                 "source-component-raster", "component-raster")
@@ -167,6 +168,9 @@ internal object RendererV3Container {
             }
             for (i in 0 until objects.length()) {
                 val obj = objects.optJSONObject(i) ?: error("Malformed Renderer3 scene object")
+                if (wrapped != null && obj.optString("kind") !in setOf("smartCard", "ribbonOverlay")) {
+                    unsupported += "unsupported ribbon layer " + obj.optString("kind")
+                }
                 val resourceId = obj.optString("resource")
                 val resource = resources.optJSONObject(resourceId)
                 val type = (resource?.optString("type") ?: obj.optString("kind")).lowercase()
@@ -194,7 +198,8 @@ internal object RendererV3Container {
                     "per-frame-keyframes", "frame-addressed-shine", "custom-outro", "preview-frames",
                     "ribbon-artwork-region-v1", "ribbon-smart-card-v1", "ribbon-smart-badge-v2",
                     "ribbon-badge-text-v1", "ribbon-background-track-v1",
-                    "ribbon-card-motion-v1", "ribbon-scroll-track-v1")
+                    "ribbon-card-motion-v1", "ribbon-scroll-track-v1",
+                    "ribbon-scene-overlays-v1")
                 // Unknown required features must not disappear silently in an Android export.
                 // The explicitly ported renderer covers the ribbon/SmartBadge tracks.
                 require(badgeConfig == null || badgeConfig.optInt("version") == 2) {
