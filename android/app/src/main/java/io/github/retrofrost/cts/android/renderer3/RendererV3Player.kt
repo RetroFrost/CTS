@@ -26,7 +26,7 @@ import kotlin.math.pow
  * rather than silently producing an inaccurate video.
  */
 internal class RendererV3Player(context: Context, selection: RendererV3Selection, project: CtsProject) : Closeable {
-    private val bundle = RendererV3Container.open(RendererV3Container.checkedProjectFile(context, selection))
+    private val bundle = RendererV3Container.open(RendererV3Container.checkedProjectFile(context, selection), validateAnimations = false)
     private val ribbon = if (bundle.wrappedRibbon != null) RendererV3RibbonPlayer(context, bundle, project) else null
     private val root = bundle.root
     private val width = bundle.selection.width
