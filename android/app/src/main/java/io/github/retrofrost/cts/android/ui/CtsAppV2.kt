@@ -120,6 +120,7 @@ import androidx.work.WorkManager
 import io.github.retrofrost.cts.android.export.CodecCatalog
 import io.github.retrofrost.cts.android.export.EncoderChoice
 import io.github.retrofrost.cts.android.export.ExportWorker
+import io.github.retrofrost.cts.android.export.DeviceExportPolicy
 import io.github.retrofrost.cts.android.importer.CardStripImporter
 import io.github.retrofrost.cts.android.importer.CardStripGeometry
 import io.github.retrofrost.cts.android.importer.CardStripLayout
@@ -193,7 +194,9 @@ fun CtsAndroidAppV2(
     val activeExport = requestedExportId
         ?.let { id -> exportWorkInfos.firstOrNull { it.id == id && !it.state.isFinished } }
         ?: exportWorkInfos.lastOrNull { !it.state.isFinished }
-    var project by remember(initialModel) { mutableStateOf(CtsProject(model = initialModel).normalized()) }
+    var project by remember(initialModel) {
+        mutableStateOf(CtsProject(model = initialModel, export = DeviceExportPolicy.defaultFor(context)).normalized())
+    }
     var selectedCardId by remember { mutableStateOf(project.cards.firstOrNull()?.id) }
     var positionSeconds by remember { mutableFloatStateOf(0f) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -1688,11 +1691,57 @@ private fun ExportWorkspace(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text("Reference output", style = MaterialTheme.typography.titleMedium)
-                    Text("${project.model.label} · fixed model timing")
+                    Text("Reference animation", style = MaterialTheme.typography.titleMedium)
+                    Text("${project.model.label} · reference timing preserved")
                     Text(
-                        "1920×1080 · 60 fps · model colors, geometry and animation locked",
+                        "Output resolution and frame rate can be chosen independently of model geometry",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Output quality", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "720p saves RAM on older Android devices. 1080p/60 stays available.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    ChoiceRow(
+                        options = listOf(
+                            "720p30" to "720p · 30 fps",
+                            "1080p30" to "1080p · 30 fps",
+                            "1080p60" to "1080p · 60 fps",
+                        ),
+                        selected = when {
+                            project.export.width == 1280 && project.export.height == 720 && project.export.fps == 30 -> "720p30"
+                            project.export.width == 1920 && project.export.height == 1080 && project.export.fps == 30 -> "1080p30"
+                            project.export.width == 1920 && project.export.height == 1080 && project.export.fps == 60 -> "1080p60"
+                            else -> "custom"
+                        },
+                        onSelected = { preset ->
+                            val (width, height, fps, bitrate) = when (preset) {
+                                "720p30" -> listOf(1280, 720, 30, 4_000_000)
+                                "1080p30" -> listOf(1920, 1080, 30, 6_000_000)
+                                else -> listOf(1920, 1080, 60, 6_000_000)
+                            }
+                            onProjectChanged(
+                                project.copy(
+                                    export = project.export.copy(
+                                        width = width,
+                                        height = height,
+                                        fps = fps,
+                                        videoBitrate = bitrate,
+                                        videoEncoderName = null,
+                                        videoMime = MediaFormat.MIMETYPE_VIDEO_AVC,
+                                    ),
+                                ),
+                            )
+                        },
                     )
                 }
             }

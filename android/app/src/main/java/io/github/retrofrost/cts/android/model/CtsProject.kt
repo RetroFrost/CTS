@@ -201,11 +201,6 @@ data class CtsProject(
     fun normalized(): CtsProject {
         val safeExport = export.normalized()
         val sealedReference = model == VisualModel.Males
-        val modelExport = if (sealedReference) {
-            safeExport.copy(width = 1920, height = 1080, fps = 60)
-        } else {
-            safeExport
-        }
         return copy(
             version = SharedContract.PROJECT_VERSION,
             modelMode = if (sealedReference) ModelMode.ExactReference else modelMode,
@@ -217,7 +212,7 @@ data class CtsProject(
             customDurationSeconds = if (sealedReference) null else DurationRuntime.normalizeProjectValue(customDurationSeconds),
             soundtrack = soundtrack.normalized(),
             introVideo = introVideo.normalized(),
-            export = modelExport,
+            export = safeExport,
         )
     }
 
