@@ -36,9 +36,9 @@ internal object RendererV3Container {
         return name
     }
 
-    fun decode(input: ByteArray): String {
+    fun decode(input: ByteArray, expectedMagic: String = HEADER): String {
         require(input.size >= 20 && input.size.toLong() <= MAX_CONTAINER) { "Renderer3 exceeds its size limit" }
-        require(String(input, 0, 8, StandardCharsets.US_ASCII) == HEADER) {
+        require(String(input, 0, 8, StandardCharsets.US_ASCII) == expectedMagic) {
             "Not a Renderer3 container (CCRNDR03 required)"
         }
         val bytes = ByteBuffer.wrap(input).order(ByteOrder.BIG_ENDIAN)
@@ -115,9 +115,26 @@ internal object RendererV3Container {
             require(id.matches(Regex("[A-Za-z0-9._-]{1,128}"))) { "Renderer3 has an invalid ID" }
             val engine = json.optString("engine", "scene-v3")
             require(engine == "scene-v3") { "Renderer3 engine " + engine + " is not supported on Android" }
-            require(json.optString("wrappedRenderer").isBlank()) {
-                "This Renderer3 wraps a legacy Windows renderer and needs its desktop engine"
-            }
+
+            val wrappedPath = json.optString("wrappedRenderer")
+            val wrapped = if (wrappedPath.isNotBlank()) {
+                val name = safeName(wrappedPath)
+                val entry = entries.entries.firstOrNull { it.key.equals(name, true) }
+                    ?: error("Renderer3 package is missing its wrapped legacy engine: " + name)
+                val data = boundedRead(archive!!.getInputStream(entry.value), MAX_CONTAINER)
+                val legacy = JSONObject(decode(data, "CCRNDR01"))
+                require(legacy.optInt("rendererApi", -1) == 2 &&
+                    legacy.optString("engine") == "ribbon-exact") {
+                    "Wrapped renderer uses an unsupported legacy engine (only ribbon-exact is portable)"
+                }
+                legacy
+            } else null
+            val badgeConfig = if (wrapped != null) {
+                entries.entries.firstOrNull { it.key.equals("smartbadge-v2.json", true) }?.let {
+                    JSONObject(boundedRead(archive!!.getInputStream(it.value), MAX_ENTRY)
+                        .toString(StandardCharsets.UTF_8))
+                }
+            } else null
             val clock = json.optJSONObject("timeline") ?: error("Renderer3 has no timeline")
             require(clock.optString("clock", "absolute") == "absolute" &&
                 !clock.optBoolean("implicitAnimation", false)) { "Renderer3 requires an absolute explicit frame clock" }
@@ -130,7 +147,9 @@ internal object RendererV3Container {
             require(fps in 1..240 && width in 1..8192 && height in 1..8192 &&
                 frames in 1..2_000_000) { "Invalid Renderer3 frame clock or canvas" }
 
-            val supported = setOf("rect", "ellipse", "polygon", "text", "image",
+            val supported = if (wrapped != null) {
+                setOf("smart-card-animation")
+            } else setOf("rect", "ellipse", "polygon", "text", "image",
                 "text-raster", "source-text-raster", "source-card-raster",
                 "source-component-raster", "component-raster")
             val objects = json.optJSONArray("objects") ?: error("Renderer3 has no scene objects")
@@ -141,7 +160,7 @@ internal object RendererV3Container {
                 val features = json.optJSONArray(featureList) ?: continue
                 for (i in 0 until features.length()) {
                     val feature = features.optString(i)
-                    if (feature in setOf("project-card-data", "project-badge-text",
+                    if (wrapped == null && feature in setOf("project-card-data", "project-badge-text",
                             "smart-badge-animation", "smart-card-animation", "smartbadge-v2"))
                         unsupported += feature
                 }
@@ -169,6 +188,39 @@ internal object RendererV3Container {
                     }
                 }
             }
+            if (wrapped != null) {
+                val legacyFeatures = wrapped.optJSONArray("requiredFeatures")
+                val allowedFeatures = setOf("frame-exact", "exact-scroll-track", "affine-badge-transform",
+                    "per-frame-keyframes", "frame-addressed-shine", "custom-outro", "preview-frames",
+                    "ribbon-artwork-region-v1", "ribbon-smart-card-v1", "ribbon-smart-badge-v2",
+                    "ribbon-badge-text-v1", "ribbon-background-track-v1",
+                    "ribbon-card-motion-v1", "ribbon-scroll-track-v1")
+                // Unknown required features must not disappear silently in an Android export.
+                // The explicitly ported renderer covers the ribbon/SmartBadge tracks.
+                require(badgeConfig == null || badgeConfig.optInt("version") == 2) {
+                    "Unsupported SmartBadge manifest version"
+                }
+                for (i in 0 until (legacyFeatures?.length() ?: 0)) {
+                    val feature = legacyFeatures!!.optString(i)
+                    if (feature.startsWith("ribbon-") && feature !in allowedFeatures) {
+                        // A known ribbon function may be implemented through authored tracks;
+                        // unrecognised renderer functions need explicit support.
+                        if (feature.contains("overlay") || feature.contains("group"))
+                            unsupported += feature
+                    }
+                }
+                if (badgeConfig != null) {
+                    val packs = badgeConfig.optJSONObject("packs")
+                        ?: error("SmartBadge v2 manifest has no packs")
+                    for (key in packs.keys()) {
+                        val pack = packs.opt(key)
+                        val asset = if (pack is JSONObject) pack.optString("asset") else pack?.toString().orEmpty()
+                        val safe = safeName(asset)
+                        if (entries.keys.none { it.equals(safe, true) })
+                            unsupported += "missing SmartBadge ZIP " + safe
+                    }
+                }
+            }
             require(unsupported.isEmpty()) {
                 "Renderer3 uses features not yet supported on Android: " + unsupported.take(6).joinToString(", ")
             }
@@ -176,7 +228,7 @@ internal object RendererV3Container {
                 filePath = file.absolutePath, id = id,
                 name = json.optString("name", id).take(160),
                 width = width, height = height, fps = fps, frames = frames,
-            ))
+            ), wrapped, badgeConfig)
         } catch (error: Exception) {
             archive?.close()
             throw error
@@ -237,7 +289,10 @@ internal class RendererV3Package(
     private val zip: ZipFile?,
     private val entries: Map<String, ZipEntry>,
     val selection: RendererV3Selection,
+    val wrappedRibbon: JSONObject? = null,
+    val smartBadge: JSONObject? = null,
 ) : Closeable {
+    fun assetPaths(): List<String> = entries.keys.toList()
     fun asset(path: String): ByteArray? {
         val safe = RendererV3Container.safeName(path)
         val match = entries.entries.firstOrNull { (name, _) ->
