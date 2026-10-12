@@ -228,6 +228,18 @@ internal object RendererV3Container {
                 filePath = file.absolutePath, id = id,
                 name = json.optString("name", id).take(160),
                 width = width, height = height, fps = fps, frames = frames,
+                wrappedEngine = wrapped?.optString("engine"),
+                canonicalCards = wrapped?.optInt("canonicalCardCount", 0) ?: 0,
+                ribbonStart = wrapped?.optInt("continuousStartFrame", 0) ?: 0,
+                ribbonStep = wrapped?.optInt("continuousStepFrames", 0) ?: 0,
+                outroFrames = wrapped?.let {
+                    it.optInt("endWipeFrames") + it.optInt("endRiseFrames") +
+                    it.optInt("endHoldFrames") + it.optInt("fadeFrames") +
+                    it.optInt("blackTailFrames")
+                } ?: 0,
+                openingEnds = wrapped?.optJSONArray("openingEnds")?.let { array ->
+                    (0 until array.length()).map { array.optInt(it) }
+                } ?: emptyList(),
             ), wrapped, badgeConfig)
         } catch (error: Exception) {
             archive?.close()
@@ -280,8 +292,27 @@ data class RendererV3Selection(
     val height: Int,
     val fps: Int,
     val frames: Int,
+    val wrappedEngine: String? = null,
+    val canonicalCards: Int = 0,
+    val ribbonStart: Int = 0,
+    val ribbonStep: Int = 0,
+    val outroFrames: Int = 0,
+    val openingEnds: List<Int> = emptyList(),
 ) {
     val durationSeconds: Float get() = frames.toFloat() / fps.coerceAtLeast(1)
+    fun frameCountForCards(cardCount: Int): Int {
+        if (wrappedEngine != "ribbon-exact" || canonicalCards < 4 || ribbonStep <= 0)
+            return frames
+        if (cardCount <= 0) return 1
+        val padding = (frames.toLong() - outroFrames - ribbonStart -
+            (canonicalCards - 4).toLong() * ribbonStep).coerceAtLeast(0)
+        val opening = if (cardCount < 4) openingEnds.getOrNull(cardCount - 1) ?: ribbonStart
+            else ribbonStart
+        return (opening + maxOf(0, cardCount-4).toLong() * ribbonStep + padding + outroFrames)
+            .coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
+    }
+    fun durationForCards(cardCount: Int): Float =
+        frameCountForCards(cardCount).toFloat() / fps.coerceAtLeast(1)
 }
 
 internal class RendererV3Package(
