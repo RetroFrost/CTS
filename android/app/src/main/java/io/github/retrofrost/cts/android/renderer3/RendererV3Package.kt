@@ -274,6 +274,31 @@ internal object RendererV3Container {
         }
     }
 
+    /**
+     * Extract renderer-authored audio into private app storage for the existing
+     * MediaExtractor/AAC soundtrack path. This does not change the user's selection
+     * when a soundtrack is already present and never trusts arbitrary asset paths.
+     */
+    fun embeddedAudio(context: Context, selection: RendererV3Selection): String? {
+        open(checkedProjectFile(context, selection), validateAnimations = false).use { renderer ->
+            val audio = renderer.root.optJSONObject("audio") ?: return null
+            val resourceId = audio.optString("source")
+            val source = audio.optString("asset").ifBlank {
+                renderer.root.optJSONObject("resources")
+                    ?.optJSONObject(resourceId)?.optString("path").orEmpty()
+            }
+            if (source.isBlank()) return null
+            val asset = renderer.asset(safeName(source)) ?: return null
+            require(asset.size in 1..(32 * 1024 * 1024)) {
+                "Renderer3 embedded audio exceeds 32 MiB safety limit"
+            }
+            val destination = File(File(context.filesDir, "renderer3"),
+                File(selection.filePath).nameWithoutExtension + "-soundtrack.m4a")
+            destination.outputStream().use { it.write(asset) }
+            return Uri.fromFile(destination).toString()
+        }
+    }
+
     fun install(context: Context, source: Uri): RendererV3Selection {
         val directory = File(context.filesDir, "renderer3").apply { mkdirs() }
         val staged = File(directory, UUID.randomUUID().toString() + ".renderer3")
