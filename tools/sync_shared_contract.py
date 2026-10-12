@@ -387,7 +387,7 @@ def semantic_check(spec: dict[str, Any]) -> list[str]:
                 errors.append(f"Android Males reference layout {name} differs from its measured geometry")
         for color in ("0xFF138DDB", "0xFF0B74BE", "0xFFF2F2F2",
                       "0xFF020202", "0xFF635E57", "0xFF11100C"):
-            if color not in monitor.upper():
+            if color.upper() not in monitor.upper():
                 errors.append(f"Android Males reference preview is missing {color}")
         for color in ("Color.rgb(211, 8, 9)", "Color.rgb(185, 0, 8)"):
             if color not in badge_painter:
