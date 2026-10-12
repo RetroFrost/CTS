@@ -1,6 +1,7 @@
 package io.github.retrofrost.cts.android.model
 
 import android.media.MediaFormat
+import io.github.retrofrost.cts.android.renderer3.RendererV3Selection
 import io.github.retrofrost.cts.android.shared.SHARED_SAMPLE_CARDS
 import io.github.retrofrost.cts.android.shared.SharedContract
 import java.util.UUID
@@ -197,6 +198,7 @@ data class CtsProject(
     val customDurationSeconds: Float? = null,
     val soundtrack: SoundtrackSettings = SoundtrackSettings(),
     val export: ExportSettings = ExportSettings(),
+    val rendererV3: RendererV3Selection? = null,
 ) {
     fun normalized(): CtsProject {
         val safeExport = export.normalized()

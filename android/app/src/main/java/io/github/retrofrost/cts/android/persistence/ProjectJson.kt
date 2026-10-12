@@ -11,6 +11,7 @@ import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.SoundtrackSettings
 import io.github.retrofrost.cts.android.model.VisualModel
+import io.github.retrofrost.cts.android.renderer3.RendererV3Selection
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -62,6 +63,16 @@ object ProjectJson {
             .put("video_mime", normalized.export.videoMime)
             .put("video_encoder_name", normalized.export.videoEncoderName ?: JSONObject.NULL)
             .put("audio_encoder_name", normalized.export.audioEncoderName ?: JSONObject.NULL)
+            .put("renderer3", normalized.rendererV3?.let { selection ->
+                JSONObject()
+                    .put("file_path", selection.filePath)
+                    .put("id", selection.id)
+                    .put("name", selection.name)
+                    .put("width", selection.width)
+                    .put("height", selection.height)
+                    .put("fps", selection.fps)
+                    .put("frames", selection.frames)
+            } ?: JSONObject.NULL)
             .put("video_bitrate", normalized.export.videoBitrate)
             .put("audio_bitrate", normalized.export.audioBitrate)
             .put("intro_video_uri", normalized.introVideo.uri ?: JSONObject.NULL)
@@ -272,6 +283,7 @@ object ProjectJson {
             customDurationSeconds = customDuration,
             soundtrack = soundtrack,
             export = export,
+            rendererV3 = android.renderer3Selection(),
         )
     }
 
@@ -367,6 +379,7 @@ object ProjectJson {
                 volume = firstAudio?.optDouble("volume", 1.0)?.toFloat() ?: 1f,
                 loop = firstAudio?.optBoolean("loop", true) ?: true,
             ),
+            rendererV3 = android.renderer3Selection(),
             export = ExportSettings(
                 width = settings.optInt("width", 1920),
                 height = settings.optInt("height", 1080),
@@ -380,6 +393,19 @@ object ProjectJson {
                 audioEncoderName = android?.nullableString("audio_encoder_name"),
             ),
         )
+    }
+
+    private fun JSONObject?.renderer3Selection(): RendererV3Selection? {
+        val source = this?.optJSONObject("renderer3") ?: return null
+        val id = source.optString("id")
+        val file = source.optString("file_path")
+        if (id.isBlank() || file.isBlank()) return null
+        val fps = source.optInt("fps")
+        val frames = source.optInt("frames")
+        val width = source.optInt("width")
+        val height = source.optInt("height")
+        if (fps !in 1..240 || frames !in 1..2_000_000 || width !in 1..8192 || height !in 1..8192) return null
+        return RendererV3Selection(file, id, source.optString("name", id), width, height, fps, frames)
     }
 
     private fun JSONObject.nullableString(key: String): String? =

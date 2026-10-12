@@ -138,6 +138,7 @@ import io.github.retrofrost.cts.android.model.ModelMode
 import io.github.retrofrost.cts.android.model.NormalizedRect
 import io.github.retrofrost.cts.android.model.VisualModel
 import io.github.retrofrost.cts.android.persistence.ProjectJson
+import io.github.retrofrost.cts.android.renderer3.RendererV3Container
 import io.github.retrofrost.cts.android.timeline.TimelineEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -303,6 +304,22 @@ fun CtsAndroidAppV2(
                 message(error.message ?: "Could not import that MegaPack")
             }
             isImportingMegaPack = false
+        }
+    }
+
+    val rendererV3Picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { RendererV3Container.install(context, uri) }
+            }.onSuccess { selected ->
+                applyProject(project.copy(rendererV3 = selected))
+                positionSeconds = 0f
+                isPlaying = false
+                message("Renderer3 loaded: " + selected.name + " · " + selected.frames + " frames")
+            }.onFailure { error ->
+                message(error.message ?: "This Renderer3 scene cannot be played on Android")
+            }
         }
     }
 
@@ -585,6 +602,27 @@ fun CtsAndroidAppV2(
                                     saveProject.launch("comparison-project.cts.json")
                                 },
                             )
+                            DropdownMenuItem(
+                                text = { Text("Import Renderer3 (.renderer3 / ZIP)") },
+                                leadingIcon = { Icon(Icons.Filled.Movie, contentDescription = null) },
+                                onClick = {
+                                    projectMenuExpanded = false
+                                    rendererV3Picker.launch(arrayOf("*/*"))
+                                },
+                            )
+                            if (project.rendererV3 != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove Renderer3") },
+                                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                                    onClick = {
+                                        projectMenuExpanded = false
+                                        applyProject(project.copy(rendererV3 = null))
+                                        positionSeconds = 0f
+                                        isPlaying = false
+                                        message("Switched to the built-in renderer")
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Studio setup") },
                                 leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
@@ -1636,8 +1674,13 @@ private fun ExportWorkspace(
     ) {
         item {
             Text("Export", style = MaterialTheme.typography.headlineSmall)
+            project.rendererV3?.let { selection ->
+                Text("Renderer3: " + selection.name + " · " + selection.frames +
+                    " frames at " + selection.fps + " fps",
+                    color = MaterialTheme.colorScheme.primary)
+            }
             Text(
-                "Render the exact frame shown in the monitor. Encoding continues safely in the background.",
+                "The preview and MP4 exporter use the same selected renderer. Encoding continues in the background.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -1692,7 +1735,8 @@ private fun ExportWorkspace(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text("Reference animation", style = MaterialTheme.typography.titleMedium)
-                    Text("${project.model.label} · reference timing preserved")
+                    Text(project.rendererV3?.let { "Renderer3 integer frame clock · " + it.fps + " fps" }
+                        ?: ("${project.model.label} · reference timing preserved"))
                     Text(
                         "Output resolution and frame rate can be chosen independently of model geometry",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
