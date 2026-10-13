@@ -445,15 +445,47 @@ public final class MainActivity extends Activity {
         seek(panel,"Frame rate",15,60,project.Fps,v->project.Fps=v);
         seek(panel,"Seconds per card",1,15,project.SecondsPerCard,v->project.SecondsPerCard=v);
         hint(panel,project.Cards.size()+" cards  ·  "+(project.Cards.size()*project.SecondsPerCard)+" seconds  ·  "+project.ExportWidth+" × "+project.ExportHeight);
-        action(panel,"Export MP4 (H.264 + AAC)",()->{
-            if(exporter.isBusy()){toast("Export already running.");return;}
-            saveFile(EXPORT_VIDEO,"video/mp4","CubicalCompare-V5.mp4");
-        });
+        action(panel,"Export MP4 (H.264 + AAC)",this::reviewAudioThenExport);
         action(panel,"Export thumbnail PNG",()->saveFile(EXPORT_THUMBNAIL,"image/png","CubicalCompare-Thumbnail.png"));
         hint(panel,"Video export uses Media3 and your device's Android video encoder. On older GPUs, lower the output to 1280 × 720 if Full HD encoding is unsupported.");
         actions(panel,"1280 × 720",()->{project.ExportWidth=1280;project.ExportHeight=720;renderUi();},
             "1920 × 1080",()->{project.ExportWidth=1920;project.ExportHeight=1080;renderUi();});
     }
+    private void reviewAudioThenExport(){
+        if(exporter.isBusy()){toast("Export already running.");return;}
+        if(project.AudioTracks.isEmpty()){
+            saveFile(EXPORT_VIDEO,"video/mp4","CubicalCompare-V5.mp4");return;
+        }
+        long totalMs=0;boolean unknown=false;
+        for(String reference:project.AudioTracks){
+            MediaMetadataRetriever r=new MediaMetadataRetriever();
+            try{
+                r.setDataSource(this,Uri.parse(reference));
+                String duration=r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+                if(duration==null)unknown=true;else totalMs+=Long.parseLong(duration);
+            }catch(Exception e){unknown=true;}
+            finally{try{r.release();}catch(Exception ignored){}}
+        }
+        long videoMs=(long)project.Cards.size()*project.SecondsPerCard*1000;
+        String message=null;
+        if(!unknown && totalMs>videoMs){
+            message="The soundtrack pattern is longer than your video by "+
+                String.format(Locale.ROOT,"%.1f",(totalMs-videoMs)/1000.0)+
+                " seconds. Audio will be cut at the video's end.";
+        }else if(!unknown && totalMs<videoMs&&!project.AudioRepeat){
+            message="The soundtrack pattern will finish "+
+                String.format(Locale.ROOT,"%.1f",(videoMs-totalMs)/1000.0)+
+                " seconds before the video ends. The rest will be silent.";
+        }
+        if(message!=null){
+            new AlertDialog.Builder(this).setTitle("Audio duration warning")
+                .setMessage(message)
+                .setNegativeButton("Cancel",null)
+                .setPositiveButton("Export anyway",(d,w)->saveFile(EXPORT_VIDEO,"video/mp4","CubicalCompare-V5.mp4"))
+                .show();
+        }else saveFile(EXPORT_VIDEO,"video/mp4","CubicalCompare-V5.mp4");
+    }
+
     private void settingsPage(){
         section(panel,"Appearance");
         hint(panel,"Android Material-style surfaces with system dynamic accent on Android 12+. The floating navigation stays consistent on phones and tablets.");
