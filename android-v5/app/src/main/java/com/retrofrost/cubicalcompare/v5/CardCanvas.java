@@ -98,7 +98,7 @@ public final class CardCanvas extends View {
         if(which==card && thumb==thumbnail)overlay=ink;
         else {
             String base=which.drawing(thumb);
-            if(!base.isBlank())try{
+            if(!base.trim().isEmpty())try{
                 byte[] bytes=Base64.decode(base,Base64.DEFAULT);
                 overlay=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
             }catch(Exception ignored){}
