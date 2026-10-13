@@ -88,17 +88,25 @@
    <Border Grid.Column="1" Style="{StaticResource PanelStyle}">
     <Grid>
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <DockPanel Margin="4,1,4,14">
-      <TextBlock x:Name="PreviewHeading" FontSize="16" FontWeight="Bold" Text="Live preview" DockPanel.Dock="Left"/>
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-       <Button x:Name="DrawButton" Content="✎ Draw" Click="Draw_Click"/>
-       <Button x:Name="EraseButton" Content="Eraser" Click="Erase_Click"/>
-       <Button x:Name="ClearButton" Content="Clear ink" Click="Clear_Click"/>
+     <StackPanel Margin="4,1,4,14">
+      <DockPanel Margin="0,0,0,8">
+       <TextBlock x:Name="PreviewHeading" FontSize="16" FontWeight="Bold" Text="Canvas / Live preview" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="DrawButton" Content="✎ Draw" Click="Draw_Click"/>
+        <Button x:Name="EraseButton" Content="Eraser" Click="Erase_Click"/>
+        <Button x:Name="ClearButton" Content="Clear ink" Click="Clear_Click"/>
+       </StackPanel>
+      </DockPanel>
+      <StackPanel Orientation="Horizontal">
+       <Button x:Name="MainModeButton" Background="#166B78" Content="Main image" Click="MainMode_Click"/>
+       <Button x:Name="ThumbnailModeButton" Content="Thumbnail" Click="ThumbnailMode_Click"/>
+       <Button x:Name="ThumbnailExportButton" Content="Export thumbnail PNG" Click="ExportThumbnail_Click"/>
       </StackPanel>
-     </DockPanel>
+     </StackPanel>
      <Border Grid.Row="1" Background="#080C11" CornerRadius="10" Padding="8">
       <Viewbox Stretch="Uniform">
-       <Grid x:Name="Stage" Width="960" Height="540" Background="#111825" ClipToBounds="True">
+       <Grid Width="960" Height="540">
+        <Grid x:Name="Stage" Width="960" Height="540" Background="#111825" ClipToBounds="True">
         <Border x:Name="CardPanel" Background="#FFF6F8FB" CornerRadius="22" Width="630" Height="514" HorizontalAlignment="Center" VerticalAlignment="Center">
          <Grid Margin="18">
           <Grid.RowDefinitions>
@@ -112,12 +120,31 @@
            </StackPanel>
           </Border>
           <Grid Grid.Row="2" ClipToBounds="True">
-           <Image x:Name="ArtworkImage" Stretch="Uniform" Margin="8"/>
+           <Image x:Name="ArtworkImage" Stretch="Uniform" Margin="8" RenderTransformOrigin="0.5,0.5" Cursor="SizeAll" MouseLeftButtonDown="Artwork_MouseDown" MouseMove="Artwork_MouseMove" MouseLeftButtonUp="Artwork_MouseUp" LostMouseCapture="Artwork_LostCapture"/>
            <InkCanvas x:Name="Sketch" Background="Transparent" EditingMode="None" IsHitTestVisible="False"/>
           </Grid>
           <TextBlock x:Name="PreviewDescription" Grid.Row="3" Foreground="#263544" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center"/>
          </Grid>
         </Border>
+        </Grid>
+        <Grid x:Name="ThumbnailStage" Width="960" Height="540" Background="#0E2337" ClipToBounds="True" Visibility="Collapsed">
+         <Grid.Background>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+           <GradientStop Color="#142A45" Offset="0"/>
+           <GradientStop Color="#065A70" Offset="1"/>
+          </LinearGradientBrush>
+         </Grid.Background>
+         <Rectangle Fill="#132D49" Width="530" Height="530" HorizontalAlignment="Right" RadiusX="25" RadiusY="25" Margin="0,5,5,5"/>
+         <Image x:Name="ThumbnailArtworkImage" Stretch="Uniform" Width="500" Height="470" HorizontalAlignment="Right" Margin="0,30,25,30" RenderTransformOrigin="0.5,0.5" Cursor="SizeAll" MouseLeftButtonDown="Artwork_MouseDown" MouseMove="Artwork_MouseMove" MouseLeftButtonUp="Artwork_MouseUp" LostMouseCapture="Artwork_LostCapture"/>
+         <StackPanel Margin="48,75,0,0" Width="395" HorizontalAlignment="Left" VerticalAlignment="Top">
+          <TextBlock Text="CUBICAL COMPARE" Foreground="#71EAF1" FontSize="19" FontWeight="Bold"/>
+          <TextBlock x:Name="ThumbnailPreviewTitle" Foreground="White" FontSize="51" FontWeight="ExtraBold" TextWrapping="Wrap" Margin="0,20,0,28"/>
+          <Border x:Name="ThumbnailBadgePanel" Background="#EC394D" CornerRadius="12" Padding="18,12" HorizontalAlignment="Left">
+           <TextBlock x:Name="ThumbnailPreviewBadge" Foreground="White" FontWeight="Bold" FontSize="27"/>
+          </Border>
+         </StackPanel>
+         <InkCanvas x:Name="ThumbnailSketch" Background="Transparent" EditingMode="None" IsHitTestVisible="False"/>
+        </Grid>
        </Grid>
       </Viewbox>
      </Border>
@@ -143,6 +170,21 @@
       <TextBlock x:Name="ArtworkLabel" Text="Artwork" Margin="0,16,0,0"/>
       <Button x:Name="ArtworkButton" Content="Import image..." Click="Artwork_Click"/>
       <Button x:Name="RemoveArtworkButton" Content="Remove image" Click="RemoveArtwork_Click"/>
+      <Button x:Name="CopyMainTransformButton" Content="Copy main image transform → thumbnail" Click="CopyMainTransform_Click" Visibility="Collapsed"/>
+      <Separator Margin="0,12,0,12"/>
+      <TextBlock x:Name="TransformHeading" Text="Image transform" FontWeight="Bold" FontSize="16" Margin="0,0,0,5"/>
+      <DockPanel><TextBlock x:Name="ScaleLabel" Text="Scale"/><TextBlock x:Name="ScaleReadout" DockPanel.Dock="Right" Text="100%" Foreground="{DynamicResource MutedBrush}"/></DockPanel>
+      <Slider x:Name="ScaleSlider" Minimum="0.1" Maximum="4" Value="1" TickFrequency="0.05" SmallChange="0.05" ValueChanged="Transform_Changed" Margin="5,4,5,10"/>
+      <DockPanel><TextBlock x:Name="OffsetXLabel" Text="Position X"/><TextBlock x:Name="OffsetXReadout" DockPanel.Dock="Right" Text="0 px" Foreground="{DynamicResource MutedBrush}"/></DockPanel>
+      <Slider x:Name="OffsetXSlider" Minimum="-480" Maximum="480" ValueChanged="Transform_Changed" Margin="5,4,5,10"/>
+      <DockPanel><TextBlock x:Name="OffsetYLabel" Text="Position Y"/><TextBlock x:Name="OffsetYReadout" DockPanel.Dock="Right" Text="0 px" Foreground="{DynamicResource MutedBrush}"/></DockPanel>
+      <Slider x:Name="OffsetYSlider" Minimum="-270" Maximum="270" ValueChanged="Transform_Changed" Margin="5,4,5,10"/>
+      <DockPanel><TextBlock x:Name="RotationLabel" Text="Rotation"/><TextBlock x:Name="RotationReadout" DockPanel.Dock="Right" Text="0°" Foreground="{DynamicResource MutedBrush}"/></DockPanel>
+      <Slider x:Name="RotationSlider" Minimum="-180" Maximum="180" ValueChanged="Transform_Changed" Margin="5,4,5,10"/>
+      <CheckBox x:Name="FlipXCheck" Content="Flip horizontal" Foreground="{DynamicResource TextBrush}" Checked="TransformFlip_Changed" Unchecked="TransformFlip_Changed" Margin="5,4,5,8"/>
+      <CheckBox x:Name="FlipYCheck" Content="Flip vertical" Foreground="{DynamicResource TextBrush}" Checked="TransformFlip_Changed" Unchecked="TransformFlip_Changed" Margin="5,4,5,8"/>
+      <Button x:Name="ResetTransformButton" Content="Reset transform" Click="ResetTransform_Click"/>
+      <TextBlock x:Name="ThumbnailTransformHint" Visibility="Collapsed" Text="Thumbnail-only transforms are saved separately and baked into the PNG. The video image stays unchanged." Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="5,9,5,4"/>
       <Separator Margin="0,17,0,12"/>
       <TextBlock x:Name="PreferencesHeading" Text="Preferences" FontWeight="Bold" FontSize="16" Margin="0,0,0,7"/>
       <TextBlock x:Name="LanguageLabel" Text="Language"/>
