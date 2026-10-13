@@ -400,16 +400,25 @@ public partial class MainWindow : Window
     private void Erase_Click(object sender, RoutedEventArgs e) => SetInkMode(InkCanvasEditingMode.EraseByStroke);
     private void SetInkMode(InkCanvasEditingMode mode)
     {
-        _drawing = Sketch.EditingMode != mode;
-        Sketch.EditingMode = _drawing ? mode : InkCanvasEditingMode.None;
-        Sketch.IsHitTestVisible = _drawing;
+        var canvas = _thumbnailMode ? ThumbnailSketch : Sketch;
+        bool activate = canvas.EditingMode != mode;
+        Sketch.EditingMode = InkCanvasEditingMode.None;
+        ThumbnailSketch.EditingMode = InkCanvasEditingMode.None;
+        Sketch.IsHitTestVisible = false;
+        ThumbnailSketch.IsHitTestVisible = false;
+        _drawing = activate;
+        if (activate)
+        {
+            canvas.EditingMode = mode;
+            canvas.IsHitTestVisible = true;
+        }
         DrawButton.Background = _drawing && mode == InkCanvasEditingMode.Ink ? BrushOf("#166B78") : (Brush)Resources["FieldBrush"];
         EraseButton.Background = _drawing && mode == InkCanvasEditingMode.EraseByStroke ? BrushOf("#166B78") : (Brush)Resources["FieldBrush"];
     }
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
         if (_active is null) return;
-        Sketch.Strokes.Clear();
+        (_thumbnailMode ? ThumbnailSketch : Sketch).Strokes.Clear();
         PersistInk();
     }
 
@@ -422,14 +431,17 @@ public partial class MainWindow : Window
         {
             var bytes = File.ReadAllBytes(dialog.FileName);
             if (bytes.Length > 20 * 1024 * 1024) throw new IOException("Image must be smaller than 20 MB.");
-            _active.ArtworkBase64 = Convert.ToBase64String(bytes);
+            if (_thumbnailMode) _active.ThumbnailArtworkBase64 = Convert.ToBase64String(bytes);
+            else _active.ArtworkBase64 = Convert.ToBase64String(bytes);
         }
         catch (Exception ex) { ShowError(ex); }
     }
 
     private void RemoveArtwork_Click(object sender, RoutedEventArgs e)
     {
-        if (_active is not null) _active.ArtworkBase64 = "";
+        if (_active is null) return;
+        if (_thumbnailMode) _active.ThumbnailArtworkBase64 = "";
+        else _active.ArtworkBase64 = "";
     }
 
     private void Color_Click(object sender, RoutedEventArgs e)
@@ -633,17 +645,15 @@ public partial class MainWindow : Window
 
     private byte[] CaptureCard(ComparisonCard card)
     {
-        UpdatePreview(card);
-        LoadInk(card);
-        Stage.UpdateLayout();
-        var bitmap = new RenderTargetBitmap(1920, 1080, 192, 192, PixelFormats.Pbgra32);
-        bitmap.Render(Stage);
-        bitmap.Freeze();
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using var stream = new MemoryStream();
-        encoder.Save(stream);
-        return stream.ToArray();
+        bool previousMode = _thumbnailMode;
+        try
+        {
+            SetMode(false);
+            UpdatePreview(card);
+            LoadInk(card);
+            return EncodeStagePng(Stage);
+        }
+        finally { SetMode(previousMode); }
     }
 
     private static string? FindFfmpeg()
