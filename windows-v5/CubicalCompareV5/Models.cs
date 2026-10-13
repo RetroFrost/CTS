@@ -62,6 +62,10 @@ public sealed class ComparisonProject
 {
     public int FormatVersion { get; set; } = 5;
     public ObservableCollection<ComparisonCard> Cards { get; set; } = new();
+    public List<string> AudioTracks { get; set; } = new();
+    public double AudioVolume { get; set; } = 1.0;
+    public bool AudioRepeat { get; set; } = true;
+    public bool AudioFadeOut { get; set; } = true;
 }
 
 public sealed class AppSettings
