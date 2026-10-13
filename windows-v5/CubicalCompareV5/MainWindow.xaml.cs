@@ -77,6 +77,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         LoadSettings();
+        // Start with CPU rendering on low-tier adapters unless the user already chose a mode.
+        // Users may override the choice; their saved setting takes priority next launch.
+        if (!File.Exists(SettingsFile) && (RenderCapability.Tier >> 16) < 2)
+            _settings.SoftwareRendering = true;
         _cards = new ObservableCollection<ComparisonCard>();
         CardList.ItemsSource = _cards;
         LanguageCombo.ItemsSource = LanguageNames;
