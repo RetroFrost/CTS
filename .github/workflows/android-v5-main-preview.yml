@@ -1,0 +1,66 @@
+name: Cubical Compare V5 Android Main Preview
+on:
+  push:
+    branches: [android-main-preview]
+    paths:
+      - 'android-v5/**'
+      - '.github/workflows/android-v5-main-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install SDK 36 and build tools
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Test project and M3U compatibility
+        run: gradle --project-dir android-v5 :app:testDebugUnitTest --no-daemon --stacktrace --console=plain
+      - name: Build native Android debug APK
+        run: gradle --project-dir android-v5 :app:assembleDebug --no-daemon --stacktrace --console=plain
+      - name: Verify feature source and APK
+        shell: bash
+        run: |
+          test -s android-v5/app/build/outputs/apk/debug/app-debug.apk
+          grep -q 'M3uPattern.save' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/MainActivity.java
+          grep -q 'setImageDurationMs' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/VideoExporter.java
+          grep -q 'ThumbnailTransform' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/StudioModel.java
+      - name: Package APK and SHA256
+        shell: bash
+        run: |
+          cp android-v5/app/build/outputs/apk/debug/app-debug.apk CubicalCompare-V5-Android-MainPreview-debug.apk
+          sha256sum CubicalCompare-V5-Android-MainPreview-debug.apk > SHA256SUMS-android.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CubicalCompare-V5-Android-MainPreview
+          if-no-files-found: error
+          path: |
+            CubicalCompare-V5-Android-MainPreview-debug.apk
+            SHA256SUMS-android.txt
+      - name: Publish GitHub prerelease
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v5.0.0-android-main-preview.${{ github.run_number }}"
+          gh release create "$TAG" CubicalCompare-V5-Android-MainPreview-debug.apk SHA256SUMS-android.txt \
+            --repo "${{ github.repository }}" --target "$GITHUB_SHA" --prerelease \
+            --title "Cubical Compare V5 Android — Main Preview #${{ github.run_number }}" \
+            --notes "Native Android V5: floating seven-menu adaptive editor, Windows .ccv5 projects, M3U audio patterns, thumbnail transforms, drawing, badge colours, old-GPU canvas support, 10 languages, dark/light/system appearance and Media3 MP4 export. Debug-signed sideload APK."
