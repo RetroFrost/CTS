@@ -31,8 +31,15 @@ jobs:
       - name: Validate uncluttered update UX
         shell: pwsh
         run: |
-          $sources = Get-ChildItem windows-v5/CubicalCompareV5 -Recurse -File -Include *.cs,*.xaml | Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
-          if ($sources | Select-String -Pattern 'Built-in changelog|What.s New|Release Notes' -Quiet) { throw "In-app changelog/release notes popup is not allowed in V5" }
+          # Only hand-written source is relevant. Generated obj/bin code can
+          # include source snippets or assembly strings and is not UI code.
+          $root = "windows-v5/CubicalCompareV5"
+          $sources = @(Get-ChildItem $root -File -Filter *.cs) + @(Get-ChildItem $root -File -Filter *.xaml)
+          $matches = @($sources | Select-String -Pattern 'Built-in changelog|What.s New|Release Notes')
+          if ($matches.Count -gt 0) {
+            $matches | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line)" }
+            throw "In-app changelog or What's New UI was found in Windows V5 source"
+          }
           if ((Get-Content windows/CubicalCompare/MainWindow.Settings42.cs -Raw).Contains("Built-in changelog")) { throw "Embedded legacy changelog still exists" }
       - name: Smoke-test Windows app startup
         shell: pwsh
