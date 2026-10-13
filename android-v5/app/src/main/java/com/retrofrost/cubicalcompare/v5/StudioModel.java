@@ -119,7 +119,7 @@ public final class StudioModel {
         List<Card> cards=new ArrayList<>();
         for(int i=1;i<rows.size();i++){
             List<String> fields=rows.get(i); String title=col(header,fields,"title");
-            if(title.isBlank())continue;
+            if(title.trim().isEmpty())continue;
             Card c=new Card();c.Title=title;c.BadgeHeader=col(header,fields,"badge header");
             c.Badge=col(header,fields,"badge value");c.BadgeUnit=col(header,fields,"badge unit");
             c.Description=col(header,fields,"description");
