@@ -13,8 +13,8 @@ RequestExecutionLevel user
 ShowInstDetails show
 ShowUninstDetails show
 !define MUI_ABORTWARNING
-!define MUI_ICON "${__FILEDIR__}\..\CubicalCompareV5\Assets\CubicalCompare.ico"
-!define MUI_UNICON "${__FILEDIR__}\..\CubicalCompareV5\Assets\CubicalCompare.ico"
+!define MUI_ICON "..\CubicalCompareV5\Assets\CubicalCompare.ico"
+!define MUI_UNICON "..\CubicalCompareV5\Assets\CubicalCompare.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\CubicalCompareV5.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch Cubical Compare V5"
 !insertmacro MUI_PAGE_WELCOME
