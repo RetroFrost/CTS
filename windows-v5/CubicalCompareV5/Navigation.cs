@@ -78,4 +78,28 @@ public partial class MainWindow
         Dispatcher.BeginInvoke(new Action(() => EditorScrollViewer.ScrollToEnd()),
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
+    internal void RunFloatingIslandRegressionTest()
+    {
+        NavAudio_Click(this, new RoutedEventArgs());
+        if (AudioInspectorPanel.Visibility != Visibility.Visible ||
+            CardInspectorPanel.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Audio island does not open its panel.");
+
+        NavThumbnails_Click(this, new RoutedEventArgs());
+        if (ThumbnailStage.Visibility != Visibility.Visible ||
+            CardInspectorPanel.Visibility != Visibility.Visible ||
+            AudioInspectorPanel.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Thumbnail navigation does not activate the editor.");
+
+        NavCards_Click(this, new RoutedEventArgs());
+        if (Stage.Visibility != Visibility.Visible || ThumbnailStage.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Cards navigation does not restore the main preview.");
+
+        NavSettings_Click(this, new RoutedEventArgs());
+        if (CardInspectorPanel.Visibility != Visibility.Visible)
+            throw new InvalidOperationException("Settings navigation hid the settings panel.");
+
+        M3uPlaylist.RunRegressionChecks();
+    }
+
 }
