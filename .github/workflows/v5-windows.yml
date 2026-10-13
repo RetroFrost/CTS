@@ -31,7 +31,7 @@ jobs:
       - name: Validate uncluttered update UX
         shell: pwsh
         run: |
-          $sources = Get-ChildItem windows-v5/CubicalCompareV5 -Recurse -Include *.cs,*.xaml
+          $sources = Get-ChildItem windows-v5/CubicalCompareV5 -Recurse -File -Include *.cs,*.xaml | Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
           if ($sources | Select-String -Pattern 'Built-in changelog|What.s New|Release Notes' -Quiet) { throw "In-app changelog/release notes popup is not allowed in V5" }
           if ((Get-Content windows/CubicalCompare/MainWindow.Settings42.cs -Raw).Contains("Built-in changelog")) { throw "Embedded legacy changelog still exists" }
       - name: Smoke-test Windows app startup
@@ -57,6 +57,16 @@ jobs:
             throw "Thumbnail regression failed (exit code $($proc.ExitCode))"
           }
           if ((Get-Content thumbnail-regression-result.txt -Raw).Trim() -ne "PASS") { throw "Missing thumbnail regression result" }
+      - name: Floating navigation and audio pattern regression
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path windows-v5/publish/CubicalCompareV5.exe).Path
+          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test-island' -PassThru -Wait
+          if ($proc.ExitCode -ne 0) {
+            if (Test-Path island-regression-result.txt) { Get-Content island-regression-result.txt }
+            throw "Floating island / audio pattern regression failed ($($proc.ExitCode))"
+          }
+          if ((Get-Content island-regression-result.txt -Raw).Trim() -ne "PASS") { throw "Missing island/audio regression result" }
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis -y --no-progress
@@ -91,4 +101,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "v5.0.0-windows-preview.${{ github.run_number }}"
-          gh release create $tag "CubicalCompare-V5-Windows-Setup.exe" "CubicalCompare-V5-Windows-Portable.zip" "SHA256SUMS.txt" --repo "${{ github.repository }}" --target "$env:GITHUB_SHA" --title "Cubical Compare V5 Windows Preview #${{ github.run_number }}" --notes "New Windows V5: dark/light/Mica, old-GPU compatibility mode, drawing artwork, custom badge colours, 10 languages, redesigned editor, NSIS installer." --prerelease
+          gh release create $tag "CubicalCompare-V5-Windows-Setup.exe" "CubicalCompare-V5-Windows-Portable.zip" "SHA256SUMS.txt" --repo "${{ github.repository }}" --target "$env:GITHUB_SHA" --title "Cubical Compare V5 Windows Preview #${{ github.run_number }}" --notes "Windows V5: functional floating Fluent navigation island, cards/thumbnail switching, audio panel with ordered M3U save/import patterns and FFmpeg soundtrack export, dark/light/Mica, old-GPU mode and NSIS installer. No in-app changelog dialogs." --prerelease
