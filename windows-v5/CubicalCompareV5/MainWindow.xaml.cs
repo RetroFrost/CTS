@@ -3,6 +3,8 @@ using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
+using Image = System.Windows.Controls.Image;
+using Point = System.Windows.Point;
 using ColorConverter = System.Windows.Media.ColorConverter;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
