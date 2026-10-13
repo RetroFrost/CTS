@@ -198,4 +198,73 @@ public partial class MainWindow
         catch (Exception ex) { ShowError(ex); }
         finally { SetMode(before); }
     }
+    // GitHub Actions exercises actual WPF composition, not only compile-time syntax.
+    // The regression proves thumbnail-only transforms change exported PNG pixels,
+    // leave the video frame untouched, and survive project serialization.
+    internal void RunThumbnailRegressionTest()
+    {
+        if (_active is null) throw new InvalidOperationException("No selected test card.");
+        var card = _active;
+        var artwork = new DrawingVisual();
+        using (var context = artwork.RenderOpen())
+        {
+            context.DrawRectangle(System.Windows.Media.Brushes.OrangeRed, null, new Rect(0, 0, 80, 80));
+            context.DrawRectangle(System.Windows.Media.Brushes.White, null, new Rect(0, 0, 36, 80));
+            context.DrawEllipse(System.Windows.Media.Brushes.Navy, null, new Point(56, 22), 14, 14);
+        }
+        var testImage = new RenderTargetBitmap(80, 80, 96, 96, PixelFormats.Pbgra32);
+        testImage.Render(artwork);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(testImage));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        card.ArtworkBase64 = Convert.ToBase64String(stream.ToArray());
+        card.ThumbnailArtworkBase64 = "";
+        card.ImageTransform = new ArtworkTransformState();
+        card.ThumbnailTransform = new ArtworkTransformState();
+
+        SetMode(false);
+        UpdatePreview(card);
+        var originalVideo = EncodeStagePng(Stage);
+        SetMode(true);
+        UpdatePreview(card);
+        var originalThumbnail = EncodeStagePng(ThumbnailStage);
+
+        card.ThumbnailTransform = new ArtworkTransformState
+        {
+            Scale = 1.55, X = -110, Y = 65, Rotation = 23,
+            FlipHorizontal = true, FlipVertical = false
+        };
+        UpdatePreview(card);
+        UpdateTransformControls();
+        var changedThumbnail = EncodeStagePng(ThumbnailStage);
+        if (originalThumbnail.AsSpan().SequenceEqual(changedThumbnail))
+            throw new InvalidOperationException("Thumbnail PNG ignored the image transform.");
+
+        SetMode(false);
+        UpdatePreview(card);
+        var unchangedVideo = EncodeStagePng(Stage);
+        if (!originalVideo.AsSpan().SequenceEqual(unchangedVideo))
+            throw new InvalidOperationException("Thumbnail-only transform changed the video image.");
+
+        var project = new ComparisonProject();
+        project.Cards.Add(card);
+        string json = System.Text.Json.JsonSerializer.Serialize(project);
+        var restored = System.Text.Json.JsonSerializer.Deserialize<ComparisonProject>(json)
+            ?? throw new InvalidOperationException("Cannot deserialize saved project.");
+        var check = restored.Cards[0].ThumbnailTransform;
+        if (Math.Abs(check.Scale - 1.55) > 0.001 ||
+            Math.Abs(check.X + 110) > 0.001 ||
+            Math.Abs(check.Y - 65) > 0.001 ||
+            Math.Abs(check.Rotation - 23) > 0.001 ||
+            !check.FlipHorizontal)
+            throw new InvalidOperationException("Thumbnail transform was not saved correctly.");
+
+        SetMode(true);
+        UpdatePreview(card);
+        var savedThumbnail = EncodeStagePng(ThumbnailStage);
+        if (!changedThumbnail.AsSpan().SequenceEqual(savedThumbnail))
+            throw new InvalidOperationException("Thumbnail transform changed after switching editor modes.");
+    }
+
 }
