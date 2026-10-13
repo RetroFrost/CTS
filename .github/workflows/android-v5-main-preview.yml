@@ -62,7 +62,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v5.0.0-android-main-preview.${{ github.run_number }}"
-          gh release create "$TAG" CubicalCompare-V5-Android-MainPreview-debug.apk SHA256SUMS-android.txt \
+          for attempt in 1 2 3 4; do
+            if gh release create "$TAG" CubicalCompare-V5-Android-MainPreview-debug.apk SHA256SUMS-android.txt \
             --repo "${{ github.repository }}" --target "$GITHUB_SHA" --prerelease \
             --title "Cubical Compare V5 Android — Main Preview #${{ github.run_number }}" \
             --notes "Native Android V5: floating seven-menu adaptive editor, Windows .ccv5 projects, M3U audio patterns, thumbnail transforms, drawing, badge colours, old-GPU canvas support, 10 languages, dark/light/system appearance and Media3 MP4 export. Debug-signed sideload APK."
+            then exit 0; fi
+            echo "GitHub release upload attempt ${attempt} failed (possibly transient permission/rate error)."
+            if [ "$attempt" -lt 4 ]; then sleep $((attempt*12)); fi
+          done
+          exit 1
