@@ -69,6 +69,7 @@ public final class MainActivity extends Activity {
     private int theme=0,language=0; // theme 0 auto, 1 dark, 2 light
     private boolean softwarePreview=true;
     private boolean exporting=false;
+    private boolean drawingThumbnail=false;
     private final java.util.concurrent.ExecutorService autosaveWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private long lastAutosaveMs=0;
     private boolean pickerIsThumbnail;
@@ -254,7 +255,10 @@ public final class MainActivity extends Activity {
             TextView n=label(ICONS[i]+"\n"+MENU_TRANSLATIONS[Math.max(0,Math.min(9,language))][i],11,active?Color.WHITE:foreground,active);
             n.setGravity(Gravity.CENTER);n.setMinWidth(dp(69));n.setPadding(dp(9),dp(7),dp(9),dp(7));
             if(active)n.setBackground(shape(Color.rgb(18,109,160),20));
-            n.setOnClickListener(v->{if(canvas!=null)canvas.persistInk();menu=id;renderUi();});
+            n.setOnClickListener(v->{if(canvas!=null)canvas.persistInk();
+                if("Thumbnails".equals(id))drawingThumbnail=true;
+                if("Cards".equals(id))drawingThumbnail=false;
+                menu=id;renderUi();});
             navRow.addView(n,lp(-2,53));
         }
         scroll.addView(navRow);
@@ -273,11 +277,11 @@ public final class MainActivity extends Activity {
         LinearLayout preview=column();preview.setBackground(outline(surface,18,(accent&0x00ffffff)|0x33000000));
         pad(preview,10);preview.setElevation(dp(3));
         LinearLayout previewTitle=row();
-        previewTitle.addView(label(menu.equals("Thumbnails")?"THUMBNAIL / LIVE":"CANVAS / LIVE",11,muted,true));
+        previewTitle.addView(label(menu.equals("Thumbnails")||(menu.equals("Draw")&&drawingThumbnail)?"THUMBNAIL / LIVE":"CANVAS / LIVE",11,muted,true));
         TextView resolution=label("  •  16:9",11,muted,false);previewTitle.addView(resolution);
         preview.addView(previewTitle);
         canvas=new CardCanvas(this);canvas.setLayerType(softwarePreview?View.LAYER_TYPE_SOFTWARE:View.LAYER_TYPE_HARDWARE,null);canvas.setCard(active());
-        boolean thumb=menu.equals("Thumbnails");
+        boolean thumb=menu.equals("Thumbnails")||(menu.equals("Draw")&&drawingThumbnail);
         canvas.setThumbnail(thumb);canvas.setTool(menu.equals("Draw")?CardCanvas.Tool.DRAW:CardCanvas.Tool.MOVE);
         canvas.onChanged(()->{saveAutosave();});
         LinearLayout.LayoutParams vp=lp(-1,-2);vp.topMargin=dp(10);
@@ -388,6 +392,8 @@ public final class MainActivity extends Activity {
     private void drawPage(){
         section(panel,"Draw as artwork");
         hint(panel,"Draw or erase directly on the canvas. Ink is independent for video cards and thumbnails and survives project saving.");
+        actions(panel,"Draw on card",()->{drawingThumbnail=false;renderUi();},
+            "Draw on thumbnail",()->{drawingThumbnail=true;renderUi();});
         actions(panel,"✎ Brush",()->canvas.setTool(CardCanvas.Tool.DRAW),"□ Eraser",()->canvas.setTool(CardCanvas.Tool.ERASE));
         actions(panel,"↔ Move image",()->canvas.setTool(CardCanvas.Tool.MOVE),
             "Clear drawing",()->new AlertDialog.Builder(this).setTitle("Clear drawing?")
