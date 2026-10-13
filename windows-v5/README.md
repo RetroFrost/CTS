@@ -21,3 +21,13 @@ Limitations: MP4 export is a 2-second-per-card slideshow (not a Renderer3 animat
 ## Update experience
 
 V5 never shows an in-app changelog or “What's New” dialog after installing an update. The NSIS installer retains its normal **visible** installation pages and progress bar, and may offer to launch the app after installation. Release notes are available only on the GitHub Releases page when the user chooses to visit it. The older Windows Settings embedded changelog has also been removed.
+
+## Floating Fluent navigation and audio patterns
+
+The Windows V5 top row uses a compact, rounded **floating Fluent navigation island**: Project, Cards, Thumbnail, Audio, Export, Draw and Settings. These are real controls, not a design mockup. Project opens New/Open/Save/Import. Cards restores the editor. Thumbnail switches to the independent transformed PNG editor. Audio opens the ordered soundtrack panel. Export invokes MP4. Draw enables artwork inking. Settings scrolls to appearance, language and GPU compatibility settings.
+
+The Audio panel offers Add/Remove, Move Up/Down, volume, repeat whole pattern and fade at video end. **Save Pattern (.m3u)** stores ordered UTF-8 local file references, relative to the playlist when possible. **Import Pattern (.m3u/.m3u8)** restores the exact order, including intentional repeats. Missing files are flagged and block video export. M3U files contain references, not audio data.
+
+Projects (.ccv5) preserve track order, volume, pattern repeat and fade. FFmpeg normalises mixed soundtracks, concatenates them in order and muxes them with video. The entire pattern repeats if selected. Fade out is on by default. Audio export requires FFmpeg; playlist saving/importing does not.
+
+Windows CI checks the absence of in-app changelog popups, builds and launches the app, exercises floating navigation and M3U regression, validates thumbnail-only transformations, packages a visible NSIS installer and publishes a GitHub prerelease.
