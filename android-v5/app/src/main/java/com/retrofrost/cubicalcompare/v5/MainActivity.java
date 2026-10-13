@@ -69,6 +69,8 @@ public final class MainActivity extends Activity {
     private int theme=0,language=0; // theme 0 auto, 1 dark, 2 light
     private boolean softwarePreview=true;
     private boolean exporting=false;
+    private final java.util.concurrent.ExecutorService autosaveWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
+    private long lastAutosaveMs=0;
     private boolean pickerIsThumbnail;
     private int background, surface, surfaceAlt, foreground, muted, accent;
     private LinearLayout root, panel, navRow;
@@ -86,7 +88,10 @@ public final class MainActivity extends Activity {
         softwarePreview=getPreferences(0).getBoolean("software",true);
         exporter=new VideoExporter(this);
         try{
-            String saved=getPreferences(0).getString("autosave","");
+            java.io.File savedFile=new java.io.File(getFilesDir(),"autosave.ccv5");
+            String saved=savedFile.isFile()
+                ?new String(java.nio.file.Files.readAllBytes(savedFile.toPath()),StandardCharsets.UTF_8)
+                :getPreferences(0).getString("autosave","");
             if(!saved.isEmpty())project=StudioModel.parse(saved);
         }catch(Exception ignored){}
         if(project.Cards.isEmpty())project=StudioModel.blank();
@@ -97,17 +102,35 @@ public final class MainActivity extends Activity {
         if(theme==0)calculatePalette();
         renderUi();
     }
-    @Override protected void onPause(){super.onPause();saveAutosave();if(audioPreview!=null){audioPreview.release();audioPreview=null;}}
+    @Override protected void onPause(){super.onPause();saveAutosave(true);if(audioPreview!=null){audioPreview.release();audioPreview=null;}}
     @Override protected void onDestroy(){
         if(exporter!=null && exporter.isBusy())exporter.cancel();
         if(audioPreview!=null)audioPreview.release();
+        autosaveWorker.shutdown();
         super.onDestroy();
     }
-    private void saveAutosave(){
+    private void saveAutosave(){saveAutosave(false);}
+    private void saveAutosave(boolean force){
         try{
             if(canvas!=null)canvas.persistInk();
-            getPreferences(0).edit().putString("autosave",StudioModel.json(project)).apply();
-        }catch(Exception e){ /* user still has manual .ccv5 save option */ }
+            long now=android.os.SystemClock.elapsedRealtime();
+            if(!force&&now-lastAutosaveMs<4500)return;
+            lastAutosaveMs=now;
+            final Project snapshot=project;
+            final java.io.File saved=new java.io.File(getFilesDir(),"autosave.ccv5");
+            autosaveWorker.submit(()->{
+                try {
+                    String json=StudioModel.json(snapshot);
+                    java.io.File staged=new java.io.File(saved.getParentFile(),"autosave.ccv5.tmp");
+                    java.nio.file.Files.write(staged.toPath(),json.getBytes(StandardCharsets.UTF_8));
+                    try{java.nio.file.Files.move(staged.toPath(),saved.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);}
+                    catch(java.io.IOException e){java.nio.file.Files.move(staged.toPath(),saved.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);}
+                }catch(Exception ignored){ /* Manual .ccv5 saving is available if autosave fails. */ }
+            });
+        }catch(Exception ignored){}
     }
     private int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
     private void calculatePalette(){
@@ -253,7 +276,7 @@ public final class MainActivity extends Activity {
         previewTitle.addView(label(menu.equals("Thumbnails")?"THUMBNAIL / LIVE":"CANVAS / LIVE",11,muted,true));
         TextView resolution=label("  •  16:9",11,muted,false);previewTitle.addView(resolution);
         preview.addView(previewTitle);
-        canvas=new CardCanvas(this);canvas.setCard(active());
+        canvas=new CardCanvas(this);canvas.setLayerType(softwarePreview?View.LAYER_TYPE_SOFTWARE:View.LAYER_TYPE_HARDWARE,null);canvas.setCard(active());
         boolean thumb=menu.equals("Thumbnails");
         canvas.setThumbnail(thumb);canvas.setTool(menu.equals("Draw")?CardCanvas.Tool.DRAW:CardCanvas.Tool.MOVE);
         canvas.onChanged(()->{saveAutosave();});
@@ -269,7 +292,7 @@ public final class MainActivity extends Activity {
         ScrollView rightScroll=new ScrollView(this);rightScroll.setFillViewport(false);
         panel=column();panel.setBackground(outline(surface,18,(accent&0x00ffffff)|0x33000000));
         pad(panel,14);panel.setElevation(dp(3));rightScroll.addView(panel);
-        LinearLayout.LayoutParams rp=landscape?new LinearLayout.LayoutParams(0,-1,1):lp(-1,-2);
+        LinearLayout.LayoutParams rp=landscape?new LinearLayout.LayoutParams(0,dp(540),1):lp(-1,-2);
         workspace.addView(rightScroll,rp);
         switch(menu){
             case "Project":projectPage();break;
@@ -526,8 +549,13 @@ public final class MainActivity extends Activity {
                 if(out.size()>18*1024*1024)throw new Exception("Image exceeds 18 MB.");
             }
             byte[] bytes=out.toByteArray();
-            if(android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,new android.graphics.BitmapFactory.Options())==null)
+            android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();
+            options.inJustDecodeBounds=true;
+            android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);
+            if(options.outWidth<=0||options.outHeight<=0)
                 throw new Exception("Unsupported image format.");
+            if(options.outWidth>16000||options.outHeight>16000)
+                throw new Exception("Artwork is too large for a mobile device.");
             if(thumbnail)active().ThumbnailArtworkBase64=Base64.encodeToString(bytes,Base64.NO_WRAP);
             else active().ArtworkBase64=Base64.encodeToString(bytes,Base64.NO_WRAP);
         }
