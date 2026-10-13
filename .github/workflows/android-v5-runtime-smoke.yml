@@ -1,0 +1,66 @@
+name: Cubical Compare V5 Android 11 Runtime Smoke
+on:
+  push:
+    branches: [android-main-preview]
+    paths:
+      - 'android-v5/**'
+      - '.github/workflows/android-v5-runtime-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build the debug APK
+        run: gradle --project-dir android-v5 :app:assembleDebug --no-daemon --console=plain
+      - name: Enable virtualization
+        shell: bash
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Boot Android 11, launch app and exercise menus
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_3a
+          cores: 2
+          ram-size: 2048M
+          heap-size: 256M
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -gpu swiftshader_indirect -no-boot-anim
+          script: |
+            adb install -r android-v5/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.MainActivity
+            sleep 4
+            adb shell pidof com.retrofrost.cubicalcompare.v5.debug
+            adb shell input tap 340 285
+            sleep 1
+            adb shell input tap 560 285
+            sleep 1
+            adb shell input tap 810 285
+            sleep 1
+            adb shell pidof com.retrofrost.cubicalcompare.v5.debug
+            adb shell screencap -p /sdcard/cts-android-v5.png
+            adb pull /sdcard/cts-android-v5.png cts-android-v5-runtime.png
+            if adb logcat -d -t 1000 | grep -A 5 -E 'FATAL EXCEPTION|Process: com.retrofrost.cubicalcompare.v5.debug.*'; then
+              echo "Possible runtime crash in Android logcat"; exit 1
+            fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: CubicalCompare-V5-Android11-UI-Screenshot
+          path: cts-android-v5-runtime.png
+          if-no-files-found: ignore
