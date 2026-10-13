@@ -109,6 +109,8 @@ public partial class MainWindow : Window
         CardList.SelectedIndex = -1;
         CardList.SelectedIndex = 0;
         UpdateTransformControls();
+        InitializeAudioEditor();
+        HighlightIsland(NavCardsButton);
         Loaded += (_, _) => ApplyWindowBackdrop();
         SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         Closed += (_, _) => SystemEvents.UserPreferenceChanged -= OnSystemPreferenceChanged;
@@ -166,6 +168,11 @@ public partial class MainWindow : Window
         ThemeLabel.Text = T("theme");
         RenderLabel.Text = T("render");
         CpuRendering.Content = T("cpu");
+        NavCardsButtonLabel.Text = T("cards");
+        NavThumbnailsButtonLabel.Text = "Thumbnail";
+        NavExportButtonLabel.Text = T("export").Replace(" MP4", "").Replace("ar MP4", "ar");
+        NavDrawButtonLabel.Text = T("draw");
+        NavSettingsButtonLabel.Text = T("settings");
     }
 
     private void SetSoftwareRendering(bool enabled)
@@ -529,6 +536,7 @@ public partial class MainWindow : Window
         if (!CheckUnsaved()) return;
         ReplaceCards(new[] { new ComparisonCard { Title = "First comparison", BadgeHeader = "Rank", Badge = "1" } });
         _projectPath = null;
+        LoadAudioFromProject(new ComparisonProject());
         UpdateTitle();
     }
 
@@ -557,7 +565,7 @@ public partial class MainWindow : Window
         try
         {
             string temp = path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(new ComparisonProject { Cards = _cards }, _json));
+            File.WriteAllText(temp, JsonSerializer.Serialize(BuildProjectSnapshot(), _json));
             File.Move(temp, path, true);
             _projectPath = path;
             UpdateTitle();
@@ -575,6 +583,7 @@ public partial class MainWindow : Window
             var project = JsonSerializer.Deserialize<ComparisonProject>(File.ReadAllText(dialog.FileName));
             if (project is null || project.FormatVersion != 5) throw new InvalidDataException("Not a V5 project.");
             ReplaceCards(project.Cards ?? new ObservableCollection<ComparisonCard>());
+            LoadAudioFromProject(project);
             _projectPath = dialog.FileName;
             UpdateTitle();
             StatusLabel.Text = "Loaded: " + Path.GetFileName(dialog.FileName);
@@ -655,6 +664,7 @@ public partial class MainWindow : Window
             if (cards.Count == 0) throw new InvalidDataException("No cards in CSV.");
             if (!CheckUnsaved()) return;
             ReplaceCards(cards);
+            LoadAudioFromProject(new ComparisonProject());
             _projectPath = null;
             UpdateTitle();
             StatusLabel.Text = $"Imported {cards.Count} cards.";
@@ -699,20 +709,38 @@ public partial class MainWindow : Window
         if (ffmpeg is null)
         {
             System.Windows.MessageBox.Show(this,
-                "Export requires ffmpeg.exe in the application folder or on PATH. Install FFmpeg, then try again.",
-                "FFmpeg not found", MessageBoxButton.OK, MessageBoxImage.Information);
+                "MP4 export requires FFmpeg. Put ffmpeg.exe beside CubicalCompareV5.exe or add it to PATH.",
+                "FFmpeg required", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        var dialog = new SaveFileDialog { Filter = "MP4 video|*.mp4", AddExtension = true, DefaultExt = ".mp4" };
+        var dialog = new SaveFileDialog
+        {
+            Filter = "MP4 video|*.mp4",
+            AddExtension = true,
+            DefaultExt = ".mp4"
+        };
         if (dialog.ShowDialog(this) != true) return;
         _exporting = true;
         ExportButton.IsEnabled = false;
+        NavExportButton.IsEnabled = false;
         ExportProgress.Visibility = Visibility.Visible;
         ExportProgress.Value = 0;
         ComparisonCard? previous = _active;
+        bool repeatAudio = _audioRepeat;
+        bool fadeAudio = _audioFadeOut;
+        double audioVolume = _audioVolume;
+        string? audioFolder = null;
         try
         {
-            // WPF visuals must be captured on the UI dispatcher, then stream to FFmpeg off-thread.
+            string? preparedAudio = null;
+            if (_audioTracks.Count > 0)
+            {
+                audioFolder = Path.Combine(Path.GetTempPath(), "CubicalCompareV5-Audio-" + Guid.NewGuid().ToString("N"));
+                StatusLabel.Text = "Preparing ordered audio pattern...";
+                preparedAudio = await BuildAudioPatternAsync(ffmpeg, audioFolder);
+            }
+
+            // Capture the *same transformed WPF visuals* shown in the editor.
             var images = new List<byte[]>();
             foreach (var card in _cards)
             {
@@ -720,36 +748,73 @@ public partial class MainWindow : Window
                 await Dispatcher.Yield(DispatcherPriority.Background);
             }
             if (previous is not null) { UpdatePreview(previous); LoadInk(previous); }
+            int durationSeconds = images.Count * SecondsPerCard;
+
             await Task.Run(async () =>
             {
                 using var process = new Process();
-                process.StartInfo = new ProcessStartInfo
+                var info = new ProcessStartInfo
                 {
                     FileName = ffmpeg,
-                    Arguments = $"-hide_banner -loglevel error -y -f image2pipe -framerate {FramesPerSecond} -vcodec png -i pipe:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p -movflags +faststart \"{dialog.FileName}\"",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardInput = true,
                     RedirectStandardError = true
                 };
-                if (!process.Start()) throw new IOException("Could not start FFmpeg.");
+                var args = new List<string>
+                {
+                    "-hide_banner", "-loglevel", "error", "-y",
+                    "-f", "image2pipe", "-framerate", FramesPerSecond.ToString(CultureInfo.InvariantCulture),
+                    "-vcodec", "png", "-i", "pipe:0"
+                };
+                if (preparedAudio is not null)
+                {
+                    if (repeatAudio) args.AddRange(["-stream_loop", "-1"]);
+                    args.AddRange(["-i", preparedAudio]);
+                    string duration = durationSeconds.ToString(CultureInfo.InvariantCulture);
+                    string volume = audioVolume.ToString("0.######", CultureInfo.InvariantCulture);
+                    string filter = "volume=" + volume + ",apad,atrim=duration=" + duration;
+                    if (fadeAudio)
+                    {
+                        double fadeLength = Math.Min(1.5, durationSeconds);
+                        double fadeStart = Math.Max(0, durationSeconds - fadeLength);
+                        filter += ",afade=t=out:st=" +
+                            fadeStart.ToString("0.###", CultureInfo.InvariantCulture) +
+                            ":d=" + fadeLength.ToString("0.###", CultureInfo.InvariantCulture);
+                    }
+                    args.AddRange(["-filter_complex", "[1:a:0]" + filter + "[mixed]",
+                        "-map", "0:v:0", "-map", "[mixed]", "-c:a", "aac", "-b:a", "192k"]);
+                }
+                args.AddRange(["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart", "-t", durationSeconds.ToString(CultureInfo.InvariantCulture),
+                    dialog.FileName]);
+                foreach (var arg in args) info.ArgumentList.Add(arg);
+                process.StartInfo = info;
+                if (!process.Start()) throw new IOException("Could not launch FFmpeg.");
                 var errorTask = process.StandardError.ReadToEndAsync();
                 int total = images.Count * FramesPerSecond * SecondsPerCard;
                 int completed = 0;
-                foreach (var image in images)
+                try
                 {
-                    for (int i = 0; i < FramesPerSecond * SecondsPerCard; i++)
+                    foreach (var image in images)
                     {
-                        await process.StandardInput.BaseStream.WriteAsync(image);
-                        completed++;
+                        for (int i = 0; i < FramesPerSecond * SecondsPerCard; i++)
+                        {
+                            await process.StandardInput.BaseStream.WriteAsync(image);
+                            completed++;
+                        }
+                        int progress = completed * 100 / total;
+                        Dispatcher.Invoke(() =>
+                        {
+                            ExportProgress.Value = progress;
+                            StatusLabel.Text = "Exporting video and audio... " + progress + "%";
+                        });
                     }
-                    int progress = completed * 100 / total;
-                    Dispatcher.Invoke(() => { ExportProgress.Value = progress; StatusLabel.Text = $"Exporting... {progress}%"; });
+                    await process.StandardInput.BaseStream.FlushAsync();
                 }
-                await process.StandardInput.BaseStream.FlushAsync();
-                process.StandardInput.Close();
+                finally { process.StandardInput.Close(); }
                 await process.WaitForExitAsync();
-                var error = await errorTask;
+                string error = await errorTask;
                 if (process.ExitCode != 0) throw new IOException("FFmpeg export failed: " + error);
             });
             StatusLabel.Text = "Video exported: " + Path.GetFileName(dialog.FileName);
@@ -758,8 +823,13 @@ public partial class MainWindow : Window
         finally
         {
             if (previous is not null) { UpdatePreview(previous); LoadInk(previous); }
+            if (audioFolder is not null)
+            {
+                try { Directory.Delete(audioFolder, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
             ExportProgress.Visibility = Visibility.Collapsed;
             ExportButton.IsEnabled = true;
+            NavExportButton.IsEnabled = true;
             _exporting = false;
         }
     }
