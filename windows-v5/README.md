@@ -4,6 +4,10 @@ This is a **clean Windows rebuild** (.NET 8 WPF), isolated under windows-v5. And
 
 Implemented: app icon, optional compatibility rendering for old GPUs (WPF software mode), automatic system/dark/light theme with Windows 11 Mica request, redesigned 3-column UI, 10 UI languages, per-card badge colours, InkCanvas draw/erase artwork, import local images, CSV and project open/save, 1080p MP4 export via FFmpeg, and an interactive NSIS installer.
 
+The **Main image / Thumbnail** editor tabs now share the same scale, X/Y, rotation and flip controls. A thumbnail can reuse its card image or use a separate image. Thumbnail-only transformations do not affect the video card. Both preview and exported 1920×1080 thumbnail PNG use the identical WPF transformed image, so no untransformed thumbnail export path remains. Main-card images can also be positioned by dragging directly on the canvas, and transforms survive project save/open. Each canvas has independent drawing ink.
+
+The Windows Actions pipeline additionally performs a WPF thumbnail regression that changes thumbnail transformation, compares before/after exported PNG pixels, verifies video-frame invariance, and validates saved transform JSON before publishing a GitHub release.
+
 To build locally on Windows with .NET 8 SDK:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File windows-v5/tools/make-icon.ps1
@@ -13,4 +17,4 @@ After merge into v5/development, GitHub Actions builds portable ZIP and GUI inst
 
 **Windows 11 Creativity category:** Windows 11 automatically classifies Start menu items; NSIS has no supported setting. For Microsoft Store listing, category **Multimedia design → Photo + video production** is appropriate. Microsoft documents that Store onboarding is the route for most developers. For developers in the EU only, reportapp@microsoft.com can accept an app-category request stating "Creativity", the exe name and display name. No unsupported Windows Start registry modification is attempted. Docs: https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/customize-the-windows-11-start-menu
 
-Limitations: MP4 export is a 2-second-per-card slideshow (not a Renderer3 animation engine), image import is local file based, FFmpeg is external, and unsupported systems fall back from Mica.
+Limitations: MP4 export is a 2-second-per-card slideshow (not a Renderer3 animation engine), artwork import is local file based, FFmpeg is external, and unsupported systems fall back from Mica. Windows 11 Start > Creativity placement is controlled by Windows and Microsoft Store metadata, not by NSIS.
