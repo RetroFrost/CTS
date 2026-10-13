@@ -16,98 +16,6 @@ namespace CubicalCompareV5;
 // actual transformed visual, not its unmodified source bitmap.
 public partial class MainWindow
 {
-    private bool _thumbnailMode;
-    private bool _dragging;
-    private Point _dragOrigin;
-    private double _dragStartX;
-    private double _dragStartY;
-
-    private static StrokeCollection ReadThumbnailInk(string? encoded)
-    {
-        if (string.IsNullOrWhiteSpace(encoded)) return new StrokeCollection();
-        try
-        {
-            using var stream = new MemoryStream(Convert.FromBase64String(encoded));
-            return new StrokeCollection(stream);
-        }
-        catch { return new StrokeCollection(); }
-    }
-
-    private void InitializeThumbnailEditor()
-    {
-        ThumbnailSketch.DefaultDrawingAttributes = Sketch.DefaultDrawingAttributes.Clone();
-        SetMode(false);
-    }
-
-    private void LoadThumbnailInk(ComparisonCard card)
-    {
-        ThumbnailSketch.Strokes.StrokesChanged -= ThumbnailStrokesChanged;
-        ThumbnailSketch.Strokes = ReadThumbnailInk(card.ThumbnailStrokesBase64);
-        ThumbnailSketch.Strokes.StrokesChanged += ThumbnailStrokesChanged;
-    }
-
-    private void ThumbnailStrokesChanged(object? sender, StrokeCollectionChangedEventArgs e)
-    {
-        if (!_syncing) PersistThumbnailInk();
-    }
-
-    private void PersistThumbnailInk()
-    {
-        if (_active is null) return;
-        using var stream = new MemoryStream();
-        ThumbnailSketch.Strokes.Save(stream);
-        _active.ThumbnailStrokesBase64 = Convert.ToBase64String(stream.ToArray());
-    }
-
-    private static BitmapImage? DecodeThumbnailArtwork(string? base64)
-    {
-        if (string.IsNullOrWhiteSpace(base64)) return null;
-        try
-        {
-            using var input = new MemoryStream(Convert.FromBase64String(base64));
-            var image = new BitmapImage();
-            image.BeginInit();
-            image.StreamSource = input;
-            image.CacheOption = BitmapCacheOption.OnLoad;
-            image.EndInit();
-            image.Freeze();
-            return image;
-        }
-        catch { return null; }
-    }
-
-    private static void SetImageTransform(Image image, ArtworkTransformState? state)
-    {
-        state ??= new ArtworkTransformState();
-        var group = new TransformGroup();
-        group.Children.Add(new ScaleTransform(
-            state.Scale * (state.FlipHorizontal ? -1 : 1),
-            state.Scale * (state.FlipVertical ? -1 : 1)));
-        group.Children.Add(new RotateTransform(state.Rotation));
-        group.Children.Add(new TranslateTransform(state.X, state.Y));
-        image.RenderTransformOrigin = new Point(0.5, 0.5);
-        image.RenderTransform = group;
-    }
-
-    private void ApplyArtworkTransforms(ComparisonCard card)
-    {
-        SetImageTransform(ArtworkImage, card.ImageTransform);
-        SetImageTransform(ThumbnailArtworkImage, card.ThumbnailTransform);
-    }
-
-    private void UpdateThumbnailPreview(ComparisonCard card)
-    {
-        ThumbnailPreviewTitle.Text = card.Title;
-        ThumbnailPreviewBadge.Text = (card.BadgeHeader + " " + card.Badge + " " + card.BadgeUnit).Trim();
-        try { ThumbnailBadgePanel.Background = BrushOf(card.BadgeColor); }
-        catch { ThumbnailBadgePanel.Background = BrushOf("#EC394D"); }
-
-        var imageBase64 = string.IsNullOrEmpty(card.ThumbnailArtworkBase64)
-            ? card.ArtworkBase64 : card.ThumbnailArtworkBase64;
-        ThumbnailArtworkImage.Source = DecodeThumbnailArtwork(imageBase64);
-        ApplyArtworkTransforms(card);
-    }
-
     private void MainMode_Click(object sender, RoutedEventArgs e) => SetMode(false);
     private void ThumbnailMode_Click(object sender, RoutedEventArgs e) => SetMode(true);
 
@@ -189,7 +97,7 @@ public partial class MainWindow
         t.FlipHorizontal = FlipXCheck.IsChecked == true;
         t.FlipVertical = FlipYCheck.IsChecked == true;
         UpdateTransformControls();
-        ApplyArtworkTransforms(_active);
+        ApplyTransforms(_active);
     }
 
     private void ResetTransform_Click(object sender, RoutedEventArgs e)
@@ -198,7 +106,7 @@ public partial class MainWindow
         if (_thumbnailMode) _active.ThumbnailTransform = new ArtworkTransformState();
         else _active.ImageTransform = new ArtworkTransformState();
         UpdateTransformControls();
-        ApplyArtworkTransforms(_active);
+        ApplyTransforms(_active);
     }
 
     private void CopyMainTransform_Click(object sender, RoutedEventArgs e)
@@ -206,7 +114,7 @@ public partial class MainWindow
         if (_active is null) return;
         _active.ThumbnailTransform = (_active.ImageTransform ?? new ArtworkTransformState()).Clone();
         SetMode(true);
-        ApplyArtworkTransforms(_active);
+        ApplyTransforms(_active);
     }
 
     private void Artwork_MouseDown(object sender, MouseButtonEventArgs e)
@@ -235,7 +143,7 @@ public partial class MainWindow
         t.X = Math.Clamp(_dragStartX + position.X - _dragOrigin.X, OffsetXSlider.Minimum, OffsetXSlider.Maximum);
         t.Y = Math.Clamp(_dragStartY + position.Y - _dragOrigin.Y, OffsetYSlider.Minimum, OffsetYSlider.Maximum);
         UpdateTransformControls();
-        ApplyArtworkTransforms(_active);
+        ApplyTransforms(_active);
         e.Handled = true;
     }
 
