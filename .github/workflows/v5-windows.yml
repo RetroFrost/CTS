@@ -41,6 +41,16 @@ jobs:
           finally {
             if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
           }
+      - name: Thumbnail image transform regression
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path windows-v5/publish/CubicalCompareV5.exe).Path
+          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test-thumbnail' -PassThru -Wait
+          if ($proc.ExitCode -ne 0) {
+            if (Test-Path thumbnail-regression-result.txt) { Get-Content thumbnail-regression-result.txt }
+            throw "Thumbnail regression failed (exit code $($proc.ExitCode))"
+          }
+          if ((Get-Content thumbnail-regression-result.txt -Raw).Trim() -ne "PASS") { throw "Missing thumbnail regression result" }
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis -y --no-progress

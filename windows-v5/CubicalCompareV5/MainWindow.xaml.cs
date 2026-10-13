@@ -3,6 +3,8 @@ using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
+using Image = System.Windows.Controls.Image;
+using Point = System.Windows.Point;
 using ColorConverter = System.Windows.Media.ColorConverter;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -32,6 +34,11 @@ public partial class MainWindow : Window
     private bool _syncing = true;
     private bool _drawing;
     private bool _exporting;
+    private bool _thumbnailMode;
+    private bool _dragging;
+    private Point _dragOrigin;
+    private double _dragStartX;
+    private double _dragStartY;
     private string? _projectPath;
     private AppSettings _settings = new();
     private static readonly string SettingsFile = Path.Combine(
@@ -95,13 +102,33 @@ public partial class MainWindow : Window
         {
             Color = Colors.DarkSlateBlue, Width = 5.5, Height = 5.5, FitToCurve = true
         };
+        ThumbnailSketch.DefaultDrawingAttributes = Sketch.DefaultDrawingAttributes.Clone();
+        SetMode(false);
         AddCard(new ComparisonCard { Title = "First comparison", Badge = "1", BadgeHeader = "Rank", Description = "Start your comparison here." });
         _syncing = false;
         CardList.SelectedIndex = -1;
         CardList.SelectedIndex = 0;
+        UpdateTransformControls();
         Loaded += (_, _) => ApplyWindowBackdrop();
         SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         Closed += (_, _) => SystemEvents.UserPreferenceChanged -= OnSystemPreferenceChanged;
+        if (Environment.GetCommandLineArgs().Contains("--self-test-thumbnail", StringComparer.OrdinalIgnoreCase))
+        {
+            Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    RunThumbnailRegressionTest();
+                    File.WriteAllText(Path.Combine(Environment.CurrentDirectory, "thumbnail-regression-result.txt"), "PASS");
+                    Environment.Exit(0);
+                }
+                catch (Exception ex)
+                {
+                    File.WriteAllText(Path.Combine(Environment.CurrentDirectory, "thumbnail-regression-result.txt"), ex.ToString());
+                    Environment.Exit(1);
+                }
+            }), DispatcherPriority.ApplicationIdle);
+        }
     }
 
     private string T(string key)
@@ -221,25 +248,51 @@ public partial class MainWindow : Window
 
     private void PersistInk()
     {
+        PersistCanvasInk(Sketch, false);
+        PersistCanvasInk(ThumbnailSketch, true);
+    }
+
+    private void PersistCanvasInk(InkCanvas canvas, bool thumbnail)
+    {
         if (_active is null) return;
         using var data = new MemoryStream();
-        Sketch.Strokes.Save(data);
-        _active.StrokesBase64 = Convert.ToBase64String(data.ToArray());
+        canvas.Strokes.Save(data);
+        if (thumbnail) _active.ThumbnailStrokesBase64 = Convert.ToBase64String(data.ToArray());
+        else _active.StrokesBase64 = Convert.ToBase64String(data.ToArray());
+    }
+
+    private void InkStrokesChanged(object? sender, StrokeCollectionChangedEventArgs e)
+    {
+        if (_syncing || _active is null) return;
+        if (ReferenceEquals(sender, Sketch.Strokes)) PersistCanvasInk(Sketch, false);
+        else if (ReferenceEquals(sender, ThumbnailSketch.Strokes)) PersistCanvasInk(ThumbnailSketch, true);
+    }
+
+    private static StrokeCollection DeserializeInk(string? base64)
+    {
+        if (string.IsNullOrWhiteSpace(base64)) return new StrokeCollection();
+        try
+        {
+            using var stream = new MemoryStream(Convert.FromBase64String(base64));
+            return new StrokeCollection(stream);
+        }
+        catch { return new StrokeCollection(); }
     }
 
     private void LoadInk(ComparisonCard card)
     {
+        bool old = _syncing;
+        _syncing = true;
         try
         {
-            if (!string.IsNullOrWhiteSpace(card.StrokesBase64))
-            {
-                using var data = new MemoryStream(Convert.FromBase64String(card.StrokesBase64));
-                Sketch.Strokes = new StrokeCollection(data);
-            }
-            else Sketch.Strokes = new StrokeCollection();
+            Sketch.Strokes.StrokesChanged -= InkStrokesChanged;
+            ThumbnailSketch.Strokes.StrokesChanged -= InkStrokesChanged;
+            Sketch.Strokes = DeserializeInk(card.StrokesBase64);
+            ThumbnailSketch.Strokes = DeserializeInk(card.ThumbnailStrokesBase64);
+            Sketch.Strokes.StrokesChanged += InkStrokesChanged;
+            ThumbnailSketch.Strokes.StrokesChanged += InkStrokesChanged;
         }
-        catch { Sketch.Strokes = new StrokeCollection(); }
-        Sketch.Strokes.StrokesChanged += (_, _) => { if (!_syncing) PersistInk(); };
+        finally { _syncing = old; }
     }
 
     private void CardList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -256,6 +309,7 @@ public partial class MainWindow : Window
         LoadInk(card);
         _syncing = false;
         UpdatePreview(card);
+        UpdateTransformControls();
     }
 
     private void EditorChanged(object sender, TextChangedEventArgs e)
@@ -269,31 +323,67 @@ public partial class MainWindow : Window
         CardList.Items.Refresh();
     }
 
-    private void UpdatePreview(ComparisonCard card)
+    private static BitmapImage? DecodeArtwork(string? base64)
     {
-        PreviewTitle.Text = card.Title;
-        PreviewBadgeHeader.Text = card.BadgeHeader;
-        PreviewBadge.Text = (card.Badge + " " + card.BadgeUnit).Trim();
-        PreviewDescription.Text = card.Description;
-        try { BadgePanel.Background = BrushOf(card.BadgeColor); }
-        catch { BadgePanel.Background = BrushOf("#EC394D"); }
+        if (string.IsNullOrWhiteSpace(base64)) return null;
         try
         {
-            if (string.IsNullOrEmpty(card.ArtworkBase64))
-            {
-                ArtworkImage.Source = null;
-                return;
-            }
-            using var stream = new MemoryStream(Convert.FromBase64String(card.ArtworkBase64));
+            using var stream = new MemoryStream(Convert.FromBase64String(base64));
             var image = new BitmapImage();
             image.BeginInit();
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.StreamSource = stream;
             image.EndInit();
             image.Freeze();
-            ArtworkImage.Source = image;
+            return image;
         }
-        catch { ArtworkImage.Source = null; }
+        catch { return null; }
+    }
+
+    // The same RenderTransform is used by the live editor and RenderTargetBitmap PNG/MP4 export.
+    // Thumbnail-only positioning never mutates the video-card transform.
+    private static void ApplyImageTransform(Image target, ArtworkTransformState? transform)
+    {
+        transform ??= new ArtworkTransformState();
+        var group = new TransformGroup();
+        group.Children.Add(new ScaleTransform(
+            transform.Scale * (transform.FlipHorizontal ? -1 : 1),
+            transform.Scale * (transform.FlipVertical ? -1 : 1)));
+        group.Children.Add(new RotateTransform(transform.Rotation));
+        group.Children.Add(new TranslateTransform(transform.X, transform.Y));
+        target.RenderTransformOrigin = new Point(0.5, 0.5);
+        target.RenderTransform = group;
+    }
+
+    private void ApplyTransforms(ComparisonCard card)
+    {
+        ApplyImageTransform(ArtworkImage, card.ImageTransform);
+        ApplyImageTransform(ThumbnailArtworkImage, card.ThumbnailTransform);
+    }
+
+    private void UpdatePreview(ComparisonCard card)
+    {
+        PreviewTitle.Text = card.Title;
+        PreviewBadgeHeader.Text = card.BadgeHeader;
+        PreviewBadge.Text = (card.Badge + " " + card.BadgeUnit).Trim();
+        PreviewDescription.Text = card.Description;
+        ThumbnailPreviewTitle.Text = card.Title;
+        ThumbnailPreviewBadge.Text = (card.BadgeHeader + " " + card.Badge + " " + card.BadgeUnit).Trim();
+        try
+        {
+            BadgePanel.Background = BrushOf(card.BadgeColor);
+            ThumbnailBadgePanel.Background = BrushOf(card.BadgeColor);
+        }
+        catch
+        {
+            BadgePanel.Background = BrushOf("#EC394D");
+            ThumbnailBadgePanel.Background = BrushOf("#EC394D");
+        }
+        var main = DecodeArtwork(card.ArtworkBase64);
+        ArtworkImage.Source = main;
+        ThumbnailArtworkImage.Source = string.IsNullOrEmpty(card.ThumbnailArtworkBase64)
+            ? main : DecodeArtwork(card.ThumbnailArtworkBase64);
+        ApplyTransforms(card);
     }
 
     private void UpdateTitle() =>
@@ -329,16 +419,25 @@ public partial class MainWindow : Window
     private void Erase_Click(object sender, RoutedEventArgs e) => SetInkMode(InkCanvasEditingMode.EraseByStroke);
     private void SetInkMode(InkCanvasEditingMode mode)
     {
-        _drawing = Sketch.EditingMode != mode;
-        Sketch.EditingMode = _drawing ? mode : InkCanvasEditingMode.None;
-        Sketch.IsHitTestVisible = _drawing;
+        var canvas = _thumbnailMode ? ThumbnailSketch : Sketch;
+        bool activate = canvas.EditingMode != mode;
+        Sketch.EditingMode = InkCanvasEditingMode.None;
+        ThumbnailSketch.EditingMode = InkCanvasEditingMode.None;
+        Sketch.IsHitTestVisible = false;
+        ThumbnailSketch.IsHitTestVisible = false;
+        _drawing = activate;
+        if (activate)
+        {
+            canvas.EditingMode = mode;
+            canvas.IsHitTestVisible = true;
+        }
         DrawButton.Background = _drawing && mode == InkCanvasEditingMode.Ink ? BrushOf("#166B78") : (Brush)Resources["FieldBrush"];
         EraseButton.Background = _drawing && mode == InkCanvasEditingMode.EraseByStroke ? BrushOf("#166B78") : (Brush)Resources["FieldBrush"];
     }
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
         if (_active is null) return;
-        Sketch.Strokes.Clear();
+        (_thumbnailMode ? ThumbnailSketch : Sketch).Strokes.Clear();
         PersistInk();
     }
 
@@ -351,14 +450,17 @@ public partial class MainWindow : Window
         {
             var bytes = File.ReadAllBytes(dialog.FileName);
             if (bytes.Length > 20 * 1024 * 1024) throw new IOException("Image must be smaller than 20 MB.");
-            _active.ArtworkBase64 = Convert.ToBase64String(bytes);
+            if (_thumbnailMode) _active.ThumbnailArtworkBase64 = Convert.ToBase64String(bytes);
+            else _active.ArtworkBase64 = Convert.ToBase64String(bytes);
         }
         catch (Exception ex) { ShowError(ex); }
     }
 
     private void RemoveArtwork_Click(object sender, RoutedEventArgs e)
     {
-        if (_active is not null) _active.ArtworkBase64 = "";
+        if (_active is null) return;
+        if (_thumbnailMode) _active.ThumbnailArtworkBase64 = "";
+        else _active.ArtworkBase64 = "";
     }
 
     private void Color_Click(object sender, RoutedEventArgs e)
@@ -562,17 +664,15 @@ public partial class MainWindow : Window
 
     private byte[] CaptureCard(ComparisonCard card)
     {
-        UpdatePreview(card);
-        LoadInk(card);
-        Stage.UpdateLayout();
-        var bitmap = new RenderTargetBitmap(1920, 1080, 192, 192, PixelFormats.Pbgra32);
-        bitmap.Render(Stage);
-        bitmap.Freeze();
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using var stream = new MemoryStream();
-        encoder.Save(stream);
-        return stream.ToArray();
+        bool previousMode = _thumbnailMode;
+        try
+        {
+            SetMode(false);
+            UpdatePreview(card);
+            LoadInk(card);
+            return EncodeStagePng(Stage);
+        }
+        finally { SetMode(previousMode); }
     }
 
     private static string? FindFfmpeg()
