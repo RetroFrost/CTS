@@ -11,6 +11,24 @@
   <SolidColorBrush x:Key="TextBrush" Color="#FFF5F7FC"/>
   <SolidColorBrush x:Key="MutedBrush" Color="#FFAAB6C5"/>
   <SolidColorBrush x:Key="AccentBrush" Color="#FF3CC8D6"/>
+  <Style x:Key="IslandNavButton" TargetType="Button">
+   <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+   <Setter Property="Background" Value="Transparent"/>
+   <Setter Property="BorderThickness" Value="0"/>
+   <Setter Property="Padding" Value="8,7"/>
+   <Setter Property="MinWidth" Value="66"/>
+   <Setter Property="Margin" Value="2"/>
+   <Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="NavSurface" Background="{TemplateBinding Background}" CornerRadius="15" Padding="{TemplateBinding Padding}">
+     <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+    </Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="NavSurface" Property="Background" Value="#49658097"/></Trigger>
+     <Trigger Property="IsPressed" Value="True"><Setter TargetName="NavSurface" Property="Background" Value="#3D13899D"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
   <Style TargetType="Button">
    <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
    <Setter Property="Background" Value="{DynamicResource FieldBrush}"/>
@@ -50,22 +68,41 @@
  </Window.Resources>
  <Grid Margin="14,12,14,14">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-  <Grid Grid.Row="0" Margin="6,0,6,11">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-   <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-    <Border Background="#FF3CC8D6" CornerRadius="11" Width="43" Height="43" Margin="0,0,14,0">
-     <Grid><TextBlock Text="◈" Foreground="#102330" FontWeight="Bold" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
+  <Grid Grid.Row="0" Margin="4,0,4,14" Height="77">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="186"/><ColumnDefinition Width="*"/><ColumnDefinition Width="125"/></Grid.ColumnDefinitions>
+   <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+    <Border Background="#1A778B" Width="38" Height="38" CornerRadius="11" Margin="0,0,9,0">
+     <TextBlock Text="◈" FontWeight="Bold" FontSize="27" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#D9FDFF"/>
     </Border>
-    <StackPanel><TextBlock FontSize="21" FontWeight="Bold" Text="Cubical Compare V5"/>
-     <TextBlock x:Name="Subtitle" FontSize="12" Foreground="{DynamicResource MutedBrush}" Text="Comparison video studio · Windows"/></StackPanel>
+    <StackPanel VerticalAlignment="Center"><TextBlock Text="Cubical" FontWeight="Bold" FontSize="16"/><TextBlock Text="Compare V5" FontSize="12" Foreground="{DynamicResource MutedBrush}"/></StackPanel>
    </StackPanel>
-   <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center">
-    <Button x:Name="NewButton" Click="New_Click" Content="New"/>
-    <Button x:Name="OpenButton" Click="Open_Click" Content="Open"/>
-    <Button x:Name="SaveButton" Click="Save_Click" Content="Save"/>
-    <Button x:Name="ImportButton" Click="Import_Click" Content="Import CSV"/>
-    <Button x:Name="ExportButton" Click="Export_Click" Background="#166B78" Content="Export MP4"/>
-   </StackPanel>
+   <Border Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="26" Padding="6"
+       Background="#F01B2A3D" BorderBrush="#5578A2B9" BorderThickness="1">
+    <Border.Effect><DropShadowEffect Color="#000A16" BlurRadius="24" ShadowDepth="8" Opacity="0.6"/></Border.Effect>
+    <StackPanel Orientation="Horizontal">
+     <Button x:Name="NavProjectButton" Style="{StaticResource IslandNavButton}" Click="NavProject_Click" ToolTip="Project"><StackPanel><TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="19" Text="&#xE80F;" TextAlignment="Center"/><TextBlock x:Name="NavProjectButtonLabel" Text="Project" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="NavCardsButton" Style="{StaticResource IslandNavButton}" Click="NavCards_Click" ToolTip="Cards"><StackPanel><TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="19" Text="&#xE8A5;" TextAlignment="Center"/><TextBlock x:Name="NavCardsButtonLabel" Text="Cards" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="NavThumbnailsButton" Style="{StaticResource IslandNavButton}" Click="NavThumbnails_Click" ToolTip="Thumbnail"><StackPanel><TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="19" Text="&#xE91B;" TextAlignment="Center"/><TextBlock x:Name="NavThumbnailsButtonLabel" Text="Thumbnail" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="NavAudioButton" Style="{StaticResource IslandNavButton}" Click="NavAudio_Click" ToolTip="Audio"><StackPanel><TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="19" Text="&#xE8D6;" TextAlignment="Center"/><TextBlock x:Name="NavAudioButtonLabel" Text="Audio" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="NavExportButton" Style="{StaticResource IslandNavButton}" Click="NavExport_Click" ToolTip="Export"><StackPanel><TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="19" Text="&#xE74E;" TextAlignment="Center"/><TextBlock x:Name="NavExportButtonLabel" Text="Export" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="NavDrawButton" Style="{StaticResource IslandNavButton}" Click="NavDraw_Click" ToolTip="Draw"><StackPanel><TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="19" Text="&#xE76D;" TextAlignment="Center"/><TextBlock x:Name="NavDrawButtonLabel" Text="Draw" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="NavSettingsButton" Style="{StaticResource IslandNavButton}" Click="NavSettings_Click" ToolTip="Settings"><StackPanel><TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="19" Text="&#xE713;" TextAlignment="Center"/><TextBlock x:Name="NavSettingsButtonLabel" Text="Settings" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/></StackPanel></Button>
+    </StackPanel>
+   </Border>
+   <TextBlock Grid.Column="2" Text="WINDOWS · V5" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Foreground="{DynamicResource MutedBrush}" FontWeight="SemiBold"/>
+   <Popup x:Name="ProjectPopup" PlacementTarget="{Binding ElementName=NavProjectButton}" Placement="Bottom" VerticalOffset="10" StaysOpen="False" AllowsTransparency="True">
+    <Border Background="#FF223549" Padding="12" BorderBrush="#587A99B0" BorderThickness="1" CornerRadius="17">
+     <Border.Effect><DropShadowEffect BlurRadius="23" Opacity="0.48" ShadowDepth="6"/></Border.Effect>
+     <StackPanel MinWidth="182">
+      <TextBlock Text="PROJECT" Margin="9,5,9,9" FontSize="11" Foreground="#FF9FBDCD" FontWeight="Bold"/>
+      <Button x:Name="NewButton" Click="New_Click" Content="New project"/>
+      <Button x:Name="OpenButton" Click="Open_Click" Content="Open project"/>
+      <Button x:Name="SaveButton" Click="Save_Click" Content="Save project"/>
+      <Button x:Name="ImportButton" Click="Import_Click" Content="Import CSV"/>
+      <Button x:Name="ExportButton" Click="Export_Click" Background="#166B78" Content="Export MP4"/>
+     </StackPanel>
+    </Border>
+   </Popup>
   </Grid>
   <Grid Grid.Row="1">
    <Grid.ColumnDefinitions><ColumnDefinition Width="245"/><ColumnDefinition Width="*" MinWidth="440"/><ColumnDefinition Width="275"/></Grid.ColumnDefinitions>
@@ -151,8 +188,8 @@
      <TextBlock x:Name="PreviewHint" Grid.Row="2" Text="Canvas: 1920 × 1080 · Draw directly over artwork" Foreground="{DynamicResource MutedBrush}" Margin="6,13,3,3" FontSize="12"/>
     </Grid>
    </Border>
-   <Border Grid.Column="2" Style="{StaticResource PanelStyle}">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+   <Border x:Name="CardInspectorPanel" Grid.Column="2" Style="{StaticResource PanelStyle}">
+    <ScrollViewer x:Name="EditorScrollViewer" VerticalScrollBarVisibility="Auto">
      <StackPanel>
       <TextBlock x:Name="EditorHeading" FontWeight="Bold" FontSize="16" Text="Card editor" Margin="4,3,0,17"/>
       <TextBlock x:Name="TitleLabel" Text="Title"/>
@@ -196,6 +233,32 @@
         Foreground="{DynamicResource TextBrush}" Margin="4,8,2,4"/>
      </StackPanel>
     </ScrollViewer>
+   </Border>
+   <Border x:Name="AudioInspectorPanel" Grid.Column="2" Style="{StaticResource PanelStyle}" Visibility="Collapsed">
+    <DockPanel>
+     <StackPanel DockPanel.Dock="Top">
+      <TextBlock Text="Audio patterns" FontSize="19" FontWeight="Bold" Margin="4,4,4,6"/>
+      <TextBlock Text="Track order is preserved in the video and in .m3u playlists." Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="4,0,4,11"/>
+      <WrapPanel Margin="0,0,0,8">
+       <Button Content="+ Add audio" Click="AudioAdd_Click"/>
+       <Button Content="Remove" Click="AudioRemove_Click"/>
+      </WrapPanel>
+     </StackPanel>
+     <StackPanel DockPanel.Dock="Bottom">
+      <UniformGrid Columns="2" Margin="0,9,0,4">
+       <Button Content="↑ Move up" Click="AudioUp_Click"/>
+       <Button Content="↓ Move down" Click="AudioDown_Click"/>
+      </UniformGrid>
+      <TextBlock Text="Volume" Margin="3,10,0,5"/>
+      <Slider x:Name="AudioVolumeSlider" Minimum="0" Maximum="100" Value="100" ValueChanged="AudioVolume_Changed" TickFrequency="5"/>
+      <CheckBox x:Name="AudioRepeatCheck" Content="Repeat whole pattern" Foreground="{DynamicResource TextBrush}" Margin="4,12,0,0" Checked="AudioRepeat_Changed" Unchecked="AudioRepeat_Changed"/>
+      <CheckBox x:Name="AudioFadeCheck" Content="Fade out at video end" Foreground="{DynamicResource TextBrush}" Margin="4,9,0,12" IsChecked="True" Checked="AudioFade_Changed" Unchecked="AudioFade_Changed"/>
+      <Button x:Name="AudioSavePatternButton" Content="Save Pattern (.m3u)" Click="AudioSavePattern_Click" Background="#166B78"/>
+      <Button x:Name="AudioImportPatternButton" Content="Import Pattern (.m3u)" Click="AudioImportPattern_Click"/>
+      <TextBlock x:Name="AudioStatus" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="5,10,5,3"/>
+     </StackPanel>
+     <ListBox x:Name="AudioTrackList" Background="Transparent" Foreground="{DynamicResource TextBrush}" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+    </DockPanel>
    </Border>
   </Grid>
   <DockPanel Grid.Row="2" Margin="11,12,11,0">
