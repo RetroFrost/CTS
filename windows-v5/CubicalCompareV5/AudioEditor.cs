@@ -1,4 +1,5 @@
-using Microsoft.Win32;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
