@@ -434,8 +434,8 @@ public final class MainActivity extends Activity {
     private void settingsPage(){
         section(panel,"Appearance");
         hint(panel,"Android Material-style surfaces with system dynamic accent on Android 12+. The floating navigation stays consistent on phones and tablets.");
-        actions(panel,"Dark",()->setTheme(1),"Light",()->setTheme(2));
-        action(panel,"Follow system appearance",()->setTheme(0));
+        actions(panel,"Dark",()->setAppearance(1),"Light",()->setAppearance(2));
+        action(panel,"Follow system appearance",()->setAppearance(0));
         section(panel,"Language · "+LANGS[language]);
         for(int i=0;i<LANGS.length;i++){
             final int ix=i;
@@ -453,7 +453,7 @@ public final class MainActivity extends Activity {
             .setMessage("Seven floating menus · .ccv5 projects · thumbnail-only transforms · drawing · M3U audio patterns · Media3 export. No in-app changelog or What's New pop-ups.")
             .setPositiveButton("OK",null).show());
     }
-    private void setTheme(int t){
+    private void setAppearance(int t){
         theme=t;getPreferences(0).edit().putInt("theme",t).apply();
         calculatePalette();renderUi();
     }
