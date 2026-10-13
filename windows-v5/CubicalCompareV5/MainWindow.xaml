@@ -127,7 +127,7 @@
          </Grid>
         </Border>
         </Grid>
-        <Grid x:Name="ThumbnailStage" Width="960" Height="540" Background="#0E2337" ClipToBounds="True" Visibility="Collapsed">
+        <Grid x:Name="ThumbnailStage" Width="960" Height="540" ClipToBounds="True" Visibility="Collapsed">
          <Grid.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
            <GradientStop Color="#142A45" Offset="0"/>
