@@ -70,7 +70,8 @@ public final class VideoExporter {
                         .setImageDurationMs(project.SecondsPerCard*1000L).build();
                     slides.add(new EditedMediaItem.Builder(item).setFrameRate(project.Fps).build());
                     final int percent=2+i*23/project.Cards.size();
-                    handler.post(()->cb.update("Rendered card "+(i+1)+" / "+project.Cards.size(),percent));
+                    final int cardNumber=i+1;
+                    handler.post(()->cb.update("Rendered card "+cardNumber+" / "+project.Cards.size(),percent));
                 }
                 List<EditedMediaItem> tracks=new ArrayList<>();
                 for(String reference:project.AudioTracks){
