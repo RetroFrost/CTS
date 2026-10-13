@@ -165,13 +165,13 @@ public final class MainActivity extends Activity {
     private void pad(View v,int all){v.setPadding(dp(all),dp(all),dp(all),dp(all));}
     private void space(LinearLayout l,int height){View v=new View(this);l.addView(v,lp(1,height));}
     private void section(LinearLayout l,String text){
-        TextView t=label(text,18,foreground,true);t.setPadding(dp(2),dp(11),dp(2),dp(7));l.addView(t,lp(-1,-2));
+        TextView t=label(UiText.t(text,language),18,foreground,true);t.setPadding(dp(2),dp(11),dp(2),dp(7));l.addView(t,lp(-1,-2));
     }
     private void hint(LinearLayout l,String message){
         TextView t=label(message,12,muted,false);t.setPadding(dp(3),0,dp(3),dp(9));l.addView(t,lp(-1,-2));
     }
     private Button button(String text,Runnable action){
-        Button b=new Button(this);b.setText(text);b.setTextColor(foreground);b.setTextSize(12);b.setAllCaps(false);
+        Button b=new Button(this);b.setText(UiText.t(text,language));b.setTextColor(foreground);b.setTextSize(12);b.setAllCaps(false);
         b.setBackground(outline(surfaceAlt,13,(accent&0x00ffffff)|0x35000000));b.setMinHeight(0);b.setMinimumHeight(0);
         b.setPadding(dp(11),dp(9),dp(11),dp(9));b.setOnClickListener(v->action.run());
         return b;
@@ -187,7 +187,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams rp=lp(-1,-2);rp.bottomMargin=dp(8);target.addView(r,rp);
     }
     private void field(LinearLayout parent,String title,String initial,Consumer<String> changed){
-        TextView label=label(title,12,muted,false);label.setPadding(dp(3),dp(5),0,0);parent.addView(label);
+        TextView label=label(UiText.t(title,language),12,muted,false);label.setPadding(dp(3),dp(5),0,0);parent.addView(label);
         EditText input=new EditText(this);input.setText(initial==null?"":initial);
         input.setTextColor(foreground);input.setHintTextColor(muted);input.setSingleLine(true);input.setTextSize(14);
         input.setSelectAllOnFocus(false);input.setPadding(dp(12),dp(8),dp(12),dp(8));
@@ -203,7 +203,7 @@ public final class MainActivity extends Activity {
         });
     }
     private void seek(LinearLayout target,String name,int min,int max,int value,Consumer<Integer> changed){
-        LinearLayout header=row();TextView title=label(name,12,muted,false);
+        LinearLayout header=row();TextView title=label(UiText.t(name,language),12,muted,false);
         TextView amount=label(String.valueOf(value),12,foreground,true);
         header.addView(title,new LinearLayout.LayoutParams(0,-2,1));header.addView(amount);
         target.addView(header);
@@ -222,7 +222,7 @@ public final class MainActivity extends Activity {
     }
     private void check(LinearLayout l,String name,boolean initial,Consumer<Boolean> changed){
         CheckBox c=new CheckBox(this);c.setButtonTintList(android.content.res.ColorStateList.valueOf(accent));
-        c.setText(name);c.setTextColor(foreground);c.setTextSize(13);c.setChecked(initial);
+        c.setText(UiText.t(name,language));c.setTextColor(foreground);c.setTextSize(13);c.setChecked(initial);
         c.setOnCheckedChangeListener((button,checked)->{changed.accept(checked);if(canvas!=null)canvas.refresh();});
         l.addView(c,lp(-1,43));
     }
