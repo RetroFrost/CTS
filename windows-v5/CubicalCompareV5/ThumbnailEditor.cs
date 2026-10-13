@@ -1,4 +1,9 @@
 using Microsoft.Win32;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+using Point = System.Windows.Point;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+using MouseButtonEventArgs = System.Windows.Input.MouseButtonEventArgs;
+using MouseButtonState = System.Windows.Input.MouseButtonState;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
