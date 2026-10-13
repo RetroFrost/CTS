@@ -28,6 +28,19 @@ jobs:
         run: |
           if (!(Test-Path windows-v5/publish/CubicalCompareV5.exe)) { throw "EXE missing" }
           if (!(Test-Path windows-v5/publish/CubicalCompareV5.dll)) { throw "DLL missing" }
+      - name: Smoke-test Windows app startup
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path windows-v5/publish/CubicalCompareV5.exe).Path
+          $proc = Start-Process -FilePath $exe -PassThru
+          try {
+            Start-Sleep -Seconds 5
+            $proc.Refresh()
+            if ($proc.HasExited) { throw "WPF app exited during startup (exit code $($proc.ExitCode))" }
+          }
+          finally {
+            if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+          }
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis -y --no-progress
