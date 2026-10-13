@@ -112,6 +112,23 @@ public partial class MainWindow : Window
         Loaded += (_, _) => ApplyWindowBackdrop();
         SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         Closed += (_, _) => SystemEvents.UserPreferenceChanged -= OnSystemPreferenceChanged;
+        if (Environment.GetCommandLineArgs().Contains("--self-test-thumbnail", StringComparer.OrdinalIgnoreCase))
+        {
+            Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    RunThumbnailRegressionTest();
+                    File.WriteAllText(Path.Combine(Environment.CurrentDirectory, "thumbnail-regression-result.txt"), "PASS");
+                    Environment.Exit(0);
+                }
+                catch (Exception ex)
+                {
+                    File.WriteAllText(Path.Combine(Environment.CurrentDirectory, "thumbnail-regression-result.txt"), ex.ToString());
+                    Environment.Exit(1);
+                }
+            }), DispatcherPriority.ApplicationIdle);
+        }
     }
 
     private string T(string key)
