@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using Button = System.Windows.Controls.Button;
+using Brushes = System.Windows.Media.Brushes;
 using System.Windows.Ink;
 using System.Windows.Media;
 
