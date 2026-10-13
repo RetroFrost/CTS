@@ -28,6 +28,12 @@ jobs:
         run: |
           if (!(Test-Path windows-v5/publish/CubicalCompareV5.exe)) { throw "EXE missing" }
           if (!(Test-Path windows-v5/publish/CubicalCompareV5.dll)) { throw "DLL missing" }
+      - name: Validate uncluttered update UX
+        shell: pwsh
+        run: |
+          $sources = Get-ChildItem windows-v5/CubicalCompareV5 -Recurse -Include *.cs,*.xaml
+          if ($sources | Select-String -Pattern 'Built-in changelog|What.s New|Release Notes' -Quiet) { throw "In-app changelog/release notes popup is not allowed in V5" }
+          if ((Get-Content windows/CubicalCompare/MainWindow.Settings42.cs -Raw).Contains("Built-in changelog")) { throw "Embedded legacy changelog still exists" }
       - name: Smoke-test Windows app startup
         shell: pwsh
         run: |
