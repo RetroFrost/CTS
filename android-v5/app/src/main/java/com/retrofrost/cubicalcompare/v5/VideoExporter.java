@@ -55,10 +55,10 @@ public final class VideoExporter {
         // Clone the data so editing during export can't alter the output mid-run.
         Project project=StudioModel.parse(StudioModel.json(source));
         cb.update("Preparing artwork frames...",1);
+        final CardCanvas renderer=new CardCanvas(activity); // Create native View on UI thread.
         executor.execute(()->{
             try{
                 work=new File(activity.getCacheDir(),"export-"+UUID.randomUUID());if(!work.mkdirs())throw new Exception("Cannot create export staging directory.");
-                CardCanvas renderer=new CardCanvas(activity);
                 List<EditedMediaItem> slides=new ArrayList<>();
                 for(int i=0;i<project.Cards.size();i++){
                     File f=new File(work,String.format(java.util.Locale.ROOT,"card-%04d.png",i));
