@@ -38,9 +38,8 @@ public final class CardCanvas extends View {
     private final Paint p=new Paint(3);
     private final LruCache<String,Bitmap> images=new LruCache<String,Bitmap>(18*1024*1024){
         @Override protected int sizeOf(String k, Bitmap v){return v.getByteCount();}
-        @Override protected void entryRemoved(boolean evicted,String key,Bitmap old,Bitmap next) {
-            if(evicted && old!=null && old!=next && !old.isRecycled())old.recycle();
-        }
+        // Let Android recycle no-longer-referenced bitmaps normally. Explicit
+        // recycle() could race with a pending Canvas.drawBitmap() call.
     };
     public CardCanvas(Context c){super(c);init();}
     public CardCanvas(Context c, AttributeSet a){super(c,a);init();}
@@ -185,8 +184,12 @@ public final class CardCanvas extends View {
         }
         c.restore();
         if(overlay!=null){
+            // Artwork drawings must not paint over the title or badge.
+            c.save();
+            c.clipRect(artwork);
             p.reset();p.setAntiAlias(true);p.setFilterBitmap(true);
             c.drawBitmap(overlay,null,new RectF(0,0,DESIGN_W,DESIGN_H),p);
+            c.restore();
         }
     }
     @Override public boolean onTouchEvent(MotionEvent e){
