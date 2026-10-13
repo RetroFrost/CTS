@@ -64,9 +64,7 @@ jobs:
             adb shell pidof com.retrofrost.cubicalcompare.v5.debug
             adb shell screencap -p /sdcard/cts-android-v5.png
             adb pull /sdcard/cts-android-v5.png cts-android-v5-runtime.png
-            if adb logcat -d -t 1000 | grep -A 5 -E 'FATAL EXCEPTION|Process: com.retrofrost.cubicalcompare.v5.debug.*'; then
-              echo "Possible runtime crash in Android logcat"; exit 1
-            fi
+            ! adb logcat -d -t 1500 | grep -q 'Process: com.retrofrost.cubicalcompare.v5.debug'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
