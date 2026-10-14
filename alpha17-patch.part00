@@ -1,0 +1,162 @@
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/CMakeLists.txt /mnt/data/alpha16fix/CMakeLists.txt
+--- /mnt/data/alpha16orig/CMakeLists.txt	2026-07-24 21:20:32.000000000 +0000
++++ /mnt/data/alpha16fix/CMakeLists.txt	2026-07-24 23:12:27.925740465 +0000
+@@ -1,5 +1,5 @@
+ cmake_minimum_required(VERSION 3.22)
+-project(CubicalCreate VERSION 0.2.1 LANGUAGES CXX)
++project(CubicalCreate VERSION 0.2.2 LANGUAGES CXX)
+ set(CMAKE_CXX_STANDARD 20)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/README.md /mnt/data/alpha16fix/README.md
+--- /mnt/data/alpha16orig/README.md	2026-07-24 21:20:32.000000000 +0000
++++ /mnt/data/alpha16fix/README.md	2026-07-24 23:12:27.925740465 +0000
+@@ -1,4 +1,4 @@
+-# Cubical Create 0.2.1-alpha.16
++# Cubical Create 0.2.2-alpha.17
+ 
+ Native feature-parity migration build:
+ 
+@@ -17,7 +17,13 @@
+ The native application and rendering engine are distributed together. No system Python is required.
+ 
+ 
+-## Alpha 16 reliability fixes
++## Alpha 17 exact-output player
++- Play/pause, restart and seek controls on Linux and Windows.
++- Preview frames are rendered at the project output resolution through the same `FrameRenderer.render_output_frame()` path used by MP4 export.
++- The UI scales the finished output frame for display instead of re-laying out the scene at preview resolution.
++- Preview rendering runs asynchronously and drops stale requests while scrubbing, keeping the editor responsive on slower hardware.
++- Alpha 13 animation timing and geometry regression tests remain unchanged.
++
+ 
+ - Linux previews use a fresh PNG and load it directly as a GTK texture.
+ - Windows previews use a fresh bitmap for every render.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/engine/ccengine/exporter.py /mnt/data/alpha16fix/engine/ccengine/exporter.py
+--- /mnt/data/alpha16orig/engine/ccengine/exporter.py	2026-07-24 19:11:07.000000000 +0000
++++ /mnt/data/alpha16fix/engine/ccengine/exporter.py	2026-07-24 23:07:59.677743485 +0000
+@@ -158,7 +158,7 @@
+                 if self.cancelled:
+                     raise ExportCancelled("Export cancelled.")
+                 seconds = frame_number / fps
+-                frame = self.renderer.render(project, seconds, (width, height))
++                frame = self.renderer.render_output_frame(project, seconds)
+                 try:
+                     process.stdin.write(frame.tobytes())
+                 except BrokenPipeError:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/engine/ccengine/renderer.py /mnt/data/alpha16fix/engine/ccengine/renderer.py
+--- /mnt/data/alpha16orig/engine/ccengine/renderer.py	2026-07-24 19:11:07.000000000 +0000
++++ /mnt/data/alpha16fix/engine/ccengine/renderer.py	2026-07-24 23:07:59.677743485 +0000
+@@ -1042,6 +1042,14 @@
+         for card_index in visible:
+             self._draw_badge(canvas, project, card_index, positions[card_index], seconds, starts)
+ 
++    def render_output_frame(self, project: Project, seconds: float) -> Image.Image:
++        """Render the exact frame used by export at the project output resolution."""
++        return self.render(
++            project,
++            seconds,
++            (int(project.settings.width), int(project.settings.height)),
++        )
++
+     def render(self, project: Project, seconds: float, output_size: tuple[int, int] | None = None) -> Image.Image:
+         self._active_settings = project.settings
+         base = Image.new("RGB", (REFERENCE_WIDTH, REFERENCE_HEIGHT), self.theme.background)
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/engine/engine_cli.py /mnt/data/alpha16fix/engine/engine_cli.py
+--- /mnt/data/alpha16orig/engine/engine_cli.py	2026-07-24 21:18:48.000000000 +0000
++++ /mnt/data/alpha16fix/engine/engine_cli.py	2026-07-24 23:07:59.677743485 +0000
+@@ -18,7 +18,7 @@
+ from ccengine.renderer import FrameRenderer
+ from ccengine.timing import total_duration
+ 
+-VERSION = "0.2.1-alpha.16"
++VERSION = "0.2.2-alpha.17"
+ 
+ 
+ def b64e(value: str) -> str:
+@@ -226,8 +226,12 @@
+ 
+ def command_render_preview(args: argparse.Namespace) -> int:
+     project = read_ccx(args.input)
+-    size = (args.width or 960, args.height or 540)
+-    frame = FrameRenderer().render(project, max(0.0, args.time), size)
++    renderer = FrameRenderer()
++    if args.width > 0 and args.height > 0:
++        frame = renderer.render(project, max(0.0, args.time), (args.width, args.height))
++    else:
++        # WYSIWYG preview: use the exact output-frame path used by MP4 export.
++        frame = renderer.render_output_frame(project, max(0.0, args.time))
+     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+     frame.save(args.output)
+     return 0
+@@ -368,8 +372,8 @@
+     s.add_argument("input")
+     s.add_argument("output")
+     s.add_argument("--time", type=float, default=0.0)
+-    s.add_argument("--width", type=int, default=960)
+-    s.add_argument("--height", type=int, default=540)
++    s.add_argument("--width", type=int, default=0)
++    s.add_argument("--height", type=int, default=0)
+     s.set_defaults(func=command_render_preview)
+ 
+     s = sub.add_parser("export")
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/native/core/include/cubical/project.hpp /mnt/data/alpha16fix/native/core/include/cubical/project.hpp
+--- /mnt/data/alpha16orig/native/core/include/cubical/project.hpp	2026-07-24 19:13:02.000000000 +0000
++++ /mnt/data/alpha16fix/native/core/include/cubical/project.hpp	2026-07-24 23:08:16.933743291 +0000
+@@ -58,6 +58,7 @@
+ };
+ 
+ std::string summary(const Project& project);
++double timeline_duration(const Project& project);
+ std::string base64_encode(const std::string& input);
+ std::string base64_decode(const std::string& input);
+ bool save_ccx(const Project& project, const std::filesystem::path& path, std::string* error = nullptr);
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/native/core/src/project.cpp /mnt/data/alpha16fix/native/core/src/project.cpp
+--- /mnt/data/alpha16orig/native/core/src/project.cpp	2026-07-24 19:13:02.000000000 +0000
++++ /mnt/data/alpha16fix/native/core/src/project.cpp	2026-07-24 23:08:16.933743291 +0000
+@@ -35,6 +35,27 @@
+ }
+ }
+ 
++
++double timeline_duration(const Project& project) {
++    if (project.cards.empty()) return 0.0;
++    if (!project.settings.auto_length) {
++        return std::max(project.settings.custom_length_seconds, 0.0);
++    }
++    constexpr double opening_interval = 2.0;
++    constexpr double fourth_interval = 3.0;
++    constexpr double main_interval = 3.4;
++    constexpr double outro = 0.42 + 0.38 + 4.55 + 0.80;
++    double content = 0.0;
++    const std::size_t count = project.cards.size();
++    for (std::size_t index = 0; index < count; ++index) {
++        if (index == count - 1) content += index <= 3 ? fourth_interval : main_interval;
++        else if (index < 3) content += opening_interval;
++        else if (index == 3) content += fourth_interval;
++        else content += main_interval;
++    }
++    return content + outro;
++}
++
+ std::string summary(const Project& project) {
+     std::ostringstream out;
+     out << project.name << " • " << project.cards.size() << " cards • "
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' /mnt/data/alpha16orig/native/linux-gtk/main.cpp /mnt/data/alpha16fix/native/linux-gtk/main.cpp
+--- /mnt/data/alpha16orig/native/linux-gtk/main.cpp	2026-07-24 21:20:14.000000000 +0000
++++ /mnt/data/alpha16fix/native/linux-gtk/main.cpp	2026-07-24 23:13:47.625739568 +0000
+@@ -1,5 +1,9 @@
+ #include <gtk/gtk.h>
+ #include <algorithm>
++#include <chrono>
++#include <cmath>
++#include <iomanip>
++#include <sstream>
+ #include <filesystem>
+ #include <memory>
+ #include <iostream>
+@@ -19,7 +23,9 @@
+     GtkWidget* status{};
+     GtkWidget* card_list{};
+     GtkWidget* preview{};
+-    Gt

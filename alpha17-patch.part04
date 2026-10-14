@@ -1,0 +1,50 @@
+=0.0; try { t=std::stod(text(s->preview_time)); } catch(...) {}
+-    const auto next_preview=cubical::temporary_path("cubical-create-preview",".bmp");
+-    auto r=cubical::run_engine({"render-preview",s->working_ccx.string(),next_preview.string(),"--time",std::to_string(t),"--width","800","--height","450"});
+-    if(r.exit_code!=0||!fs::exists(next_preview)){set_status(s,r.output.empty()?"Preview rendering failed.":r.output);std::error_code ec;fs::remove(next_preview,ec);return;}
+-    HBITMAP next_bitmap=static_cast<HBITMAP>(LoadImageW(nullptr,next_preview.wstring().c_str(),IMAGE_BITMAP,0,0,LR_LOADFROMFILE|LR_CREATEDIBSECTION));
+-    if(!next_bitmap){set_status(s,"Windows could not decode the rendered preview bitmap.");std::error_code ec;fs::remove(next_preview,ec);return;}
+-    if(s->preview_bitmap) DeleteObject(s->preview_bitmap);
+-    s->preview_bitmap=next_bitmap;
+-    SendMessageW(s->preview,STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(s->preview_bitmap));
+-    std::error_code ec;if(!s->preview_path.empty())fs::remove(s->preview_path,ec);s->preview_path=next_preview;
+-    set_status(s,"Preview updated");
++    s->duration = cubical::timeline_duration(s->project);
++    if (s->current_time >= s->duration) s->current_time = 0.0;
++    s->playing = true;
++    s->play_anchor_time = s->current_time;
++    s->play_anchor = std::chrono::steady_clock::now();
++    update_player_ui(s);
++    start_preview_render(s, s->current_time);
++}
++
++void restart_player(AppState* s) {
++    s->playing = false;
++    request_preview(s, 0.0, true);
+ }
+ 
+ void import_project(AppState* s,const fs::path& path){
+     std::string error;bool loaded=false;
+     if(path.extension()==".ccx")loaded=cubical::load_ccx(s->project,path,&error);
+     else{auto r=cubical::run_engine({"project-to-ccx",path.string(),s->working_ccx.string()});if(r.exit_code==0)loaded=cubical::load_ccx(s->project,s->working_ccx,&error);else error=r.output;}
+-    if(loaded){s->project.project_path=path;s->selected=0;load_project(s);write_working(s);update_preview(s);}else set_status(s,error.empty()?"Could not open the selected project.":error);
++    if(loaded){s->project.project_path=path;s->selected=0;load_project(s);reset_player(s);}else set_status(s,error.empty()?"Could not open the selected project.":error);
+ }
+ void save_project(AppState* s,const fs::path& path){
+     if(!write_working(s))return;
+@@ -146,8 +274,8 @@
+ double to_double(HWND h,double fallback){try{return std::stod(text(h));}catch(...){return fallback;}}
+ int to_int(HWND h,int fallback){try{return std::stoi(text(h));}catch(...){return fallback;}}
+ 
+-void choose_and_import_data(AppState* s){COMDLG_FILTERSPEC f[]={{L"Spreadsheet",L"*.xlsx;*.xlsm;*.csv"},{L"All files",L"*.*"}};auto p=choose_shell_file(s->window,false,L"Insert spreadsheet data",f,2);if(p.empty()||!write_working(s))return;auto out=cubical::temporary_path("cubical-import",".ccx");auto r=cubical::run_engine({"import-data",s->working_ccx.string(),utf8(p),out.string()});if(r.exit_code==0&&cubical::load_ccx(s->project,out)){s->selected=0;load_project(s);update_preview(s);}else set_status(s,r.output);std::error_code ec;fs::remove(out,ec);}
+-void choose_and_import_sheet(AppState* s){COMDLG_FILTERSPEC f[]={{L"Images",L"*.png;*.jpg;*.jpeg;*.webp;*.bmp"},{L"All files",L"*.*"}};auto p=choose_shell_file(s->window,false,L"Import image sheet",f,2);if(p.empty()||!write_working(s))return;auto out=cubical::temporary_path("cubical-sheet",".ccx");auto assets=fs::temp_directory_path()/"cubical-create-sheet-assets";int rows=to_int(s->sheet_rows,0),columns=to_int(s->sheet_columns,0),start=std::max(0,to_int(s->sheet_start,1)-1);std::vector<std::string> command={"import-sheet",s->working_ccx.string(),utf8(p),out.string(),assets.string(),"--expected",std::to_string(s->project.cards.size()),"--start",std::to_string(start),"--fit","cts_card"};if(rows>0&&columns>0){command.insert(command.end(),{"--rows",std::to_string(rows),"--columns",std::to_string(columns)});}auto r=cubical::run_engine(command);if(r.exit_code==0&&cubical::load_ccx(s->project,out)){s->selected=0;load_project(s);update_preview(s);set_status(s,r.output);}else set_status(s,r.output);std::error_code ec;fs::remove(out,ec);}
++void choose_and_import_data(AppState* s){COMDLG_FILTERSPEC f[]={{L"Spreadsheet",L"*.xlsx;*.xlsm;*.csv"},{L"All files",L"*.*"}};auto p=choose_shell_file(s->window,false,L"Insert spreadsheet data",f,2);if(p.empty()||!write_working(s))return;auto out=cubical::temporary_path("cubical-import",".ccx");auto r=cubical::run_engine({"import-data",s->working_ccx.string(),utf8(p),out.string()});if(r.exit_code==0&&cubical::load_ccx(s->project,out)){s->selected=0;load_project(s);reset_player(s);}else set_status(s,r.output);std::error_code ec;fs::remove(out,ec);}
++void choose_and_import_sheet(AppState* s){COMDLG_FILTERSPEC f[]={{L"Images",L"*.png;*.jpg;*.jpeg;*.webp;*.bmp"},{L"All files",L"*.*"}};auto p=choose_shell_file(s->window,false,L"Import image sheet",f,2);if(p.empty()||!write_working(s))return;auto out=cubical::temporary_path("cubical-sheet",".ccx");auto assets=fs::temp_directory_path()/"cubical-create-sheet-assets";int rows=to_int(s->sheet_rows,0),columns=to_int(s->sheet_columns,0),start=std::max(0,to_int(s->sheet_start,1)-1);std::vector<std::string> command={"import-sheet",s->working_ccx.string(),utf8(p),out.string(),assets.string(),"--expected",std::to_string(s->project.cards.size()),"--start",std::to_string(start),"--fit","cts_card"};if(rows>0&&columns>0){command.insert(command.end(),{"--rows",std::to_string(rows),"--columns",std::to_string(columns)});}auto r=cubical::run_engine(command);if(r.exit_code==0&&cubical::load_ccx(s->project,out)){s->selected=0;load_project(s);reset_player(s);set_status(s,r.output);}else set_status(s,r.output);std::error_code ec;fs::remove(out,ec);}
+ 
+ void begin_export(AppState* s){COMDLG_FILTERSPEC f[]={{L"MP4 Video",L"*.mp4"}};auto p=choose_shell_file(s->window,true,L"Export MP4",f,1,L"mp4");if(p.empty()||!write_working(s))return;set_status(s,"Exporting…");auto input=s->working_ccx;auto path=utf8(p);std::thread([s,input,path](){auto r=cubical::run_engine({"export",input.string(),path,"--fast"});auto* message=new std::string(r.exit_code==0?"Exported "+path:r.output);PostMessageW(s->window,WM_EXPORT_DONE,0,reinterpret_cast<LPARAM>(message));}).detach();}
+ 
+@@ -157,7 +285,7 @@
+ 
+ void load_controls(ControlsState* c){auto& p=c->app->project;auto& s=p.settings;set_text(c->project_name,p.name);SendMessageW(c->credits_enabled,BM_SETCHECK,s.credits_enabled?BST_CHECKED:BST_UNCHECKED,0);std::vector<std::string*> tv={&s.credits_top_text,&s.credits_heading,&s.credits_project_name,&s.credits_created_with_label,&s.credits_created_with_value,&s.credits_design_label,&s.credits_design_value,&s.credits_footer,&s.end_best_label,&s.end_newest_label,&s.end_credit_label,&s.end_credit_value};for(size_t i=0;i<tv.size();++i)set_text(c->text_fields[i],*tv[i]);set_text(c->soundtrack,s.soundtrack);SendMessageW(c->loop,BM_SETCHECK,s.soundtrack_loop?BST_CHECKED:BST_UNCHECKED,0);SetWindowTextW(c->volume,std::to_wstring(static_cast<int>(s.soundtrack_volume*100)).c_str());SetWindowTextW(c->offset,std::to_wstring(s.soundtrack_offset_seconds).c_str());SetWindowTextW(c->fade,std::to_wstring(s.soundtrack_fade_out_seconds).c_str());SetWindowTextW(c->width,std::to_wstring(s.width).c_str());SetWindowTextW(c->height,std::to_wstring(s.height).c_str());SetWindowTextW(c->fps,std::to_wstring(s.fps).c_str());set_text(c->preset,s.encoder_preset);SetWindowTextW(c->crf,std::to_wstring(s.encoder_crf).c_str());set_text(c->font_fields[0],s.font_title);set_text(c->font_fields[1],s.font_description);set_text(c->font_fields[2],s.font_badge);set_text(c->font_fields[3],s.font_credits);}
+ 
+-void apply_controls(ControlsState* c){auto& p=c->app->project;auto& s=p.settings;p.name=utf8(text(c->project_name));s.credits_enabled=SendMessageW(c->credits_enabled,BM_GETCHECK,0,0)==BST_CHECKED;std::vector<std::string*> tv={&s.credits_top_text,&s.credits_headin
