@@ -41,7 +41,7 @@ import kotlin.math.roundToInt
 
 /** Real Material 3 Android editor. Rust JNI computes deterministic comparison animation scenes. */
 class ComposeStudioActivity : ComponentActivity() {
-    private val tabs = listOf("Project","Cards","Thumbnails","Renderers","Audio","Export","Draw","Settings")
+    private val tabs = listOf("Project","Cards","Thumbnails","Renderers","MegaPacks","Audio","Export","Draw","Settings")
     private var project by mutableStateOf(StudioModel.blank())
     private var selected by mutableIntStateOf(0)
     private var selectedAudio by mutableIntStateOf(-1)
@@ -61,6 +61,8 @@ class ComposeStudioActivity : ComponentActivity() {
     private var newProjectConfirmation by mutableStateOf(false)
     private var renderPreviewOnCards by mutableStateOf(false)
     private var bundleBusy by mutableStateOf(false)
+    private var megapackStatus by mutableStateOf("No MegaPack loaded")
+    private var megapackProgress by mutableFloatStateOf(0f)
     private val bundleExecutor=java.util.concurrent.Executors.newSingleThreadExecutor()
     private var rendererSelection by mutableStateOf<io.github.retrofrost.cts.android.renderer3.RendererV3Selection?>(null)
     private var audioPlayer: android.media.MediaPlayer? = null
@@ -185,12 +187,110 @@ class ComposeStudioActivity : ComponentActivity() {
             }
         }
     }
-    private val openCsv=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
-        if(uri!=null)guarded{
-            ink();project.Cards=StudioModel.parseCsv(read(uri).toString(Charsets.UTF_8))
-            selected=0;changed();message("CSV imported")
+    private val openZipack2=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        if(uri!=null && !bundleBusy) {
+            ink();bundleBusy=true;megapackProgress=0f
+            status="Importing Zipack2 MegaPack, artwork and badges..."
+            bundleExecutor.execute {
+                try {
+                    val imported=Zipack2Bridge.importPack(this,uri){percent->
+                        runOnUiThread{megapackProgress=percent/100f}
+                    }
+                    runOnUiThread {
+                        project=imported.project
+                        rendererSelection=null
+                        selected=0;selectedAudio=-1;frame=0L;playing=false
+                        tab="MegaPacks";bundleBusy=false
+                        megapackStatus="Imported "+imported.count+" cards from "+project.ProjectName
+                        changed();message(megapackStatus)
+                    }
+                } catch(e:Exception) {
+                    runOnUiThread {
+                        bundleBusy=false;megapackStatus="Import failed: "+e.message
+                        message(megapackStatus)
+                    }
+                }
+            }
         }
     }
+    private val saveZipack2=registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")){uri->
+        if(uri!=null && !bundleBusy){
+            ink();bundleBusy=true;megapackProgress=0f
+            status="Exporting real Zipack2 contact sheets and manifest..."
+            val snapshot=StudioModel.parse(StudioModel.json(project))
+            bundleExecutor.execute{
+                try {
+                    Zipack2Bridge.exportPack(this,snapshot,uri){percent->
+                        runOnUiThread{megapackProgress=percent/100f}
+                    }
+                    runOnUiThread {
+                        bundleBusy=false;megapackStatus="MegaPack exported: "+snapshot.Cards.size+" cards"
+                        message(megapackStatus)
+                    }
+                }catch(e:Exception){
+                    runOnUiThread {
+                        bundleBusy=false;megapackStatus="MegaPack export failed: "+e.message
+                        message(megapackStatus)
+                    }
+                }
+            }
+        }
+    }
+    private val openCsv=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        if(uri!=null && !bundleBusy){
+            ink();bundleBusy=true;status="Importing cards and Flaticon artwork..."
+            bundleExecutor.execute {
+                try {
+                    val parsed=StudioModel.parseCsv(read(uri).toString(Charsets.UTF_8))
+                    var downloaded=0
+                    val failures=ArrayList<String>()
+                    for((index,entry) in parsed.withIndex()){
+                        val url=entry.ArtworkSource.orEmpty()
+                        if(url.isNotBlank()){
+                            try{
+                                entry.ArtworkBase64=Zipack2Bridge.downloadFlaticonArtwork(url)
+                                downloaded++
+                            }catch(e:Exception){
+                                failures.add("Card "+(index+1)+": "+(e.message?:"artwork unavailable"))
+                            }
+                        }
+                    }
+                    runOnUiThread{
+                        project.Cards=parsed
+                        selected=0;bundleBusy=false;changed()
+                        status="Imported "+parsed.size+" cards, "+downloaded+" artwork images"+
+                            if(failures.isEmpty())""else" • "+failures.size+" image(s) need relinking"
+                        message(status)
+                        if(failures.isNotEmpty())android.util.Log.w("CTS_CSV",failures.joinToString("\n"))
+                    }
+                }catch(e:Exception){
+                    runOnUiThread{bundleBusy=false;message("CSV import failed: "+e.message)}
+                }
+            }
+        }
+    }
+    private fun loadFlaticonArtwork(thumb:Boolean){
+        val selectedCard=card()
+        val url=if(thumb)selectedCard.ThumbnailArtworkSource.orEmpty()
+            else selectedCard.ArtworkSource.orEmpty()
+        if(url.isBlank()){message("Paste a Flaticon image or icon-page URL first");return}
+        if(bundleBusy){message("A file operation is still running");return}
+        ink();bundleBusy=true
+        status="Loading Flaticon artwork..."
+        bundleExecutor.execute{
+            try{
+                val png=Zipack2Bridge.downloadFlaticonArtwork(url)
+                runOnUiThread{
+                    if(thumb)selectedCard.ThumbnailArtworkBase64=png
+                    else selectedCard.ArtworkBase64=png
+                    bundleBusy=false;changed();message("Artwork loaded from Flaticon")
+                }
+            }catch(e:Exception){
+                runOnUiThread{bundleBusy=false;message("Artwork load failed: "+e.message)}
+            }
+        }
+    }
+
     private val openArtwork=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         if(uri!=null)guarded{
             val bytes=read(uri);if(bytes.size>18*1024*1024)error("Image exceeds 18MB")
@@ -286,6 +386,56 @@ class ComposeStudioActivity : ComponentActivity() {
                     bytes?.contentEquals(testAudio.readBytes())==true
                 }){"Portable audio payload corrupted"}
                 android.util.Log.i("CTS_BUNDLE_SELFTEST","PASS: round-trip renderer and ordered embedded audio")
+                // A true Windows-style contact-sheet ZIP fixture: two coloured
+                // 363-pixel regions and distinct badge headers/values.
+                val contact=Bitmap.createBitmap(750,379,Bitmap.Config.ARGB_8888)
+                val drawing=android.graphics.Canvas(contact)
+                drawing.drawColor(Color.YELLOW)
+                val paint=android.graphics.Paint().apply{color=Color.CYAN}
+                drawing.drawRect(8f,8f,371f,371f,paint)
+                paint.color=Color.MAGENTA
+                drawing.drawRect(379f,8f,742f,371f,paint)
+                val imageOut=ByteArrayOutputStream()
+                check(contact.compress(Bitmap.CompressFormat.PNG,100,imageOut))
+                contact.recycle()
+                val sheetName="artwork/contact-sheet-001.png"
+                val meta=JSONObject()
+                    .put("format","cubical.megapack.zipack2").put("version",2)
+                    .put("name","Zipack2 Smoke")
+                    .put("cards",org.json.JSONArray()
+                        .put(JSONObject().put("title","First")
+                            .put("badge_header","After").put("badge_value","1")
+                            .put("badge_unit","minute").put("description","First card"))
+                        .put(JSONObject().put("title","Second")
+                            .put("badge_header","After").put("badge_value","2")
+                            .put("badge_unit","minutes").put("description","Second card")))
+                    .put("contactSheets",org.json.JSONArray().put(
+                        JSONObject().put("path",sheetName).put("order",0)
+                            .put("regions",org.json.JSONArray()
+                                .put(JSONObject().put("x",8).put("y",8)
+                                    .put("width",363).put("height",363).put("order",0))
+                                .put(JSONObject().put("x",379).put("y",8)
+                                    .put("width",363).put("height",363).put("order",1)))))
+                val fixture=File(cacheDir,"zipack2-input.zip")
+                java.util.zip.ZipOutputStream(fixture.outputStream()).use { zipped ->
+                    zipped.putNextEntry(java.util.zip.ZipEntry(sheetName))
+                    zipped.write(imageOut.toByteArray());zipped.closeEntry()
+                    zipped.putNextEntry(java.util.zip.ZipEntry("manifest.json"))
+                    zipped.write(meta.toString().toByteArray(Charsets.UTF_8));zipped.closeEntry()
+                }
+                val importedZip=Zipack2Bridge.importPack(this,Uri.fromFile(fixture))
+                check(importedZip.count==2)
+                check(importedZip.project.Cards[0].BadgeHeader=="After")
+                check(importedZip.project.Cards[0].Badge=="1")
+                check(importedZip.project.Cards[1].BadgeUnit=="minutes")
+                check(importedZip.project.Cards.all{it.ArtworkBase64.isNotBlank()})
+                val reexport=File(cacheDir,"zipack2-reexport.zip")
+                Zipack2Bridge.exportPack(this,importedZip.project,Uri.fromFile(reexport))
+                val reimported=Zipack2Bridge.importPack(this,Uri.fromFile(reexport))
+                check(reimported.project.Cards.map{it.Title}==listOf("First","Second"))
+                check(reimported.project.Cards[1].ArtworkBase64.isNotBlank())
+                android.util.Log.i("CTS_ZIPACK2_SELFTEST","PASS: contact sheet import and 2-card MegaPack re-export")
+
             }catch(e:Exception){
                 android.util.Log.e("CTS_RENDERER3_SELFTEST","FAIL",e)
                 throw e
@@ -350,8 +500,9 @@ class ComposeStudioActivity : ComponentActivity() {
                                 leadingIcon={Icon(when(index){
                                     0->Icons.Default.Folder;1->Icons.Default.ViewCarousel
                                     2->Icons.Default.Image;3->Icons.Default.Layers
-                                    4->Icons.Default.MusicNote;5->Icons.Default.FileUpload
-                                    6->Icons.Default.Brush;else->Icons.Default.Settings
+                                    4->Icons.Default.FolderZip;5->Icons.Default.MusicNote
+                                    6->Icons.Default.FileUpload;7->Icons.Default.Brush
+                                    else->Icons.Default.Settings
                                 },contentDescription=null,modifier=Modifier.size(18.dp))},
                                 modifier=Modifier.padding(horizontal=3.dp))
                         }
@@ -504,6 +655,7 @@ class ComposeStudioActivity : ComponentActivity() {
                     "Cards"->CardsPage()
                     "Thumbnails"->ThumbnailsPage()
                     "Renderers"->Renderer3Page()
+                    "MegaPacks"->MegaPacksPage()
                     "Audio"->AudioPage()
                     "Export"->ExportPage()
                     "Draw"->DrawPage()
@@ -559,6 +711,11 @@ class ComposeStudioActivity : ComponentActivity() {
             "Open .ccv5" to{openProject.launch(arrayOf("application/json","*/*"))})
         Buttons("Save .ccv5" to{saveProject.launch(project.ProjectName+".ccv5")},
             "Import CSV" to{openCsv.launch(arrayOf("text/*","*/*"))})
+        Buttons("Import MegaPack (.zipack2)" to{
+            if(!bundleBusy)openZipack2.launch(arrayOf("application/zip","application/octet-stream","*/*"))
+        },"Export MegaPack (.zipack2)" to{
+            if(!bundleBusy)saveZipack2.launch(project.ProjectName.ifBlank{"Comparison"}+".zipack2")
+        })
         Heading("Shareable project package")
         Text("A .ccv5 JSON file does not contain renderer or soundtrack files. A .ctsv5 bundle includes the selected Renderer3 and every audio track for other devices.",
             style=MaterialTheme.typography.bodySmall,
@@ -622,6 +779,10 @@ class ComposeStudioActivity : ComponentActivity() {
         Buttons("Badge colour" to{colorDialog=true})
         Buttons("Import artwork" to{openArtwork.launch(arrayOf("image/*"))},
             "Remove artwork" to{c.ArtworkBase64="";changed()})
+        Edit("Flaticon image / icon page URL",c.ArtworkSource.orEmpty()){c.ArtworkSource=it}
+        OutlinedButton(onClick={loadFlaticonArtwork(false)},modifier=Modifier.fillMaxWidth()){
+            Text("Load Flaticon artwork")
+        }
         Transforms(false)
     }
     private fun shiftCard(offset:Int){
@@ -655,6 +816,12 @@ class ComposeStudioActivity : ComponentActivity() {
         Buttons("Copy main transform" to{
             card().ThumbnailTransform=card().transform(false).copy();changed()
         })
+        Edit("Thumbnail Flaticon URL",card().ThumbnailArtworkSource.orEmpty()){
+            card().ThumbnailArtworkSource=it
+        }
+        OutlinedButton(onClick={loadFlaticonArtwork(true)},modifier=Modifier.fillMaxWidth()){
+            Text("Load thumbnail from Flaticon")
+        }
         Transforms(true)
         Button(onClick={ink();savePng.launch("CubicalCompare-Thumbnail.png")},
             modifier=Modifier.fillMaxWidth()){
@@ -713,6 +880,33 @@ class ComposeStudioActivity : ComponentActivity() {
             style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
+    @Composable private fun MegaPacksPage(){
+        Heading("MegaPacks","Windows-compatible Zipack2 v2. Import illustrated contact sheets, card data, badges, ordering and soundtracks.")
+        Buttons("Import .zipack2" to{
+            if(!bundleBusy)openZipack2.launch(arrayOf("application/zip","application/octet-stream","*/*"))
+        },"Export .zipack2" to{
+            if(!bundleBusy)saveZipack2.launch(project.ProjectName.ifBlank{"Comparison"}+".zipack2")
+        })
+        if(bundleBusy){
+            LinearProgressIndicator(progress={megapackProgress},modifier=Modifier.fillMaxWidth())
+            Text("Processing MegaPack artwork…",style=MaterialTheme.typography.bodySmall)
+        }
+        Text(megapackStatus,style=MaterialTheme.typography.bodyMedium,
+            color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Heading("Contents")
+        Text("Project: "+project.ProjectName)
+        Text("Cards: "+project.Cards.size+" • Audio tracks: "+project.AudioTracks.size)
+        Text("Images: "+project.Cards.count{!it.ArtworkBase64.isNullOrBlank()}+
+            " embedded images",style=MaterialTheme.typography.bodySmall)
+        Buttons("Review cards" to{tab="Cards";changed()},
+            "Preview video" to{tab="Export";changed()})
+        Text("Imported cards preserve chronological order and separate badge header, value and unit. Exported contact sheets use 363 px coloured tiles with real image regions; no transparent placeholders.",
+            style=MaterialTheme.typography.bodySmall,
+            color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Flaticon HTTPS image and preview-page URLs are supported. Unsupported web image hosts are rejected rather than silently replaced.",
+            style=MaterialTheme.typography.bodySmall,
+            color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     @Composable private fun AudioPage(){
         Heading("Audio patterns","Save the creator's exact track order into a reusable M3U playlist.")
         Buttons("＋ Add audio" to{openAudio.launch(arrayOf("audio/*"))},

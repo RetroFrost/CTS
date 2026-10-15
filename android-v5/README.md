@@ -62,3 +62,19 @@ This V5 implementation reuses the actual Android Renderer3 format/player origina
 ### Parity audit – not yet completed
 
 The native Android implementation still lacks a general **Zipack2 MegaPack import/export** workflow (CSV imports work), arbitrary Windows **Renderer3 extension/plugin execution**, Windows patch/developer tools, fully portable cross-platform WPF ink layers, and a fully integrated live per-frame Renderer3 element inspector. Renderer support remains limited to the existing Android scene-v3/ribbon-exact feature set. No claim of complete stable Windows CTS parity is made. Feature labels are not substitutes for working engines.
+
+## Zipack2 MegaPack parity
+
+**MegaPacks** is a floating Material 3 navigation item. Project also has **Import MegaPack (.zipack2)** and **Export MegaPack (.zipack2)**. This is a real Zipack2 v2 reader and writer matching the Windows `cubical.megapack.zipack2` JSON manifest, not an ordinary ZIP of CSV rows.
+
+Importer: checks manifest format/version and archive paths/sizes, reads authored cards in manifest order, uses declared contact-sheet rectangles or Windows yellow-separator detection, crops and embeds artwork, restores badge headers/values/units, descriptions and image transforms, and imports the soundtrack pattern. Images specified only as HTTPS Flaticon URLs or Flaticon icon-page URLs can be retrieved into embedded artwork. Unsupported remote hosts fail rather than being followed automatically.
+
+Exporter: generates populated contact sheets containing real 363 px coloured icon tiles, strict authored `regions` coordinates, manifest card metadata, a preview thumbnail and the embedded soundtrack. Windows' single `soundtrack` key is preserved; the optional `soundtracks` list keeps the complete Android playlist for Android-to-Android transfers. Windows releases that don't understand that extension simply import the first soundtrack.
+
+CSV importer now recognises the Image column as an artwork source and resolves Flaticon URLs in the background. Card and Thumbnail editors also have direct Flaticon URL loading. Regular local artwork picking remains available. Flaticon requests require INTERNET permission, use HTTPS, limit response bytes, restrict redirects to Flaticon hosts, and do not allow arbitrary websites.
+
+Android 11 CI generates a valid two-card Windows-style contact-sheet fixture, imports its card artwork and ordered badge fields, exports it as Zipack2 again, and reimports it to confirm the resulting contact sheets are real. Unit tests cover safe ZIP entry names and project transform/badge round trips.
+
+### Scope and remaining platform limits
+
+Zipack2 import relies on explicit regions where provided and yellow separator grids for older contact sheets. It does not reproduce Windows' complete AI/image-processing contact-sheet detector for irregular layouts; unsupported sheets return a visible error instead of a guessed card order. Native Windows extensions of Renderer3 are still not executable on Android. The app's normal video editor and Renderers menu remain separate from MegaPack packaging.
