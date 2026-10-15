@@ -55,6 +55,8 @@ class ComposeStudioActivity : ComponentActivity() {
     private var playing by mutableStateOf(false)
     private var frame by mutableLongStateOf(0)
     private var colorDialog by mutableStateOf(false)
+    private var audioWarning by mutableStateOf("")
+    private var audioPlayer: android.media.MediaPlayer? = null
     private var canvas: CardCanvas? = null
     private lateinit var exporter: VideoExporter
     private fun changed() {rev++;canvas?.refresh()}
@@ -165,14 +167,14 @@ class ComposeStudioActivity : ComponentActivity() {
         setContent{Studio()}
     }
     override fun onPause(){
-        super.onPause();ink()
+        super.onPause();stopAudio();ink()
         try{
             val temp=File(filesDir,"compose-autosave.tmp");temp.writeText(StudioModel.json(project))
             if(!temp.renameTo(File(filesDir,"compose-autosave.ccv5")))
                 temp.copyTo(File(filesDir,"compose-autosave.ccv5"),overwrite=true)
         }catch(_:Exception){}
     }
-    override fun onDestroy(){if(exporter.isBusy)exporter.cancel();super.onDestroy()}
+    override fun onDestroy(){stopAudio();if(exporter.isBusy)exporter.cancel();super.onDestroy()}
     private fun navigate(to:String){
         ink();tab=to;playing=false
         if(to=="Thumbnails")drawingThumbnail=true
@@ -244,6 +246,10 @@ class ComposeStudioActivity : ComponentActivity() {
                 }
             }
             if(colorDialog)BadgeDialog()
+            if(audioWarning.isNotEmpty())AlertDialog(onDismissRequest={audioWarning=""},
+                title={Text("Audio duration warning")},text={Text(audioWarning)},
+                confirmButton={TextButton(onClick={audioWarning="";saveMp4.launch("CubicalCompare-V5.mp4")}){Text("Export anyway")}},
+                dismissButton={TextButton(onClick={audioWarning=""}){Text("Cancel")}})
         }
     }
     @Composable private fun Stage(){
@@ -488,6 +494,7 @@ class ComposeStudioActivity : ComponentActivity() {
             }
         }
         Buttons("↑ Move up" to{moveAudio(-1)},"↓ Move down" to{moveAudio(1)})
+        Buttons("▶ Preview" to{previewAudio()},"■ Stop" to{stopAudio()})
         Buttons("Relink selected audio" to{
             if(selectedAudio in project.AudioTracks.indices)relinkAudio.launch(arrayOf("audio/*"))
         })
@@ -517,6 +524,47 @@ class ComposeStudioActivity : ComponentActivity() {
         val a=project.AudioTracks.removeAt(selectedAudio)
         project.AudioTracks.add(next,a);selectedAudio=next;changed()
     }
+    private fun stopAudio(){
+        val current=audioPlayer
+        audioPlayer=null
+        if(current!=null)try{current.stop();current.release()}catch(_:Exception){}
+    }
+    private fun previewAudio(){
+        if(selectedAudio !in project.AudioTracks.indices){message("Select an audio track");return}
+        stopAudio()
+        try{
+            val player=android.media.MediaPlayer()
+            audioPlayer=player
+            player.setDataSource(this,Uri.parse(project.AudioTracks[selectedAudio]))
+            player.setVolume(project.AudioVolume.toFloat(),project.AudioVolume.toFloat())
+            player.setOnPreparedListener{it.start()}
+            player.setOnCompletionListener{stopAudio()}
+            player.prepareAsync()
+        }catch(e:Exception){stopAudio();message("Cannot preview audio: "+e.message)}
+    }
+    private fun reviewAudioBeforeExport(){
+        if(project.AudioTracks.isEmpty()){
+            saveMp4.launch("CubicalCompare-V5.mp4");return
+        }
+        var total=0L
+        var known=true
+        project.AudioTracks.forEach{reference->
+            val probe=android.media.MediaMetadataRetriever()
+            try{
+                probe.setDataSource(this,Uri.parse(reference))
+                val duration=probe.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                if(duration==null)known=false else total+=duration.toLong()
+            }catch(_:Exception){known=false}
+            finally{try{probe.release()}catch(_:Exception){}}
+        }
+        val videoDuration=project.Cards.size.toLong()*project.SecondsPerCard*1000L
+        audioWarning=if(!known)"Some soundtrack files could not be inspected. Missing tracks may prevent export."
+        else if(total>videoDuration)"The pattern extends past the video end. Audio will be trimmed and faded."
+        else if(total<videoDuration && !project.AudioRepeat)
+            "The pattern ends before the video. The remainder will be silent; enable Repeat Pattern to fill it."
+        else ""
+        if(audioWarning.isEmpty())saveMp4.launch("CubicalCompare-V5.mp4")
+    }
     @Composable private fun ExportPage(){
         Heading("Export","Rust computes the animation clock and easing. Android Media3 encodes MP4.")
         Measure("Frame rate",project.Fps.toFloat(),15f..60f){project.Fps=it.roundToInt()}
@@ -529,7 +577,7 @@ class ComposeStudioActivity : ComponentActivity() {
         },"1920 × 1080" to{
             project.ExportWidth=1920;project.ExportHeight=1080;changed()
         })
-        Button(onClick={if(!exporter.isBusy)saveMp4.launch("CubicalCompare-V5.mp4")},
+        Button(onClick={if(!exporter.isBusy)reviewAudioBeforeExport()},
             modifier=Modifier.fillMaxWidth(),enabled=!exporting){
             Icon(Icons.Default.Movie,null);Spacer(Modifier.width(7.dp));Text("Export MP4 with audio")
         }
