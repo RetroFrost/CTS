@@ -190,6 +190,13 @@ internal object Zipack2Bridge {
         return request(URL(sourceUrl))
     }
 
+    /** Bounded artwork download. Only HTTPS *.flaticon.com hosts are allowed. */
+    internal fun downloadFlaticonArtwork(source:String):String {
+        val bitmap=decode(flaticon(source),1600)
+        return try{Base64.encodeToString(png(bitmap),Base64.NO_WRAP)}
+        finally{bitmap.recycle()}
+    }
+
     fun importPack(ctx:Context,source:Uri,progress:(Int)->Unit={}):Imported{
         val downloaded=readSource(ctx,source)
         try{
@@ -242,6 +249,8 @@ internal object Zipack2Bridge {
                                     it.Title="Comparison "+(index+1);cards.add(it)
                                 }
                                 target.ArtworkBase64=Base64.encodeToString(png(cropped),Base64.NO_WRAP)
+                                val m=details.optJSONObject(index)
+                                if(m!=null)target.ArtworkSource=property(m,"image","image_url","imageUrl","artwork","artwork_url","icon")
                             }finally{cropped.recycle()}
                             index++
                         }
@@ -255,9 +264,8 @@ internal object Zipack2Bridge {
                             val uri=property(definition,"image","image_url","imageUrl",
                                 "artwork","artwork_url","icon")
                             if(uri.isNotBlank()){
-                                val bitmap=decode(flaticon(uri),1600)
-                                try{cards[i].ArtworkBase64=Base64.encodeToString(png(bitmap),Base64.NO_WRAP)}
-                                finally{bitmap.recycle()}
+                                cards[i].ArtworkBase64=downloadFlaticonArtwork(uri)
+                                cards[i].ArtworkSource=uri
                             }
                         }
                     }
