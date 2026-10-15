@@ -14,7 +14,7 @@ import kotlin.math.min
 /** Stream every authored Renderer3 frame through a bounded-memory H.264 encoder. */
 internal object Renderer3VideoEncoder {
     @JvmStatic fun encode(context: Context, project: StudioModel.Project,
-        destination: File, progress: (Int)->Unit) {
+        destination: File, progress: (Int)->Unit, cancelled: ()->Boolean = { false }) {
         val selection=Renderer3Bridge.resolve(context,project)?:error("No Renderer3 selected")
         val w=project.ExportWidth.coerceIn(320,3840).let{it-it%2}
         val h=project.ExportHeight.coerceIn(180,2160).let{it-it%2}
@@ -53,6 +53,7 @@ internal object Renderer3VideoEncoder {
                 codec.configure(cfg,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE)
                 codec.start();started=true
                 while(!outputDone){
+                    if(cancelled())throw java.util.concurrent.CancellationException("Export cancelled")
                     if(!inputDone){
                         val inputIdx=codec.dequeueInputBuffer(10000)
                         if(inputIdx>=0){
@@ -60,6 +61,7 @@ internal object Renderer3VideoEncoder {
                             input.clear()
                             val pts=cursor.toLong()*1_000_000/fps
                             if(cursor<total){
+                                if(cancelled())throw java.util.concurrent.CancellationException("Export cancelled")
                                 graphics.drawColor(Color.BLACK)
                                 renderer.paint(graphics,cursor,w,h)
                                 image.getPixels(pixels,0,w,0,0,w,h)
