@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="android.permission.INTERNET"/>
  <application android:label="Cubical Compare V5" android:icon="@drawable/ic_app" android:roundIcon="@drawable/ic_app" android:allowBackup="true" android:supportsRtl="true" android:theme="@style/AppTheme" android:usesCleartextTraffic="false">
   <activity android:name=".ComposeStudioActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" android:windowSoftInputMode="adjustResize">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
