@@ -87,7 +87,7 @@ jobs:
         if: success()
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.CTS_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           TAG="v5.0.0-android-main-preview.${{ github.run_number }}"
           for attempt in 1 2 3 4; do
@@ -96,7 +96,7 @@ jobs:
             --title "Cubical Compare V5 Android — Main Preview #${{ github.run_number }}" \
             --notes "Android V5 rebuilt using Rust JNI deterministic timeline engine plus Kotlin Jetpack Compose Material 3 UI, floating menus, Windows .ccv5 projects, M3U patterns, thumbnail transforms, draw-as-artwork, Media3 MP4 export. Debug-signed sideload APK."
             then exit 0; fi
-            echo "GitHub release upload attempt ${attempt} failed (possibly transient permission/rate error)."
+            echo "::warning::GitHub release publish failed. If integration reports HTTP 403, configure a CTS_RELEASE_TOKEN secret with repository Contents: Read and write permissions."
             if [ "$attempt" -lt 4 ]; then sleep $((attempt*12)); fi
           done
           exit 1
