@@ -156,6 +156,7 @@ class ComposeStudioActivity : ComponentActivity() {
     override fun onCreate(state:Bundle?){
         super.onCreate(state)
         exporter=VideoExporter(this)
+        check(NativeEngine.totalFrames(StudioModel.json(StudioModel.blank())) > 0L) { "Rust timeline engine failed to initialise" }
         themePref=getPreferences(0).getInt("composeTheme",0)
         language=getPreferences(0).getInt("composeLanguage",0)
         val saved=File(filesDir,"compose-autosave.ccv5")
@@ -515,7 +516,7 @@ class ComposeStudioActivity : ComponentActivity() {
         Buttons("Draw on card" to{ink();drawingThumbnail=false;changed()},
             "Draw on thumbnail" to{ink();drawingThumbnail=true;changed()})
         Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){
-            for(mode in CardCanvas.Tool.entries){
+            for(mode in CardCanvas.Tool.values()){
                 FilterChip(selected=tool==mode,onClick={tool=mode;changed()},
                     label={Text(mode.name.lowercase().replaceFirstChar{it.uppercase()})})
             }
