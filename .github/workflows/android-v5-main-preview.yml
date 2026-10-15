@@ -58,6 +58,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      # Debug builds are for sideload testing. Keep the runner-generated test
+      # keystore stable across previews so future APK updates do not require a
+      # different signing certificate on every ephemeral Actions runner.
+      - name: Restore preview debug signing identity
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: cts-v5-android-preview-debug-signing-v1
       - name: Test project and M3U compatibility
         run: gradle --project-dir android-v5 :app:testDebugUnitTest --no-daemon --stacktrace --console=plain
       - name: Build native Android debug APK

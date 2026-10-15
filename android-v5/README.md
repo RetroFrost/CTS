@@ -84,3 +84,7 @@ Zipack2 import relies on explicit regions where provided and yellow separator gr
 Windows can export 40–50-card MegaPacks as a *single* contact sheet with native 872px+ artwork. Android now reads the original manifest rectangles and uses Android's region decoder to extract each source region directly. It does not crop the coordinates against a smaller sampled preview. A large 5200-pixel contact-sheet sample is exercised by the Android 11 runtime smoke job.
 
 The audio-length warning uses the selected Renderer3's actual frame count and FPS when a Renderer3 is active, rather than using the unrelated basic card duration. Flaticon preview-page images may declare `og:image` attributes in either order and are resolved only through validated HTTPS Flaticon hosts.
+
+### Installing and upgrading Android previews
+
+The preview is debug-signed, never silently installed. GitHub Actions now caches its generated preview debug keystore on the `android-main-preview` publishing workflow so later APKs normally reuse the same signing certificate. This test certificate is not a Google Play/release signing identity; cache expiry or previous releases built before the cache may still have mismatched signatures. **Before uninstalling an earlier Android preview, export a complete `.ctsv5` project** and keep the file somewhere outside the app; after installation, import that bundle to restore your renderer, artwork and audio. Android may reject installing over a preview signed with a different prior debug certificate; do not delete your old app data without first exporting it.
