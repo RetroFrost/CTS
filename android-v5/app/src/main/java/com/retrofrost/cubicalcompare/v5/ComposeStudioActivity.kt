@@ -237,11 +237,60 @@ class ComposeStudioActivity : ComponentActivity() {
         }
     }
     private val openCsv=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
-        if(uri!=null)guarded{
-            ink();project.Cards=StudioModel.parseCsv(read(uri).toString(Charsets.UTF_8))
-            selected=0;changed();message("CSV imported")
+        if(uri!=null && !bundleBusy){
+            ink();bundleBusy=true;status="Importing cards and Flaticon artwork..."
+            bundleExecutor.execute {
+                try {
+                    val parsed=StudioModel.parseCsv(read(uri).toString(Charsets.UTF_8))
+                    var downloaded=0
+                    val failures=ArrayList<String>()
+                    for((index,entry) in parsed.withIndex()){
+                        val url=entry.ArtworkSource.orEmpty()
+                        if(url.isNotBlank()){
+                            try{
+                                entry.ArtworkBase64=Zipack2Bridge.downloadFlaticonArtwork(url)
+                                downloaded++
+                            }catch(e:Exception){
+                                failures.add("Card "+(index+1)+": "+(e.message?:"artwork unavailable"))
+                            }
+                        }
+                    }
+                    runOnUiThread{
+                        project.Cards=parsed
+                        selected=0;bundleBusy=false;changed()
+                        status="Imported "+parsed.size+" cards, "+downloaded+" artwork images"+
+                            if(failures.isEmpty())""else" • "+failures.size+" image(s) need relinking"
+                        message(status)
+                        if(failures.isNotEmpty())android.util.Log.w("CTS_CSV",failures.joinToString("\n"))
+                    }
+                }catch(e:Exception){
+                    runOnUiThread{bundleBusy=false;message("CSV import failed: "+e.message)}
+                }
+            }
         }
     }
+    private fun loadFlaticonArtwork(thumb:Boolean){
+        val selectedCard=card()
+        val url=if(thumb)selectedCard.ThumbnailArtworkSource.orEmpty()
+            else selectedCard.ArtworkSource.orEmpty()
+        if(url.isBlank()){message("Paste a Flaticon image or icon-page URL first");return}
+        if(bundleBusy){message("A file operation is still running");return}
+        ink();bundleBusy=true
+        status="Loading Flaticon artwork..."
+        bundleExecutor.execute{
+            try{
+                val png=Zipack2Bridge.downloadFlaticonArtwork(url)
+                runOnUiThread{
+                    if(thumb)selectedCard.ThumbnailArtworkBase64=png
+                    else selectedCard.ArtworkBase64=png
+                    bundleBusy=false;changed();message("Artwork loaded from Flaticon")
+                }
+            }catch(e:Exception){
+                runOnUiThread{bundleBusy=false;message("Artwork load failed: "+e.message)}
+            }
+        }
+    }
+
     private val openArtwork=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         if(uri!=null)guarded{
             val bytes=read(uri);if(bytes.size>18*1024*1024)error("Image exceeds 18MB")
@@ -730,6 +779,10 @@ class ComposeStudioActivity : ComponentActivity() {
         Buttons("Badge colour" to{colorDialog=true})
         Buttons("Import artwork" to{openArtwork.launch(arrayOf("image/*"))},
             "Remove artwork" to{c.ArtworkBase64="";changed()})
+        Edit("Flaticon image / icon page URL",c.ArtworkSource.orEmpty()){c.ArtworkSource=it}
+        OutlinedButton(onClick={loadFlaticonArtwork(false)},modifier=Modifier.fillMaxWidth()){
+            Text("Load Flaticon artwork")
+        }
         Transforms(false)
     }
     private fun shiftCard(offset:Int){
@@ -763,6 +816,12 @@ class ComposeStudioActivity : ComponentActivity() {
         Buttons("Copy main transform" to{
             card().ThumbnailTransform=card().transform(false).copy();changed()
         })
+        Edit("Thumbnail Flaticon URL",card().ThumbnailArtworkSource.orEmpty()){
+            card().ThumbnailArtworkSource=it
+        }
+        OutlinedButton(onClick={loadFlaticonArtwork(true)},modifier=Modifier.fillMaxWidth()){
+            Text("Load thumbnail from Flaticon")
+        }
         Transforms(true)
         Button(onClick={ink();savePng.launch("CubicalCompare-Thumbnail.png")},
             modifier=Modifier.fillMaxWidth()){
