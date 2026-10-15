@@ -7,6 +7,7 @@ data class ImageSubcard(val source: String? = null)
 data class CtsCard(
     val badgePrimary: String = "",
     val badgeSecondary: String = "",
+    val badgeHeader: String = "",
     val title: String = "",
     val description: String = "",
     val imageSubcard: ImageSubcard = ImageSubcard()
@@ -18,7 +19,8 @@ fun fromV5(project: StudioModel.Project): CtsProject =
         val source = c.ArtworkBase64?.takeIf { it.isNotBlank() }?.let { "data:image/png;base64,$it" }
         CtsCard(
             badgePrimary = c.Badge ?: "",
-            badgeSecondary = listOf(c.BadgeHeader, c.BadgeUnit).filter { !it.isNullOrBlank() }.joinToString(" "),
+            badgeSecondary = c.BadgeUnit ?: "",
+            badgeHeader = c.BadgeHeader ?: "",
             title = c.Title ?: "",
             description = c.Description ?: "",
             imageSubcard = ImageSubcard(source = source)
