@@ -78,3 +78,9 @@ Android 11 CI generates a valid two-card Windows-style contact-sheet fixture, im
 ### Scope and remaining platform limits
 
 Zipack2 import relies on explicit regions where provided and yellow separator grids for older contact sheets. It does not reproduce Windows' complete AI/image-processing contact-sheet detector for irregular layouts; unsupported sheets return a visible error instead of a guessed card order. Native Windows extensions of Renderer3 are still not executable on Android. The app's normal video editor and Renderers menu remain separate from MegaPack packaging.
+
+### Large artwork, badge timing and compatibility safeguards
+
+Windows can export 40–50-card MegaPacks as a *single* contact sheet with native 872px+ artwork. Android now reads the original manifest rectangles and uses Android's region decoder to extract each source region directly. It does not crop the coordinates against a smaller sampled preview. A large 5200-pixel contact-sheet sample is exercised by the Android 11 runtime smoke job.
+
+The audio-length warning uses the selected Renderer3's actual frame count and FPS when a Renderer3 is active, rather than using the unrelated basic card duration. Flaticon preview-page images may declare `og:image` attributes in either order and are resolved only through validated HTTPS Flaticon hosts.
