@@ -39,7 +39,7 @@ import kotlin.math.roundToInt
 
 /** Real Material 3 Android editor. Rust JNI computes deterministic comparison animation scenes. */
 class ComposeStudioActivity : ComponentActivity() {
-    private val tabs = listOf("Project","Cards","Thumbnails","Audio","Export","Draw","Settings")
+    private val tabs = listOf("Project","Cards","Thumbnails","Renderers","Audio","Export","Draw","Settings")
     private var project by mutableStateOf(StudioModel.blank())
     private var selected by mutableIntStateOf(0)
     private var selectedAudio by mutableIntStateOf(-1)
@@ -56,6 +56,7 @@ class ComposeStudioActivity : ComponentActivity() {
     private var frame by mutableLongStateOf(0)
     private var colorDialog by mutableStateOf(false)
     private var audioWarning by mutableStateOf("")
+    private var rendererSelection by mutableStateOf<io.github.retrofrost.cts.android.renderer3.RendererV3Selection?>(null)
     private var audioPlayer: android.media.MediaPlayer? = null
     private var canvas: CardCanvas? = null
     private lateinit var exporter: VideoExporter
@@ -92,6 +93,18 @@ class ComposeStudioActivity : ComponentActivity() {
     }
     private val saveProject=registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri->
         if(uri!=null)guarded{ink();save(uri,StudioModel.json(project).toByteArray(Charsets.UTF_8));message("Project saved")}
+    }
+    private val importRenderer3=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        if(uri!=null)guarded{
+            val selection=Renderer3Bridge.install(this,uri)
+            ink()
+            Renderer3Bridge.select(project,selection)
+            rendererSelection=selection
+            frame=0L
+            tab="Renderers"
+            changed()
+            message("Renderer3 imported: "+selection.name)
+        }
     }
     private val openCsv=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         if(uri!=null)guarded{
@@ -164,6 +177,7 @@ class ComposeStudioActivity : ComponentActivity() {
         language=getPreferences(0).getInt("composeLanguage",0)
         val saved=File(filesDir,"compose-autosave.ccv5")
         if(saved.exists())try{project=StudioModel.parse(saved.readText())}catch(_:Exception){}
+        rendererSelection=runCatching{Renderer3Bridge.resolve(this,project)}.getOrNull()
         setContent{Studio()}
     }
     override fun onPause(){
@@ -224,9 +238,9 @@ class ComposeStudioActivity : ComponentActivity() {
                                 label={Text(text(name),maxLines=1)},
                                 leadingIcon={Icon(when(index){
                                     0->Icons.Default.Folder;1->Icons.Default.ViewCarousel
-                                    2->Icons.Default.Image;3->Icons.Default.MusicNote
-                                    4->Icons.Default.FileUpload;5->Icons.Default.Brush
-                                    else->Icons.Default.Settings
+                                    2->Icons.Default.Image;3->Icons.Default.Layers
+                                    4->Icons.Default.MusicNote;5->Icons.Default.FileUpload
+                                    6->Icons.Default.Brush;else->Icons.Default.Settings
                                 },contentDescription=null,modifier=Modifier.size(18.dp))},
                                 modifier=Modifier.padding(horizontal=3.dp))
                         }
@@ -265,7 +279,17 @@ class ComposeStudioActivity : ComponentActivity() {
                     Text("1920 × 1080",style=MaterialTheme.typography.labelSmall)
                 }
                 Spacer(Modifier.height(10.dp))
-                if(tab=="Export" && playing) {
+                val activeRenderer=rendererSelection
+                if(activeRenderer!=null && (tab=="Renderers" || tab=="Export" || tab=="Cards")){
+                    val rframe=frame.toInt().coerceIn(0,activeRenderer.frameCountForCards(project.Cards.size).coerceAtLeast(1)-1)
+                    AndroidView(factory={ctx->Renderer3FrameView(ctx)},
+                        update={view->
+                            runCatching{
+                                view.configure(project,activeRenderer,rev)
+                                view.setFrame(rframe)
+                            }.onFailure{status="Renderer3 preview: "+it.message}
+                        },modifier=Modifier.fillMaxWidth().aspectRatio(16f/9f))
+                } else if(tab=="Export" && playing) {
                     val scene=try{JSONObject(NativeEngine.scene(StudioModel.json(project),frame))}
                         catch(_:Exception){JSONObject()}
                     val current=scene.optInt("currentCard",0).coerceIn(0,project.Cards.size-1)
@@ -307,36 +331,40 @@ class ComposeStudioActivity : ComponentActivity() {
                 Text(if(tab=="Draw")"Use your finger to draw • brush and eraser in Draw settings"
                     else "Drag artwork • pinch to scale and rotate • independent thumbnail transformations",
                     style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if(tab=="Export")Timeline()
+                if(tab=="Export" || tab=="Renderers")Timeline()
             }
         }
     }
     @Composable private fun Timeline(){
-        val seen=rev
-        val json=remember(seen,project.Cards.size,project.Fps,project.SecondsPerCard){
+        val selectedRenderer=rendererSelection
+        val revision=rev
+        val json=remember(revision,project.Cards.size,project.Fps,project.SecondsPerCard){
             StudioModel.json(project)
         }
-        val total=remember(json){NativeEngine.totalFrames(json).coerceAtLeast(1)}
-        LaunchedEffect(playing,json){
+        val total=if(selectedRenderer!=null)
+            selectedRenderer.frameCountForCards(project.Cards.size).toLong().coerceAtLeast(1)
+            else NativeEngine.totalFrames(json).coerceAtLeast(1L)
+        val fps=selectedRenderer?.fps ?: project.Fps
+        LaunchedEffect(playing,json,selectedRenderer?.id){
             while(playing){
-                delay((1000/project.Fps.coerceIn(1,60)).toLong().coerceAtLeast(16))
-                frame=(frame+1)%total
+                delay((1000/fps.coerceIn(1,60)).toLong().coerceAtLeast(16))
+                frame=(frame+1L)%total
             }
         }
-        val scene=remember(json,frame){JSONObject(NativeEngine.scene(json,frame))}
         Row(verticalAlignment=Alignment.CenterVertically){
             TextButton(onClick={playing=!playing}){
                 Icon(if(playing)Icons.Default.Pause else Icons.Default.PlayArrow,null)
-                Spacer(Modifier.width(6.dp));Text(if(playing)"Pause"else"Preview timing")
+                Spacer(Modifier.width(6.dp));Text(if(playing)"Pause"else"Play")
             }
             Spacer(Modifier.weight(1f))
-            Text("Card "+(scene.optInt("currentCard")+1)+" / "+project.Cards.size,
+            Text((selectedRenderer?.name ?:"Rust timeline")+" · "+frame+"/"+total,
                 style=MaterialTheme.typography.labelSmall)
         }
         Slider(value=(frame.toFloat()/total).coerceIn(0f,1f),
-            onValueChange={frame=(it*total).toLong().coerceIn(0,total-1)})
-        Text("Rust timeline • frame "+frame+" / "+total+" • eased transition "+
-            String.format(Locale.ROOT,"%.0f%%",scene.optDouble("transition")*100),
+            onValueChange={frame=(it*total).toLong().coerceIn(0L,total-1L)})
+        Text(if(selectedRenderer!=null)
+            "Renderer3 native timeline • "+selectedRenderer.fps+" FPS • "+total+" frames"
+            else "Rust card-conveyor timeline • "+project.Fps+" FPS",
             style=MaterialTheme.typography.labelSmall)
     }
     @Composable private fun Editor(){
@@ -347,6 +375,7 @@ class ComposeStudioActivity : ComponentActivity() {
                     "Project"->ProjectPage()
                     "Cards"->CardsPage()
                     "Thumbnails"->ThumbnailsPage()
+                    "Renderers"->Renderer3Page()
                     "Audio"->AudioPage()
                     "Export"->ExportPage()
                     "Draw"->DrawPage()
@@ -475,6 +504,58 @@ class ComposeStudioActivity : ComponentActivity() {
             Icon(Icons.Default.Image,null);Spacer(Modifier.width(8.dp));Text("Export thumbnail PNG")
         }
     }
+    @Composable private fun Renderer3Page(){
+        val revision=rev
+        Heading("Renderer3","Import a .renderer3 file or ZIP with renderer assets. Rendering uses the actual Windows-compatible Renderer3 scene engine.")
+        Button(onClick={importRenderer3.launch(arrayOf("*/*"))},
+            modifier=Modifier.fillMaxWidth()){
+            Icon(Icons.Default.FileOpen,null)
+            Spacer(Modifier.width(8.dp))
+            Text("Import .renderer3 / Renderer3 ZIP")
+        }
+        val installed=remember(revision){Renderer3Bridge.list(this@ComposeStudioActivity)}
+        if(installed.isEmpty()){
+            Text("No imported renderers yet. Import your renderer package above.",
+                style=MaterialTheme.typography.bodyMedium)
+        }else{
+            Heading("Renderer library")
+            installed.forEach{selection->
+                val isActive=rendererSelection?.filePath==selection.filePath
+                Surface(onClick={
+                    Renderer3Bridge.select(project,selection)
+                    rendererSelection=selection;frame=0L;changed()
+                },shape=RoundedCornerShape(16.dp),
+                    color=if(isActive)MaterialTheme.colorScheme.secondaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier=Modifier.fillMaxWidth()){
+                    Column(Modifier.padding(13.dp)){
+                        Text((if(isActive)"✓ "else"")+selection.name,
+                            fontWeight=FontWeight.SemiBold)
+                        Text(Renderer3Bridge.selectionDetails(selection,project.Cards.size),
+                            style=MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+        val selected=rendererSelection
+        if(selected!=null){
+            Heading("Current renderer")
+            Text(Renderer3Bridge.selectionDetails(selected,project.Cards.size))
+            Text("Press Play above to preview the exact Renderer3 scene, including supported SmartCard, SmartBadge and animated ribbon assets.",
+                style=MaterialTheme.typography.bodySmall)
+            Buttons("Disable renderer" to{
+                Renderer3Bridge.forget(project);rendererSelection=null;frame=0L;playing=false;changed()
+            },"Delete imported file" to{
+                guarded{
+                    Renderer3Bridge.delete(this@ComposeStudioActivity,selected)
+                    Renderer3Bridge.forget(project);rendererSelection=null;frame=0L;playing=false;changed()
+                }
+            })
+        }
+        Text("Unsupported Renderer3 engines, missing assets or invalid archive paths are rejected with errors rather than silently replaced with a generic template.",
+            style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
     @Composable private fun AudioPage(){
         Heading("Audio patterns","Save the creator's exact track order into a reusable M3U playlist.")
         Buttons("＋ Add audio" to{openAudio.launch(arrayOf("audio/*"))},
