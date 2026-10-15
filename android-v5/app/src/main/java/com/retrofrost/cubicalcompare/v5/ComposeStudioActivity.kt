@@ -337,6 +337,56 @@ class ComposeStudioActivity : ComponentActivity() {
                     bytes?.contentEquals(testAudio.readBytes())==true
                 }){"Portable audio payload corrupted"}
                 android.util.Log.i("CTS_BUNDLE_SELFTEST","PASS: round-trip renderer and ordered embedded audio")
+                // A true Windows-style contact-sheet ZIP fixture: two coloured
+                // 363-pixel regions and distinct badge headers/values.
+                val contact=Bitmap.createBitmap(750,379,Bitmap.Config.ARGB_8888)
+                val drawing=android.graphics.Canvas(contact)
+                drawing.drawColor(Color.YELLOW)
+                val paint=android.graphics.Paint().apply{color=Color.CYAN}
+                drawing.drawRect(8f,8f,371f,371f,paint)
+                paint.color=Color.MAGENTA
+                drawing.drawRect(379f,8f,742f,371f,paint)
+                val imageOut=ByteArrayOutputStream()
+                check(contact.compress(Bitmap.CompressFormat.PNG,100,imageOut))
+                contact.recycle()
+                val sheetName="artwork/contact-sheet-001.png"
+                val meta=JSONObject()
+                    .put("format","cubical.megapack.zipack2").put("version",2)
+                    .put("name","Zipack2 Smoke")
+                    .put("cards",org.json.JSONArray()
+                        .put(JSONObject().put("title","First")
+                            .put("badge_header","After").put("badge_value","1")
+                            .put("badge_unit","minute").put("description","First card"))
+                        .put(JSONObject().put("title","Second")
+                            .put("badge_header","After").put("badge_value","2")
+                            .put("badge_unit","minutes").put("description","Second card")))
+                    .put("contactSheets",org.json.JSONArray().put(
+                        JSONObject().put("path",sheetName).put("order",0)
+                            .put("regions",org.json.JSONArray()
+                                .put(JSONObject().put("x",8).put("y",8)
+                                    .put("width",363).put("height",363).put("order",0))
+                                .put(JSONObject().put("x",379).put("y",8)
+                                    .put("width",363).put("height",363).put("order",1)))))
+                val fixture=File(cacheDir,"zipack2-input.zip")
+                java.util.zip.ZipOutputStream(fixture.outputStream()).use { zipped ->
+                    zipped.putNextEntry(java.util.zip.ZipEntry(sheetName))
+                    zipped.write(imageOut.toByteArray());zipped.closeEntry()
+                    zipped.putNextEntry(java.util.zip.ZipEntry("manifest.json"))
+                    zipped.write(meta.toString().toByteArray(Charsets.UTF_8));zipped.closeEntry()
+                }
+                val importedZip=Zipack2Bridge.importPack(this,Uri.fromFile(fixture))
+                check(importedZip.count==2)
+                check(importedZip.project.Cards[0].BadgeHeader=="After")
+                check(importedZip.project.Cards[0].Badge=="1")
+                check(importedZip.project.Cards[1].BadgeUnit=="minutes")
+                check(importedZip.project.Cards.all{it.ArtworkBase64.isNotBlank()})
+                val reexport=File(cacheDir,"zipack2-reexport.zip")
+                Zipack2Bridge.exportPack(this,importedZip.project,Uri.fromFile(reexport))
+                val reimported=Zipack2Bridge.importPack(this,Uri.fromFile(reexport))
+                check(reimported.project.Cards.map{it.Title}==listOf("First","Second"))
+                check(reimported.project.Cards[1].ArtworkBase64.isNotBlank())
+                android.util.Log.i("CTS_ZIPACK2_SELFTEST","PASS: contact sheet import and 2-card MegaPack re-export")
+
             }catch(e:Exception){
                 android.util.Log.e("CTS_RENDERER3_SELFTEST","FAIL",e)
                 throw e
