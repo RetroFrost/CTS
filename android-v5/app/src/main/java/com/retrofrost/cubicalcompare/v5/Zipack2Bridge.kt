@@ -276,13 +276,17 @@ internal object Zipack2Bridge {
                 project.Cards=cards
                 project.AudioRepeat=manifest.optBoolean("soundtrack_loop",true)
                 project.AudioVolume=finite(manifest.optDouble("soundtrack_volume",1.0),0.0,1.0,1.0)
-                val audio=manifest.optString("soundtrack","")
-                if(audio.isNotBlank()){
+                val audioPaths=manifest.optJSONArray("soundtracks")
+                val ordered=if(audioPaths!=null&&audioPaths.length()>0){
+                    (0 until audioPaths.length()).map{audioPaths.getString(it)}
+                }else listOfNotNull(manifest.optString("soundtrack","").takeIf{it.isNotBlank()})
+                require(ordered.size<=128){"MegaPack contains too many audio tracks"}
+                for(audio in ordered) {
                     require(safe(audio)&&audio.startsWith("audio/")){"Unsafe soundtrack reference"}
                     val dest=File(ctx.filesDir,"zipack2-soundtracks").apply{mkdirs()}
                     val suffix=audio.substringAfterLast('.', "mp3").lowercase().take(5)
-                    val path=File(dest,"track-"+java.util.UUID.randomUUID()+"."+
-                        (if(suffix in setOf("mp3","m4a","wav","aac","wma"))suffix else "mp3"))
+                    val ext=if(suffix in setOf("mp3","m4a","wav","aac","wma","ogg","flac"))suffix else "mp3"
+                    val path=File(dest,"track-"+java.util.UUID.randomUUID()+"."+ext)
                     path.writeBytes(read(zip,audio))
                     project.AudioTracks.add(Uri.fromFile(path).toString())
                 }
@@ -363,18 +367,63 @@ internal object Zipack2Bridge {
                 progress((sheetIndex+1)*85/batches.size)
             }
             manifest.put("contactSheets",sheets)
-            val thumb=CardCanvas(ctx).renderBitmap(project.Cards.first(),true,960,540)
-            try{put(zip,"thumbnail.png",png(thumb))}finally{thumb.recycle()}
-            val first=project.AudioTracks.firstOrNull()
-            if(first!=null){
-                val ext=first.substringAfterLast('.', "mp3").lowercase().take(5)
-                val suffix=if(ext in setOf("mp3","wav","m4a","aac","wma"))ext else "mp3"
-                val name="audio/soundtrack."+suffix
-                val stream=ctx.contentResolver.openInputStream(Uri.parse(first))
-                    ?:error("Soundtrack is inaccessible. Relink it first.")
-                val data=stream.use{bytes(it,MAX_ENTRY)}
-                put(zip,name,data);manifest.put("soundtrack",name)
+            // Generate this portable MegaPack thumbnail using Bitmap Canvas.
+            // A View must not be constructed on a background worker thread.
+            val thumb=Bitmap.createBitmap(960,540,Bitmap.Config.ARGB_8888)
+            try{
+                val surface=Canvas(thumb)
+                surface.drawColor(Color.rgb(22,48,66))
+                val art=fillArt(project.Cards.first())
+                try{surface.drawBitmap(art,null,RectF(470f,24f,936f,522f),
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))}
+                finally{art.recycle()}
+                val pen=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                    color=Color.WHITE;textSize=36f;typeface=Typeface.DEFAULT_BOLD
+                }
+                surface.drawText(project.Cards.first().Title.take(22),30f,160f,pen)
+                pen.textSize=25f
+                surface.drawText((project.Cards.first().BadgeHeader+" "+
+                    project.Cards.first().Badge).take(28),30f,238f,pen)
+                put(zip,"thumbnail.png",png(thumb))
+            }finally{thumb.recycle()}
+            // Keep the Windows v2 single-track key for compatibility, and
+            // preserve the full ordered Android creator pattern as an extension.
+            require(project.AudioTracks.size<=128){"Too many soundtrack entries"}
+            val soundtracks=JSONArray()
+            var soundtrackBytes=0L
+            project.AudioTracks.forEachIndexed{index,track->
+                val uri=Uri.parse(track)
+                val mime=ctx.contentResolver.getType(uri).orEmpty()
+                val last=uri.lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()
+                val ext=if(last in setOf("mp3","wav","m4a","aac","wma","ogg","flac"))last
+                    else when(mime){
+                        "audio/mpeg"->"mp3"
+                        "audio/wav","audio/x-wav"->"wav"
+                        "audio/mp4"->"m4a"
+                        "audio/flac"->"flac"
+                        "audio/ogg"->"ogg"
+                        else->"mp3"
+                    }
+                val name="audio/pattern-"+(index+1).toString().padStart(3,'0')+"."+ext
+                val input=ctx.contentResolver.openInputStream(uri)
+                    ?:error("Soundtrack "+(index+1)+" is inaccessible; relink it")
+                zip.putNextEntry(ZipEntry(name))
+                input.use{
+                    val buffer=ByteArray(65536);var trackBytes=0L
+                    while(true){
+                        val read=it.read(buffer);if(read<0)break
+                        trackBytes+=read;soundtrackBytes+=read
+                        require(trackBytes<=MAX_ENTRY && soundtrackBytes<=MAX_ARCHIVE){
+                            "MegaPack soundtracks exceed the 384 MB mobile limit"
+                        }
+                        zip.write(buffer,0,read)
+                    }
+                }
+                zip.closeEntry()
+                soundtracks.put(name)
+                if(index==0)manifest.put("soundtrack",name)
             }
+            if(soundtracks.length()>0)manifest.put("soundtracks",soundtracks)
             put(zip,"manifest.json",manifest.toString(2).toByteArray(Charsets.UTF_8))
             zip.finish()
         }
