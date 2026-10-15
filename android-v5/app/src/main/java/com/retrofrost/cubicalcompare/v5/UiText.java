@@ -11,6 +11,9 @@ public final class UiText {
  }
  static {
   put("Project","Projeto","Proyecto","Projet","Projekt","Проект","プロジェクト","项目","Progetto","Проєкт");
+  put("MegaPacks","MegaPacks","MegaPacks","MegaPacks","MegaPacks","Мегапаки","メガパック","大型套装","MegaPack","Мегапаки");
+  put("Import MegaPack (.zipack2)","Importar MegaPack (.zipack2)","Importar MegaPack (.zipack2)","Importer MegaPack (.zipack2)","MegaPack importieren","Импорт MegaPack","MegaPackを読み込む","导入MegaPack","Importa MegaPack","Імпорт MegaPack");
+  put("Export MegaPack (.zipack2)","Exportar MegaPack (.zipack2)","Exportar MegaPack (.zipack2)","Exporter MegaPack (.zipack2)","MegaPack exportieren","Экспорт MegaPack","MegaPackを書き出す","导出MegaPack","Esporta MegaPack","Експорт MegaPack");
   put("Cards","Cartões","Tarjetas","Cartes","Karten","Карточки","カード","卡片","Schede","Картки");
   put("Card editor","Editor de cartão","Editor de tarjeta","Éditeur de carte","Karteneditor","Редактор карточки","カード編集","卡片编辑","Editor schede","Редактор карток");
   put("Thumbnail editor","Editor de miniaturas","Editor de miniaturas","Éditeur miniature","Miniatur-Editor","Редактор миниатюр","サムネイル編集","缩略图编辑","Editor miniature","Редактор мініатюр");
