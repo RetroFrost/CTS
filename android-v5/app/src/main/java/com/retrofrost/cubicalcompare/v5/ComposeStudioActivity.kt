@@ -193,7 +193,7 @@ class ComposeStudioActivity : ComponentActivity() {
             status="Importing Zipack2 MegaPack, artwork and badges..."
             bundleExecutor.execute {
                 try {
-                    val imported=Zipack2Bridge.import(this,uri){percent->
+                    val imported=Zipack2Bridge.importPack(this,uri){percent->
                         runOnUiThread{megapackProgress=percent/100f}
                     }
                     runOnUiThread {
@@ -220,7 +220,7 @@ class ComposeStudioActivity : ComponentActivity() {
             val snapshot=StudioModel.parse(StudioModel.json(project))
             bundleExecutor.execute{
                 try {
-                    Zipack2Bridge.export(this,snapshot,uri){percent->
+                    Zipack2Bridge.exportPack(this,snapshot,uri){percent->
                         runOnUiThread{megapackProgress=percent/100f}
                     }
                     runOnUiThread {
