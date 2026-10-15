@@ -2,6 +2,10 @@ package com.retrofrost.cubicalcompare.v5;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Color;
+import org.json.JSONObject;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Handler;
@@ -59,19 +63,64 @@ public final class VideoExporter {
         executor.execute(()->{
             try{
                 work=new File(activity.getCacheDir(),"export-"+UUID.randomUUID());if(!work.mkdirs())throw new Exception("Cannot create export staging directory.");
+                // Motion is derived from Rust's integer frame clock, not random
+                // Android UI frame timing. Hold images and short transition clips
+                // are assembled into the same Media3 video sequence.
                 List<EditedMediaItem> slides=new ArrayList<>();
+                String projectJson=StudioModel.json(project);
+                long totalNativeFrames=NativeEngine.totalFrames(projectJson);
+                if(totalNativeFrames<1)throw new Exception("Rust timeline rejected project.");
+                final int fps=project.Fps;
+                final int framesPerCard=fps*project.SecondsPerCard;
+                final int holdFrames=Math.max(1,framesPerCard*3/4);
+                final int frameTransitions=framesPerCard-holdFrames;
+                int fileIndex=0;
                 for(int i=0;i<project.Cards.size();i++){
-                    File f=new File(work,String.format(java.util.Locale.ROOT,"card-%04d.png",i));
-                    Bitmap bmp=renderer.renderBitmap(project.Cards.get(i),false,project.ExportWidth,project.ExportHeight);
-                    try(FileOutputStream stream=new FileOutputStream(f)){
-                        if(!bmp.compress(Bitmap.CompressFormat.PNG,95,stream))throw new Exception("Could not encode image "+(i+1));
-                    } finally{bmp.recycle();}
-                    MediaItem item=new MediaItem.Builder().setUri(Uri.fromFile(f))
-                        .setImageDurationMs(project.SecondsPerCard*1000L).build();
-                    slides.add(new EditedMediaItem.Builder(item).setFrameRate(project.Fps).build());
-                    final int percent=2+i*23/project.Cards.size();
+                    Bitmap current=renderer.renderBitmap(project.Cards.get(i),false,
+                        project.ExportWidth,project.ExportHeight);
+                    try{
+                        final boolean hasNext=i+1<project.Cards.size();
+                        int totalMs=project.SecondsPerCard*1000;
+                        int holdMs=hasNext?(int)Math.round(1000d*holdFrames/fps):totalMs;
+                        addImageSlide(slides,current,new File(work,String.format(
+                            java.util.Locale.ROOT,"frame-%05d.png",fileIndex++)),holdMs,fps);
+                        if(hasNext && frameTransitions>0){
+                            Bitmap next=renderer.renderBitmap(project.Cards.get(i+1),false,
+                                project.ExportWidth,project.ExportHeight);
+                            try{
+                                int steps=Math.min(8,Math.max(1,frameTransitions));
+                                int tailMs=totalMs-holdMs;
+                                for(int j=0;j<steps;j++){
+                                    long clock=(long)i*framesPerCard+holdFrames+
+                                        Math.min(frameTransitions-1,Math.round(
+                                            (j+.5d)*frameTransitions/steps));
+                                    JSONObject scene=new JSONObject(NativeEngine.scene(projectJson,clock));
+                                    if(scene.has("error"))throw new Exception(scene.optString("error"));
+                                    Bitmap mixed=Bitmap.createBitmap(project.ExportWidth,
+                                        project.ExportHeight,Bitmap.Config.ARGB_8888);
+                                    try{
+                                        Canvas graphics=new Canvas(mixed);
+                                        graphics.drawColor(Color.rgb(17,24,37));
+                                        Paint paint=new Paint(Paint.FILTER_BITMAP_FLAG);
+                                        float factor=project.ExportWidth/960f;
+                                        graphics.drawBitmap(current,
+                                            (float)scene.getDouble("currentX")*factor,0,paint);
+                                        graphics.drawBitmap(next,
+                                            (float)scene.getDouble("nextX")*factor,0,paint);
+                                        int ms=(int)((long)(j+1)*tailMs/steps-
+                                            (long)j*tailMs/steps);
+                                        addImageSlide(slides,mixed,new File(work,String.format(
+                                            java.util.Locale.ROOT,"frame-%05d.png",fileIndex++)),
+                                            Math.max(1,ms),fps);
+                                    } finally { mixed.recycle(); }
+                                }
+                            }finally{next.recycle();}
+                        }
+                    }finally{current.recycle();}
+                    final int percent=2+(i+1)*23/project.Cards.size();
                     final int cardNumber=i+1;
-                    handler.post(()->cb.update("Rendered card "+cardNumber+" / "+project.Cards.size(),percent));
+                    handler.post(()->cb.update("Rendered animated card "+
+                        cardNumber+" / "+project.Cards.size(),percent));
                 }
                 List<EditedMediaItem> tracks=new ArrayList<>();
                 for(String reference:project.AudioTracks){
@@ -85,6 +134,18 @@ public final class VideoExporter {
                 handler.post(()->startTransformer(project,slides,tracks,destination,cb));
             }catch(Throwable e){handler.post(()->fail(cb,e.getMessage()==null?e.toString():e.getMessage()));}
         });
+    }
+    private static void addImageSlide(List<EditedMediaItem> slides,Bitmap bitmap,
+        File destination,long milliseconds,int fps) throws Exception {
+        try(FileOutputStream stream=new FileOutputStream(destination)){
+            if(!bitmap.compress(Bitmap.CompressFormat.PNG,95,stream))
+                throw new Exception("Cannot write transition frame.");
+        }
+        MediaItem image=new MediaItem.Builder()
+            .setUri(Uri.fromFile(destination))
+            .setImageDurationMs(Math.max(1,milliseconds))
+            .build();
+        slides.add(new EditedMediaItem.Builder(image).setFrameRate(fps).build());
     }
     private void startTransformer(Project project,List<EditedMediaItem> slides,List<EditedMediaItem> tracks,Uri destination,Listener cb){
         try {
