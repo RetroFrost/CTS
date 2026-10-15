@@ -68,7 +68,7 @@ jobs:
           test -s android-v5/app/build/outputs/apk/debug/app-debug.apk
           unzip -l android-v5/app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/arm64-v8a/libcts_engine.so'
           grep -q 'ComposeStudioActivity' android-v5/app/src/main/AndroidManifest.xml
-          grep -q 'M3uPattern.save' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/MainActivity.java
+          grep -q 'M3uPattern.save' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/ComposeStudioActivity.kt
           grep -q 'setImageDurationMs' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/VideoExporter.java
           grep -q 'ThumbnailTransform' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/StudioModel.java
       - name: Package APK and SHA256
