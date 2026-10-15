@@ -100,7 +100,7 @@ internal object Zipack2Bridge {
         c.ImageTransform.Rotation=finite(obj.optDouble("image_rotation",0.0),-360.0,360.0,0.0)
         return c
     }
-    private fun regions(def:JSONObject,bm:Bitmap):List<Rect>{
+    private fun regions(def:JSONObject,bm:Bitmap,originalWidth:Int,originalHeight:Int):List<Rect>{
         val raw=def.optJSONArray("regions")
         if(raw!=null&&raw.length()>0){
             return (0 until raw.length()).map{index->
@@ -108,7 +108,7 @@ internal object Zipack2Bridge {
                 val x=r.getInt("x");val y=r.getInt("y")
                 val w=r.getInt("width");val h=r.getInt("height")
                 require(x>=0&&y>=0&&w>=24&&h>=24 &&
-                    x.toLong()+w<=bm.width && y.toLong()+h<=bm.height){
+                    x.toLong()+w<=originalWidth && y.toLong()+h<=originalHeight){
                     "Invalid contact-sheet region"
                 }
                 r.optInt("order",index) to Rect(x,y,x+w,y+h)
@@ -146,7 +146,14 @@ internal object Zipack2Bridge {
         }
         val xs=bands(true);val ys=bands(false)
         require(xs.isNotEmpty()&&ys.isNotEmpty()){"No outlined card regions detected"}
-        return ys.flatMap{y->xs.map{x->Rect(x.first,y.first,x.second,y.second)}}
+        return ys.flatMap{y->xs.map{x->
+            Rect(
+                (x.first.toLong()*originalWidth/bm.width).toInt(),
+                (y.first.toLong()*originalHeight/bm.height).toInt(),
+                (x.second.toLong()*originalWidth/bm.width).toInt().coerceAtMost(originalWidth),
+                (y.second.toLong()*originalHeight/bm.height).toInt().coerceAtMost(originalHeight)
+            )
+        }}
     }
 
     private fun allowed(url:URL):Boolean{
@@ -238,23 +245,43 @@ internal object Zipack2Bridge {
                 for((sheetIndex,def) in sheets.withIndex()){
                     val name=def.optString("path")
                     require(safe(name)){"Unsafe sheet path"}
-                    val bitmap=decode(read(zip,name))
+                    val data=read(zip,name)
+                    val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true}
+                    BitmapFactory.decodeByteArray(data,0,data.size,bounds)
+                    require(bounds.outWidth>0 && bounds.outHeight>0 &&
+                        bounds.outWidth<=16000 && bounds.outHeight<=16000){
+                        "Unsupported full contact-sheet dimensions"
+                    }
+                    // Large Windows sheets can exceed 6000 pixels. Decode the
+                    // original card regions rather than cropping a scaled preview.
+                    val sample=decode(data,4500)
                     try{
-                        for(region in regions(def,bitmap)){
-                            require(index<MAX_CARDS){"Too many contact sheet cards"}
-                            val cropped=Bitmap.createBitmap(bitmap,region.left,region.top,
-                                region.width(),region.height())
-                            try{
-                                val target=cards.getOrNull(index)?:StudioModel.Card().also{
-                                    it.Title="Comparison "+(index+1);cards.add(it)
+                        val sourceRegions=regions(def,sample,bounds.outWidth,bounds.outHeight)
+                        val decoder=BitmapRegionDecoder.newInstance(data,0,data.size,false)
+                        try{
+                            for(region in sourceRegions){
+                                require(index<MAX_CARDS){"Too many contact sheet cards"}
+                                require(region.width()>=24 && region.height()>=24){
+                                    "Invalid contact-sheet tile dimensions"
                                 }
-                                target.ArtworkBase64=Base64.encodeToString(png(cropped),Base64.NO_WRAP)
-                                val m=details.optJSONObject(index)
-                                if(m!=null)target.ArtworkSource=property(m,"image","image_url","imageUrl","artwork","artwork_url","icon")
-                            }finally{cropped.recycle()}
-                            index++
-                        }
-                    }finally{bitmap.recycle()}
+                                var factor=1
+                                while(region.width()/factor>2200 || region.height()/factor>2200)factor*=2
+                                val cropped=decoder.decodeRegion(region,
+                                    BitmapFactory.Options().apply{inSampleSize=factor})
+                                    ?:error("Failed to decode contact sheet card "+(index+1))
+                                try{
+                                    val target=cards.getOrNull(index)?:StudioModel.Card().also{
+                                        it.Title="Comparison "+(index+1);cards.add(it)
+                                    }
+                                    target.ArtworkBase64=Base64.encodeToString(png(cropped),Base64.NO_WRAP)
+                                    val m=details.optJSONObject(index)
+                                    if(m!=null)target.ArtworkSource=property(m,"image","image_url",
+                                        "imageUrl","artwork","artwork_url","icon")
+                                }finally{cropped.recycle()}
+                                index++
+                            }
+                        }finally{decoder.recycle()}
+                    }finally{sample.recycle()}
                     progress((sheetIndex+1)*80/sheets.size)
                 }
                 for(i in cards.indices){
