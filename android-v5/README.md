@@ -36,3 +36,17 @@ The launcher is now `ComposeStudioActivity.kt` (Kotlin Jetpack Compose **Materia
 `android-v5/rust/` is a native Cargo crate compiled to `libcts_engine.so` for arm64-v8a, armeabi-v7a, and x86_64. JNI exposes a deterministic integer-frame comparison timeline, eased card-conveyor motion and badge-scale timing. Rust host unit tests verify repeatable easing and final-card behaviour. The Android editor calls Rust on startup, and Compose playback uses the Rust scene geometry; the Media3 exporter composes motion frames from those coordinates. Gradle builds an APK containing all three ABI libraries. Android 11 emulator checks launch the Compose activity.
 
 **Parity caveat:** This is a functional new editing core, not a frame-accurate port of every legacy `.renderer3` feature, badge ZIP animation, soundtrack waveform feature or Windows DWM/Mica API. The existing Android Canvas generates artwork with its own raster layer, with project fields kept compatible where possible. Rust timeline motion is an actual engine, not a Java stub, but the complete Renderer3 subsystem must still be ported separately.
+
+## Renderer3 import and execution
+
+Open **Project → Import Renderer3** or **Renderers → Import .renderer3 / Renderer3 ZIP**. Android's document picker copies the selected file into private app storage after validating it. Imported packages can be selected, disabled or deleted. The chosen Renderer3 filename and ID are saved in .ccv5 projects; copying a project to another device requires reimporting its renderer assets.
+
+This V5 implementation reuses the actual Android Renderer3 format/player originally present in the repository, rather than introducing a fake renderer picker:
+
+- RendererV3Container validates CCRNDR03 magic, version, length, CRC32, bounded gzip JSON, ZIP paths and contained assets. Unsupported engines and missing SmartBadge ZIP frames are rejected.
+- RendererV3Player draws scene-v3 objects and delegates supported wrapped ribbon-exact animation and SmartBadge v2 frame sequences to RendererV3RibbonPlayer and SmartSequenceV3.
+- Renderer3FrameView uses the frame-addressed renderer for the actual Material 3 preview, scrubbing and playback.
+- Renderer3VideoEncoder feeds every frame to the Android H.264 MediaCodec encoder with bounded RAM (not thousands of temporary PNGs); the Media3 exporter handles the creator's ordered soundtrack pattern.
+- Ported RendererV3ContainerTest and WrappedRibbonV3Test validate the format, CRC, unsafe paths, wrapped engine and SmartBadge sidecars.
+
+**Compatibility:** Other Windows-only rendering engines, unknown required features and missing ZIP assets are not silently approximated. H.264 export depends on the device encoder and longer animations may be demanding. The standalone .renderer3 file is not embedded in .ccv5 project saves; reimport it on other devices.
