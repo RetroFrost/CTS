@@ -36,6 +36,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.CancellationException;
 import static com.retrofrost.cubicalcompare.v5.StudioModel.*;
 
@@ -52,7 +53,9 @@ public final class VideoExporter {
     private Transformer transformer;
     private volatile boolean busy;
     private final AtomicBoolean cancelled=new AtomicBoolean(false);
-    private void ensureActive(){if(cancelled.get())throw new CancellationException("Export cancelled");}
+    private final AtomicLong generation=new AtomicLong();
+    private boolean active(long ticket){return generation.get()==ticket&&!cancelled.get();}
+    private void ensureActive(long ticket){if(!active(ticket))throw new CancellationException("Export cancelled");}
     private File work;
     private Runnable progressTask;
     public VideoExporter(Activity activity){this.activity=activity;}
@@ -60,6 +63,7 @@ public final class VideoExporter {
     public void export(Project source,Uri destination,Listener cb){
         if(busy){cb.error("An export is already running.");return;}
         if(source.Cards==null||source.Cards.isEmpty()){cb.error("Add a card before exporting.");return;}
+        final long ticket=generation.incrementAndGet();
         cancelled.set(false);
         busy=true;
         // Clone the data so editing during export can't alter the output mid-run.
@@ -68,15 +72,15 @@ public final class VideoExporter {
         final CardCanvas renderer=new CardCanvas(activity); // Create native View on UI thread.
         executor.execute(()->{
             try{
-                ensureActive();
+                ensureActive(ticket);
                 work=new File(activity.getCacheDir(),"export-"+UUID.randomUUID());if(!work.mkdirs())throw new Exception("Cannot create export staging directory.");
                 List<EditedMediaItem> slides=new ArrayList<>();
                 if (project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) {
                     File rendered=new File(work,"renderer3-video.mp4");
                     handler.post(()->cb.update("Rendering every authored Renderer3 frame...",2));
                     Renderer3ExportInterop.encode(activity,project,rendered,
-                        percent->handler.post(()->{if(!cancelled.get())cb.update("Renderer3 frame rendering: "+percent+"%",2+percent*23/100);}),
-                        ()->cancelled.get());
+                        percent->handler.post(()->{if(active(ticket))cb.update("Renderer3 frame rendering: "+percent+"%",2+percent*23/100);}),
+                        ()->!active(ticket));
                     if (!rendered.isFile() || rendered.length()==0)
                         throw new IOException("Renderer3 encoder did not produce video.");
                     slides.add(new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(rendered))).build());
@@ -94,7 +98,7 @@ public final class VideoExporter {
                 final int frameTransitions=framesPerCard-holdFrames;
                 int fileIndex=0;
                 for(int i=0;i<project.Cards.size();i++){
-                    ensureActive();
+                    ensureActive(ticket);
                     Bitmap current=renderer.renderBitmap(project.Cards.get(i),false,
                         project.ExportWidth,project.ExportHeight);
                     try{
@@ -110,7 +114,7 @@ public final class VideoExporter {
                                 int steps=Math.min(8,Math.max(1,frameTransitions));
                                 int tailMs=totalMs-holdMs;
                                 for(int j=0;j<steps;j++){
-                                    ensureActive();
+                                    ensureActive(ticket);
                                     long clock=(long)i*framesPerCard+holdFrames+
                                         Math.min(frameTransitions-1,Math.round(
                                             (j+.5d)*frameTransitions/steps));
@@ -145,7 +149,7 @@ public final class VideoExporter {
                 }
                 List<EditedMediaItem> tracks=new ArrayList<>();
                 for(String reference:project.AudioTracks){
-                    ensureActive();
+                    ensureActive(ticket);
                     Uri u=Uri.parse(reference);
                     boolean readable=false;
                     try(InputStream stream=activity.getContentResolver().openInputStream(u)){readable=stream!=null;}
@@ -153,8 +157,8 @@ public final class VideoExporter {
                     if(!readable)throw new Exception("Missing or inaccessible audio: "+M3uPattern.label(reference)+". Relink it in Audio.");
                     tracks.add(new EditedMediaItem.Builder(MediaItem.fromUri(u)).build());
                 }
-                handler.post(()->{if(!cancelled.get())startTransformer(project,slides,tracks,destination,cb);});
-            }catch(Throwable e){if(!cancelled.get())handler.post(()->fail(cb,e.getMessage()==null?e.toString():e.getMessage()));}
+                handler.post(()->{if(active(ticket))startTransformer(project,slides,tracks,destination,cb,ticket);});
+            }catch(Throwable e){if(active(ticket))handler.post(()->{if(active(ticket))fail(cb,e.getMessage()==null?e.toString():e.getMessage());});}
         });
     }
     private static void addImageSlide(List<EditedMediaItem> slides,Bitmap bitmap,
@@ -169,8 +173,8 @@ public final class VideoExporter {
             .build();
         slides.add(new EditedMediaItem.Builder(image).setFrameRate(fps).build());
     }
-    private void startTransformer(Project project,List<EditedMediaItem> slides,List<EditedMediaItem> tracks,Uri destination,Listener cb){
-        if(cancelled.get())return;
+    private void startTransformer(Project project,List<EditedMediaItem> slides,List<EditedMediaItem> tracks,Uri destination,Listener cb,long ticket){
+        if(!active(ticket))return;
         try {
             EditedMediaItemSequence video=EditedMediaItemSequence.withVideoFrom(slides);
             Composition.Builder composition;
@@ -193,7 +197,7 @@ public final class VideoExporter {
                 .setAudioMimeType(MimeTypes.AUDIO_AAC)
                 .addListener(new Transformer.Listener(){
                     @Override public void onCompleted(Composition comp,ExportResult result){
-                        if(cancelled.get())return;
+                        if(!active(ticket))return;
                         stopProgress();
                         cb.update("Saving MP4 to selected location...",97);
                         executor.execute(()->{
@@ -201,20 +205,20 @@ public final class VideoExporter {
                                 OutputStream out=activity.getContentResolver().openOutputStream(destination,"wt")){
                                 if(out==null)throw new Exception("Output location is unavailable");
                                 byte[] bytes=new byte[128*1024];int n;
-                                while((n=in.read(bytes))!=-1){ensureActive();out.write(bytes,0,n);}
+                                while((n=in.read(bytes))!=-1){ensureActive(ticket);out.write(bytes,0,n);}
                                 out.flush();
                                 handler.post(()->{
-                                    if(cancelled.get())return;
+                                    if(!active(ticket))return;
                                     busy=false;cb.finished("Exported MP4 successfully.");
                                     cleanAsync();
                                 });
                             }catch(Throwable e){
-                                if(!cancelled.get())handler.post(()->fail(cb,e.toString()));
+                                if(active(ticket))handler.post(()->{if(active(ticket))fail(cb,e.toString());});
                             }
                         });
                     }
                     @Override public void onError(Composition comp,ExportResult result,ExportException exception){
-                        if(cancelled.get())return;
+                        if(!active(ticket))return;
                         stopProgress();fail(cb,exception.getMessage());
                     }
                 }).build();
@@ -223,7 +227,7 @@ public final class VideoExporter {
             final ProgressHolder progress=new ProgressHolder();
             progressTask=new Runnable(){
                 @Override public void run(){
-                    if(!busy||transformer==null)return;
+                    if(!busy||transformer==null||!active(ticket))return;
                     try{
                         int state=transformer.getProgress(progress);
                         if(state==Transformer.PROGRESS_STATE_AVAILABLE)
@@ -252,6 +256,7 @@ public final class VideoExporter {
         file.delete();
     }
     public void cancel(){
+        generation.incrementAndGet();
         cancelled.set(true);
         if(transformer!=null){transformer.cancel();transformer=null;}
         stopProgress();busy=false;cleanAsync();
