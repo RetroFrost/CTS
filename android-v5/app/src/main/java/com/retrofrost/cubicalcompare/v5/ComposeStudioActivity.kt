@@ -989,7 +989,10 @@ class ComposeStudioActivity : ComponentActivity() {
             }catch(_:Exception){known=false}
             finally{try{probe.release()}catch(_:Exception){}}
         }
-        val videoDuration=project.Cards.size.toLong()*project.SecondsPerCard*1000L
+        val videoDuration=if(rendererSelection!=null)runCatching{
+            Renderer3ExportInterop.durationMillis(this,project)
+        }.getOrElse { project.Cards.size.toLong()*project.SecondsPerCard*1000L }
+        else project.Cards.size.toLong()*project.SecondsPerCard*1000L
         audioWarning=if(!known)"Some soundtrack files could not be inspected. Missing tracks may prevent export."
         else if(total>videoDuration)"The pattern extends past the video end. Audio will be trimmed and faded."
         else if(total<videoDuration && !project.AudioRepeat)
