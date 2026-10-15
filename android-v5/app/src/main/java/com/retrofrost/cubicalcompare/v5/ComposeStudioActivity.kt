@@ -88,7 +88,11 @@ class ComposeStudioActivity : ComponentActivity() {
     private val openProject=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         if(uri!=null)guarded{
             grant(uri);ink();project=StudioModel.parse(read(uri).toString(Charsets.UTF_8))
-            selected=0;tab="Cards";changed();message("Project loaded")
+            selected=0;tab="Cards"
+            rendererSelection=runCatching{Renderer3Bridge.resolve(this,project)}.getOrNull()
+            if(project.Renderer3AssetName.isNotBlank() && rendererSelection==null)
+                status="Project loaded, but its Renderer3 file needs reimporting on this device."
+            changed();message("Project loaded")
         }
     }
     private val saveProject=registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri->
@@ -422,7 +426,7 @@ class ComposeStudioActivity : ComponentActivity() {
     @Composable private fun ProjectPage(){
         Heading("Project","Windows V5 compatible .ccv5 card data, artwork and settings.")
         Edit("Project name",project.ProjectName){project.ProjectName=it}
-        Buttons("New project" to{ink();project=StudioModel.blank();selected=0;selectedAudio=-1;frame=0L;changed()},
+        Buttons("New project" to{ink();project=StudioModel.blank();rendererSelection=null;selected=0;selectedAudio=-1;frame=0L;changed()},
             "Open .ccv5" to{openProject.launch(arrayOf("application/json","*/*"))})
         Buttons("Save .ccv5" to{saveProject.launch(project.ProjectName+".ccv5")},
             "Import CSV" to{openCsv.launch(arrayOf("text/*","*/*"))})
