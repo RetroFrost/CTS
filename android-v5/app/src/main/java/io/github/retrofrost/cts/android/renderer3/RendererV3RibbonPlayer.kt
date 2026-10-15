@@ -360,7 +360,7 @@ internal class RendererV3RibbonPlayer(
             "description" -> card.description
             "value","number","primary","compactvalue" -> card.badgePrimary
             "unit","secondary" -> if(old) words.dropLast(1).joinToString(" ") else card.badgeSecondary
-            "header" -> if(old) "OLD" else ""
+            "header" -> card.badgeHeader.ifBlank { if(old) "OLD" else "" }
             else -> ""
         }.trim()
         if (value.isEmpty()) return
