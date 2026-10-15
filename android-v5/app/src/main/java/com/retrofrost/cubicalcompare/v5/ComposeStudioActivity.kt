@@ -237,6 +237,21 @@ class ComposeStudioActivity : ComponentActivity() {
                     }finally{bitmap.recycle()}
                 }
                 android.util.Log.i("CTS_RENDERER3_SELFTEST","PASS: imported and painted "+imported.name)
+                val testAudio=File(cacheDir,"portable-smoke-track.wav")
+                testAudio.writeBytes(byteArrayOf(82,73,70,70,0,0,0,0,87,65,86,69))
+                project.AudioTracks.clear()
+                project.AudioTracks.add(Uri.fromFile(testAudio).toString())
+                project.AudioTracks.add(Uri.fromFile(testAudio).toString())
+                val testZip=File(cacheDir,"portable-smoke.ctsv5")
+                PortableProjectBundle.write(this,project,Uri.fromFile(testZip))
+                val restored=PortableProjectBundle.read(this,Uri.fromFile(testZip))
+                check(restored.renderer?.id==imported.id){"Renderer lost in portable project"}
+                check(restored.project.AudioTracks.size==2){"Audio order lost in portable project"}
+                check(restored.project.AudioTracks.all { ref->
+                    val bytes=contentResolver.openInputStream(Uri.parse(ref))?.use { it.readBytes() }
+                    bytes?.contentEquals(testAudio.readBytes())==true
+                }){"Portable audio payload corrupted"}
+                android.util.Log.i("CTS_BUNDLE_SELFTEST","PASS: round-trip renderer and ordered embedded audio")
             }catch(e:Exception){
                 android.util.Log.e("CTS_RENDERER3_SELFTEST","FAIL",e)
                 throw e
