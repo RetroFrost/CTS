@@ -27,3 +27,12 @@ gradle --project-dir android-v5 :app:testDebugUnitTest :app:assembleDebug --no-d
 ```
 
 The app uses Storage Access Framework document pickers rather than storage-wide permissions and does not require access to the network. No built-in changelog or What's New dialog appears on app update.
+
+
+## Native architecture update (Rust + Material Design 3)
+
+The launcher is now `ComposeStudioActivity.kt` (Kotlin Jetpack Compose **Material 3** with dynamic colours, rounded floating navigation island, and separate seven-screen editing controls). The old hand-built Java activity is not the launcher; Java `StudioModel`, `CardCanvas`, and Media3 `VideoExporter` remain as interoperability modules while the port is migrated.
+
+`android-v5/rust/` is a native Cargo crate compiled to `libcts_engine.so` for arm64-v8a, armeabi-v7a, and x86_64. JNI exposes a deterministic integer-frame comparison timeline, eased card-conveyor motion and badge-scale timing. Rust host unit tests verify repeatable easing and final-card behaviour. The Android editor calls Rust on startup, and Compose playback uses the Rust scene geometry; the Media3 exporter composes motion frames from those coordinates. Gradle builds an APK containing all three ABI libraries. Android 11 emulator checks launch the Compose activity.
+
+**Parity caveat:** This is a functional new editing core, not a frame-accurate port of every legacy `.renderer3` feature, badge ZIP animation, soundtrack waveform feature or Windows DWM/Mica API. The existing Android Canvas generates artwork with its own raster layer, with project fields kept compatible where possible. Rust timeline motion is an actual engine, not a Java stub, but the complete Renderer3 subsystem must still be ported separately.
