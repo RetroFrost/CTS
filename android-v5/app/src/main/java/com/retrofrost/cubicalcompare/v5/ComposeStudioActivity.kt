@@ -182,6 +182,25 @@ class ComposeStudioActivity : ComponentActivity() {
         val saved=File(filesDir,"compose-autosave.ccv5")
         if(saved.exists())try{project=StudioModel.parse(saved.readText())}catch(_:Exception){}
         rendererSelection=runCatching{Renderer3Bridge.resolve(this,project)}.getOrNull()
+        if(BuildConfig.DEBUG && intent.getBooleanExtra("ctsRenderer3SelfTest",false)){
+            try{
+                val fixture=File(filesDir,"test.renderer3")
+                check(fixture.isFile){"Renderer3 fixture is missing"}
+                val imported=Renderer3Bridge.install(this,Uri.fromFile(fixture))
+                Renderer3Bridge.select(project,imported)
+                rendererSelection=imported
+                Renderer3Bridge.Session(this,imported,project).use{session->
+                    val bitmap=session.bitmap(0,320,180)
+                    try{
+                        check(bitmap.getPixel(10,10)!=Color.BLACK){"Renderer3 scene did not paint"}
+                    }finally{bitmap.recycle()}
+                }
+                android.util.Log.i("CTS_RENDERER3_SELFTEST","PASS: imported and painted "+imported.name)
+            }catch(e:Exception){
+                android.util.Log.e("CTS_RENDERER3_SELFTEST","FAIL",e)
+                throw e
+            }
+        }
         setContent{Studio()}
     }
     override fun onPause(){
