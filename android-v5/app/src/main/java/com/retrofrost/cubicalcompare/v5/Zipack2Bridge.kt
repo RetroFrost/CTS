@@ -190,7 +190,7 @@ internal object Zipack2Bridge {
         return request(URL(sourceUrl))
     }
 
-    fun import(ctx:Context,source:Uri,progress:(Int)->Unit={}):Imported{
+    fun importPack(ctx:Context,source:Uri,progress:(Int)->Unit={}):Imported{
         val downloaded=readSource(ctx,source)
         try{
             ZipFile(downloaded).use{zip->
@@ -304,7 +304,7 @@ internal object Zipack2Bridge {
         require(safe(name)){"Unsafe export entry"}
         zip.putNextEntry(ZipEntry(name));zip.write(data);zip.closeEntry()
     }
-    fun export(ctx:Context,project:StudioModel.Project,target:Uri,progress:(Int)->Unit={}){
+    fun exportPack(ctx:Context,project:StudioModel.Project,target:Uri,progress:(Int)->Unit={}){
         require(project.Cards.isNotEmpty()&&project.Cards.size<=MAX_CARDS){
             "Add between 1 and 500 cards before exporting a MegaPack"
         }
