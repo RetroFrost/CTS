@@ -254,7 +254,9 @@ internal object Zipack2Bridge {
                     }
                     // Large Windows sheets can exceed 6000 pixels. Decode the
                     // original card regions rather than cropping a scaled preview.
-                    val sample=decode(data,4500)
+                    val sample=if((def.optJSONArray("regions")?.length()?:0)>0)
+                        Bitmap.createBitmap(1,1,Bitmap.Config.ARGB_8888)
+                        else decode(data,4500)
                     try{
                         val sourceRegions=regions(def,sample,bounds.outWidth,bounds.outHeight)
                         val decoder=BitmapRegionDecoder.newInstance(data,0,data.size,false)
