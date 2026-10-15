@@ -15,6 +15,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -263,7 +264,7 @@ class ComposeStudioActivity : ComponentActivity() {
                         catch(_:Exception){JSONObject()}
                     val current=scene.optInt("currentCard",0).coerceIn(0,project.Cards.size-1)
                     val next=scene.optInt("nextCard",current).coerceIn(0,project.Cards.size-1)
-                    BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(16f/9f)) {
+                    BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(16f/9f).clip(RoundedCornerShape(15.dp))) {
                         val dx=(maxWidth.value*scene.optDouble("currentX",0.0).toFloat()/960f).dp
                         val nx=(maxWidth.value*scene.optDouble("nextX",960.0).toFloat()/960f).dp
                         AndroidView(factory={ctx->
@@ -386,7 +387,7 @@ class ComposeStudioActivity : ComponentActivity() {
     @Composable private fun ProjectPage(){
         Heading("Project","Windows V5 compatible .ccv5 card data, artwork and settings.")
         Edit("Project name",project.ProjectName){project.ProjectName=it}
-        Buttons("New project" to{ink();project=StudioModel.blank();selected=0;changed()},
+        Buttons("New project" to{ink();project=StudioModel.blank();selected=0;selectedAudio=-1;frame=0L;changed()},
             "Open .ccv5" to{openProject.launch(arrayOf("application/json","*/*"))})
         Buttons("Save .ccv5" to{saveProject.launch(project.ProjectName+".ccv5")},
             "Import CSV" to{openCsv.launch(arrayOf("text/*","*/*"))})
