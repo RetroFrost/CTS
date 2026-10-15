@@ -36,7 +36,9 @@ public final class StudioModel {
         public String Description="";
         public String BadgeColor="#EC394D";
         public String ArtworkBase64="";
+        public String ArtworkSource="";
         public String ThumbnailArtworkBase64="";
+        public String ThumbnailArtworkSource="";
         // Retain Windows WPF InkCanvas stroke bytes even though Android can't decode WPF ISF.
         public String StrokesBase64="";
         public String ThumbnailStrokesBase64="";
@@ -126,6 +128,7 @@ public final class StudioModel {
             Card c=new Card();c.Title=title;c.BadgeHeader=col(header,fields,"badge header");
             c.Badge=col(header,fields,"badge value");c.BadgeUnit=col(header,fields,"badge unit");
             c.Description=col(header,fields,"description");
+            c.ArtworkSource=col(header,fields,"image");
             String color=col(header,fields,"badge colour");
             if(color.isBlank())color=col(header,fields,"badge color");
             if(!color.isBlank())c.BadgeColor=color;
