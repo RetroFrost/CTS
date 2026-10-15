@@ -416,14 +416,14 @@ class ComposeStudioActivity : ComponentActivity() {
                                     .put("width",363).put("height",363).put("order",0))
                                 .put(JSONObject().put("x",379).put("y",8)
                                     .put("width",363).put("height",363).put("order",1)))))
-                val fixture=File(cacheDir,"zipack2-input.zip")
-                java.util.zip.ZipOutputStream(fixture.outputStream()).use { zipped ->
+                val packFixture=File(cacheDir,"zipack2-input.zip")
+                java.util.zip.ZipOutputStream(packFixture.outputStream()).use { zipped ->
                     zipped.putNextEntry(java.util.zip.ZipEntry(sheetName))
                     zipped.write(imageOut.toByteArray());zipped.closeEntry()
                     zipped.putNextEntry(java.util.zip.ZipEntry("manifest.json"))
                     zipped.write(meta.toString().toByteArray(Charsets.UTF_8));zipped.closeEntry()
                 }
-                val importedZip=Zipack2Bridge.importPack(this,Uri.fromFile(fixture))
+                val importedZip=Zipack2Bridge.importPack(this,Uri.fromFile(packFixture))
                 check(importedZip.count==2)
                 check(importedZip.project.Cards[0].BadgeHeader=="After")
                 check(importedZip.project.Cards[0].Badge=="1")
