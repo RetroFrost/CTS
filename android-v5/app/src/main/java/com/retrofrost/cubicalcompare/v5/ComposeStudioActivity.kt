@@ -357,8 +357,17 @@ class ComposeStudioActivity : ComponentActivity() {
                         }
                     }
                 }
-                if(exporting)LinearProgressIndicator(progress={exportProgress},
-                    modifier=Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=4.dp))
+                if(exporting)Row(Modifier.fillMaxWidth().padding(horizontal=14.dp),
+                    verticalAlignment=Alignment.CenterVertically){
+                    LinearProgressIndicator(progress={exportProgress},
+                        modifier=Modifier.weight(1f).height(6.dp))
+                    TextButton(onClick={
+                        exporter.cancel()
+                        exporting=false
+                        exportProgress=0f
+                        status="Export cancelled."
+                    }){Text("Cancel export")}
+                }
                 if(wide){
                     Row(Modifier.fillMaxSize().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){
                         Box(Modifier.weight(1.2f)){Stage()}
@@ -810,6 +819,9 @@ class ComposeStudioActivity : ComponentActivity() {
             modifier=Modifier.fillMaxWidth(),enabled=!exporting){
             Icon(Icons.Default.Movie,null);Spacer(Modifier.width(7.dp));Text("Export MP4 with audio")
         }
+        if(exporting)OutlinedButton(onClick={
+            exporter.cancel();exporting=false;exportProgress=0f;status="Export cancelled."
+        },modifier=Modifier.fillMaxWidth()){Text("Cancel export")}
         OutlinedButton(onClick={savePng.launch("CubicalCompare-Thumbnail.png")},
             modifier=Modifier.fillMaxWidth()){Text("Export thumbnail PNG")}
         Text("Rust drives the card-conveyor easing for timeline playback and MP4 transitions; complete Renderer3-specific badge ZIP animations are not yet ported.",
