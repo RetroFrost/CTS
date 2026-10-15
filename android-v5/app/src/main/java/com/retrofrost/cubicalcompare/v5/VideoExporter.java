@@ -27,6 +27,7 @@ import androidx.media3.common.util.UnstableApi;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -63,10 +64,20 @@ public final class VideoExporter {
         executor.execute(()->{
             try{
                 work=new File(activity.getCacheDir(),"export-"+UUID.randomUUID());if(!work.mkdirs())throw new Exception("Cannot create export staging directory.");
+                List<EditedMediaItem> slides=new ArrayList<>();
+                if (project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) {
+                    File rendered=new File(work,"renderer3-video.mp4");
+                    handler.post(()->cb.update("Rendering every authored Renderer3 frame...",2));
+                    Renderer3ExportInterop.encode(activity,project,rendered,
+                        percent->handler.post(()->cb.update("Renderer3 frame rendering: "+percent+"%",2+percent*23/100)));
+                    if (!rendered.isFile() || rendered.length()==0)
+                        throw new IOException("Renderer3 encoder did not produce video.");
+                    slides.add(new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(rendered))).build());
+                } else {
                 // Motion is derived from Rust's integer frame clock, not random
                 // Android UI frame timing. Hold images and short transition clips
                 // are assembled into the same Media3 video sequence.
-                List<EditedMediaItem> slides=new ArrayList<>();
+
                 String projectJson=StudioModel.json(project);
                 long totalNativeFrames=NativeEngine.totalFrames(projectJson);
                 if(totalNativeFrames<1)throw new Exception("Rust timeline rejected project.");
@@ -122,6 +133,7 @@ public final class VideoExporter {
                     handler.post(()->cb.update("Rendered animated card "+
                         cardNumber+" / "+project.Cards.size(),percent));
                 }
+                }
                 List<EditedMediaItem> tracks=new ArrayList<>();
                 for(String reference:project.AudioTracks){
                     Uri u=Uri.parse(reference);
@@ -157,7 +169,7 @@ public final class VideoExporter {
                     .buildUpon().setIsLooping(project.AudioRepeat).build();
                 composition=new Composition.Builder(video,audio);
                 DefaultGainProvider.Builder gains=new DefaultGainProvider.Builder((float)Math.max(0,Math.min(1,project.AudioVolume)));
-                long durationUs=(long)project.Cards.size()*project.SecondsPerCard*1_000_000L;
+                long durationUs=(project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) ? Renderer3ExportInterop.durationMillis(activity,project)*1000L : (long)project.Cards.size()*project.SecondsPerCard*1_000_000L;
                 if(project.AudioFadeOut){
                     long fadeLength=Math.min(1_500_000L,durationUs);
                     gains.addFadeAt(Math.max(0,durationUs-fadeLength),Math.max(1,fadeLength),DefaultGainProvider.FADE_OUT_LINEAR);
