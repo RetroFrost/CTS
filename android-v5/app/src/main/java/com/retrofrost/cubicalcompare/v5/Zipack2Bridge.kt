@@ -189,8 +189,10 @@ internal object Zipack2Bridge {
         if(ext.endsWith(".png")||ext.endsWith(".webp")||ext.endsWith(".jpg")||
             ext.endsWith(".jpeg"))return request(link)
         val html=request(link,true).toString(Charsets.UTF_8)
-        val tag=Regex("""<meta[^>]+(?:property|name)=["']og:image["'][^>]*>""",
-            RegexOption.IGNORE_CASE).find(html)?.value ?:error("No Flaticon page preview found")
+        val tag=Regex("""<meta\b[^>]*>""",RegexOption.IGNORE_CASE)
+            .findAll(html).map{it.value}
+            .firstOrNull{it.contains("og:image",ignoreCase=true)}
+            ?:error("No Flaticon page preview found")
         val sourceUrl=Regex("""content=["']([^"']+)["']""",RegexOption.IGNORE_CASE)
             .find(tag)?.groupValues?.get(1)?.replace("&amp;","&")
             ?:error("No Flaticon artwork source found")
