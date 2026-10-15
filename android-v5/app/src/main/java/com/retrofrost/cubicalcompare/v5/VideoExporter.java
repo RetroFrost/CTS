@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CancellationException;
 import static com.retrofrost.cubicalcompare.v5.StudioModel.*;
 
 @OptIn(markerClass=UnstableApi.class)
@@ -48,7 +50,9 @@ public final class VideoExporter {
     private final ExecutorService executor=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private Transformer transformer;
-    private boolean busy;
+    private volatile boolean busy;
+    private final AtomicBoolean cancelled=new AtomicBoolean(false);
+    private void ensureActive(){if(cancelled.get())throw new CancellationException("Export cancelled");}
     private File work;
     private Runnable progressTask;
     public VideoExporter(Activity activity){this.activity=activity;}
@@ -56,6 +60,7 @@ public final class VideoExporter {
     public void export(Project source,Uri destination,Listener cb){
         if(busy){cb.error("An export is already running.");return;}
         if(source.Cards==null||source.Cards.isEmpty()){cb.error("Add a card before exporting.");return;}
+        cancelled.set(false);
         busy=true;
         // Clone the data so editing during export can't alter the output mid-run.
         Project project=StudioModel.parse(StudioModel.json(source));
@@ -63,13 +68,15 @@ public final class VideoExporter {
         final CardCanvas renderer=new CardCanvas(activity); // Create native View on UI thread.
         executor.execute(()->{
             try{
+                ensureActive();
                 work=new File(activity.getCacheDir(),"export-"+UUID.randomUUID());if(!work.mkdirs())throw new Exception("Cannot create export staging directory.");
                 List<EditedMediaItem> slides=new ArrayList<>();
                 if (project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) {
                     File rendered=new File(work,"renderer3-video.mp4");
                     handler.post(()->cb.update("Rendering every authored Renderer3 frame...",2));
                     Renderer3ExportInterop.encode(activity,project,rendered,
-                        percent->handler.post(()->cb.update("Renderer3 frame rendering: "+percent+"%",2+percent*23/100)));
+                        percent->handler.post(()->{if(!cancelled.get())cb.update("Renderer3 frame rendering: "+percent+"%",2+percent*23/100);}),
+                        ()->cancelled.get());
                     if (!rendered.isFile() || rendered.length()==0)
                         throw new IOException("Renderer3 encoder did not produce video.");
                     slides.add(new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(rendered))).build());
@@ -87,6 +94,7 @@ public final class VideoExporter {
                 final int frameTransitions=framesPerCard-holdFrames;
                 int fileIndex=0;
                 for(int i=0;i<project.Cards.size();i++){
+                    ensureActive();
                     Bitmap current=renderer.renderBitmap(project.Cards.get(i),false,
                         project.ExportWidth,project.ExportHeight);
                     try{
@@ -102,6 +110,7 @@ public final class VideoExporter {
                                 int steps=Math.min(8,Math.max(1,frameTransitions));
                                 int tailMs=totalMs-holdMs;
                                 for(int j=0;j<steps;j++){
+                                    ensureActive();
                                     long clock=(long)i*framesPerCard+holdFrames+
                                         Math.min(frameTransitions-1,Math.round(
                                             (j+.5d)*frameTransitions/steps));
@@ -136,6 +145,7 @@ public final class VideoExporter {
                 }
                 List<EditedMediaItem> tracks=new ArrayList<>();
                 for(String reference:project.AudioTracks){
+                    ensureActive();
                     Uri u=Uri.parse(reference);
                     boolean readable=false;
                     try(InputStream stream=activity.getContentResolver().openInputStream(u)){readable=stream!=null;}
@@ -143,8 +153,8 @@ public final class VideoExporter {
                     if(!readable)throw new Exception("Missing or inaccessible audio: "+M3uPattern.label(reference)+". Relink it in Audio.");
                     tracks.add(new EditedMediaItem.Builder(MediaItem.fromUri(u)).build());
                 }
-                handler.post(()->startTransformer(project,slides,tracks,destination,cb));
-            }catch(Throwable e){handler.post(()->fail(cb,e.getMessage()==null?e.toString():e.getMessage()));}
+                handler.post(()->{if(!cancelled.get())startTransformer(project,slides,tracks,destination,cb);});
+            }catch(Throwable e){if(!cancelled.get())handler.post(()->fail(cb,e.getMessage()==null?e.toString():e.getMessage()));}
         });
     }
     private static void addImageSlide(List<EditedMediaItem> slides,Bitmap bitmap,
@@ -160,6 +170,7 @@ public final class VideoExporter {
         slides.add(new EditedMediaItem.Builder(image).setFrameRate(fps).build());
     }
     private void startTransformer(Project project,List<EditedMediaItem> slides,List<EditedMediaItem> tracks,Uri destination,Listener cb){
+        if(cancelled.get())return;
         try {
             EditedMediaItemSequence video=EditedMediaItemSequence.withVideoFrom(slides);
             Composition.Builder composition;
@@ -182,6 +193,7 @@ public final class VideoExporter {
                 .setAudioMimeType(MimeTypes.AUDIO_AAC)
                 .addListener(new Transformer.Listener(){
                     @Override public void onCompleted(Composition comp,ExportResult result){
+                        if(cancelled.get())return;
                         stopProgress();
                         cb.update("Saving MP4 to selected location...",97);
                         executor.execute(()->{
@@ -199,6 +211,7 @@ public final class VideoExporter {
                         });
                     }
                     @Override public void onError(Composition comp,ExportResult result,ExportException exception){
+                        if(cancelled.get())return;
                         stopProgress();fail(cb,exception.getMessage());
                     }
                 }).build();
@@ -236,6 +249,7 @@ public final class VideoExporter {
         file.delete();
     }
     public void cancel(){
+        cancelled.set(true);
         if(transformer!=null){transformer.cancel();transformer=null;}
         stopProgress();busy=false;cleanAsync();
     }
