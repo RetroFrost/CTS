@@ -49,6 +49,23 @@ jobs:
           gradle-version: '8.13'
       - name: Build the debug APK
         run: gradle --project-dir android-v5 :app:assembleDebug --no-daemon --console=plain
+      - name: Prepare valid Renderer3 fixture for runtime import test
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import gzip, json, struct, zlib, pathlib
+          scene = {
+            'id':'android-v5-smoke','api':3,'engine':'scene-v3',
+            'timeline':{'clock':'absolute','frames':30,'implicitAnimation':False},
+            'canvas':{'width':320,'height':180,'fps':30},
+            'background':'#000000',
+            'resources':{'plate':{'type':'rect','x':0,'y':0,'width':320,'height':180,'color':'#E53935'}},
+            'objects':[{'id':'plate0','kind':'rect','resource':'plate','frame':0}]
+          }
+          data=gzip.compress(json.dumps(scene,separators=(',',':')).encode('utf-8'))
+          payload=b'CCRNDR03'+struct.pack('>III',1,len(data),zlib.crc32(data))+data
+          pathlib.Path('android-v5/test.renderer3').write_bytes(payload)
+          PY
       - name: Enable virtualization
         shell: bash
         run: |
@@ -67,7 +84,11 @@ jobs:
           emulator-options: -no-window -no-snapshot -noaudio -gpu swiftshader_indirect -no-boot-anim
           script: |
             adb install -r android-v5/app/build/outputs/apk/debug/app-debug.apk
-            adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.ComposeStudioActivity
+            adb push android-v5/test.renderer3 /data/local/tmp/cts-test.renderer3
+            adb shell 'run-as com.retrofrost.cubicalcompare.v5.debug cp /data/local/tmp/cts-test.renderer3 files/test.renderer3'
+            adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.ComposeStudioActivity --ez ctsRenderer3SelfTest true
+            sleep 3
+            adb logcat -d -s CTS_RENDERER3_SELFTEST:I | grep -q 'PASS: imported and painted'
             sleep 4
             adb shell pidof com.retrofrost.cubicalcompare.v5.debug
             adb shell input tap 340 285
