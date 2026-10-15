@@ -435,6 +435,41 @@ class ComposeStudioActivity : ComponentActivity() {
                 check(reimported.project.Cards.map{it.Title}==listOf("First","Second"))
                 check(reimported.project.Cards[1].ArtworkBase64.isNotBlank())
                 android.util.Log.i("CTS_ZIPACK2_SELFTEST","PASS: contact sheet import and 2-card MegaPack re-export")
+                // Regression: Windows often stores 40–50 illustrations on ONE
+                // contact sheet wider than the mobile preview texture limit.
+                // Validate native rectangle extraction after full-size decode.
+                val huge=Bitmap.createBitmap(5200,900,Bitmap.Config.ARGB_8888)
+                val bigCanvas=android.graphics.Canvas(huge)
+                bigCanvas.drawColor(Color.YELLOW)
+                val swatch=android.graphics.Paint().apply{color=Color.CYAN}
+                bigCanvas.drawRect(8f,8f,2310f,880f,swatch)
+                swatch.color=Color.MAGENTA
+                bigCanvas.drawRect(2600f,8f,4902f,880f,swatch)
+                val bigOut=ByteArrayOutputStream()
+                check(huge.compress(Bitmap.CompressFormat.PNG,100,bigOut))
+                huge.recycle()
+                val largeManifest=JSONObject(meta.toString())
+                    .put("contactSheets",org.json.JSONArray().put(
+                        JSONObject().put("path",sheetName).put("order",0)
+                            .put("regions",org.json.JSONArray()
+                                .put(JSONObject().put("x",8).put("y",8)
+                                    .put("width",2302).put("height",872).put("order",0))
+                                .put(JSONObject().put("x",2600).put("y",8)
+                                    .put("width",2302).put("height",872).put("order",1)))))
+                val bigFile=File(cacheDir,"zipack2-giant-sheet.zip")
+                java.util.zip.ZipOutputStream(bigFile.outputStream()).use{zip ->
+                    zip.putNextEntry(java.util.zip.ZipEntry(sheetName))
+                    zip.write(bigOut.toByteArray());zip.closeEntry()
+                    zip.putNextEntry(java.util.zip.ZipEntry("manifest.json"))
+                    zip.write(largeManifest.toString().toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
+                val giantImport=Zipack2Bridge.importPack(this,Uri.fromFile(bigFile))
+                check(giantImport.count==2 && giantImport.project.Cards.all{
+                    it.ArtworkBase64.isNotBlank()
+                }){"Large Windows contact-sheet region decode failed"}
+                android.util.Log.i("CTS_ZIPACK2_LARGE","PASS: original-resolution regions from 5200px Windows contact sheet")
+
 
             }catch(e:Exception){
                 android.util.Log.e("CTS_RENDERER3_SELFTEST","FAIL",e)
@@ -989,7 +1024,10 @@ class ComposeStudioActivity : ComponentActivity() {
             }catch(_:Exception){known=false}
             finally{try{probe.release()}catch(_:Exception){}}
         }
-        val videoDuration=project.Cards.size.toLong()*project.SecondsPerCard*1000L
+        val videoDuration=if(rendererSelection!=null)runCatching{
+            Renderer3ExportInterop.durationMillis(this,project)
+        }.getOrElse { project.Cards.size.toLong()*project.SecondsPerCard*1000L }
+        else project.Cards.size.toLong()*project.SecondsPerCard*1000L
         audioWarning=if(!known)"Some soundtrack files could not be inspected. Missing tracks may prevent export."
         else if(total>videoDuration)"The pattern extends past the video end. Audio will be trimmed and faded."
         else if(total<videoDuration && !project.AudioRepeat)
