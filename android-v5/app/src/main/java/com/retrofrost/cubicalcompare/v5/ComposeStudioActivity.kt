@@ -430,6 +430,9 @@ class ComposeStudioActivity : ComponentActivity() {
             "Open .ccv5" to{openProject.launch(arrayOf("application/json","*/*"))})
         Buttons("Save .ccv5" to{saveProject.launch(project.ProjectName+".ccv5")},
             "Import CSV" to{openCsv.launch(arrayOf("text/*","*/*"))})
+        OutlinedButton(onClick={importRenderer3.launch(arrayOf("*/*"))},modifier=Modifier.fillMaxWidth()){
+            Icon(Icons.Default.Layers,null);Spacer(Modifier.width(7.dp));Text("Import Renderer3 (.renderer3 / ZIP)")
+        }
         Heading("Video defaults")
         Measure("Frame rate",project.Fps.toFloat(),15f..60f){project.Fps=it.roundToInt()}
         Measure("Seconds per card",project.SecondsPerCard.toFloat(),1f..15f){
