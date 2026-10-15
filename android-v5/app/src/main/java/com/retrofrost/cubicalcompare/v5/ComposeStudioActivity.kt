@@ -41,7 +41,7 @@ import kotlin.math.roundToInt
 
 /** Real Material 3 Android editor. Rust JNI computes deterministic comparison animation scenes. */
 class ComposeStudioActivity : ComponentActivity() {
-    private val tabs = listOf("Project","Cards","Thumbnails","Renderers","Audio","Export","Draw","Settings")
+    private val tabs = listOf("Project","Cards","Thumbnails","Renderers","MegaPacks","Audio","Export","Draw","Settings")
     private var project by mutableStateOf(StudioModel.blank())
     private var selected by mutableIntStateOf(0)
     private var selectedAudio by mutableIntStateOf(-1)
@@ -61,6 +61,8 @@ class ComposeStudioActivity : ComponentActivity() {
     private var newProjectConfirmation by mutableStateOf(false)
     private var renderPreviewOnCards by mutableStateOf(false)
     private var bundleBusy by mutableStateOf(false)
+    private var megapackStatus by mutableStateOf("No MegaPack loaded")
+    private var megapackProgress by mutableFloatStateOf(0f)
     private val bundleExecutor=java.util.concurrent.Executors.newSingleThreadExecutor()
     private var rendererSelection by mutableStateOf<io.github.retrofrost.cts.android.renderer3.RendererV3Selection?>(null)
     private var audioPlayer: android.media.MediaPlayer? = null
@@ -181,6 +183,55 @@ class ComposeStudioActivity : ComponentActivity() {
                     runOnUiThread{bundleBusy=false;message("Portable project saved, including all selected media.")}
                 }catch(e:Exception){
                     runOnUiThread{bundleBusy=false;message("Bundle export failed: "+e.message)}
+                }
+            }
+        }
+    }
+    private val openZipack2=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        if(uri!=null && !bundleBusy) {
+            ink();bundleBusy=true;megapackProgress=0f
+            status="Importing Zipack2 MegaPack, artwork and badges..."
+            bundleExecutor.execute {
+                try {
+                    val imported=Zipack2Bridge.import(this,uri){percent->
+                        runOnUiThread{megapackProgress=percent/100f}
+                    }
+                    runOnUiThread {
+                        project=imported.project
+                        rendererSelection=null
+                        selected=0;selectedAudio=-1;frame=0L;playing=false
+                        tab="MegaPacks";bundleBusy=false
+                        megapackStatus="Imported "+imported.count+" cards from "+project.ProjectName
+                        changed();message(megapackStatus)
+                    }
+                } catch(e:Exception) {
+                    runOnUiThread {
+                        bundleBusy=false;megapackStatus="Import failed: "+e.message
+                        message(megapackStatus)
+                    }
+                }
+            }
+        }
+    }
+    private val saveZipack2=registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")){uri->
+        if(uri!=null && !bundleBusy){
+            ink();bundleBusy=true;megapackProgress=0f
+            status="Exporting real Zipack2 contact sheets and manifest..."
+            val snapshot=StudioModel.parse(StudioModel.json(project))
+            bundleExecutor.execute{
+                try {
+                    Zipack2Bridge.export(this,snapshot,uri){percent->
+                        runOnUiThread{megapackProgress=percent/100f}
+                    }
+                    runOnUiThread {
+                        bundleBusy=false;megapackStatus="MegaPack exported: "+snapshot.Cards.size+" cards"
+                        message(megapackStatus)
+                    }
+                }catch(e:Exception){
+                    runOnUiThread {
+                        bundleBusy=false;megapackStatus="MegaPack export failed: "+e.message
+                        message(megapackStatus)
+                    }
                 }
             }
         }
@@ -350,8 +401,9 @@ class ComposeStudioActivity : ComponentActivity() {
                                 leadingIcon={Icon(when(index){
                                     0->Icons.Default.Folder;1->Icons.Default.ViewCarousel
                                     2->Icons.Default.Image;3->Icons.Default.Layers
-                                    4->Icons.Default.MusicNote;5->Icons.Default.FileUpload
-                                    6->Icons.Default.Brush;else->Icons.Default.Settings
+                                    4->Icons.Default.FolderZip;5->Icons.Default.MusicNote
+                                    6->Icons.Default.FileUpload;7->Icons.Default.Brush
+                                    else->Icons.Default.Settings
                                 },contentDescription=null,modifier=Modifier.size(18.dp))},
                                 modifier=Modifier.padding(horizontal=3.dp))
                         }
@@ -504,6 +556,7 @@ class ComposeStudioActivity : ComponentActivity() {
                     "Cards"->CardsPage()
                     "Thumbnails"->ThumbnailsPage()
                     "Renderers"->Renderer3Page()
+                    "MegaPacks"->MegaPacksPage()
                     "Audio"->AudioPage()
                     "Export"->ExportPage()
                     "Draw"->DrawPage()
@@ -559,6 +612,11 @@ class ComposeStudioActivity : ComponentActivity() {
             "Open .ccv5" to{openProject.launch(arrayOf("application/json","*/*"))})
         Buttons("Save .ccv5" to{saveProject.launch(project.ProjectName+".ccv5")},
             "Import CSV" to{openCsv.launch(arrayOf("text/*","*/*"))})
+        Buttons("Import MegaPack (.zipack2)" to{
+            if(!bundleBusy)openZipack2.launch(arrayOf("application/zip","application/octet-stream","*/*"))
+        },"Export MegaPack (.zipack2)" to{
+            if(!bundleBusy)saveZipack2.launch(project.ProjectName.ifBlank{"Comparison"}+".zipack2")
+        })
         Heading("Shareable project package")
         Text("A .ccv5 JSON file does not contain renderer or soundtrack files. A .ctsv5 bundle includes the selected Renderer3 and every audio track for other devices.",
             style=MaterialTheme.typography.bodySmall,
@@ -713,6 +771,33 @@ class ComposeStudioActivity : ComponentActivity() {
             style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
+    @Composable private fun MegaPacksPage(){
+        Heading("MegaPacks","Windows-compatible Zipack2 v2. Import illustrated contact sheets, card data, badges, ordering and soundtracks.")
+        Buttons("Import .zipack2" to{
+            if(!bundleBusy)openZipack2.launch(arrayOf("application/zip","application/octet-stream","*/*"))
+        },"Export .zipack2" to{
+            if(!bundleBusy)saveZipack2.launch(project.ProjectName.ifBlank{"Comparison"}+".zipack2")
+        })
+        if(bundleBusy){
+            LinearProgressIndicator(progress={megapackProgress},modifier=Modifier.fillMaxWidth())
+            Text("Processing MegaPack artwork…",style=MaterialTheme.typography.bodySmall)
+        }
+        Text(megapackStatus,style=MaterialTheme.typography.bodyMedium,
+            color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Heading("Contents")
+        Text("Project: "+project.ProjectName)
+        Text("Cards: "+project.Cards.size+" • Audio tracks: "+project.AudioTracks.size)
+        Text("Images: "+project.Cards.count{!it.ArtworkBase64.isNullOrBlank()}+
+            " embedded images",style=MaterialTheme.typography.bodySmall)
+        Buttons("Review cards" to{tab="Cards";changed()},
+            "Preview video" to{tab="Export";changed()})
+        Text("Imported cards preserve chronological order and separate badge header, value and unit. Exported contact sheets use 363 px coloured tiles with real image regions; no transparent placeholders.",
+            style=MaterialTheme.typography.bodySmall,
+            color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Flaticon HTTPS image and preview-page URLs are supported. Unsupported web image hosts are rejected rather than silently replaced.",
+            style=MaterialTheme.typography.bodySmall,
+            color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     @Composable private fun AudioPage(){
         Heading("Audio patterns","Save the creator's exact track order into a reusable M3U playlist.")
         Buttons("＋ Add audio" to{openAudio.launch(arrayOf("audio/*"))},
