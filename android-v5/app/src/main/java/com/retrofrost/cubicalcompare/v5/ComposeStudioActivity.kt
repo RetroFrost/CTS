@@ -14,6 +14,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
@@ -56,11 +58,49 @@ class ComposeStudioActivity : ComponentActivity() {
     private var frame by mutableLongStateOf(0)
     private var colorDialog by mutableStateOf(false)
     private var audioWarning by mutableStateOf("")
+    private var newProjectConfirmation by mutableStateOf(false)
+    private var renderPreviewOnCards by mutableStateOf(false)
+    private var bundleBusy by mutableStateOf(false)
+    private val bundleExecutor=java.util.concurrent.Executors.newSingleThreadExecutor()
     private var rendererSelection by mutableStateOf<io.github.retrofrost.cts.android.renderer3.RendererV3Selection?>(null)
     private var audioPlayer: android.media.MediaPlayer? = null
     private var canvas: CardCanvas? = null
     private lateinit var exporter: VideoExporter
-    private fun changed() {rev++;canvas?.refresh()}
+    private val autosaveHandler=android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingAutosave:Runnable?=null
+    private fun writeAutosave(){
+        try{
+            ink()
+            // Take a consistent UI-thread snapshot; write it off the UI thread.
+            val snapshot=StudioModel.json(project)
+            bundleExecutor.execute{
+                try{
+                    val temp=File(filesDir,"compose-autosave.tmp")
+                    val saved=File(filesDir,"compose-autosave.ccv5")
+                    temp.writeText(snapshot)
+                    try {
+                        java.nio.file.Files.move(temp.toPath(),saved.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+                    } catch(_:java.io.IOException) {
+                        java.nio.file.Files.move(temp.toPath(),saved.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    }
+                }catch(e:Exception){
+                    android.util.Log.w("CTS_AUTOSAVE","Unable to save current project",e)
+                }
+            }
+        }catch(e:Exception){
+            android.util.Log.w("CTS_AUTOSAVE","Unable to snapshot current project",e)
+        }
+    }
+    private fun scheduleAutosave(){
+        pendingAutosave?.let{autosaveHandler.removeCallbacks(it)}
+        val task=Runnable{pendingAutosave=null;writeAutosave()}
+        pendingAutosave=task
+        autosaveHandler.postDelayed(task,2600L)
+    }
+    private fun changed() {rev++;canvas?.refresh();scheduleAutosave()}
     private fun message(s:String){status=s;Toast.makeText(this,s,Toast.LENGTH_SHORT).show()}
     private fun ink(){canvas?.persistInk()}
     private fun card():StudioModel.Card {
@@ -108,6 +148,41 @@ class ComposeStudioActivity : ComponentActivity() {
             tab="Renderers"
             changed()
             message("Renderer3 imported: "+selection.name)
+        }
+    }
+    private val openPortable=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        if(uri!=null&&!bundleBusy){
+            ink();bundleBusy=true;status="Opening complete project bundle..."
+            bundleExecutor.execute{
+                try{
+                    val loaded=PortableProjectBundle.read(this,uri)
+                    runOnUiThread{
+                        project=loaded.project
+                        rendererSelection=loaded.renderer
+                        selected=0;selectedAudio=-1;frame=0L;playing=false
+                        tab=if(loaded.renderer!=null)"Renderers"else"Cards"
+                        bundleBusy=false;changed()
+                        message("Complete project restored with renderer and audio.")
+                    }
+                }catch(e:Exception){
+                    runOnUiThread{bundleBusy=false;message("Cannot open portable project: "+e.message)}
+                }
+            }
+        }
+    }
+    private val savePortable=registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")){uri->
+        if(uri!=null&&!bundleBusy){
+            ink()
+            val snapshot=StudioModel.parse(StudioModel.json(project))
+            bundleBusy=true;status="Packing renderer, artwork and soundtracks..."
+            bundleExecutor.execute{
+                try{
+                    PortableProjectBundle.write(this,snapshot,uri)
+                    runOnUiThread{bundleBusy=false;message("Portable project saved, including all selected media.")}
+                }catch(e:Exception){
+                    runOnUiThread{bundleBusy=false;message("Bundle export failed: "+e.message)}
+                }
+            }
         }
     }
     private val openCsv=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->
@@ -196,6 +271,21 @@ class ComposeStudioActivity : ComponentActivity() {
                     }finally{bitmap.recycle()}
                 }
                 android.util.Log.i("CTS_RENDERER3_SELFTEST","PASS: imported and painted "+imported.name)
+                val testAudio=File(cacheDir,"portable-smoke-track.wav")
+                testAudio.writeBytes(byteArrayOf(82,73,70,70,0,0,0,0,87,65,86,69))
+                project.AudioTracks.clear()
+                project.AudioTracks.add(Uri.fromFile(testAudio).toString())
+                project.AudioTracks.add(Uri.fromFile(testAudio).toString())
+                val testZip=File(cacheDir,"portable-smoke.ctsv5")
+                PortableProjectBundle.write(this,project,Uri.fromFile(testZip))
+                val restored=PortableProjectBundle.read(this,Uri.fromFile(testZip))
+                check(restored.renderer?.id==imported.id){"Renderer lost in portable project"}
+                check(restored.project.AudioTracks.size==2){"Audio order lost in portable project"}
+                check(restored.project.AudioTracks.all { ref->
+                    val bytes=contentResolver.openInputStream(Uri.parse(ref))?.use { it.readBytes() }
+                    bytes?.contentEquals(testAudio.readBytes())==true
+                }){"Portable audio payload corrupted"}
+                android.util.Log.i("CTS_BUNDLE_SELFTEST","PASS: round-trip renderer and ordered embedded audio")
             }catch(e:Exception){
                 android.util.Log.e("CTS_RENDERER3_SELFTEST","FAIL",e)
                 throw e
@@ -204,18 +294,16 @@ class ComposeStudioActivity : ComponentActivity() {
         setContent{Studio()}
     }
     override fun onPause(){
-        super.onPause();stopAudio();ink()
-        try{
-            val temp=File(filesDir,"compose-autosave.tmp");temp.writeText(StudioModel.json(project))
-            if(!temp.renameTo(File(filesDir,"compose-autosave.ccv5")))
-                temp.copyTo(File(filesDir,"compose-autosave.ccv5"),overwrite=true)
-        }catch(_:Exception){}
+        super.onPause();stopAudio()
+        pendingAutosave?.let{autosaveHandler.removeCallbacks(it)}
+        pendingAutosave=null
+        writeAutosave()
     }
-    override fun onDestroy(){stopAudio();if(exporter.isBusy)exporter.cancel();super.onDestroy()}
+    override fun onDestroy(){pendingAutosave?.let{autosaveHandler.removeCallbacks(it)};stopAudio();if(exporter.isBusy)exporter.cancel();bundleExecutor.shutdown();super.onDestroy()}
     private fun navigate(to:String){
         ink();tab=to;playing=false
         if(to=="Thumbnails")drawingThumbnail=true
-        if(to=="Cards")drawingThumbnail=false
+        if(to=="Cards"){drawingThumbnail=false;renderPreviewOnCards=false}
     }
     private fun savePrefs(){
         getPreferences(0).edit().putInt("composeTheme",themePref)
@@ -248,7 +336,7 @@ class ComposeStudioActivity : ComponentActivity() {
                         Text("V5 • RUST ENGINE + MATERIAL 3",style=MaterialTheme.typography.labelSmall,
                             color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if(exporting)CircularProgressIndicator(Modifier.size(23.dp),strokeWidth=3.dp)
+                    if(exporting||bundleBusy)CircularProgressIndicator(Modifier.size(23.dp),strokeWidth=3.dp)
                 }
                 Surface(modifier=Modifier.fillMaxWidth().padding(horizontal=11.dp),
                     shape=RoundedCornerShape(28.dp),
@@ -283,6 +371,14 @@ class ComposeStudioActivity : ComponentActivity() {
                 }
             }
             if(colorDialog)BadgeDialog()
+            if(newProjectConfirmation)AlertDialog(onDismissRequest={newProjectConfirmation=false},
+                title={Text("Create a new project?")},
+                text={Text("Save your current project first if you want to keep your edits. Unsaved changes will be replaced.")},
+                confirmButton={TextButton(onClick={
+                    ink();project=StudioModel.blank();rendererSelection=null;selected=0
+                    selectedAudio=-1;frame=0L;playing=false;newProjectConfirmation=false;changed()
+                }){Text("Create new")}},
+                dismissButton={TextButton(onClick={newProjectConfirmation=false}){Text("Cancel")}})
             if(audioWarning.isNotEmpty())AlertDialog(onDismissRequest={audioWarning=""},
                 title={Text("Audio duration warning")},text={Text(audioWarning)},
                 confirmButton={TextButton(onClick={audioWarning="";saveMp4.launch("CubicalCompare-V5.mp4")}){Text("Export anyway")}},
@@ -303,7 +399,7 @@ class ComposeStudioActivity : ComponentActivity() {
                 }
                 Spacer(Modifier.height(10.dp))
                 val activeRenderer=rendererSelection
-                if(activeRenderer!=null && (tab=="Renderers" || tab=="Export" || tab=="Cards")){
+                if(activeRenderer!=null && (tab=="Renderers" || tab=="Export" || (tab=="Cards"&&renderPreviewOnCards))){
                     val rframe=frame.toInt().coerceIn(0,activeRenderer.frameCountForCards(project.Cards.size).coerceAtLeast(1)-1)
                     AndroidView(factory={ctx->Renderer3FrameView(ctx)},
                         update={view->
@@ -431,6 +527,11 @@ class ComposeStudioActivity : ComponentActivity() {
             label={Text(text(label))},modifier=Modifier.fillMaxWidth(),
             shape=RoundedCornerShape(14.dp),singleLine=true)
     }
+    @Composable private fun MultilineEdit(label:String,value:String,change:(String)->Unit){
+        OutlinedTextField(value=value,onValueChange={change(it);changed()},
+            label={Text(text(label))},modifier=Modifier.fillMaxWidth(),
+            singleLine=false,minLines=3,maxLines=8,shape=RoundedCornerShape(14.dp))
+    }
     @Composable private fun Measure(label:String,value:Float,range:ClosedFloatingPointRange<Float>,
         change:(Float)->Unit){
         Column{
@@ -445,10 +546,19 @@ class ComposeStudioActivity : ComponentActivity() {
     @Composable private fun ProjectPage(){
         Heading("Project","Windows V5 compatible .ccv5 card data, artwork and settings.")
         Edit("Project name",project.ProjectName){project.ProjectName=it}
-        Buttons("New project" to{ink();project=StudioModel.blank();rendererSelection=null;selected=0;selectedAudio=-1;frame=0L;changed()},
+        Buttons("New project" to{newProjectConfirmation=true},
             "Open .ccv5" to{openProject.launch(arrayOf("application/json","*/*"))})
         Buttons("Save .ccv5" to{saveProject.launch(project.ProjectName+".ccv5")},
             "Import CSV" to{openCsv.launch(arrayOf("text/*","*/*"))})
+        Heading("Shareable project package")
+        Text("A .ccv5 JSON file does not contain renderer or soundtrack files. A .ctsv5 bundle includes the selected Renderer3 and every audio track for other devices.",
+            style=MaterialTheme.typography.bodySmall,
+            color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Buttons("Export complete .ctsv5" to{
+            if(!bundleBusy)savePortable.launch((project.ProjectName.ifBlank{"Comparison"})+".ctsv5")
+        },"Open complete .ctsv5" to{
+            if(!bundleBusy)openPortable.launch(arrayOf("application/zip","application/octet-stream","*/*"))
+        })
         OutlinedButton(onClick={importRenderer3.launch(arrayOf("*/*"))},modifier=Modifier.fillMaxWidth()){
             Icon(Icons.Default.Layers,null);Spacer(Modifier.width(7.dp));Text("Import Renderer3 (.renderer3 / ZIP)")
         }
@@ -467,13 +577,20 @@ class ComposeStudioActivity : ComponentActivity() {
             ink();val copy=StudioModel.JSON.fromJson(StudioModel.JSON.toJson(card()),StudioModel.Card::class.java)
             project.Cards.add(selected+1,copy);selected++;changed()
         })
-        project.Cards.forEachIndexed{index,c->
-            Surface(onClick={ink();selected=index;changed()},shape=RoundedCornerShape(13.dp),
-                color=if(index==selected)MaterialTheme.colorScheme.secondaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier=Modifier.fillMaxWidth()){
-                Text((index+1).toString()+". "+c.Title,modifier=Modifier.padding(10.dp),
-                    maxLines=1,style=MaterialTheme.typography.bodySmall)
+        // Bound this nested scrolling region: do not compose all 40-50+ cards
+        // eagerly or give a LazyColumn an infinite height inside verticalScroll.
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max=238.dp),
+            verticalArrangement=Arrangement.spacedBy(4.dp)){
+            itemsIndexed(project.Cards){index,c->
+                Surface(onClick={ink();selected=index;changed()},
+                    shape=RoundedCornerShape(13.dp),
+                    color=if(index==selected)MaterialTheme.colorScheme.secondaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerLow,
+                    modifier=Modifier.fillMaxWidth()){
+                    Text((index+1).toString()+". "+c.Title,
+                        modifier=Modifier.padding(10.dp),maxLines=1,
+                        style=MaterialTheme.typography.bodySmall)
+                }
             }
         }
         Buttons("↑ Move" to{shiftCard(-1)},"↓ Move" to{shiftCard(1)})
@@ -481,13 +598,18 @@ class ComposeStudioActivity : ComponentActivity() {
             if(project.Cards.size>1){ink();project.Cards.removeAt(selected)
                 selected=selected.coerceAtMost(project.Cards.size-1);changed()}
         },modifier=Modifier.fillMaxWidth()){Text(text("Remove selected card"))}
+        if(rendererSelection!=null){
+            Buttons((if(renderPreviewOnCards)"Edit artwork directly" else "Preview Renderer3") to{
+                renderPreviewOnCards=!renderPreviewOnCards;changed()
+            })
+        }
         Heading("Card editor")
         val c=card()
         Edit("Title",c.Title){c.Title=it}
         Edit("Badge header",c.BadgeHeader){c.BadgeHeader=it}
         Edit("Badge value",c.Badge){c.Badge=it}
         Edit("Badge unit",c.BadgeUnit){c.BadgeUnit=it}
-        Edit("Description",c.Description){c.Description=it}
+        MultilineEdit("Description",c.Description){c.Description=it}
         Buttons("Badge colour" to{colorDialog=true})
         Buttons("Import artwork" to{openArtwork.launch(arrayOf("image/*"))},
             "Remove artwork" to{c.ArtworkBase64="";changed()})

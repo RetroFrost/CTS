@@ -50,3 +50,15 @@ This V5 implementation reuses the actual Android Renderer3 format/player origina
 - Ported RendererV3ContainerTest and WrappedRibbonV3Test validate the format, CRC, unsafe paths, wrapped engine and SmartBadge sidecars.
 
 **Compatibility:** Other Windows-only rendering engines, unknown required features and missing ZIP assets are not silently approximated. H.264 export depends on the device encoder and longer animations may be demanding. The standalone .renderer3 file is not embedded in .ccv5 project saves; reimport it on other devices.
+
+## Creator workflow & portable projects
+
+- **Project → Export complete .ctsv5** packages the entire project, the imported Renderer3 file and every ordered soundtrack in a single ZIP-based document; **Open complete .ctsv5** restores the project and local media references on another Android device. The project canvas artwork and separate thumbnail transforms already live in the .ccv5 JSON. Plain .ccv5 remains available for Windows data interchange but cannot package renderer/audio binaries.
+- ZIP import enforces a strict path allowlist, rejects duplicate filenames and unexpected entries, and limits expanded data (512 MB total; 128 MB for Renderer3; 96 MB per soundtrack; 64 MB for project JSON). Invalid archives are not partially installed as the active project.
+- When a Renderer3 is selected, **Cards** defaults to the directly editable artwork canvas; choose **Preview Renderer3** to compare the rendered output, then **Edit artwork directly** to return to touch editing. **Renderers** and **Export** always show the actual renderer output.
+- The **Cards** list renders lazily in a bounded scroll area for 40–50+ cards, descriptions allow multiple lines, and **New project** asks for confirmation before replacing work.
+- Work is autosaved after a short editing pause and on app pause. File writes happen on a background worker through an atomic replacement; unlike the original UI, a full project JSON is not written synchronously in onPause.
+
+### Parity audit – not yet completed
+
+The native Android implementation still lacks a general **Zipack2 MegaPack import/export** workflow (CSV imports work), arbitrary Windows **Renderer3 extension/plugin execution**, Windows patch/developer tools, fully portable cross-platform WPF ink layers, and a fully integrated live per-frame Renderer3 element inspector. Renderer support remains limited to the existing Android scene-v3/ribbon-exact feature set. No claim of complete stable Windows CTS parity is made. Feature labels are not substitutes for working engines.

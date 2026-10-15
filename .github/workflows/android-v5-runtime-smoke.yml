@@ -90,6 +90,7 @@ jobs:
             adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.ComposeStudioActivity --ez ctsRenderer3SelfTest true
             sleep 3
             adb logcat -d -s CTS_RENDERER3_SELFTEST:I | grep -q 'PASS: imported and painted'
+            adb logcat -d -s CTS_BUNDLE_SELFTEST:I | grep -q 'PASS: round-trip renderer and ordered embedded audio'
             sleep 4
             adb shell pidof com.retrofrost.cubicalcompare.v5.debug
             adb shell input tap 340 285
