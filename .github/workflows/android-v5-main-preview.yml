@@ -28,6 +28,30 @@ jobs:
           test -x "$SDK_MANAGER"
           ( set +o pipefail; yes | "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null )
           "$SDK_MANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Install Rust targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - name: Install Android NDK and cargo-ndk
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then SDK_MANAGER="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"; fi
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" 'ndk;27.2.12479018'
+          cargo install cargo-ndk --locked
+      - name: Test Rust renderer logic
+        run: cargo test --manifest-path android-v5/rust/Cargo.toml --locked
+      - name: Compile Rust JNI library for Android
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          export ANDROID_NDK_HOME="$SDK_ROOT/ndk/27.2.12479018"
+          test -d "$ANDROID_NDK_HOME"
+          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o android-v5/app/src/main/jniLibs build --manifest-path android-v5/rust/Cargo.toml --release
+          test -s android-v5/app/src/main/jniLibs/arm64-v8a/libcts_engine.so
+          test -s android-v5/app/src/main/jniLibs/armeabi-v7a/libcts_engine.so
+          test -s android-v5/app/src/main/jniLibs/x86_64/libcts_engine.so
       - name: Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -40,6 +64,8 @@ jobs:
         shell: bash
         run: |
           test -s android-v5/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l android-v5/app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/arm64-v8a/libcts_engine.so'
+          grep -q 'ComposeStudioActivity' android-v5/app/src/main/AndroidManifest.xml
           grep -q 'M3uPattern.save' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/MainActivity.java
           grep -q 'setImageDurationMs' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/VideoExporter.java
           grep -q 'ThumbnailTransform' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/StudioModel.java
@@ -66,7 +92,7 @@ jobs:
             if gh release create "$TAG" CubicalCompare-V5-Android-MainPreview-debug.apk SHA256SUMS-android.txt \
             --repo "${{ github.repository }}" --target "$GITHUB_SHA" --prerelease \
             --title "Cubical Compare V5 Android — Main Preview #${{ github.run_number }}" \
-            --notes "Native Android V5: floating seven-menu adaptive editor, Windows .ccv5 projects, M3U audio patterns, thumbnail transforms, drawing, badge colours, old-GPU canvas support, 10 languages, dark/light/system appearance and Media3 MP4 export. Debug-signed sideload APK."
+            --notes "Android V5 rebuilt using Rust JNI deterministic timeline engine plus Kotlin Jetpack Compose Material 3 UI, floating menus, Windows .ccv5 projects, M3U patterns, thumbnail transforms, draw-as-artwork, Media3 MP4 export. Debug-signed sideload APK."
             then exit 0; fi
             echo "GitHub release upload attempt ${attempt} failed (possibly transient permission/rate error)."
             if [ "$attempt" -lt 4 ]; then sleep $((attempt*12)); fi
