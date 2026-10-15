@@ -66,7 +66,41 @@ class ComposeStudioActivity : ComponentActivity() {
     private var audioPlayer: android.media.MediaPlayer? = null
     private var canvas: CardCanvas? = null
     private lateinit var exporter: VideoExporter
-    private fun changed() {rev++;canvas?.refresh()}
+    private val autosaveHandler=android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingAutosave:Runnable?=null
+    private fun writeAutosave(){
+        try{
+            ink()
+            // Take a consistent UI-thread snapshot; write it off the UI thread.
+            val snapshot=StudioModel.json(project)
+            bundleExecutor.execute{
+                try{
+                    val temp=File(filesDir,"compose-autosave.tmp")
+                    val saved=File(filesDir,"compose-autosave.ccv5")
+                    temp.writeText(snapshot)
+                    try {
+                        java.nio.file.Files.move(temp.toPath(),saved.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+                    } catch(_:java.io.IOException) {
+                        java.nio.file.Files.move(temp.toPath(),saved.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    }
+                }catch(e:Exception){
+                    android.util.Log.w("CTS_AUTOSAVE","Unable to save current project",e)
+                }
+            }
+        }catch(e:Exception){
+            android.util.Log.w("CTS_AUTOSAVE","Unable to snapshot current project",e)
+        }
+    }
+    private fun scheduleAutosave(){
+        pendingAutosave?.let{autosaveHandler.removeCallbacks(it)}
+        val task=Runnable{pendingAutosave=null;writeAutosave()}
+        pendingAutosave=task
+        autosaveHandler.postDelayed(task,2600L)
+    }
+    private fun changed() {rev++;canvas?.refresh();scheduleAutosave()}
     private fun message(s:String){status=s;Toast.makeText(this,s,Toast.LENGTH_SHORT).show()}
     private fun ink(){canvas?.persistInk()}
     private fun card():StudioModel.Card {
@@ -260,14 +294,12 @@ class ComposeStudioActivity : ComponentActivity() {
         setContent{Studio()}
     }
     override fun onPause(){
-        super.onPause();stopAudio();ink()
-        try{
-            val temp=File(filesDir,"compose-autosave.tmp");temp.writeText(StudioModel.json(project))
-            if(!temp.renameTo(File(filesDir,"compose-autosave.ccv5")))
-                temp.copyTo(File(filesDir,"compose-autosave.ccv5"),overwrite=true)
-        }catch(_:Exception){}
+        super.onPause();stopAudio()
+        pendingAutosave?.let{autosaveHandler.removeCallbacks(it)}
+        pendingAutosave=null
+        writeAutosave()
     }
-    override fun onDestroy(){stopAudio();if(exporter.isBusy)exporter.cancel();bundleExecutor.shutdown();super.onDestroy()}
+    override fun onDestroy(){pendingAutosave?.let{autosaveHandler.removeCallbacks(it)};stopAudio();if(exporter.isBusy)exporter.cancel();bundleExecutor.shutdown();super.onDestroy()}
     private fun navigate(to:String){
         ink();tab=to;playing=false
         if(to=="Thumbnails")drawingThumbnail=true
