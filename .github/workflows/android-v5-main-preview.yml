@@ -71,6 +71,8 @@ jobs:
           grep -q 'M3uPattern.save' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/ComposeStudioActivity.kt
           grep -q 'setImageDurationMs' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/VideoExporter.java
           grep -q 'ThumbnailTransform' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/StudioModel.java
+          grep -q 'Zipack2Bridge.importPack' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/ComposeStudioActivity.kt
+          grep -q 'Zipack2Bridge.exportPack' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/ComposeStudioActivity.kt
       - name: Package APK and SHA256
         shell: bash
         run: |
