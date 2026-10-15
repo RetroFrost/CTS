@@ -201,13 +201,16 @@ public final class VideoExporter {
                                 OutputStream out=activity.getContentResolver().openOutputStream(destination,"wt")){
                                 if(out==null)throw new Exception("Output location is unavailable");
                                 byte[] bytes=new byte[128*1024];int n;
-                                while((n=in.read(bytes))!=-1)out.write(bytes,0,n);
+                                while((n=in.read(bytes))!=-1){ensureActive();out.write(bytes,0,n);}
                                 out.flush();
                                 handler.post(()->{
+                                    if(cancelled.get())return;
                                     busy=false;cb.finished("Exported MP4 successfully.");
                                     cleanAsync();
                                 });
-                            }catch(Throwable e){handler.post(()->fail(cb,e.toString()));}
+                            }catch(Throwable e){
+                                if(!cancelled.get())handler.post(()->fail(cb,e.toString()));
+                            }
                         });
                     }
                     @Override public void onError(Composition comp,ExportResult result,ExportException exception){
