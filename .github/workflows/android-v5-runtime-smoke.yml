@@ -85,6 +85,7 @@ jobs:
           script: |
             adb install -r android-v5/app/build/outputs/apk/debug/app-debug.apk
             adb push android-v5/test.renderer3 /data/local/tmp/cts-test.renderer3
+            adb shell 'run-as com.retrofrost.cubicalcompare.v5.debug mkdir -p files'
             adb shell 'run-as com.retrofrost.cubicalcompare.v5.debug cp /data/local/tmp/cts-test.renderer3 files/test.renderer3'
             adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.ComposeStudioActivity --ez ctsRenderer3SelfTest true
             sleep 3
