@@ -91,6 +91,7 @@ jobs:
             sleep 3
             adb logcat -d -s CTS_RENDERER3_SELFTEST:I | grep -q 'PASS: imported and painted'
             adb logcat -d -s CTS_BUNDLE_SELFTEST:I | grep -q 'PASS: round-trip renderer and ordered embedded audio'
+            adb logcat -d -s CTS_ZIPACK2_SELFTEST:I | grep -q 'PASS: contact sheet import and 2-card MegaPack re-export'
             sleep 4
             adb shell pidof com.retrofrost.cubicalcompare.v5.debug
             adb shell input tap 340 285
