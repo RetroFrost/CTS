@@ -93,7 +93,19 @@ internal class Renderer3FrameView(context:Context):View(context){
     override fun onDraw(canvas:Canvas){
         super.onDraw(canvas)
         canvas.drawColor(android.graphics.Color.BLACK)
-        session?.paint(canvas,frame.coerceAtLeast(0),width.coerceAtLeast(1),height.coerceAtLeast(1))
+        try{
+            session?.paint(canvas,frame.coerceAtLeast(0),width.coerceAtLeast(1),height.coerceAtLeast(1))
+        }catch(e:Exception){
+            canvas.drawColor(android.graphics.Color.rgb(39,11,19))
+            val error=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color=android.graphics.Color.WHITE
+                textSize=25f*resources.displayMetrics.density
+            }
+            canvas.drawText("Renderer3 preview error",24f,54f,error)
+            error.textSize=15f*resources.displayMetrics.density
+            canvas.drawText(e.message.orEmpty().take(56),24f,88f,error)
+            android.util.Log.e("CTS_RENDERER3","Frame render failed",e)
+        }
     }
     fun release(){session?.close();session=null;tag=null}
     override fun onDetachedFromWindow(){release();super.onDetachedFromWindow()}
