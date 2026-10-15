@@ -534,7 +534,7 @@ class ComposeStudioActivity : ComponentActivity() {
         }
         OutlinedButton(onClick={savePng.launch("CubicalCompare-Thumbnail.png")},
             modifier=Modifier.fillMaxWidth()){Text("Export thumbnail PNG")}
-        Text("Current MP4 exporter uses Media3 timed cards. Rust timeline preview provides deterministic timing; transition-frame export remains separate work.",
+        Text("Rust drives the card-conveyor easing for timeline playback and MP4 transitions; complete Renderer3-specific badge ZIP animations are not yet ported.",
             style=MaterialTheme.typography.bodySmall,
             color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
