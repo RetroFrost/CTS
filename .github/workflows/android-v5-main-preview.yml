@@ -41,7 +41,7 @@ jobs:
           "$SDK_MANAGER" --sdk_root="$SDK_ROOT" 'ndk;27.2.12479018'
           cargo install cargo-ndk --locked
       - name: Test Rust renderer logic
-        run: cargo test --manifest-path android-v5/rust/Cargo.toml --locked
+        run: cargo test --manifest-path android-v5/rust/Cargo.toml
       - name: Compile Rust JNI library for Android
         shell: bash
         run: |
