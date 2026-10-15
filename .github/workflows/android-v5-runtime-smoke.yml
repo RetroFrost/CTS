@@ -28,6 +28,21 @@ jobs:
           test -x "$SDK_MANAGER"
           ( set +o pipefail; yes | "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null )
           "$SDK_MANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-linux-android
+      - name: Prepare Rust JNI for Android emulator
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then SDK_MANAGER="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"; fi
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" 'ndk;27.2.12479018'
+          cargo install cargo-ndk --locked
+          export ANDROID_NDK_HOME="$SDK_ROOT/ndk/27.2.12479018"
+          cd android-v5/rust
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release
+          test -s ../app/src/main/jniLibs/x86_64/libcts_engine.so
       - name: Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -52,7 +67,7 @@ jobs:
           emulator-options: -no-window -no-snapshot -noaudio -gpu swiftshader_indirect -no-boot-anim
           script: |
             adb install -r android-v5/app/build/outputs/apk/debug/app-debug.apk
-            adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.MainActivity
+            adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.ComposeStudioActivity
             sleep 4
             adb shell pidof com.retrofrost.cubicalcompare.v5.debug
             adb shell input tap 340 285
