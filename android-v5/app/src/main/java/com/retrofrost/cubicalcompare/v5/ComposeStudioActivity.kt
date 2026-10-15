@@ -258,17 +258,44 @@ class ComposeStudioActivity : ComponentActivity() {
                     Text("1920 × 1080",style=MaterialTheme.typography.labelSmall)
                 }
                 Spacer(Modifier.height(10.dp))
-                AndroidView(factory={context->
-                    CardCanvas(context).also{
-                        it.setCard(selectedCard);it.setThumbnail(thumb)
-                        it.tag=selectedCard;it.onChanged(Runnable{changed()});canvas=it
+                if(tab=="Export" && playing) {
+                    val scene=try{JSONObject(NativeEngine.scene(StudioModel.json(project),frame))}
+                        catch(_:Exception){JSONObject()}
+                    val current=scene.optInt("currentCard",0).coerceIn(0,project.Cards.size-1)
+                    val next=scene.optInt("nextCard",current).coerceIn(0,project.Cards.size-1)
+                    BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(16f/9f)) {
+                        val dx=(maxWidth.value*scene.optDouble("currentX",0.0).toFloat()/960f).dp
+                        val nx=(maxWidth.value*scene.optDouble("nextX",960.0).toFloat()/960f).dp
+                        AndroidView(factory={ctx->
+                            CardCanvas(ctx).apply{setCard(project.Cards[current]);setThumbnail(false)}
+                        },update={view->
+                            if(view.tag!==project.Cards[current]) {
+                                view.setCard(project.Cards[current]);view.tag=project.Cards[current]
+                            }
+                        },modifier=Modifier.fillMaxSize().offset(x=dx))
+                        if(next!=current && scene.optDouble("transition",0.0)>0.0){
+                            AndroidView(factory={ctx->
+                                CardCanvas(ctx).apply{setCard(project.Cards[next]);setThumbnail(false)}
+                            },update={view->
+                                if(view.tag!==project.Cards[next]){
+                                    view.setCard(project.Cards[next]);view.tag=project.Cards[next]
+                                }
+                            },modifier=Modifier.fillMaxSize().offset(x=nx))
+                        }
                     }
-                },update={view->
-                    if(view.tag !== selectedCard){view.setCard(selectedCard);view.tag=selectedCard}
-                    view.setThumbnail(thumb)
-                    view.setTool(if(tab=="Draw")tool else CardCanvas.Tool.MOVE)
-                    view.refresh();canvas=view
-                },modifier=Modifier.fillMaxWidth().aspectRatio(16f/9f))
+                } else {
+                    AndroidView(factory={context->
+                        CardCanvas(context).also{
+                            it.setCard(selectedCard);it.setThumbnail(thumb)
+                            it.tag=selectedCard;it.onChanged(Runnable{changed()});canvas=it
+                        }
+                    },update={view->
+                        if(view.tag !== selectedCard){view.setCard(selectedCard);view.tag=selectedCard}
+                        view.setThumbnail(thumb)
+                        view.setTool(if(tab=="Draw")tool else CardCanvas.Tool.MOVE)
+                        view.refresh();canvas=view
+                    },modifier=Modifier.fillMaxWidth().aspectRatio(16f/9f))
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(if(tab=="Draw")"Use your finger to draw • brush and eraser in Draw settings"
                     else "Drag artwork • pinch to scale and rotate • independent thumbnail transformations",
