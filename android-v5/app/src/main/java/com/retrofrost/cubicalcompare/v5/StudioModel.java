@@ -62,6 +62,9 @@ public final class StudioModel {
     }
     public static final class Project {
         public int FormatVersion=5;
+        /** Relative filename of Renderer3 previously validated and imported to private app storage. */
+        public String Renderer3AssetName="";
+        public String Renderer3Id="";
         public String ProjectName="My Comparison";
         public List<Card> Cards=new ArrayList<>();
         public List<String> AudioTracks=new ArrayList<>();
