@@ -27,6 +27,13 @@ public sealed partial class MainWindow
         RootNavigation.PaneDisplayMode = NavigationViewPaneDisplayMode.LeftMinimal;
         RootNavigation.IsPaneOpen = false;
         RootNavigation.IsPaneToggleButtonVisible = false;
+        // WinUI may reopen a NavigationView pane during its first responsive layout.
+        // Hide it again after Loaded, during resizes, and before each dock navigation.
+        RootNavigation.Loaded += (_, _) => RootNavigation.IsPaneOpen = false;
+        RootNavigation.SizeChanged += (_, _) =>
+        {
+            if (RootNavigation.IsPaneOpen) RootNavigation.IsPaneOpen = false;
+        };
 
         FloatingDockOffset.X = AppPreferences.GetInt("v5_floating_dock_x", 0);
         FloatingDockOffset.Y = AppPreferences.GetInt("v5_floating_dock_y", 0);
@@ -57,6 +64,7 @@ public sealed partial class MainWindow
             throw new InvalidOperationException($"Floating dock destination is missing: {tag}");
 
         RootNavigation.SelectedItem = destination;
+        RootNavigation.IsPaneOpen = false;
         // Explicit page routing is necessary while the normal pane is not visually realized.
         ShowPage(tag);
         if (tag == "audio") RefreshSoundtrackUi();
@@ -138,10 +146,15 @@ public sealed partial class MainWindow
 
     private void RunFloatingDockSmoke()
     {
+        // WinUI's responsive NavigationView can reopen itself on first layout.
+        RootNavigation.IsPaneOpen = false;
         if (!EditorRootGrid.Children.Contains(FloatingNavigationDock)
             || FloatingNavigationDock.Visibility != Visibility.Visible
             || RootNavigation.IsPaneOpen || RootNavigation.IsPaneToggleButtonVisible)
-            throw new InvalidOperationException("V5 floating dock is missing or the old fixed sidebar is still showing.");
+            throw new InvalidOperationException(
+                $"V5 floating dock check: child={EditorRootGrid.Children.Contains(FloatingNavigationDock)}, " +
+                $"dockVisibility={FloatingNavigationDock.Visibility}, paneOpen={RootNavigation.IsPaneOpen}, " +
+                $"toggleVisible={RootNavigation.IsPaneToggleButtonVisible}, paneMode={RootNavigation.PaneDisplayMode}.");
 
         var destinations = new[] { "project", "assets", "thumbnail", "audio", "renderer", "settings", "developer" };
         foreach (var tag in destinations)
