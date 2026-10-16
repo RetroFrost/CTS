@@ -137,7 +137,11 @@ public static class AutoThumbnailGenerator
             using (var top = new SKPaint { Color = new SKColor(34, 34, 34), Style = SKPaintStyle.Fill })
                 canvas.DrawRect(left, 0, right - left, TopHeight - TitleStripHeight, top);
 
-            DrawBadge(canvas, project, card, (left + right) / 2f, 145f, Math.Min(125f, (right - left) * .29f), slot == count - 1);
+            // The final "?" badge is a teaser for a complete 3/4-card thumbnail.
+            // While editing a new one- or two-card project, show the actual value:
+            // a lone Card 1 must not appear as an unexplained question mark.
+            DrawBadge(canvas, project, card, (left + right) / 2f, 145f,
+                Math.Min(125f, (right - left) * .29f), count >= 3 && slot == count - 1);
 
             using (var strip = new SKPaint { Color = new SKColor(244, 244, 244), Style = SKPaintStyle.Fill })
                 canvas.DrawRect(left, TopHeight - TitleStripHeight, right - left, TitleStripHeight, strip);

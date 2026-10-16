@@ -35,8 +35,17 @@ public sealed partial class MainWindow
     private async void ImportSoundtrackPattern_Click(object sender, RoutedEventArgs e)
     {
         if (_audioImportBusy) return;
-        var file = await PickFileAsync([".m3u", ".m3u8"]);
+        // Media-playlist filters can switch the Windows picker into a media
+        // collection mode and report "There are no media items in the selected
+        // playlist". Use the normal file-browser filter and validate extension.
+        var file = await PickFileAsync(["*"]);
         if (file is null) return;
+        if (!string.Equals(Path.GetExtension(file.Path), ".m3u", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(Path.GetExtension(file.Path), ".m3u8", StringComparison.OrdinalIgnoreCase))
+        {
+            await ShowErrorAsync("Choose an M3U playlist", "Select a .m3u or .m3u8 file to import an audio pattern.");
+            return;
+        }
 
         _audioImportBusy = true;
         try

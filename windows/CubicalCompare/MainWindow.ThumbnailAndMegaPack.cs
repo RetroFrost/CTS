@@ -121,8 +121,12 @@ public sealed partial class MainWindow
             var generated = await Task.Run(() => AutoThumbnailGenerator.Generate(project));
             if (revision != Interlocked.Read(ref _thumbnailRevision)) return;
 
+            // Bitmap conversion yields to the WinUI dispatcher. A newer generation
+            // can finish while an older frame decodes; never show/save that stale frame.
+            var previewBitmap = await BitmapFromPngAsync(generated.Png);
+            if (revision != Interlocked.Read(ref _thumbnailRevision)) return;
+            ThumbnailPreviewImage.Source = previewBitmap;
             _latestThumbnail = generated;
-            ThumbnailPreviewImage.Source = await BitmapFromPngAsync(generated.Png);
             RefreshThumbnailInteractionOverlay();
             ThumbnailStatusText.Text = $"Auto-generated 1280×720 · cards {string.Join(", ", generated.CardIndices.Select(x => x + 1))}";
         }
@@ -144,11 +148,10 @@ public sealed partial class MainWindow
     {
         try
         {
-            if (_latestThumbnail is null)
-            {
-                var revision = Interlocked.Increment(ref _thumbnailRevision);
-                await RefreshThumbnailAsync(BuildProject(), revision, delayed: false);
-            }
+            // Always regenerate from the current cards before saving. Waiting for
+            // debounced preview renders is not sufficient after a last-second edit.
+            var revision = Interlocked.Increment(ref _thumbnailRevision);
+            await RefreshThumbnailAsync(BuildProject(), revision, delayed: false);
             if (_latestThumbnail is null)
             {
                 ThumbnailStatusText.Text = "Thumbnail is not available to save.";

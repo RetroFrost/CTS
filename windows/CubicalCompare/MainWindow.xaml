@@ -42,17 +42,7 @@
                     <Button Content="New" Click="NewProjectWithFileState_Click" Padding="12,6" />
                     <Button Content="Open" Click="OpenProject_Click" Padding="12,6" />
                     <Button Content="Save" Click="SaveProject_Click" Padding="12,6" />
-                    <Button Content="⋯" ToolTipService.ToolTip="Quick actions" Padding="9,5">
-                        <Button.Flyout>
-                            <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                <MenuFlyoutItem Text="New project" Click="NewProjectWithFileState_Click" />
-                                <MenuFlyoutItem Text="Open project" Click="OpenProject_Click" />
-                                <MenuFlyoutItem Text="Save project" Click="SaveProject_Click" />
-                                <MenuFlyoutSeparator />
-                                <MenuFlyoutItem Text="Export video" Click="ExportVideo_Click" />
-                            </MenuFlyout>
-                        </Button.Flyout>
-                    </Button>
+
                     <Button x:Name="AiBuildButton" Content="AI Build" Click="AiBuild_Click" Padding="12,6" />
                     <Button x:Name="AiUndoButton" Content="Undo AI" Click="UndoAiBuild_Click" Visibility="Collapsed" Padding="12,6" />
                     <ProgressRing x:Name="AiBuildRing" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
