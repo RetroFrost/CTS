@@ -22,6 +22,7 @@ public sealed partial class MainWindow
 #if V5_M1_PREVIEW
         // V5 navigates through its always-visible floating dock, not a fixed sidebar.
         RootNavigation.IsPaneToggleButtonVisible = false;
+        RootNavigation.IsPaneVisible = false;
         RootNavigation.IsPaneOpen = false;
 #else
         // V4 retains its established sidebar and open-pane toggle.

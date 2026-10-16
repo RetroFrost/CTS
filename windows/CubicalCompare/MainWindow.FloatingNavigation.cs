@@ -8,7 +8,7 @@ namespace CubicalCompare;
 
 /// <summary>
 /// Real, movable floating dock over the whole WinUI editor. The existing NavigationView
-/// remains the routing/state source but its permanent side panel is collapsed.
+/// remains the routing/state source but its permanent side panel is completely hidden.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -24,14 +24,23 @@ public sealed partial class MainWindow
         _floatingDockInitialized = true;
 
         // The dock is the actual primary navigation; do not leave a fixed side menu.
-        RootNavigation.PaneDisplayMode = NavigationViewPaneDisplayMode.LeftMinimal;
+        // IsPaneOpen=false only collapses the pane into the 52px compact
+        // icon rail. IsPaneVisible=false removes that rail AND its layout space.
+        // Retain NavigationView's MenuItems solely for existing page routing.
+        RootNavigation.PaneDisplayMode = NavigationViewPaneDisplayMode.Left;
+        RootNavigation.IsPaneVisible = false;
         RootNavigation.IsPaneOpen = false;
         RootNavigation.IsPaneToggleButtonVisible = false;
-        // WinUI may reopen a NavigationView pane during its first responsive layout.
-        // Hide it again after Loaded, during resizes, and before each dock navigation.
-        RootNavigation.Loaded += (_, _) => RootNavigation.IsPaneOpen = false;
+        // Reapply on template realization/window resizing, never allow the legacy
+        // visual sidebar to reappear when changing page or window size.
+        RootNavigation.Loaded += (_, _) =>
+        {
+            RootNavigation.IsPaneVisible = false;
+            RootNavigation.IsPaneOpen = false;
+        };
         RootNavigation.SizeChanged += (_, _) =>
         {
+            if (RootNavigation.IsPaneVisible) RootNavigation.IsPaneVisible = false;
             if (RootNavigation.IsPaneOpen) RootNavigation.IsPaneOpen = false;
         };
 
@@ -64,6 +73,7 @@ public sealed partial class MainWindow
             throw new InvalidOperationException($"Floating dock destination is missing: {tag}");
 
         RootNavigation.SelectedItem = destination;
+        RootNavigation.IsPaneVisible = false;
         RootNavigation.IsPaneOpen = false;
         // Explicit page routing is necessary while the normal pane is not visually realized.
         ShowPage(tag);
@@ -155,11 +165,13 @@ public sealed partial class MainWindow
         RootNavigation.IsPaneOpen = false;
         if (!EditorRootGrid.Children.Contains(FloatingNavigationDock)
             || FloatingNavigationDock.Visibility != Visibility.Visible
-            || RootNavigation.IsPaneOpen || RootNavigation.IsPaneToggleButtonVisible)
+            || RootNavigation.IsPaneVisible || RootNavigation.IsPaneOpen
+            || RootNavigation.IsPaneToggleButtonVisible)
             throw new InvalidOperationException(
                 $"V5 floating dock check: child={EditorRootGrid.Children.Contains(FloatingNavigationDock)}, " +
-                $"dockVisibility={FloatingNavigationDock.Visibility}, paneOpen={RootNavigation.IsPaneOpen}, " +
-                $"toggleVisible={RootNavigation.IsPaneToggleButtonVisible}, paneMode={RootNavigation.PaneDisplayMode}.");
+                $"dockVisibility={FloatingNavigationDock.Visibility}, paneVisible={RootNavigation.IsPaneVisible}, " +
+                $"paneOpen={RootNavigation.IsPaneOpen}, toggleVisible={RootNavigation.IsPaneToggleButtonVisible}, " +
+                $"paneMode={RootNavigation.PaneDisplayMode}.");
 
         var destinations = new[] { "project", "assets", "thumbnail", "audio", "renderer", "settings", "developer" };
         foreach (var tag in destinations)
