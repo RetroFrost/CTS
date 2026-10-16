@@ -61,13 +61,17 @@ class ComposeStudioActivity : ComponentActivity() {
     private var newProjectConfirmation by mutableStateOf(false)
     private var renderPreviewOnCards by mutableStateOf(false)
     private var bundleBusy by mutableStateOf(false)
+    private val history=ProjectHistory()
+    private var pendingHistory:Runnable?=null
+    private var cardSearch by mutableStateOf("")
+    private var tappedElement by mutableStateOf("")
+    private var colourAll by mutableStateOf(false)
     private var megapackStatus by mutableStateOf("No MegaPack loaded")
     private var megapackProgress by mutableFloatStateOf(0f)
     private val bundleExecutor=java.util.concurrent.Executors.newSingleThreadExecutor()
     private var rendererSelection by mutableStateOf<io.github.retrofrost.cts.android.renderer3.RendererV3Selection?>(null)
     private var audioPlayer: android.media.MediaPlayer? = null
     private var canvas: CardCanvas? = null
-    private lateinit var exporter: VideoExporter
     private val autosaveHandler=android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingAutosave:Runnable?=null
     private fun writeAutosave(){
@@ -102,7 +106,24 @@ class ComposeStudioActivity : ComponentActivity() {
         pendingAutosave=task
         autosaveHandler.postDelayed(task,2600L)
     }
-    private fun changed() {rev++;canvas?.refresh();scheduleAutosave()}
+    private fun changed() {
+        rev++;canvas?.refresh();scheduleAutosave()
+        pendingHistory?.let{autosaveHandler.removeCallbacks(it)}
+        pendingHistory=Runnable{pendingHistory=null;history.capture(StudioModel.json(project));rev++}
+        autosaveHandler.postDelayed(pendingHistory!!,600L)
+    }
+    private fun restoreHistory(redo:Boolean){
+        ink();pendingHistory?.let{autosaveHandler.removeCallbacks(it)};pendingHistory=null
+        history.capture(StudioModel.json(project))
+        val json=if(redo)history.redo()else history.undo()
+        if(json!=null){
+            // Persist the old canvas before swapping model ownership.
+            canvas=null;project=StudioModel.parse(json)
+            selected=selected.coerceIn(0,project.Cards.size-1)
+            rendererSelection=runCatching{Renderer3Bridge.resolve(this,project)}.getOrNull()
+            frame=0L;playing=false;changed()
+        }
+    }
     private fun message(s:String){status=s;Toast.makeText(this,s,Toast.LENGTH_SHORT).show()}
     private fun ink(){canvas?.persistInk()}
     private fun card():StudioModel.Card {
@@ -325,6 +346,28 @@ class ComposeStudioActivity : ComponentActivity() {
             message("M3U pattern imported. Relink unavailable tracks if necessary.")
         }
     }
+    private val saveCsv=registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")){uri->
+        if(uri!=null)guarded{ink();save(uri,StudioModel.csv(project).toByteArray(Charsets.UTF_8));message("CSV exported")}
+    }
+    private val saveFrame=registerForActivityResult(ActivityResultContracts.CreateDocument("image/png")){uri->
+        if(uri!=null&&!bundleBusy){
+            ink();val snapshot=StudioModel.parse(StudioModel.json(project))
+            val clock=frame.toInt();val selection=rendererSelection
+            bundleBusy=true
+            bundleExecutor.execute{
+                try{
+                    val bitmap=if(selection!=null)Renderer3Bridge.Session(this,selection,snapshot).use{
+                        it.bitmap(clock,snapshot.ExportWidth,snapshot.ExportHeight)
+                    }else BasicFramePainter(this,snapshot,snapshot.ExportWidth,snapshot.ExportHeight).use{
+                        it.bitmap(clock)
+                    }
+                    try{val out=ByteArrayOutputStream();check(bitmap.compress(Bitmap.CompressFormat.PNG,100,out))
+                        save(uri,out.toByteArray())}finally{bitmap.recycle()}
+                    runOnUiThread{bundleBusy=false;message("Current video frame exported")}
+                }catch(e:Exception){runOnUiThread{bundleBusy=false;message("Frame export failed: "+e.message)}}
+            }
+        }
+    }
     private val saveM3u=registerForActivityResult(ActivityResultContracts.CreateDocument("audio/x-mpegurl")){uri->
         if(uri!=null)guarded{save(uri,M3uPattern.save(project.AudioTracks).toByteArray(Charsets.UTF_8));message("M3U saved")}
     }
@@ -341,16 +384,11 @@ class ComposeStudioActivity : ComponentActivity() {
     private val saveMp4=registerForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")){uri->
         if(uri!=null){
             ink();exporting=true;exportProgress=0f
-            exporter.export(project,uri,object:VideoExporter.Listener{
-                override fun update(message:String,percent:Int){status=message;exportProgress=percent.coerceIn(0,100)/100f}
-                override fun finished(message:String){exporting=false;exportProgress=1f;message(message)}
-                override fun error(error:String){exporting=false;message("Export failed: "+error)}
-            })
+            guarded{ExportService.start(this,project,uri)}
         }
     }
     override fun onCreate(state:Bundle?){
         super.onCreate(state)
-        exporter=VideoExporter(this)
         check(NativeEngine.totalFrames(StudioModel.json(StudioModel.blank())) > 0L) { "Rust timeline engine failed to initialise" }
         themePref=getPreferences(0).getInt("composeTheme",0)
         language=getPreferences(0).getInt("composeLanguage",0)
@@ -476,7 +514,20 @@ class ComposeStudioActivity : ComponentActivity() {
                 throw e
             }
         }
+        history.capture(StudioModel.json(project))
         setContent{Studio()}
+        if(BuildConfig.DEBUG && intent.getBooleanExtra("ctsParitySelfTest",false))bundleExecutor.execute{
+            try{
+                ParityRuntimeChecks.run(this)
+                val fixture=StudioModel.blank().apply{
+                    ExportWidth=320;ExportHeight=180;Fps=16;SecondsPerCard=4;VideoBitrateMbps=1
+                    Cards.add(StudioModel.Card().apply{Title="Service export"})
+                }
+                runOnUiThread{ExportService.start(this,fixture,Uri.fromFile(File(filesDir,"service-smoke.mp4")))}
+            }catch(e:Throwable){
+                android.util.Log.e("CTS_PARITY_SELFTEST","FAIL",e)
+            }
+        }
     }
     override fun onPause(){
         super.onPause();stopAudio()
@@ -484,7 +535,7 @@ class ComposeStudioActivity : ComponentActivity() {
         pendingAutosave=null
         writeAutosave()
     }
-    override fun onDestroy(){pendingAutosave?.let{autosaveHandler.removeCallbacks(it)};stopAudio();if(exporter.isBusy)exporter.cancel();bundleExecutor.shutdown();super.onDestroy()}
+    override fun onDestroy(){pendingHistory?.let{autosaveHandler.removeCallbacks(it)};pendingAutosave?.let{autosaveHandler.removeCallbacks(it)};stopAudio();bundleExecutor.shutdown();super.onDestroy()}
     private fun navigate(to:String){
         ink();tab=to;playing=false
         if(to=="Thumbnails")drawingThumbnail=true
@@ -497,6 +548,11 @@ class ComposeStudioActivity : ComponentActivity() {
     }
 
     @Composable private fun Studio(){
+        val exportState by ExportService.state.collectAsState()
+        LaunchedEffect(exportState){
+            exporting=exportState.busy;exportProgress=exportState.percent/100f
+            if(exportState.message!="Ready")status=exportState.message
+        }
         val systemNight=isSystemInDarkTheme()
         val night=when(themePref){1->true;2->false;else->systemNight}
         val ctx=LocalContext.current
@@ -543,12 +599,20 @@ class ComposeStudioActivity : ComponentActivity() {
                         }
                     }
                 }
+                Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically){
+                    TextButton(onClick={restoreHistory(false)},enabled=history.canUndo()||pendingHistory!=null){
+                        Icon(Icons.Default.Undo,null);Text("Undo")}
+                    TextButton(onClick={restoreHistory(true)},enabled=history.canRedo()){
+                        Icon(Icons.Default.Redo,null);Text("Redo")}
+                    Spacer(Modifier.weight(1f))
+                    Text("${selected+1} / ${project.Cards.size}",style=MaterialTheme.typography.labelSmall)
+                }
                 if(exporting)Row(Modifier.fillMaxWidth().padding(horizontal=14.dp),
                     verticalAlignment=Alignment.CenterVertically){
                     LinearProgressIndicator(progress={exportProgress},
                         modifier=Modifier.weight(1f).height(6.dp))
                     TextButton(onClick={
-                        exporter.cancel()
+                        ExportService.cancel(this@ComposeStudioActivity)
                         exporting=false
                         exportProgress=0f
                         status="Export cancelled."
@@ -564,6 +628,19 @@ class ComposeStudioActivity : ComponentActivity() {
                         Stage();Spacer(Modifier.height(13.dp));Editor()
                     }
                 }
+            }
+            if(tappedElement.isNotEmpty()){
+                val c=card()
+                AlertDialog(onDismissRequest={tappedElement=""},title={Text("Edit "+tappedElement)},
+                    text={Column{
+                        when(tappedElement){
+                            "title"->Edit("Title",c.Title){c.Title=it}
+                            "description"->MultilineEdit("Description",c.Description){c.Description=it}
+                            else->{Edit("Badge header",c.BadgeHeader){c.BadgeHeader=it}
+                                Edit("Badge value",c.Badge){c.Badge=it}
+                                Edit("Badge unit",c.BadgeUnit){c.BadgeUnit=it}}
+                        }
+                    }},confirmButton={TextButton(onClick={tappedElement=""}){Text("Done")}})
             }
             if(colorDialog)BadgeDialog()
             if(newProjectConfirmation)AlertDialog(onDismissRequest={newProjectConfirmation=false},
@@ -603,36 +680,16 @@ class ComposeStudioActivity : ComponentActivity() {
                                 view.setFrame(rframe)
                             }.onFailure{status="Renderer3 preview: "+it.message}
                         },modifier=Modifier.fillMaxWidth().aspectRatio(16f/9f))
-                } else if(tab=="Export" && playing) {
-                    val scene=try{JSONObject(NativeEngine.scene(StudioModel.json(project),frame))}
-                        catch(_:Exception){JSONObject()}
-                    val current=scene.optInt("currentCard",0).coerceIn(0,project.Cards.size-1)
-                    val next=scene.optInt("nextCard",current).coerceIn(0,project.Cards.size-1)
-                    BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(16f/9f).clip(RoundedCornerShape(15.dp))) {
-                        val dx=(maxWidth.value*scene.optDouble("currentX",0.0).toFloat()/960f).dp
-                        val nx=(maxWidth.value*scene.optDouble("nextX",960.0).toFloat()/960f).dp
-                        AndroidView(factory={ctx->
-                            CardCanvas(ctx).apply{setCard(project.Cards[current]);setThumbnail(false)}
-                        },update={view->
-                            if(view.tag!==project.Cards[current]) {
-                                view.setCard(project.Cards[current]);view.tag=project.Cards[current]
-                            }
-                        },modifier=Modifier.fillMaxSize().offset(x=dx))
-                        if(next!=current && scene.optDouble("transition",0.0)>0.0){
-                            AndroidView(factory={ctx->
-                                CardCanvas(ctx).apply{setCard(project.Cards[next]);setThumbnail(false)}
-                            },update={view->
-                                if(view.tag!==project.Cards[next]){
-                                    view.setCard(project.Cards[next]);view.tag=project.Cards[next]
-                                }
-                            },modifier=Modifier.fillMaxSize().offset(x=nx))
-                        }
-                    }
+                } else if(tab=="Export") {
+                    AndroidView(factory={ctx->BasicFrameView(ctx)},
+                        update={view->view.configure(project,rev,frame.toInt())},
+                        modifier=Modifier.fillMaxWidth().aspectRatio(16f/9f))
                 } else {
                     AndroidView(factory={context->
                         CardCanvas(context).also{
                             it.setCard(selectedCard);it.setThumbnail(thumb)
-                            it.tag=selectedCard;it.onChanged(Runnable{changed()});canvas=it
+                            it.tag=selectedCard;it.onChanged(Runnable{changed()})
+                            it.onElementTapped{element->ink();tappedElement=element};canvas=it
                         }
                     },update={view->
                         if(view.tag !== selectedCard){view.setCard(selectedCard);view.tag=selectedCard}
@@ -645,7 +702,7 @@ class ComposeStudioActivity : ComponentActivity() {
                 Text(if(tab=="Draw")"Use your finger to draw • brush and eraser in Draw settings"
                     else "Drag artwork • pinch to scale and rotate • independent thumbnail transformations",
                     style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if(tab=="Export" || tab=="Renderers")Timeline()
+                if(tab=="Export" || tab=="Renderers" || (tab=="Cards"&&renderPreviewOnCards))Timeline()
             }
         }
     }
@@ -660,9 +717,11 @@ class ComposeStudioActivity : ComponentActivity() {
             else NativeEngine.totalFrames(json).coerceAtLeast(1L)
         val fps=selectedRenderer?.fps ?: project.Fps
         LaunchedEffect(playing,json,selectedRenderer?.id){
+            val start=android.os.SystemClock.elapsedRealtimeNanos()
+            val first=frame
             while(playing){
-                delay((1000/fps.coerceIn(1,60)).toLong().coerceAtLeast(16))
-                frame=(frame+1L)%total
+                delay(8L)
+                frame=(first+(android.os.SystemClock.elapsedRealtimeNanos()-start)*fps/1_000_000_000L)%total
             }
         }
         Row(verticalAlignment=Alignment.CenterVertically){
@@ -673,6 +732,12 @@ class ComposeStudioActivity : ComponentActivity() {
             Spacer(Modifier.weight(1f))
             Text((selectedRenderer?.name ?:"Rust timeline")+" · "+frame+"/"+total,
                 style=MaterialTheme.typography.labelSmall)
+        }
+        Row{
+            TextButton(onClick={playing=false;frame=(frame-1).coerceAtLeast(0)}){Text("−1 frame")}
+            TextButton(onClick={playing=false;frame=(frame+1).coerceAtMost(total-1)}){Text("+1 frame")}
+            TextButton(onClick={playing=false;frame=0L}){Text("Start")}
+            TextButton(onClick={playing=false;frame=total-1}){Text("End")}
         }
         Slider(value=(frame.toFloat()/total).coerceIn(0f,1f),
             onValueChange={frame=(it*total).toLong().coerceIn(0L,total-1L)})
@@ -739,6 +804,16 @@ class ComposeStudioActivity : ComponentActivity() {
                 valueRange=range,onValueChange={change(it);changed()})
         }
     }
+    @Composable private fun NumberEdit(label:String,value:Double,range:ClosedFloatingPointRange<Double>,change:(Double)->Unit){
+        var draft by remember(label){mutableStateOf(value.toString())}
+        LaunchedEffect(value,rev){draft=if(value%1.0==0.0)value.toLong().toString()else value.toString()}
+        val parsed=draft.toDoubleOrNull()
+        val valid=parsed!=null && parsed.isFinite() && parsed in range
+        OutlinedTextField(value=draft,onValueChange={draft=it},label={Text(label)},
+            singleLine=true,isError=!valid,modifier=Modifier.fillMaxWidth(),
+            keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Decimal),
+            trailingIcon={IconButton(onClick={if(valid){change(parsed!!);changed()}},enabled=valid){Icon(Icons.Default.Check,"Apply")}})
+    }
     @Composable private fun ProjectPage(){
         Heading("Project","Windows V5 compatible .ccv5 card data, artwork and settings.")
         Edit("Project name",project.ProjectName){project.ProjectName=it}
@@ -746,6 +821,7 @@ class ComposeStudioActivity : ComponentActivity() {
             "Open .ccv5" to{openProject.launch(arrayOf("application/json","*/*"))})
         Buttons("Save .ccv5" to{saveProject.launch(project.ProjectName+".ccv5")},
             "Import CSV" to{openCsv.launch(arrayOf("text/*","*/*"))})
+        Buttons("Export CSV" to{saveCsv.launch(project.ProjectName+".csv")})
         Buttons("Import MegaPack (.zipack2)" to{
             if(!bundleBusy)openZipack2.launch(arrayOf("application/zip","application/octet-stream","*/*"))
         },"Export MegaPack (.zipack2)" to{
@@ -770,19 +846,24 @@ class ComposeStudioActivity : ComponentActivity() {
         Text(project.Cards.size.toString()+" cards • "+project.AudioTracks.size+" tracks")
     }
     @Composable private fun CardsPage(){
-        Heading("Cards","Touch a card to edit. No fixed card limit on the canvas.")
+        Heading("Cards","Touch a card to edit, or tap its title, badge or description in the artwork preview.")
+        OutlinedTextField(value=cardSearch,onValueChange={cardSearch=it},label={Text("Find cards")},
+            modifier=Modifier.fillMaxWidth(),singleLine=true)
+        Buttons("Sort value ↑" to{sortCards(false)},"Sort value ↓" to{sortCards(true)})
         Buttons("＋ Add" to{
             ink();val c=StudioModel.Card();c.Title="Card "+(project.Cards.size+1)
-            project.Cards.add(c);selected=project.Cards.size-1;changed()
+            if(project.Cards.size<500){project.Cards.add(c);selected=project.Cards.size-1;changed()}else message("Maximum 500 cards")
         },"Duplicate" to{
             ink();val copy=StudioModel.JSON.fromJson(StudioModel.JSON.toJson(card()),StudioModel.Card::class.java)
-            project.Cards.add(selected+1,copy);selected++;changed()
+            if(project.Cards.size<500){project.Cards.add(selected+1,copy);selected++;changed()}else message("Maximum 500 cards")
         })
         // Bound this nested scrolling region: do not compose all 40-50+ cards
         // eagerly or give a LazyColumn an infinite height inside verticalScroll.
         LazyColumn(Modifier.fillMaxWidth().heightIn(max=238.dp),
             verticalArrangement=Arrangement.spacedBy(4.dp)){
-            itemsIndexed(project.Cards){index,c->
+            itemsIndexed(project.Cards.withIndex().filter{cardSearch.isBlank() ||
+                (it.value.Title+" "+it.value.Description+" "+it.value.Badge).contains(cardSearch,true)}){_,entry->
+                val index=entry.index;val c=entry.value
                 Surface(onClick={ink();selected=index;changed()},
                     shape=RoundedCornerShape(13.dp),
                     color=if(index==selected)MaterialTheme.colorScheme.secondaryContainer
@@ -820,6 +901,17 @@ class ComposeStudioActivity : ComponentActivity() {
         }
         Transforms(false)
     }
+    private fun sortCards(descending:Boolean){
+        ink();val active=card()
+        fun number(c:StudioModel.Card):Double?=Regex("[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)")
+            .find(c.Badge.replace(",",""))?.value?.toDoubleOrNull()
+        project.Cards.sortWith(Comparator{a,b->
+            val x=number(a);val y=number(b)
+            when{ x==null&&y==null->0;x==null->1;y==null->-1
+                descending->y.compareTo(x);else->x.compareTo(y)}
+        })
+        selected=project.Cards.indexOf(active);changed()
+    }
     private fun shiftCard(offset:Int){
         val next=selected+offset;if(next !in project.Cards.indices)return
         ink();val c=project.Cards.removeAt(selected);project.Cards.add(next,c)
@@ -828,10 +920,10 @@ class ComposeStudioActivity : ComponentActivity() {
     @Composable private fun Transforms(thumbnail:Boolean){
         Heading(if(thumbnail)"Thumbnail transform"else"Image transform")
         val t=card().transform(thumbnail)
-        Measure("Scale %",(t.Scale*100).toFloat(),10f..800f){t.Scale=it/100.0}
-        Measure("Position X",t.X.toFloat(),-1000f..1000f){t.X=it.toDouble()}
-        Measure("Position Y",t.Y.toFloat(),-1000f..1000f){t.Y=it.toDouble()}
-        Measure("Rotation",t.Rotation.toFloat(),-180f..180f){t.Rotation=it.toDouble()}
+        NumberEdit("Scale %",t.Scale*100,10.0..800.0){t.Scale=it/100.0}
+        NumberEdit("Position X",t.X,-1000.0..1000.0){t.X=it}
+        NumberEdit("Position Y",t.Y,-1000.0..1000.0){t.Y=it}
+        NumberEdit("Rotation",t.Rotation,-360.0..360.0){t.Rotation=it}
         Row(verticalAlignment=Alignment.CenterVertically){
             Checkbox(checked=t.FlipHorizontal,onCheckedChange={t.FlipHorizontal=it;changed()})
             Text(text("Flip horizontally"))
@@ -840,6 +932,8 @@ class ComposeStudioActivity : ComponentActivity() {
             Checkbox(checked=t.FlipVertical,onCheckedChange={t.FlipVertical=it;changed()})
             Text(text("Flip vertically"))
         }
+        OutlinedButton(onClick={StudioModel.applyTransformToAll(project,card(),thumbnail);changed()},
+            modifier=Modifier.fillMaxWidth()){Text("Apply transform to all images")}
         OutlinedButton(onClick={t.reset();changed()},modifier=Modifier.fillMaxWidth()){
             Text(text("Reset transform"))
         }
@@ -1024,10 +1118,7 @@ class ComposeStudioActivity : ComponentActivity() {
             }catch(_:Exception){known=false}
             finally{try{probe.release()}catch(_:Exception){}}
         }
-        val videoDuration=if(rendererSelection!=null)runCatching{
-            Renderer3ExportInterop.durationMillis(this,project)
-        }.getOrElse { project.Cards.size.toLong()*project.SecondsPerCard*1000L }
-        else project.Cards.size.toLong()*project.SecondsPerCard*1000L
+        val videoDuration=Renderer3ExportInterop.durationMillis(this,project)
         audioWarning=if(!known)"Some soundtrack files could not be inspected. Missing tracks may prevent export."
         else if(total>videoDuration)"The pattern extends past the video end. Audio will be trimmed and faded."
         else if(total<videoDuration && !project.AudioRepeat)
@@ -1037,26 +1128,41 @@ class ComposeStudioActivity : ComponentActivity() {
     }
     @Composable private fun ExportPage(){
         Heading("Export","Rust computes the animation clock and easing. Android Media3 encodes MP4.")
-        Measure("Frame rate",project.Fps.toFloat(),15f..60f){project.Fps=it.roundToInt()}
-        Measure("Seconds per card",project.SecondsPerCard.toFloat(),1f..15f){
-            project.SecondsPerCard=it.roundToInt()}
-        Text(project.Cards.size.toString()+" cards • "+(project.Cards.size*project.SecondsPerCard)+
-            " seconds • "+project.ExportWidth+" × "+project.ExportHeight)
-        Buttons("1280 × 720" to{
-            project.ExportWidth=1280;project.ExportHeight=720;changed()
-        },"1920 × 1080" to{
-            project.ExportWidth=1920;project.ExportHeight=1080;changed()
-        })
-        Button(onClick={if(!exporter.isBusy)reviewAudioBeforeExport()},
+        if(rendererSelection!=null){
+            Text("Renderer3 controls frame rate and duration: "+
+                Renderer3Bridge.selectionDetails(rendererSelection!!,project.Cards.size))
+        }else{
+            Measure("Frame rate",project.Fps.toFloat(),1f..60f){project.Fps=it.roundToInt()}
+            NumberEdit("Seconds per card",project.SecondsPerCard.toDouble(),1.0..3600.0){project.SecondsPerCard=it.roundToInt()}
+            NumberEdit("Total video seconds (0 = automatic)",project.VideoDurationSeconds,0.0..86400.0){
+                if(it==0.0 || it*project.Fps>=project.Cards.size)project.VideoDurationSeconds=it
+                else message("Choose at least one frame per card")
+            }
+            Text("${NativeEngine.totalFrames(StudioModel.json(project))} integer frames")
+        }
+        Buttons("1280 × 720" to{project.ExportWidth=1280;project.ExportHeight=720;changed()},
+            "1920 × 1080" to{project.ExportWidth=1920;project.ExportHeight=1080;changed()})
+        Buttons("2560 × 1440" to{project.ExportWidth=2560;project.ExportHeight=1440;changed()},
+            "3840 × 2160" to{project.ExportWidth=3840;project.ExportHeight=2160;changed()})
+        NumberEdit("Width (even pixels)",project.ExportWidth.toDouble(),320.0..3840.0){project.ExportWidth=it.toInt().let{n->n-n%2}}
+        NumberEdit("Height (even pixels)",project.ExportHeight.toDouble(),180.0..2160.0){project.ExportHeight=it.toInt().let{n->n-n%2}}
+        Text("Encoder")
+        Row{listOf("auto","hardware","software").forEach{mode->
+            FilterChip(selected=project.VideoEncoder==mode,onClick={project.VideoEncoder=mode;changed()},
+                label={Text(mode.replaceFirstChar{it.uppercase()})},modifier=Modifier.padding(end=4.dp))}}
+        NumberEdit("Video bitrate (Mbps)",project.VideoBitrateMbps.toDouble(),1.0..80.0){project.VideoBitrateMbps=it.roundToInt()}
+        Button(onClick={if(!ExportService.state.value.busy)reviewAudioBeforeExport()},
             modifier=Modifier.fillMaxWidth(),enabled=!exporting){
             Icon(Icons.Default.Movie,null);Spacer(Modifier.width(7.dp));Text("Export MP4 with audio")
         }
         if(exporting)OutlinedButton(onClick={
-            exporter.cancel();exporting=false;exportProgress=0f;status="Export cancelled."
+            ExportService.cancel(this@ComposeStudioActivity);exporting=false;exportProgress=0f;status="Export cancelled."
         },modifier=Modifier.fillMaxWidth()){Text("Cancel export")}
         OutlinedButton(onClick={savePng.launch("CubicalCompare-Thumbnail.png")},
             modifier=Modifier.fillMaxWidth()){Text("Export thumbnail PNG")}
-        Text("Rust drives the card-conveyor easing for timeline playback and MP4 transitions; complete Renderer3-specific badge ZIP animations are not yet ported.",
+        OutlinedButton(onClick={saveFrame.launch("CubicalCompare-Frame-${frame}.png")},
+            modifier=Modifier.fillMaxWidth(),enabled=!bundleBusy){Text("Export current video frame PNG")}
+        Text("Every integer video frame is encoded. Renderer3 uses its authored SmartCard/SmartBadge timeline. Device codec limits are checked before rendering.",
             style=MaterialTheme.typography.bodySmall,
             color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -1104,6 +1210,8 @@ class ComposeStudioActivity : ComponentActivity() {
             text={Column{
                 Box(Modifier.fillMaxWidth().height(44.dp).background(
                     MColor(r.roundToInt(),g.roundToInt(),b.roundToInt()),RoundedCornerShape(13.dp)))
+                Row(verticalAlignment=Alignment.CenterVertically){
+                    Checkbox(checked=colourAll,onCheckedChange={colourAll=it});Text("Apply to all cards")}
                 for(i in 0..2){
                     Text(listOf("Red","Green","Blue")[i])
                     Slider(value=when(i){0->r;1->g;else->b},
@@ -1114,6 +1222,7 @@ class ComposeStudioActivity : ComponentActivity() {
             confirmButton={TextButton(onClick={
                 card().BadgeColor=String.format(Locale.ROOT,"#%02X%02X%02X",
                     r.roundToInt(),g.roundToInt(),b.roundToInt())
+                if(colourAll){val colour=card().BadgeColor;project.Cards.forEach{it.BadgeColor=colour}}
                 colorDialog=false;changed()
             }){Text("Apply")}},
             dismissButton={TextButton(onClick={colorDialog=false}){Text("Cancel")}})

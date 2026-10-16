@@ -75,6 +75,9 @@ public final class StudioModel {
         public boolean AudioFadeOut=true;
         public int Fps=30;
         public int SecondsPerCard=2;
+        public double VideoDurationSeconds=0;
+        public String VideoEncoder="auto";
+        public int VideoBitrateMbps=8;
         public int ExportWidth=1920;
         public int ExportHeight=1080;
     }
@@ -91,13 +94,54 @@ public final class StudioModel {
         if (p.Cards==null) p.Cards=new ArrayList<>();
         if (p.AudioTracks==null) p.AudioTracks=new ArrayList<>();
         p.Fps=Math.max(1, Math.min(60,p.Fps==0?30:p.Fps));
-        p.SecondsPerCard=Math.max(1,Math.min(20,p.SecondsPerCard==0?2:p.SecondsPerCard));
-        if (p.ExportWidth<=0 || p.ExportHeight<=0) {p.ExportWidth=1920;p.ExportHeight=1080;}
+        p.SecondsPerCard=Math.max(1,Math.min(3600,p.SecondsPerCard==0?2:p.SecondsPerCard));
+        p.ExportWidth=Math.max(320,Math.min(3840,p.ExportWidth<=0?1920:p.ExportWidth));
+        p.ExportHeight=Math.max(180,Math.min(2160,p.ExportHeight<=0?1080:p.ExportHeight));
+        p.ExportWidth-=p.ExportWidth%2; p.ExportHeight-=p.ExportHeight%2;
+        if (!Double.isFinite(p.VideoDurationSeconds)) p.VideoDurationSeconds=0;
+        p.VideoDurationSeconds=Math.max(0,Math.min(86400,p.VideoDurationSeconds));
+        p.VideoBitrateMbps=Math.max(1,Math.min(80,p.VideoBitrateMbps));
+        if (!java.util.Arrays.asList("auto","hardware","software").contains(p.VideoEncoder)) p.VideoEncoder="auto";
+        p.AudioVolume=Double.isFinite(p.AudioVolume)?Math.max(0,Math.min(1,p.AudioVolume)):1;
+        p.Cards.removeIf(java.util.Objects::isNull);
+        p.AudioTracks.removeIf(java.util.Objects::isNull);
+        if(p.Cards.isEmpty())p.Cards.add(new Card());
+        if(p.Cards.size()>500)throw new IllegalArgumentException("Maximum 500 cards per project");
+        if(p.VideoDurationSeconds>0)p.VideoDurationSeconds=Math.max(p.VideoDurationSeconds,(double)p.Cards.size()/p.Fps);
         for(Card c:p.Cards) {
+            c.Title=safe(c.Title);c.Badge=safe(c.Badge);c.BadgeHeader=safe(c.BadgeHeader);
+            c.BadgeUnit=safe(c.BadgeUnit);c.Description=safe(c.Description);
+            c.ArtworkBase64=safe(c.ArtworkBase64);c.ArtworkSource=safe(c.ArtworkSource);
+            c.ThumbnailArtworkBase64=safe(c.ThumbnailArtworkBase64);
             if(c.ImageTransform==null)c.ImageTransform=new Transform();
             if(c.ThumbnailTransform==null)c.ThumbnailTransform=new Transform();
+            normalize(c.ImageTransform);normalize(c.ThumbnailTransform);
         }
         return p;
+    }
+    private static void normalize(Transform t){
+        t.Scale=Double.isFinite(t.Scale)?Math.max(.1,Math.min(8,t.Scale)):1;
+        t.X=Double.isFinite(t.X)?Math.max(-1000,Math.min(1000,t.X)):0;
+        t.Y=Double.isFinite(t.Y)?Math.max(-1000,Math.min(1000,t.Y)):0;
+        t.Rotation=Double.isFinite(t.Rotation)?t.Rotation%360:0;
+    }
+    /** RFC 4180, in the creator's canonical column order. CSV references media, not binaries. */
+    public static String csv(Project project){
+        StringBuilder out=new StringBuilder("Number,Title,Badge Header,Badge Value,Badge Unit,Image,Description,Badge Color\r\n");
+        int index=0;
+        for(Card c:project.Cards){
+            String[] fields={String.valueOf(++index),c.Title,c.BadgeHeader,c.Badge,c.BadgeUnit,c.ArtworkSource,c.Description,c.BadgeColor};
+            for(int i=0;i<fields.length;i++){
+                if(i>0)out.append(',');
+                out.append('"').append(safe(fields[i]).replace("\"","\"\"")).append('"');
+            }
+            out.append("\r\n");
+        }
+        return out.toString();
+    }
+    public static void applyTransformToAll(Project p,Card source,boolean thumbnail){
+        for(Card c:p.Cards){if(thumbnail)c.ThumbnailTransform=source.transform(true).copy();
+            else c.ImageTransform=source.transform(false).copy();}
     }
     private static String safe(String v){return v==null?"":v;}
     public static String json(Project p){return JSON.toJson(p);}

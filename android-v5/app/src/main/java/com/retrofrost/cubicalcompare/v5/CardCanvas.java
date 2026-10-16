@@ -33,7 +33,10 @@ public final class CardCanvas extends View {
     private Canvas inkCanvas;
     private float lastX,lastY,lastDistance,lastAngle;
     private boolean drawing=false;
+    private boolean inkDirty=false;
     private int draggingPointers=0;
+    private java.util.function.Consumer<String> elementCallback=element->{};
+    public void onElementTapped(java.util.function.Consumer<String> callback){elementCallback=callback;}
     private Runnable changeCallback=()->{};
     private final Paint p=new Paint(3);
     private final LruCache<String,Bitmap> images=new LruCache<String,Bitmap>(18*1024*1024){
@@ -52,11 +55,13 @@ public final class CardCanvas extends View {
     public void setBrushSize(float size){brushSize=Math.max(1,Math.min(90,size));}
     public void setBrushColor(int color){brushColor=color;}
     public void onChanged(Runnable run){changeCallback=run;}
-    public void clearInk(){ if(ink!=null){ink.eraseColor(Color.TRANSPARENT);persistInk();invalidate();} }
+    public void clearInk(){ if(ink!=null){ink.eraseColor(Color.TRANSPARENT);inkDirty=true;persistInk();invalidate();} }
     public void copyMainTransform(){if(card==null)return; card.ThumbnailTransform=card.transform(false).copy();invalidate();changeCallback.run();}
     public void resetTransform(){if(card!=null){card.transform(thumbnail).reset();invalidate();changeCallback.run();}}
     public void refresh(){invalidate();}
     private void loadInk(){
+        if(ink!=null)ink.recycle();
+        inkDirty=false;
         ink=Bitmap.createBitmap(DESIGN_W,DESIGN_H,Bitmap.Config.ARGB_8888);
         inkCanvas=new Canvas(ink);
         if(card==null)return;
@@ -68,10 +73,11 @@ public final class CardCanvas extends View {
         }catch(Exception ignored){}
     }
     public void persistInk(){
-        if(card==null || ink==null)return;
+        if(card==null || ink==null || !inkDirty)return;
         ByteArrayOutputStream out=new ByteArrayOutputStream();
         ink.compress(Bitmap.CompressFormat.PNG,100,out);
         card.setDrawing(thumbnail, Base64.encodeToString(out.toByteArray(),Base64.NO_WRAP));
+        inkDirty=false;
     }
     @Override protected void onMeasure(int w,int h){
         int width=MeasureSpec.getSize(w);
@@ -199,6 +205,11 @@ public final class CardCanvas extends View {
         float x=(e.getX()-ox)/scale,y=(e.getY()-oy)/scale;
         switch(e.getActionMasked()){
             case MotionEvent.ACTION_DOWN:
+                if(tool==Tool.MOVE && !thumbnail && x>=165 && x<=795){
+                    String element=y<85?"title":y<164?"badge":y>=474?"description":"";
+                    if(!element.isEmpty()){elementCallback.accept(element);return true;}
+                }
+                if(getParent()!=null)getParent().requestDisallowInterceptTouchEvent(true);
                 lastX=x;lastY=y;drawing=true;draggingPointers=1;
                 if(tool!=Tool.MOVE)stroke(x,y,x,y);
                 invalidate();return true;
@@ -223,9 +234,13 @@ public final class CardCanvas extends View {
                 } else stroke(lastX,lastY,x,y);
                 lastX=x;lastY=y;invalidate();return true;
             case MotionEvent.ACTION_POINTER_UP:
-                draggingPointers=1;lastX=x;lastY=y;return true;
+                draggingPointers=1;
+                int remaining=e.getActionIndex()==0?1:0;
+                lastX=(e.getX(remaining)-ox)/scale;lastY=(e.getY(remaining)-oy)/scale;
+                lastDistance=0;return true;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                if(getParent()!=null)getParent().requestDisallowInterceptTouchEvent(false);
                 if(tool!=Tool.MOVE)persistInk();
                 drawing=false;draggingPointers=0;changeCallback.run();invalidate();return true;
         }
@@ -238,6 +253,7 @@ public final class CardCanvas extends View {
         return (float)Math.toDegrees(Math.atan2(e.getY(1)-e.getY(0),e.getX(1)-e.getX(0)));
     }
     private void stroke(float x,float y,float dx,float dy){
+        inkDirty=true;
         if(inkCanvas==null)return;
         Paint pen=new Paint(3);pen.setStyle(Paint.Style.STROKE);
         pen.setStrokeWidth(brushSize);pen.setStrokeCap(Paint.Cap.ROUND);pen.setStrokeJoin(Paint.Join.ROUND);

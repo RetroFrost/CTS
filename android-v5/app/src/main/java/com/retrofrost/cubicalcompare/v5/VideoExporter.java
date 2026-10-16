@@ -1,6 +1,6 @@
 package com.retrofrost.cubicalcompare.v5;
 
-import android.app.Activity;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -47,7 +47,7 @@ public final class VideoExporter {
         void finished(String message);
         void error(String error);
     }
-    private final Activity activity;
+    private final Context activity;
     private final ExecutorService executor=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private Transformer transformer;
@@ -58,7 +58,7 @@ public final class VideoExporter {
     private void ensureActive(long ticket){if(!active(ticket))throw new CancellationException("Export cancelled");}
     private File work;
     private Runnable progressTask;
-    public VideoExporter(Activity activity){this.activity=activity;}
+    public VideoExporter(Context activity){this.activity=activity;}
     public boolean isBusy(){return busy;}
     public void export(Project source,Uri destination,Listener cb){
         if(busy){cb.error("An export is already running.");return;}
@@ -69,84 +69,19 @@ public final class VideoExporter {
         // Clone the data so editing during export can't alter the output mid-run.
         Project project=StudioModel.parse(StudioModel.json(source));
         cb.update("Preparing artwork frames...",1);
-        final CardCanvas renderer=new CardCanvas(activity); // Create native View on UI thread.
+
         executor.execute(()->{
             try{
                 ensureActive(ticket);
                 work=new File(activity.getCacheDir(),"export-"+UUID.randomUUID());if(!work.mkdirs())throw new Exception("Cannot create export staging directory.");
                 List<EditedMediaItem> slides=new ArrayList<>();
-                if (project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) {
-                    File rendered=new File(work,"renderer3-video.mp4");
-                    handler.post(()->cb.update("Rendering every authored Renderer3 frame...",2));
-                    Renderer3ExportInterop.encode(activity,project,rendered,
-                        percent->handler.post(()->{if(active(ticket))cb.update("Renderer3 frame rendering: "+percent+"%",2+percent*23/100);}),
-                        ()->!active(ticket));
-                    if (!rendered.isFile() || rendered.length()==0)
-                        throw new IOException("Renderer3 encoder did not produce video.");
-                    slides.add(new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(rendered))).build());
-                } else {
-                // Motion is derived from Rust's integer frame clock, not random
-                // Android UI frame timing. Hold images and short transition clips
-                // are assembled into the same Media3 video sequence.
-
-                String projectJson=StudioModel.json(project);
-                long totalNativeFrames=NativeEngine.totalFrames(projectJson);
-                if(totalNativeFrames<1)throw new Exception("Rust timeline rejected project.");
-                final int fps=project.Fps;
-                final int framesPerCard=fps*project.SecondsPerCard;
-                final int holdFrames=Math.max(1,framesPerCard*3/4);
-                final int frameTransitions=framesPerCard-holdFrames;
-                int fileIndex=0;
-                for(int i=0;i<project.Cards.size();i++){
-                    ensureActive(ticket);
-                    Bitmap current=renderer.renderBitmap(project.Cards.get(i),false,
-                        project.ExportWidth,project.ExportHeight);
-                    try{
-                        final boolean hasNext=i+1<project.Cards.size();
-                        int totalMs=project.SecondsPerCard*1000;
-                        int holdMs=hasNext?(int)Math.round(1000d*holdFrames/fps):totalMs;
-                        addImageSlide(slides,current,new File(work,String.format(
-                            java.util.Locale.ROOT,"frame-%05d.png",fileIndex++)),holdMs,fps);
-                        if(hasNext && frameTransitions>0){
-                            Bitmap next=renderer.renderBitmap(project.Cards.get(i+1),false,
-                                project.ExportWidth,project.ExportHeight);
-                            try{
-                                int steps=Math.min(8,Math.max(1,frameTransitions));
-                                int tailMs=totalMs-holdMs;
-                                for(int j=0;j<steps;j++){
-                                    ensureActive(ticket);
-                                    long clock=(long)i*framesPerCard+holdFrames+
-                                        Math.min(frameTransitions-1,Math.round(
-                                            (j+.5d)*frameTransitions/steps));
-                                    JSONObject scene=new JSONObject(NativeEngine.scene(projectJson,clock));
-                                    if(scene.has("error"))throw new Exception(scene.optString("error"));
-                                    Bitmap mixed=Bitmap.createBitmap(project.ExportWidth,
-                                        project.ExportHeight,Bitmap.Config.ARGB_8888);
-                                    try{
-                                        Canvas graphics=new Canvas(mixed);
-                                        graphics.drawColor(Color.rgb(17,24,37));
-                                        Paint paint=new Paint(Paint.FILTER_BITMAP_FLAG);
-                                        float factor=project.ExportWidth/960f;
-                                        graphics.drawBitmap(current,
-                                            (float)scene.getDouble("currentX")*factor,0,paint);
-                                        graphics.drawBitmap(next,
-                                            (float)scene.getDouble("nextX")*factor,0,paint);
-                                        int ms=(int)((long)(j+1)*tailMs/steps-
-                                            (long)j*tailMs/steps);
-                                        addImageSlide(slides,mixed,new File(work,String.format(
-                                            java.util.Locale.ROOT,"frame-%05d.png",fileIndex++)),
-                                            Math.max(1,ms),fps);
-                                    } finally { mixed.recycle(); }
-                                }
-                            }finally{next.recycle();}
-                        }
-                    }finally{current.recycle();}
-                    final int percent=2+(i+1)*23/project.Cards.size();
-                    final int cardNumber=i+1;
-                    handler.post(()->cb.update("Rendered animated card "+
-                        cardNumber+" / "+project.Cards.size(),percent));
-                }
-                }
+                File rendered=new File(work,"rendered-video.mp4");
+                handler.post(()->cb.update("Rendering integer timeline frames...",2));
+                Renderer3ExportInterop.encode(activity,project,rendered,
+                    percent->handler.post(()->{if(active(ticket))cb.update("Rendering video: "+percent+"%",2+percent*83/100);}),
+                    ()->!active(ticket));
+                if(!rendered.isFile() || rendered.length()==0)throw new IOException("Encoder produced no video.");
+                slides.add(new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(rendered))).build());
                 List<EditedMediaItem> tracks=new ArrayList<>();
                 for(String reference:project.AudioTracks){
                     ensureActive(ticket);
@@ -184,7 +119,7 @@ public final class VideoExporter {
                     .buildUpon().setIsLooping(project.AudioRepeat).build();
                 composition=new Composition.Builder(video,audio);
                 DefaultGainProvider.Builder gains=new DefaultGainProvider.Builder((float)Math.max(0,Math.min(1,project.AudioVolume)));
-                long durationUs=(project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) ? Renderer3ExportInterop.durationMillis(activity,project)*1000L : (long)project.Cards.size()*project.SecondsPerCard*1_000_000L;
+                long durationUs=(project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) ? Renderer3ExportInterop.durationMillis(activity,project)*1000L : NativeEngine.totalFrames(StudioModel.json(project))*1_000_000L/project.Fps;
                 if(project.AudioFadeOut){
                     long fadeLength=Math.min(1_500_000L,durationUs);
                     gains.addFadeAt(Math.max(0,durationUs-fadeLength),Math.max(1,fadeLength),DefaultGainProvider.FADE_OUT_LINEAR);
@@ -223,7 +158,7 @@ public final class VideoExporter {
                     }
                 }).build();
             transformer.start(composition.build(),finalFile.getAbsolutePath());
-            cb.update("Encoding MP4 on device...",27);
+            cb.update("Muxing MP4 and soundtrack...",86);
             final ProgressHolder progress=new ProgressHolder();
             progressTask=new Runnable(){
                 @Override public void run(){
@@ -231,7 +166,7 @@ public final class VideoExporter {
                     try{
                         int state=transformer.getProgress(progress);
                         if(state==Transformer.PROGRESS_STATE_AVAILABLE)
-                            cb.update("Encoding MP4 on device...",27+(int)(progress.progress*0.69f));
+                            cb.update("Muxing MP4 and soundtrack...",86+(int)(progress.progress*0.10f));
                         handler.postDelayed(this,450);
                     }catch(Exception ignored){}
                 }
@@ -255,6 +190,7 @@ public final class VideoExporter {
         if(file.isDirectory()){File[] children=file.listFiles();if(children!=null)for(File x:children)deleteRecursive(x);}
         file.delete();
     }
+    public void close(){cancel();executor.shutdown();}
     public void cancel(){
         generation.incrementAndGet();
         cancelled.set(true);

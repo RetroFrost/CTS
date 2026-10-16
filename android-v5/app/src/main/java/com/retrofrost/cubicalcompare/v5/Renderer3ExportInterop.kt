@@ -12,7 +12,7 @@ object Renderer3ExportInterop {
 
     @JvmStatic fun durationMillis(ctx:Context,project:StudioModel.Project):Long {
         val selected=Renderer3Bridge.resolve(ctx,project)
-            ?:error("No renderer is selected")
+            ?:return NativeEngine.totalFrames(StudioModel.json(project))*1000L/project.Fps.coerceAtLeast(1)
         return selected.frameCountForCards(project.Cards.size).toLong()*1000L/
             selected.fps.coerceAtLeast(1)
     }

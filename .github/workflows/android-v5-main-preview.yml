@@ -77,7 +77,7 @@ jobs:
           unzip -l android-v5/app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/arm64-v8a/libcts_engine.so'
           grep -q 'ComposeStudioActivity' android-v5/app/src/main/AndroidManifest.xml
           grep -q 'M3uPattern.save' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/ComposeStudioActivity.kt
-          grep -q 'setImageDurationMs' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/VideoExporter.java
+          grep -q 'BasicFramePainter' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/Renderer3VideoEncoder.kt
           grep -q 'ThumbnailTransform' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/StudioModel.java
           grep -q 'Zipack2Bridge.importPack' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/ComposeStudioActivity.kt
           grep -q 'Zipack2Bridge.exportPack' android-v5/app/src/main/java/com/retrofrost/cubicalcompare/v5/ComposeStudioActivity.kt
@@ -105,7 +105,7 @@ jobs:
             if gh release create "$TAG" CubicalCompare-V5-Android-MainPreview-debug.apk SHA256SUMS-android.txt \
             --repo "${{ github.repository }}" --target "$GITHUB_SHA" --prerelease \
             --title "Cubical Compare V5 Android — Main Preview #${{ github.run_number }}" \
-            --notes "Android V5 rebuilt using Rust JNI deterministic timeline engine plus Kotlin Jetpack Compose Material 3 UI, floating menus, Windows .ccv5 projects, M3U patterns, thumbnail transforms, draw-as-artwork, Media3 MP4 export. Debug-signed sideload APK."
+            --notes "Android V5 with floating Material 3 menus, Renderer3/SmartBadge, Zipack2 MegaPacks, portable projects, full integer-frame MP4, custom duration and resolution up to device-supported 4K, Auto/hardware/software encoding, bitrate controls, undo/redo, CSV export, bulk transforms/colours, direct text editing and frame PNG export. Debug-signed sideload APK. Windows native DLL extensions and WPF ISF ink are not executable on Android."
             then exit 0; fi
             echo "::warning::GitHub release publish failed. If integration reports HTTP 403, configure a CTS_RELEASE_TOKEN secret with repository Contents: Read and write permissions."
             if [ "$attempt" -lt 4 ]; then sleep $((attempt*12)); fi

@@ -3,7 +3,8 @@ package io.github.retrofrost.cts.android.model
 import com.retrofrost.cubicalcompare.v5.StudioModel
 
 /** Compatibility model for the original Renderer3 player, mapped from the V5 .ccv5 project. */
-data class ImageSubcard(val source: String? = null)
+data class ImageSubcard(val source: String? = null,
+    val transform: StudioModel.Transform = StudioModel.Transform(), val drawing: String? = null)
 data class CtsCard(
     val badgePrimary: String = "",
     val badgeSecondary: String = "",
@@ -23,6 +24,7 @@ fun fromV5(project: StudioModel.Project): CtsProject =
             badgeHeader = c.BadgeHeader ?: "",
             title = c.Title ?: "",
             description = c.Description ?: "",
-            imageSubcard = ImageSubcard(source = source)
+            imageSubcard = ImageSubcard(source = source, transform = c.transform(false).copy(),
+                drawing = c.AndroidDrawingPngBase64?.takeIf{it.isNotBlank()}?.let{"data:image/png;base64,$it"})
         )
     })

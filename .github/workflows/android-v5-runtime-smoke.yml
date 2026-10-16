@@ -87,13 +87,25 @@ jobs:
             adb push android-v5/test.renderer3 /data/local/tmp/cts-test.renderer3
             adb shell 'run-as com.retrofrost.cubicalcompare.v5.debug mkdir -p files'
             adb shell 'run-as com.retrofrost.cubicalcompare.v5.debug cp /data/local/tmp/cts-test.renderer3 files/test.renderer3'
-            adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.ComposeStudioActivity --ez ctsRenderer3SelfTest true
+            adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.ComposeStudioActivity --ez ctsRenderer3SelfTest true --ez ctsParitySelfTest true
             sleep 3
             adb logcat -d -s CTS_RENDERER3_SELFTEST:I | grep -q 'PASS: imported and painted'
             adb logcat -d -s CTS_BUNDLE_SELFTEST:I | grep -q 'PASS: round-trip renderer and ordered embedded audio'
             adb logcat -d -s CTS_ZIPACK2_SELFTEST:I | grep -q 'PASS: contact sheet import and 2-card MegaPack re-export'
             adb logcat -d -s CTS_ZIPACK2_LARGE:I | grep -q 'PASS: original-resolution regions from 5200px Windows contact sheet'
-            sleep 4
+            for attempt in $(seq 1 60); do
+              if adb logcat -d -s CTS_PARITY_SELFTEST:I | grep -q 'PASS: reverse seek'; then break; fi
+              sleep 2
+            done
+            adb logcat -d -s CTS_PARITY_SELFTEST:I | grep -q 'PASS: reverse seek'
+            adb shell input keyevent 3
+            for attempt in $(seq 1 60); do
+              if adb logcat -d -s CTS_EXPORT_SERVICE:I | grep -q 'PASS: export finished'; then break; fi
+              sleep 2
+            done
+            adb logcat -d -s CTS_EXPORT_SERVICE:I | grep -q 'PASS: export finished'
+            adb shell 'run-as com.retrofrost.cubicalcompare.v5.debug test -s files/service-smoke.mp4'
+            adb shell am start -W -n com.retrofrost.cubicalcompare.v5.debug/com.retrofrost.cubicalcompare.v5.ComposeStudioActivity
             adb shell pidof com.retrofrost.cubicalcompare.v5.debug
             adb shell input tap 340 285
             sleep 1
