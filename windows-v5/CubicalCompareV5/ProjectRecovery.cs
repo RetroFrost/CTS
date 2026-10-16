@@ -161,7 +161,7 @@ public partial class MainWindow
         PreviewKeyDown += RecoveryShortcutKeyDown;
     }
 
-    private void RecoveryShortcutKeyDown(object sender, KeyEventArgs e)
+    private void RecoveryShortcutKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (Keyboard.Modifiers != ModifierKeys.Control || e.Key != Key.S) return;
         e.Handled = true;
