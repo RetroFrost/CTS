@@ -144,26 +144,38 @@ public sealed partial class MainWindow
         };
         clearButton.Click += ClearSoundtrack_Click;
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-        };
+        // A four-button horizontal row overflows on narrow windows and hides
+        // the M3U controls. Keep both operations discoverable at any width.
+        var buttons = new Grid { ColumnSpacing = 8, RowSpacing = 8 };
+        buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        buttons.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        buttons.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        chooseButton.HorizontalAlignment = HorizontalAlignment.Stretch;
+        clearButton.HorizontalAlignment = HorizontalAlignment.Stretch;
         buttons.Children.Add(chooseButton);
+        Grid.SetColumn(clearButton, 1);
         buttons.Children.Add(clearButton);
         var savePatternButton = new Button
         {
-            Content = "Save Pattern (.m3u)",
+            Content = "Save Pattern",
             Padding = new Thickness(12, 7, 12, 7),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
+        ToolTipService.SetToolTip(savePatternButton, "Export soundtrack order to an M3U file");
         savePatternButton.Click += SaveSoundtrackPattern_Click;
+        Grid.SetRow(savePatternButton, 1);
+        buttons.Children.Add(savePatternButton);
         var importPatternButton = new Button
         {
-            Content = "Import Pattern (.m3u / .m3u8)",
+            Content = "Import Pattern",
             Padding = new Thickness(12, 7, 12, 7),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
+        ToolTipService.SetToolTip(importPatternButton, "Load a saved M3U/M3U8 soundtrack order");
         importPatternButton.Click += ImportSoundtrackPattern_Click;
-        buttons.Children.Add(savePatternButton);
+        Grid.SetRow(importPatternButton, 1);
+        Grid.SetColumn(importPatternButton, 1);
         buttons.Children.Add(importPatternButton);
 
         _audioPageVolumeSlider = new Slider
