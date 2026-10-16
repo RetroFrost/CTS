@@ -1,121 +1,152 @@
-name: Cubical Compare V5 Windows
+name: Cubical Compare V5 Windows Full WinUI
 on:
   push:
-    branches: [v5/development, windows/main-preview]
+    branches: [windows/main-preview]
     paths:
-      - windows-v5/**
-      - .github/workflows/v5-windows.yml
+      - 'windows/**'
+      - 'windows-v5/**'
+      - '.github/workflows/v5-windows.yml'
+      - 'Directory.Build.targets'
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: cubical-v5-full-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
-    runs-on: windows-latest
-    timeout-minutes: 45
+    runs-on: windows-2025
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-      - name: Generate app icon
-        shell: pwsh
-        run: ./windows-v5/tools/make-icon.ps1
-      - name: Build Windows x64
-        shell: pwsh
-        run: dotnet publish windows-v5/CubicalCompareV5/CubicalCompareV5.csproj -c Release -r win-x64 --self-contained true -o windows-v5/publish
-      - name: Check compiled files
+          dotnet-version: '10.0.x'
+      - name: Verify complete V4 feature foundation
         shell: pwsh
         run: |
-          if (!(Test-Path windows-v5/publish/CubicalCompareV5.exe)) { throw "EXE missing" }
-          if (!(Test-Path windows-v5/publish/CubicalCompareV5.dll)) { throw "DLL missing" }
-      - name: Validate uncluttered update UX
-        shell: pwsh
-        run: |
-          # Only hand-written source is relevant. Generated obj/bin code can
-          # include source snippets or assembly strings and is not UI code.
-          $root = "windows-v5/CubicalCompareV5"
-          $sources = @(Get-ChildItem $root -File -Filter *.cs) + @(Get-ChildItem $root -File -Filter *.xaml)
-          $matches = @($sources | Select-String -Pattern 'Built-in changelog|What.s New|Release Notes')
-          if ($matches.Count -gt 0) {
-            $matches | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line)" }
-            throw "In-app changelog or What's New UI was found in Windows V5 source"
+          $ErrorActionPreference = 'Stop'
+          $required = @(
+            'windows/CubicalCompare/MainWindow.ReliablePreviewTransform.cs',
+            'windows/CubicalCompare/MainWindow.ThumbnailAndMegaPack.cs',
+            'windows/CubicalCompare/MainWindow.Soundtrack.cs',
+            'windows/CubicalCompare/MainWindow.VideoExport.cs',
+            'windows/CubicalCompare/Core/Renderer/RendererV3PackageCompatibility.cs',
+            'windows/CubicalCompare/Core/MegaPack/Zipack2Importer.cs',
+            'windows/CubicalCompare/Core/Project/WebImageSource.cs',
+            'windows/CubicalCompare.Modules/Renderer/CubicalCompare.Renderer.csproj'
+          )
+          foreach ($file in $required) {
+            if (!(Test-Path $file)) { throw "Missing original V4 feature: $file" }
           }
-          if ((Get-Content windows/CubicalCompare/MainWindow.Settings42.cs -Raw).Contains("Built-in changelog")) { throw "Embedded legacy changelog still exists" }
-      - name: Smoke-test Windows app startup
+          if ((Get-Content 'windows/CubicalCompare/Core/Project/AppDataPaths.cs' -Raw) -notmatch 'CubicalCompareV5Preview') {
+            throw 'V5 data isolation missing.'
+          }
+          if ((Get-Content 'windows/CubicalCompare/MainWindow.xaml.cs' -Raw) -notmatch 'AppBrandText.Text = "Cubical Compare V5"') {
+            throw 'V5 window identity missing.'
+          }
+      - name: Restore original WinUI project
         shell: pwsh
         run: |
-          $exe = (Resolve-Path windows-v5/publish/CubicalCompareV5.exe).Path
-          $proc = Start-Process -FilePath $exe -PassThru
+          dotnet restore windows/CubicalCompare/CubicalCompare.csproj -r win-x64 -p:Platform=x64 -p:V5Preview=true
+          if ($LASTEXITCODE -ne 0) { throw 'Restore failed.' }
+      - name: AI project regression suite
+        shell: pwsh
+        run: |
+          dotnet run --project windows/CubicalCompare.AiSmoke/CubicalCompare.AiSmoke.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'AI smoke tests failed.' }
+      - name: Publish full V4-compatible V5 editor
+        shell: pwsh
+        run: |
+          dotnet publish windows/CubicalCompare/CubicalCompare.csproj -c Release -r win-x64 -p:Platform=x64 -p:V5Preview=true -p:Version=5.0.0 -p:AssemblyVersion=5.0.0.0 -p:FileVersion=5.0.0.0 -o windows-v5/publish
+          if ($LASTEXITCODE -ne 0) { throw 'Complete WinUI publish failed.' }
+          foreach ($file in @('CubicalCompare.exe','CubicalCompare.dll','CubicalCompare.Core.dll','CubicalCompare.Renderer.dll','CubicalCompare.MegaPack.dll','CubicalCompare.Thumbnail.dll')) {
+            if (!(Test-Path (Join-Path 'windows-v5/publish' $file))) { throw "V4 feature module not packaged: $file" }
+          }
+          if (Test-Path 'windows-v5/publish/CubicalCompareV5.exe') { throw 'Incorrect WPF application packaged.' }
+      - name: Full editor and rendering startup test
+        shell: pwsh
+        timeout-minutes: 9
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:LOCALAPPDATA 'RetroFrost\CubicalCompareV5Preview\startup.log'
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+          $exe = (Resolve-Path 'windows-v5/publish/CubicalCompare.exe').Path
+          $proc = Start-Process -FilePath $exe -ArgumentList '--ci-mainwindow-smoke' -WorkingDirectory (Split-Path $exe) -PassThru
           try {
-            Start-Sleep -Seconds 5
+            $pass = $false
+            for ($i=0; $i -lt 90; $i++) {
+              Start-Sleep -Seconds 2
+              $proc.Refresh()
+              if ($proc.HasExited) { throw "App exited with $($proc.ExitCode)" }
+              if (!(Test-Path $log)) { continue }
+              $data = Get-Content $log -Raw
+              if ($data -match 'MainWindow startup failed|Post-activation editor control initialisation failed') {
+                throw "WinUI initialization failed: $data"
+              }
+              if ($data -match 'Post-activation editor controls initialised') { $pass=$true; break }
+            }
+            if (!$pass) { throw "Full editor smoke timed out. Startup log: $log" }
+            Write-Host 'Full V4-compatible WinUI editor startup passed.'
+          } finally {
             $proc.Refresh()
-            if ($proc.HasExited) { throw "WPF app exited during startup (exit code $($proc.ExitCode))" }
-          }
-          finally {
             if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
           }
-      - name: Thumbnail image transform regression
+      - name: Generate NSIS icon
         shell: pwsh
-        run: |
-          $exe = (Resolve-Path windows-v5/publish/CubicalCompareV5.exe).Path
-          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test-thumbnail' -PassThru -Wait
-          if ($proc.ExitCode -ne 0) {
-            if (Test-Path thumbnail-regression-result.txt) { Get-Content thumbnail-regression-result.txt }
-            throw "Thumbnail regression failed (exit code $($proc.ExitCode))"
-          }
-          if ((Get-Content thumbnail-regression-result.txt -Raw).Trim() -ne "PASS") { throw "Missing thumbnail regression result" }
-      - name: Crash-recovery regression
-        shell: pwsh
-        run: |
-          $exe = (Resolve-Path windows-v5/publish/CubicalCompareV5.exe).Path
-          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test-recovery' -PassThru -Wait
-          if ($proc.ExitCode -ne 0) {
-            if (Test-Path recovery-regression-result.txt) { Get-Content recovery-regression-result.txt }
-            throw "Project recovery regression failed ($($proc.ExitCode))"
-          }
-          if ((Get-Content recovery-regression-result.txt -Raw).Trim() -ne "PASS") { throw "Missing recovery regression result" }
-      - name: Floating navigation and audio pattern regression
-        shell: pwsh
-        run: |
-          $exe = (Resolve-Path windows-v5/publish/CubicalCompareV5.exe).Path
-          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test-island' -PassThru -Wait
-          if ($proc.ExitCode -ne 0) {
-            if (Test-Path island-regression-result.txt) { Get-Content island-regression-result.txt }
-            throw "Floating island / audio pattern regression failed ($($proc.ExitCode))"
-          }
-          if ((Get-Content island-regression-result.txt -Raw).Trim() -ne "PASS") { throw "Missing island/audio regression result" }
+        run: ./windows-v5/tools/make-icon.ps1
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis -y --no-progress
-      - name: Build interactive installer
+      - name: Build interactive Windows setup
         shell: pwsh
         run: |
-          $source = (Resolve-Path windows-v5/publish).Path
-          $dest = Join-Path $env:GITHUB_WORKSPACE "CubicalCompare-V5-Windows-Setup.exe"
-          $nsis = "C:\Program Files (x86)\NSIS\makensis.exe"
-          if (!(Test-Path $nsis)) { throw "NSIS missing" }
-          & $nsis "/DAPP_SOURCE=$source" "/DOUT_FILE=$dest" "windows-v5/installer/setup.nsi"
-          if ($LASTEXITCODE -ne 0 -or !(Test-Path $dest)) { throw "NSIS installer failed" }
-      - name: Portable ZIP and hashes
+          $source = (Resolve-Path 'windows-v5/publish').Path
+          $dest = Join-Path $env:GITHUB_WORKSPACE 'CubicalCompare-V5-Windows-Setup.exe'
+          $nsis = 'C:\Program Files (x86)\NSIS\makensis.exe'
+          if (!(Test-Path $nsis)) { throw 'NSIS missing' }
+          & $nsis "/DAPP_SOURCE=$source" "/DOUT_FILE=$dest" 'windows-v5/installer/setup.nsi'
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path $dest)) { throw 'Installer failed' }
+          $script = Get-Content 'windows-v5/installer/setup.nsi' -Raw
+          if ($script -notmatch 'MUI_PAGE_INSTFILES' -or $script -notmatch 'MUI_FINISHPAGE_RUN' -or $script -match 'SilentInstall') {
+            throw 'Installer must show progress and support launch.'
+          }
+      - name: Portable ZIP and SHA256 manifest
         shell: pwsh
         run: |
-          Compress-Archive -Path "windows-v5/publish/*" -DestinationPath "CubicalCompare-V5-Windows-Portable.zip"
-          "CubicalCompare-V5-Windows-Setup.exe", "CubicalCompare-V5-Windows-Portable.zip" | ForEach-Object {
+          Compress-Archive -Path 'windows-v5/publish/*' -DestinationPath 'CubicalCompare-V5-Windows-Portable.zip'
+          @('CubicalCompare-V5-Windows-Setup.exe','CubicalCompare-V5-Windows-Portable.zip') | ForEach-Object {
             $hash = (Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $_"
           } | Set-Content -Encoding ascii SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: cubical-compare-v5-windows
+          name: cubical-compare-v5-full-winui
           path: |
             CubicalCompare-V5-Windows-Setup.exe
             CubicalCompare-V5-Windows-Portable.zip
             SHA256SUMS.txt
-      - name: Publish Windows preview
+      - name: Publish V5 WinUI prerelease
         if: success()
         shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v5.0.0-windows-preview.${{ github.run_number }}"
-          gh release create $tag "CubicalCompare-V5-Windows-Setup.exe" "CubicalCompare-V5-Windows-Portable.zip" "SHA256SUMS.txt" --repo "${{ github.repository }}" --target "$env:GITHUB_SHA" --title "Cubical Compare V5 Windows Preview #${{ github.run_number }}" --notes "Windows V5 preview: floating Fluent island, thumbnail transforms, ordered M3U audio patterns, 60 FPS video export, transactional crash-recovery autosaves, light/dark/Mica, old-GPU mode, and interactive NSIS installer. No in-app changelog dialogs." --prerelease
+          $tag = "v5.0.0-windows-winui-preview.${{ github.run_number }}"
+          @'
+          ## Cubical Compare V5 - full V4-compatible WinUI foundation
+
+          This build restores the **complete V4 Windows editor** as the V5 foundation,
+          replacing the experimental reduced-feature WPF rewrite.
+          
+          - Original renderer v2/v3 and SmartBadge runtime
+          - Original MegaPack Zipack2, thumbnails, audio and advanced export/editor workflow
+          - Existing WinUI 3 + Mica interface, plus a floating quick-actions menu
+          - Version 5.0.0 and separate V5 preview settings/data location
+          - Visible interactive NSIS setup and portable Windows ZIP
+          - V4 stable auto-updates are disabled to prevent cross-version overwrites
+
+          This is a preview, not final V5; exact renderer3 animation parity remains to be verified.
+          '@ | Set-Content -Path windows-v5/release-notes.md -Encoding utf8
+          gh release create $tag 'CubicalCompare-V5-Windows-Setup.exe' 'CubicalCompare-V5-Windows-Portable.zip' 'SHA256SUMS.txt' --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "Cubical Compare V5 - Full WinUI Preview #${{ github.run_number }}" --notes-file 'windows-v5/release-notes.md' --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release failed.' }

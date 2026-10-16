@@ -15,7 +15,7 @@ ShowUninstDetails show
 !define MUI_ABORTWARNING
 !define MUI_ICON "..\CubicalCompareV5\Assets\CubicalCompare.ico"
 !define MUI_UNICON "..\CubicalCompareV5\Assets\CubicalCompare.ico"
-!define MUI_FINISHPAGE_RUN "$INSTDIR\CubicalCompareV5.exe"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\CubicalCompare.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch Cubical Compare V5"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -34,13 +34,15 @@ ShowUninstDetails show
 !insertmacro MUI_LANGUAGE "Italian"
 Section "Cubical Compare V5" Main
  SetOutPath "$INSTDIR"
+ ; Remove the previous reduced WPF preview executable.
+ Delete "$INSTDIR\CubicalCompareV5.exe"
  File /r "${APP_SOURCE}\*.*"
  WriteUninstaller "$INSTDIR\Uninstall.exe"
  CreateDirectory "$SMPROGRAMS\Cubical Compare V5"
- CreateShortCut "$SMPROGRAMS\Cubical Compare V5\Cubical Compare V5.lnk" "$INSTDIR\CubicalCompareV5.exe"
+ CreateShortCut "$SMPROGRAMS\Cubical Compare V5\Cubical Compare V5.lnk" "$INSTDIR\CubicalCompare.exe"
  CreateShortCut "$SMPROGRAMS\Cubical Compare V5\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CubicalCompareV5" "DisplayName" "Cubical Compare V5"
- WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CubicalCompareV5" "DisplayIcon" "$INSTDIR\CubicalCompareV5.exe"
+ WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CubicalCompareV5" "DisplayIcon" "$INSTDIR\CubicalCompare.exe"
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CubicalCompareV5" "UninstallString" '"$INSTDIR\Uninstall.exe"'
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CubicalCompareV5" "DisplayVersion" "5.0.0"
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CubicalCompareV5" "Publisher" "RetroFrost"

@@ -34,6 +34,11 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+#if V5_M1_PREVIEW
+        // V5 runs the complete V4 WinUI application, not the experimental WPF rewrite.
+        Title = "Cubical Compare V5";
+        AppBrandText.Text = "Cubical Compare V5";
+#endif
         InitializeThumbnailSettings();
         RootNavigation.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(MainWindow_GlobalKeyDown), true);
 
