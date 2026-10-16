@@ -119,7 +119,7 @@ public final class VideoExporter {
                     .buildUpon().setIsLooping(project.AudioRepeat).build();
                 composition=new Composition.Builder(video,audio);
                 DefaultGainProvider.Builder gains=new DefaultGainProvider.Builder((float)Math.max(0,Math.min(1,project.AudioVolume)));
-                long durationUs=(project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) ? Renderer3ExportInterop.durationMillis(activity,project)*1000L : NativeEngine.totalFrames(StudioModel.json(project))*1_000_000L/project.Fps;
+                long durationUs=(project.Renderer3AssetName != null && !project.Renderer3AssetName.isBlank()) ? Renderer3ExportInterop.durationMillis(activity,project)*1000L : NativeEngine.totalFrames(StudioModel.timelineJson(project))*1_000_000L/project.Fps;
                 if(project.AudioFadeOut){
                     long fadeLength=Math.min(1_500_000L,durationUs);
                     gains.addFadeAt(Math.max(0,durationUs-fadeLength),Math.max(1,fadeLength),DefaultGainProvider.FADE_OUT_LINEAR);

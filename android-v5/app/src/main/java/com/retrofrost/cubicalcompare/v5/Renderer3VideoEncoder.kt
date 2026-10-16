@@ -170,7 +170,7 @@ internal object Renderer3VideoEncoder {
 
 /** Two cached cards, one output surface; every integer Rust frame is rendered. */
 internal class BasicFramePainter(context:Context,project:StudioModel.Project,val w:Int,val h:Int):java.io.Closeable {
-        private val json=StudioModel.json(project)
+        private val json=StudioModel.timelineJson(project)
         val frames=NativeEngine.totalFrames(json).also{check(it in 1..Int.MAX_VALUE){"Invalid video timeline"}}.toInt()
         private val view=CardCanvas(context)
         private val cards=project.Cards

@@ -716,7 +716,7 @@ class ComposeStudioActivity : ComponentActivity() {
         val selectedRenderer=rendererSelection
         val revision=rev
         val json=remember(revision,project.Cards.size,project.Fps,project.SecondsPerCard){
-            StudioModel.json(project)
+            StudioModel.timelineJson(project)
         }
         val total=if(selectedRenderer!=null)
             selectedRenderer.frameCountForCards(project.Cards.size).toLong().coerceAtLeast(1)
@@ -1144,7 +1144,7 @@ class ComposeStudioActivity : ComponentActivity() {
                 if(it==0.0 || it*project.Fps>=project.Cards.size)project.VideoDurationSeconds=it
                 else message("Choose at least one frame per card")
             }
-            Text("${NativeEngine.totalFrames(StudioModel.json(project))} integer frames")
+            Text("${NativeEngine.totalFrames(StudioModel.timelineJson(project))} integer frames")
         }
         Buttons("1280 × 720" to{project.ExportWidth=1280;project.ExportHeight=720;changed()},
             "1920 × 1080" to{project.ExportWidth=1920;project.ExportHeight=1080;changed()})

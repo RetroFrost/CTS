@@ -91,6 +91,8 @@ public final class StudioModel {
     public static Project parse(String json) {
         Project p = JSON.fromJson(json,Project.class);
         if (p==null || p.FormatVersion!=5) throw new IllegalArgumentException("Not a Cubical Compare V5 project.");
+        p.ProjectName=safe(p.ProjectName);
+        p.Renderer3AssetName=safe(p.Renderer3AssetName);p.Renderer3Id=safe(p.Renderer3Id);
         if (p.Cards==null) p.Cards=new ArrayList<>();
         if (p.AudioTracks==null) p.AudioTracks=new ArrayList<>();
         p.Fps=Math.max(1, Math.min(60,p.Fps==0?30:p.Fps));
@@ -144,6 +146,15 @@ public final class StudioModel {
             else c.ImageTransform=source.transform(false).copy();}
     }
     private static String safe(String v){return v==null?"":v;}
+    /** JNI timing never needs megabytes of embedded artwork or audio. */
+    public static String timelineJson(Project p){
+        java.util.Map<String,Object> timing=new java.util.LinkedHashMap<>();
+        List<java.util.Map<String,String>> cards=new ArrayList<>();
+        for(Card c:p.Cards)cards.add(java.util.Collections.singletonMap("Title",safe(c.Title)));
+        timing.put("Cards",cards);timing.put("Fps",p.Fps);
+        timing.put("SecondsPerCard",p.SecondsPerCard);timing.put("VideoDurationSeconds",p.VideoDurationSeconds);
+        return JSON.toJson(timing);
+    }
     public static String json(Project p){return JSON.toJson(p);}
     public static List<Card> parseCsv(String csv) throws IOException {
         List<List<String>> rows=new ArrayList<>();List<String> row=new ArrayList<>();
