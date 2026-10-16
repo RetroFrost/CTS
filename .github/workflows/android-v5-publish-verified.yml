@@ -1,0 +1,27 @@
+name: Publish verified Android preview
+on:
+  push:
+    branches: [android-main-preview]
+    paths: ['.github/workflows/android-v5-publish-verified.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Publish tested preview artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh run watch 38917646380 --repo RetroFrost/CTS --exit-status || true
+          gh run download 38917646380 --repo RetroFrost/CTS --name CubicalCompare-V5-Android-MainPreview
+          sha256sum -c SHA256SUMS-android.txt
+          test -s CubicalCompare-V5-Android-MainPreview-debug.apk
+          gh release create v5.0.0-android-main-preview.67 CubicalCompare-V5-Android-MainPreview-debug.apk SHA256SUMS-android.txt \
+            --repo RetroFrost/CTS --target 5be606211e72548064fafe10d83fa8e4528787dd --prerelease \
+            --title "Cubical Compare V5 Android — Main Preview #67" \
+            --notes "Android editor expansion: Renderer3 with integer frame addressing and live SmartCard artwork transforms, Zipack2 MegaPacks, portable projects, foreground MP4 export, full per-frame conveyor animation, custom duration/resolution/bitrate and hardware/software encoding, CSV export, undo/redo, bulk transforms/colours, card search/sort, direct text editing and frame PNG export. Android 8+. Debug-signed APK. Windows DLL plugins and WPF ISF remain unsupported."

@@ -95,10 +95,9 @@ jobs:
             SHA256SUMS-android.txt
       - name: Publish GitHub prerelease
         if: success()
-        continue-on-error: true # APK remains a downloadable Actions artifact when token has release 403
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.CTS_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v5.0.0-android-main-preview.${{ github.run_number }}"
           for attempt in 1 2 3 4; do
