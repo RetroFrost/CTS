@@ -14,7 +14,7 @@ public sealed partial class MainWindow
 {
     private bool _floatingDockInitialized;
     private bool _floatingDockDragging;
-    private Windows.Foundation.Point _floatingDockDragStart;
+    private global::Windows.Foundation.Point _floatingDockDragStart;
     private double _floatingDockSavedX;
     private double _floatingDockSavedY;
 
