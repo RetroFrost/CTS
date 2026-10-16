@@ -122,6 +122,33 @@ public partial class MainWindow
         ApplyTransforms(_active);
     }
 
+    private void ApplyTransformAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (_active is null) return;
+        PersistInk();
+        var selected = (ActiveTransform ?? new ArtworkTransformState()).Clone();
+        foreach (var card in _cards)
+        {
+            if (_thumbnailMode) card.ThumbnailTransform = selected.Clone();
+            else card.ImageTransform = selected.Clone();
+        }
+        ApplyTransforms(_active);
+        UpdateTransformControls();
+        StatusLabel.Text = "Applied " + (_thumbnailMode ? "thumbnail" : "video") +
+            " image transform to all " + _cards.Count + " cards.";
+    }
+
+    private void Artwork_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_active is null || _drawing || e.Delta == 0) return;
+        var selected = ActiveTransform!;
+        double factor = e.Delta > 0 ? 1.1d : 1d / 1.1d;
+        selected.Scale = Math.Clamp(selected.Scale * factor, ScaleSlider.Minimum, ScaleSlider.Maximum);
+        UpdateTransformControls();
+        ApplyTransforms(_active);
+        e.Handled = true;
+    }
+
     private void Artwork_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (_active is null || _drawing || sender is not Image img) return;
@@ -265,6 +292,22 @@ public partial class MainWindow
         var savedThumbnail = EncodeStagePng(ThumbnailStage);
         if (!changedThumbnail.AsSpan().SequenceEqual(savedThumbnail))
             throw new InvalidOperationException("Thumbnail transform changed after switching editor modes.");
+
+        var sibling = new ComparisonCard { Title = "Transform clone test" };
+        _cards.Add(sibling);
+        ApplyTransformAll_Click(this, new RoutedEventArgs());
+        if (sibling.ThumbnailTransform.Scale != card.ThumbnailTransform.Scale ||
+            sibling.ThumbnailTransform.X != card.ThumbnailTransform.X ||
+            sibling.ImageTransform.Scale != 1.0 || sibling.ImageTransform.X != 0)
+            throw new InvalidOperationException("Apply to all did not isolate thumbnail transforms.");
+        sibling.ThumbnailTransform.X = 10;
+        if (card.ThumbnailTransform.X != -110)
+            throw new InvalidOperationException("Batch image transforms share mutable state.");
+        SetMode(false);
+        card.ImageTransform = new ArtworkTransformState { Scale = 2, Y = -42 };
+        ApplyTransformAll_Click(this, new RoutedEventArgs());
+        if (sibling.ImageTransform.Scale != 2 || sibling.ImageTransform.Y != -42)
+            throw new InvalidOperationException("Apply to all did not copy video transforms.");
     }
 
 }

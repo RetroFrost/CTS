@@ -157,7 +157,7 @@
            </StackPanel>
           </Border>
           <Grid Grid.Row="2" ClipToBounds="True">
-           <Image x:Name="ArtworkImage" Stretch="Uniform" Margin="8" RenderTransformOrigin="0.5,0.5" Cursor="SizeAll" MouseLeftButtonDown="Artwork_MouseDown" MouseMove="Artwork_MouseMove" MouseLeftButtonUp="Artwork_MouseUp" LostMouseCapture="Artwork_LostCapture"/>
+           <Image x:Name="ArtworkImage" Stretch="Uniform" Margin="8" RenderTransformOrigin="0.5,0.5" Cursor="SizeAll" MouseWheel="Artwork_MouseWheel" MouseLeftButtonDown="Artwork_MouseDown" MouseMove="Artwork_MouseMove" MouseLeftButtonUp="Artwork_MouseUp" LostMouseCapture="Artwork_LostCapture"/>
            <InkCanvas x:Name="Sketch" Background="Transparent" EditingMode="None" IsHitTestVisible="False"/>
           </Grid>
           <TextBlock x:Name="PreviewDescription" Grid.Row="3" Foreground="#263544" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center"/>
@@ -172,7 +172,7 @@
           </LinearGradientBrush>
          </Grid.Background>
          <Rectangle Fill="#132D49" Width="530" Height="530" HorizontalAlignment="Right" RadiusX="25" RadiusY="25" Margin="0,5,5,5"/>
-         <Image x:Name="ThumbnailArtworkImage" Stretch="Uniform" Width="500" Height="470" HorizontalAlignment="Right" Margin="0,30,25,30" RenderTransformOrigin="0.5,0.5" Cursor="SizeAll" MouseLeftButtonDown="Artwork_MouseDown" MouseMove="Artwork_MouseMove" MouseLeftButtonUp="Artwork_MouseUp" LostMouseCapture="Artwork_LostCapture"/>
+         <Image x:Name="ThumbnailArtworkImage" Stretch="Uniform" Width="500" Height="470" HorizontalAlignment="Right" MouseWheel="Artwork_MouseWheel" Margin="0,30,25,30" RenderTransformOrigin="0.5,0.5" Cursor="SizeAll" MouseLeftButtonDown="Artwork_MouseDown" MouseMove="Artwork_MouseMove" MouseLeftButtonUp="Artwork_MouseUp" LostMouseCapture="Artwork_LostCapture"/>
          <StackPanel Margin="48,75,0,0" Width="395" HorizontalAlignment="Left" VerticalAlignment="Top">
           <TextBlock Text="CUBICAL COMPARE" Foreground="#71EAF1" FontSize="19" FontWeight="Bold"/>
           <TextBlock x:Name="ThumbnailPreviewTitle" Foreground="White" FontSize="51" FontWeight="ExtraBold" TextWrapping="Wrap" Margin="0,20,0,28"/>
@@ -208,6 +208,7 @@
       <Button x:Name="ArtworkButton" Content="Import image..." Click="Artwork_Click"/>
       <Button x:Name="RemoveArtworkButton" Content="Remove image" Click="RemoveArtwork_Click"/>
       <Button x:Name="CopyMainTransformButton" Content="Copy main image transform → thumbnail" Click="CopyMainTransform_Click" Visibility="Collapsed"/>
+       <Button x:Name="ApplyTransformAllButton" Content="Apply image transform to ALL cards" Click="ApplyTransformAll_Click" ToolTip="Copies this card's active image transform to every card in the selected editor mode"/>
       <Separator Margin="0,12,0,12"/>
       <TextBlock x:Name="TransformHeading" Text="Image transform" FontWeight="Bold" FontSize="16" Margin="0,0,0,5"/>
       <DockPanel><TextBlock x:Name="ScaleLabel" Text="Scale"/><TextBlock x:Name="ScaleReadout" DockPanel.Dock="Right" Text="100%" Foreground="{DynamicResource MutedBrush}"/></DockPanel>
