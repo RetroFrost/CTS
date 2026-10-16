@@ -98,6 +98,7 @@ jobs:
               sleep 2
             done
             adb logcat -d -s CTS_PARITY_SELFTEST:I | grep -q 'PASS: reverse seek'
+            adb logcat -d -s CTS_RENDERER3_PARITY:I | grep -q 'PASS: integer frame seek'
             adb shell input keyevent 3
             for attempt in $(seq 1 60); do
               if adb logcat -d -s CTS_EXPORT_SERVICE:I | grep -q 'PASS: export finished'; then break; fi

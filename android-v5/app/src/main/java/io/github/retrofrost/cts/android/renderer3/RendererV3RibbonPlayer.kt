@@ -146,8 +146,10 @@ internal class RendererV3RibbonPlayer(
             ?: if (active==0) -pitch+pitch*eased else (active-1)*pitch+pitch*eased
         return result
     }
-    @Synchronized fun render(canvas: Canvas, seconds: Float, outWidth: Int, outHeight: Int) {
-        val frame = (seconds.coerceAtLeast(0f)*bundle.selection.fps).toInt().coerceIn(0,frames-1)
+    fun render(canvas: Canvas, seconds: Float, outWidth: Int, outHeight: Int) =
+        renderFrame(canvas,(seconds.coerceAtLeast(0f)*bundle.selection.fps).toInt(),outWidth,outHeight)
+    @Synchronized fun renderFrame(canvas: Canvas, integerFrame:Int, outWidth: Int, outHeight: Int) {
+        val frame = integerFrame.coerceIn(0,frames-1)
         val authoredColor = legacy.opt("backgroundColor")
         val background = when (authoredColor) {
             is Number -> authoredColor.toInt()

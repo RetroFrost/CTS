@@ -46,11 +46,14 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
             return overflow
         }
     }
+    fun render(canvas: Canvas, seconds: Float, outputWidth: Int, outputHeight: Int) =
+        renderFrame(canvas,(seconds.coerceAtLeast(0f)*fps).toInt(),outputWidth,outputHeight)
+
     @Synchronized
-    fun render(canvas: Canvas, seconds: Float, outputWidth: Int, outputHeight: Int) {
+    fun renderFrame(canvas: Canvas, integerFrame: Int, outputWidth: Int, outputHeight: Int) {
         if (ribbon != null) {
-            ribbon.render(canvas, seconds, outputWidth, outputHeight)
-            val outputFrame = (seconds.coerceAtLeast(0f) * fps).toInt()
+            ribbon.renderFrame(canvas, integerFrame, outputWidth, outputHeight)
+            val outputFrame = integerFrame.coerceAtLeast(0)
             val (sourceFrame, phase) = ribbon.authoredOverlayTiming(outputFrame)
             canvas.save()
             try {
@@ -83,7 +86,7 @@ internal class RendererV3Player(context: Context, selection: RendererV3Selection
             } finally { canvas.restore() }
             return
         }
-        val frame = ((seconds.coerceAtLeast(0f) * fps).toInt()).coerceIn(0, frames - 1)
+        val frame = integerFrame.coerceIn(0, frames - 1)
         canvas.drawColor(color(root.optString("background", "#000000"), Color.BLACK))
         canvas.save()
         try {
