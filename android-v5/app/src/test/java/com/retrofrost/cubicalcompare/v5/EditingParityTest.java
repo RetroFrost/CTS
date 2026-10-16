@@ -36,6 +36,13 @@ public class EditingParityTest {
   assertTrue(p.AudioTracks.isEmpty());assertEquals("auto",p.VideoEncoder);
   assertEquals(1920,p.ExportWidth);assertEquals(3600,p.SecondsPerCard);
  }
+ @Test public void timelinePayloadDoesNotCopyArtworkPerFrame(){
+  StudioModel.Project p=StudioModel.blank();p.Cards.get(0).ArtworkBase64="do-not-send-image-binary";
+  p.VideoDurationSeconds=3.5;
+  String timeline=StudioModel.timelineJson(p);
+  assertFalse(timeline.contains("do-not-send-image-binary"));assertFalse(timeline.contains("Artwork"));
+  assertTrue(timeline.contains("VideoDurationSeconds"));assertTrue(timeline.contains("First comparison"));
+ }
  @Test public void customExportSettingsSurviveSaving(){
   StudioModel.Project p=StudioModel.blank();p.VideoDurationSeconds=123.5;p.VideoEncoder="software";p.VideoBitrateMbps=12;
   StudioModel.Project q=StudioModel.parse(StudioModel.json(p));
