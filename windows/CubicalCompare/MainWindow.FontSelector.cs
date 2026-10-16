@@ -331,7 +331,7 @@ public sealed partial class MainWindow
             var extension = Path.GetExtension(file.Path).ToLowerInvariant();
             var bytes = await File.ReadAllBytesAsync(file.Path);
             var digest = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-            var folder = AppDataPaths.FontsDirectory; // Works for unpackaged WinUI, and keeps V5 fonts separate from V4.
+            var folder = global::CubicalCompare.Core.Project.AppDataPaths.FontsDirectory; // Works for unpackaged WinUI, and keeps V5 fonts separate from V4.
             Directory.CreateDirectory(folder);
             var localPath = Path.Combine(folder, $"font-{digest[..20]}{extension}");
             if (!File.Exists(localPath))
