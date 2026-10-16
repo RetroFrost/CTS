@@ -51,6 +51,7 @@ public sealed partial class MainWindow
 
     internal void RunEditorWorkspaceSmoke()
     {
+        RunFloatingDockSmoke();
         var source = new ProjectCardViewModel { Title = "UX smoke", BadgeValue = "42", BadgeUnit = "km", ImageX = 123, ImageScale = 1.25 };
         var copy = CloneEditorCard(source);
         if (copy.Id == source.Id || copy.Title != source.Title || copy.BadgeValue != "42" || copy.BadgeUnit != "km" || copy.ImageX != 123 || copy.ImageScale != 1.25)

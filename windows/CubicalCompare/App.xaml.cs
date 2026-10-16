@@ -75,6 +75,7 @@ public partial class App : Application
                     mainWindow.InitializePreviewPlayback();
                     mainWindow.InitializePersonalization();
                     mainWindow.InitializeFinalReleaseUi();
+                    mainWindow.InitializeFloatingNavigation();
                     mainWindow.InitializeAdaptiveExportUi();
                     mainWindow.InitializeInterfaceReview();
                     mainWindow.InitializeEditorWorkspaceUx();

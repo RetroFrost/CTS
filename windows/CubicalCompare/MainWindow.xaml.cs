@@ -111,6 +111,7 @@ public sealed partial class MainWindow : Window
         if (_updatesPage is not null) _updatesPage.Visibility = tag == "updates" ? Visibility.Visible : Visibility.Collapsed;
         if (_settingsPage is not null) _settingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
         if (_finalAudioPage is not null) _finalAudioPage.Visibility = tag == "audio" ? Visibility.Visible : Visibility.Collapsed;
+        UpdateFloatingDockSelection(tag);
     }
 
     private void NewProject_Click(object sender, RoutedEventArgs e)

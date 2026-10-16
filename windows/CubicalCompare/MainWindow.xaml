@@ -80,9 +80,9 @@
             Background="Transparent"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
-            IsPaneToggleButtonVisible="True"
-            PaneDisplayMode="Left"
-            IsPaneOpen="True"
+            IsPaneToggleButtonVisible="False"
+            PaneDisplayMode="LeftMinimal"
+            IsPaneOpen="False"
             OpenPaneLength="220"
             Loaded="RootNavigation_Loaded"
             SelectionChanged="RootNavigation_SelectionChanged">
@@ -111,7 +111,7 @@
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <Grid Padding="12,12,14,14">
+            <Grid Padding="12,12,14,94">
                 <Grid x:Name="ProjectPage">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -616,13 +616,85 @@
             </Grid>
         </NavigationView>
 
+        <!-- This is the primary V5 navigation: an independently movable, true overlay
+             that floats above every page, not a context menu in the title bar. -->
+        <Border x:Name="FloatingNavigationDock"
+                Grid.Row="1"
+                Canvas.ZIndex="240"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,18"
+                Padding="7,6"
+                MaxWidth="1000"
+                CornerRadius="22"
+                BorderThickness="1"
+                BorderBrush="#677E96AE"
+                Background="#F0192535">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="FloatingDockOffset" />
+            </Border.RenderTransform>
+            <Grid ColumnSpacing="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="27" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="FloatingDockDragHandle"
+                        Grid.Column="0"
+                        Background="#354E6580"
+                        CornerRadius="12"
+                        ToolTipService.ToolTip="Drag to move the floating dock"
+                        PointerPressed="FloatingDockDragHandle_PointerPressed"
+                        PointerMoved="FloatingDockDragHandle_PointerMoved"
+                        PointerReleased="FloatingDockDragHandle_PointerReleased"
+                        PointerCaptureLost="FloatingDockDragHandle_PointerCaptureLost">
+                    <TextBlock Text="⋮⋮" Foreground="#FFFFFF" FontSize="17"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <ScrollViewer Grid.Column="1"
+                              HorizontalScrollBarVisibility="Auto"
+                              HorizontalScrollMode="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              VerticalScrollMode="Disabled"
+                              ZoomMode="Disabled">
+                    <StackPanel x:Name="FloatingDockButtons" Orientation="Horizontal" Spacing="3">
+                        <Button x:Name="FloatingWorkspaceButton" Tag="project" Content="Workspace"
+                                Click="FloatingDockNavigate_Click" Padding="13,10" CornerRadius="14"
+                                Foreground="White" BorderThickness="0" />
+                        <Button x:Name="FloatingMegaPacksButton" Tag="assets" Content="MegaPacks"
+                                Click="FloatingDockNavigate_Click" Padding="13,10" CornerRadius="14"
+                                Foreground="White" BorderThickness="0" />
+                        <Button x:Name="FloatingThumbnailButton" Tag="thumbnail" Content="Thumbnail"
+                                Click="FloatingDockNavigate_Click" Padding="13,10" CornerRadius="14"
+                                Foreground="White" BorderThickness="0" />
+                        <Button x:Name="FloatingAudioButton" Tag="audio" Content="Audio"
+                                Click="FloatingDockNavigate_Click" Padding="13,10" CornerRadius="14"
+                                Foreground="White" BorderThickness="0" />
+                        <Button x:Name="FloatingRendererButton" Tag="renderer" Content="Style &amp; Model"
+                                Click="FloatingDockNavigate_Click" Padding="13,10" CornerRadius="14"
+                                Foreground="White" BorderThickness="0" />
+                        <Button x:Name="FloatingMoreButton" Tag="more" Content="More ⋯" Padding="13,10"
+                                CornerRadius="14" Foreground="White" BorderThickness="0">
+                            <Button.Flyout>
+                                <MenuFlyout Placement="TopEdgeAlignedRight">
+                                    <MenuFlyoutItem Text="Settings" Tag="settings" Click="FloatingDockNavigate_Click" />
+                                    <MenuFlyoutItem Text="Developer tools" Tag="developer" Click="FloatingDockNavigate_Click" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem Text="Reset dock position" Click="FloatingDockReset_Click" />
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
         <Border x:Name="ActivityWatcherPanel"
                 Grid.Row="1"
                 Canvas.ZIndex="300"
                 Width="390"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Bottom"
-                Margin="0,0,18,18"
+                Margin="0,0,18,94"
                 Padding="14,12"
                 CornerRadius="16"
                 Background="{StaticResource EditorSurfaceRaisedBrush}"
