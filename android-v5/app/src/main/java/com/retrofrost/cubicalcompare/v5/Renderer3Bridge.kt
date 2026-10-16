@@ -65,7 +65,7 @@ internal object Renderer3Bridge {
         fun paint(canvas:Canvas,frame:Int,outputWidth:Int,outputHeight:Int){
             // The same deterministic frame-addressed evaluator feeds both preview and export.
             val resolved=frame.coerceIn(0,frames-1)
-            player.render(canvas,resolved.toFloat()/fps.toFloat(),outputWidth,outputHeight)
+            player.renderFrame(canvas,resolved,outputWidth,outputHeight)
         }
         fun bitmap(frame:Int,w:Int,h:Int):Bitmap {
             val output=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888)

@@ -381,10 +381,16 @@ class ComposeStudioActivity : ComponentActivity() {
             }finally{bitmap.recycle()}
         }
     }
+    private var pendingExportUri:Uri?=null
+    private val notificationPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){
+        pendingExportUri?.let{uri->pendingExportUri=null;guarded{ExportService.start(this,project,uri)}}
+    }
     private val saveMp4=registerForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")){uri->
         if(uri!=null){
             ink();exporting=true;exportProgress=0f
-            guarded{ExportService.start(this,project,uri)}
+            if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+                pendingExportUri=uri;notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }else guarded{ExportService.start(this,project,uri)}
         }
     }
     override fun onCreate(state:Bundle?){
@@ -667,7 +673,7 @@ class ComposeStudioActivity : ComponentActivity() {
                     Text(if(thumb)"THUMBNAIL"else"COMPARISON",style=MaterialTheme.typography.labelMedium,
                         color=MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.weight(1f))
-                    Text("1920 × 1080",style=MaterialTheme.typography.labelSmall)
+                    Text("${project.ExportWidth} × ${project.ExportHeight}",style=MaterialTheme.typography.labelSmall)
                 }
                 Spacer(Modifier.height(10.dp))
                 val activeRenderer=rendererSelection
