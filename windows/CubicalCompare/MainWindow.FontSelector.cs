@@ -18,9 +18,14 @@ public sealed partial class MainWindow
     private bool _renderFontSystemLoaded;
     private bool _renderFontRetryHooked;
     private long _renderFontScanRevision;
+    private Flyout? _floatingFontFlyout;
+    private ComboBox? _floatingFontComboBox;
+    private TextBlock? _floatingFontStatusText;
+    private bool _floatingFontPickerInitialized;
 
     internal void InitializeFontSelector()
     {
+        InitializeFloatingFontPicker();
         if (_renderFontSelectorInitialized)
             return;
 
@@ -117,10 +122,128 @@ public sealed partial class MainWindow
         };
         inspectorStack.Children.Add(expander);
 
+        RefreshRenderFontUi();
+    }
+
+    private void InitializeFloatingFontPicker()
+    {
+        if (_floatingFontPickerInitialized) return;
+        _floatingFontPickerInitialized = true;
+
+        _floatingFontComboBox = new ComboBox
+        {
+            PlaceholderText = "Choose Windows render font",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MaxDropDownHeight = 440,
+        };
+        _floatingFontComboBox.SelectionChanged += FloatingFontSelectionChanged;
+
+        _floatingFontStatusText = new TextBlock
+        {
+            Text = "Current render font · loading on first open",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.75,
+            FontSize = 12
+        };
+
+        var chooseFile = new Button
+        {
+            Content = "Import .ttf / .otf / .ttc",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        chooseFile.Click += ChooseRenderFontFile_Click;
+
+        var rescan = new Button
+        {
+            Content = "Refresh installed fonts",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        rescan.Click += async (_, _) => await LoadSystemFontsAsync(force: true);
+
+        var reset = new Button
+        {
+            Content = "Use Nexa / system fallback",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        reset.Click += (_, _) => RenderFontSelection.Apply("Nexa", string.Empty);
+
+        var choices = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        choices.Children.Add(chooseFile);
+        choices.Children.Add(rescan);
+
+        var panel = new StackPanel
+        {
+            Width = 425,
+            MaxWidth = 425,
+            Spacing = 11,
+            Padding = new Thickness(12)
+        };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Render font",
+            FontSize = 19,
+            FontWeight = global::Windows.UI.Text.FontWeights.SemiBold
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Changes apply to renderer output and thumbnails. All installed fonts and imported files are supported.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12,
+            Opacity = 0.7
+        });
+        panel.Children.Add(_floatingFontComboBox);
+        panel.Children.Add(_floatingFontStatusText);
+        panel.Children.Add(choices);
+        panel.Children.Add(reset);
+
+        _floatingFontFlyout = new Flyout { Content = panel };
         RenderFontSelection.Changed += RenderFontSelection_Changed;
         Closed += (_, _) => RenderFontSelection.Changed -= RenderFontSelection_Changed;
+        RefreshFloatingFontUi();
+    }
 
-        RefreshRenderFontUi();
+    private void OpenFloatingFontPicker_Click(object sender, RoutedEventArgs e)
+    {
+        InitializeFloatingFontPicker();
+        RefreshFloatingFontUi();
+        if (_floatingFontFlyout is not null)
+            _floatingFontFlyout.ShowAt(FloatingFontsButton);
+
+        if (!_renderFontSystemLoaded)
+            _ = LoadSystemFontsAsync(force: false);
+    }
+
+    private void FloatingFontSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_renderFontUiUpdating || _floatingFontComboBox is null) return;
+        var index = _floatingFontComboBox.SelectedIndex;
+        if (index < 0 || index >= _renderFontChoices.Count) return;
+        var choice = _renderFontChoices[index];
+        RenderFontSelection.Apply(choice.FamilyName, choice.FilePath);
+        TimelineStatusText.Text = $"Render font · {choice.DisplayName}";
+    }
+
+    private void RefreshFloatingFontUi()
+    {
+        if (_floatingFontComboBox is null || _floatingFontStatusText is null) return;
+
+        var currentFamily = RenderFontSelection.CurrentFamily;
+        var currentFile = RenderFontSelection.CurrentFile;
+        var selectionIndex = string.IsNullOrWhiteSpace(currentFile)
+            ? _renderFontChoices.FindIndex(x => string.IsNullOrWhiteSpace(x.FilePath)
+                && x.FamilyName.Equals(currentFamily, StringComparison.CurrentCultureIgnoreCase))
+            : _renderFontChoices.FindIndex(x => !string.IsNullOrWhiteSpace(x.FilePath)
+                && x.FilePath.Equals(currentFile, StringComparison.OrdinalIgnoreCase));
+        _renderFontUiUpdating = true;
+        try
+        {
+            _floatingFontComboBox.SelectedIndex = selectionIndex;
+        }
+        finally { _renderFontUiUpdating = false; }
+
+        _floatingFontStatusText.Text = _renderFontSystemLoaded
+            ? $"{_renderFontChoices.Count} font choices · current: {currentFamily}"
+            : $"Current: {currentFamily} · fonts load when opened";
     }
 
     private void FontSelector_RootNavigationLoaded(object sender, RoutedEventArgs e)
@@ -132,7 +255,7 @@ public sealed partial class MainWindow
 
     private async Task LoadSystemFontsAsync(bool force)
     {
-        if (!_renderFontSelectorInitialized)
+        if (!_renderFontSelectorInitialized && !_floatingFontPickerInitialized)
             return;
         if (_renderFontSystemLoaded && !force)
             return;
@@ -151,6 +274,8 @@ public sealed partial class MainWindow
             App.WriteLog("System font scan failed", ex);
             if (_renderFontStatusText is not null)
                 _renderFontStatusText.Text = $"Could not read Windows fonts: {ex.Message}";
+            if (_floatingFontStatusText is not null)
+                _floatingFontStatusText.Text = $"Could not load Windows fonts: {ex.Message}";
             return;
         }
 
@@ -259,6 +384,7 @@ public sealed partial class MainWindow
 
     private void RefreshRenderFontUi()
     {
+        RefreshFloatingFontUi();
         if (_renderFontComboBox is null || _renderFontStatusText is null)
             return;
 
@@ -313,19 +439,23 @@ public sealed partial class MainWindow
 
     private void RebindFontChoices()
     {
-        if (_renderFontComboBox is null)
-            return;
-
         _renderFontUiUpdating = true;
         try
         {
-            _renderFontComboBox.ItemsSource = null;
-            _renderFontComboBox.ItemsSource = _renderFontChoices.Select(x => x.DisplayName).ToArray();
+            var names = _renderFontChoices.Select(x => x.DisplayName).ToArray();
+            if (_renderFontComboBox is not null)
+            {
+                _renderFontComboBox.ItemsSource = null;
+                _renderFontComboBox.ItemsSource = names;
+            }
+            if (_floatingFontComboBox is not null)
+            {
+                _floatingFontComboBox.ItemsSource = null;
+                _floatingFontComboBox.ItemsSource = names;
+            }
         }
-        finally
-        {
-            _renderFontUiUpdating = false;
-        }
+        finally { _renderFontUiUpdating = false; }
+        RefreshRenderFontUi();
     }
 
     private void EnsureFontChoiceVisible(RenderFontChoice choice, bool rebind = true)

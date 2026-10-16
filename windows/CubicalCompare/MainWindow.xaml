@@ -672,6 +672,9 @@
                         <Button x:Name="FloatingRendererButton" Tag="renderer" Content="Style &amp; Model"
                                 Click="FloatingDockNavigate_Click" Padding="13,10" CornerRadius="14"
                                 Foreground="White" BorderThickness="0" />
+                        <Button x:Name="FloatingFontsButton" Content="Fonts" Click="OpenFloatingFontPicker_Click"
+                                ToolTipService.ToolTip="Choose an installed or imported render font"
+                                Padding="13,10" CornerRadius="14" Foreground="White" BorderThickness="0" />
                         <Button x:Name="FloatingMoreButton" Tag="more" Content="More ⋯" Padding="13,10"
                                 CornerRadius="14" Foreground="White" BorderThickness="0">
                             <Button.Flyout>

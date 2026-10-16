@@ -146,6 +146,11 @@ public sealed partial class MainWindow
 
     private void RunFloatingDockSmoke()
     {
+        InitializeFloatingFontPicker();
+        if (!_floatingFontPickerInitialized || _floatingFontComboBox is null || _floatingFontFlyout?.Content is not StackPanel)
+            throw new InvalidOperationException("V5 floating font picker is missing.");
+        if (!FloatingDockButtons.Children.Contains(FloatingFontsButton))
+            throw new InvalidOperationException("V5 fonts shortcut is missing from the floating dock.");
         // WinUI's responsive NavigationView can reopen itself on first layout.
         RootNavigation.IsPaneOpen = false;
         if (!EditorRootGrid.Children.Contains(FloatingNavigationDock)
