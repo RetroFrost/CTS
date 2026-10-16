@@ -75,10 +75,11 @@ public partial class App : Application
                     mainWindow.InitializePreviewPlayback();
                     mainWindow.InitializePersonalization();
                     mainWindow.InitializeFinalReleaseUi();
-                    mainWindow.InitializeFloatingNavigation();
                     mainWindow.InitializeAdaptiveExportUi();
                     mainWindow.InitializeInterfaceReview();
                     mainWindow.InitializeEditorWorkspaceUx();
+                    // Last: old V4 interface initialization must not revive the fixed sidebar.
+                    mainWindow.InitializeFloatingNavigation();
                     if (Environment.GetCommandLineArgs().Contains("--ci-mainwindow-smoke"))
                     {
                         mainWindow.RunEditorWorkspaceSmoke();

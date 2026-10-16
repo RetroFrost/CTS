@@ -19,9 +19,14 @@ public sealed partial class MainWindow
             return;
         _interfaceReviewInitialized = true;
 
-        // The compact layout previously closed the navigation pane but also disabled the
-        // pane toggle, leaving icon-only navigation with no way to inspect labels.
+#if V5_M1_PREVIEW
+        // V5 navigates through its always-visible floating dock, not a fixed sidebar.
+        RootNavigation.IsPaneToggleButtonVisible = false;
+        RootNavigation.IsPaneOpen = false;
+#else
+        // V4 retains its established sidebar and open-pane toggle.
         RootNavigation.IsPaneToggleButtonVisible = true;
+#endif
         RootNavigation.IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed;
         RootNavigation.AlwaysShowHeader = false;
         RootNavigation.CompactPaneLength = 52;
