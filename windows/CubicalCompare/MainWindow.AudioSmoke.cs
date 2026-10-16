@@ -33,6 +33,12 @@ public sealed partial class MainWindow
             var failures = await ImportSoundtracksAsync([first,invalid,second]);
             if(failures.Count!=1 || CurrentSoundtrackPaths().Count!=2 || _soundtrackListPanel?.Children.Count!=2)throw new Exception("Audio import/partial failure list failed");
             MoveSoundtrack(1,-1);if(CurrentSoundtrackPaths()[0]!=second.Path)throw new Exception("Audio reorder failed");
+            // The UI Save Pattern/Import Pattern handlers share this tested codec.
+            var m3uPath = Path.Combine(folder.Path, "soundtrack-pattern.m3u");
+            await M3uPlaylistService.SaveAsync(m3uPath, [second.Path, first.Path, second.Path]);
+            var m3uRestored = await M3uPlaylistService.LoadAsync(m3uPath);
+            if (m3uRestored.Count != 3 || m3uRestored[0] != second.Path || m3uRestored[2] != second.Path)
+                throw new Exception("M3U soundtrack order/repetition export and import failed");
             var project = new ComparisonProject { SoundtrackPaths=CurrentSoundtrackPaths().ToList() };
             var roundtrip = System.Text.Json.JsonSerializer.Deserialize<ComparisonProject>(System.Text.Json.JsonSerializer.Serialize(project))!;
             if(!roundtrip.SoundtrackPaths.SequenceEqual(CurrentSoundtrackPaths()))throw new Exception("Playlist persistence failed");

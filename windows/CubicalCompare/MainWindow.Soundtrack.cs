@@ -87,6 +87,15 @@ public sealed partial class MainWindow
         var panel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 8, 0, 0) };
         panel.Children.Add(_soundtrackPathText);
         panel.Children.Add(buttonGrid);
+        var patternActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var savePattern = new Button { Content = "Save Pattern (.m3u)" };
+        savePattern.Click += SaveSoundtrackPattern_Click;
+        var importPattern = new Button { Content = "Import Pattern (.m3u)" };
+        importPattern.Click += ImportSoundtrackPattern_Click;
+        patternActions.Children.Add(savePattern);
+        patternActions.Children.Add(importPattern);
+        panel.Children.Add(patternActions);
+        panel.Children.Add(new TextBlock { Text = "M3U saves track order, including repeated tracks. It links to your existing audio files.", TextWrapping = TextWrapping.Wrap, FontSize = 11, Opacity = 0.65 });
         panel.Children.Add(new TextBlock { Text = "Volume", FontSize = 11, Opacity = 0.65 });
         panel.Children.Add(_soundtrackVolumeSlider);
         panel.Children.Add(_soundtrackLoopCheckBox);
@@ -142,6 +151,20 @@ public sealed partial class MainWindow
         };
         buttons.Children.Add(chooseButton);
         buttons.Children.Add(clearButton);
+        var savePatternButton = new Button
+        {
+            Content = "Save Pattern (.m3u)",
+            Padding = new Thickness(12, 7, 12, 7),
+        };
+        savePatternButton.Click += SaveSoundtrackPattern_Click;
+        var importPatternButton = new Button
+        {
+            Content = "Import Pattern (.m3u / .m3u8)",
+            Padding = new Thickness(12, 7, 12, 7),
+        };
+        importPatternButton.Click += ImportSoundtrackPattern_Click;
+        buttons.Children.Add(savePatternButton);
+        buttons.Children.Add(importPatternButton);
 
         _audioPageVolumeSlider = new Slider
         {
@@ -189,6 +212,7 @@ public sealed partial class MainWindow
         soundtrackPanel.Children.Add(_audioPagePathText);
         soundtrackPanel.Children.Add(buttons);
         soundtrackPanel.Children.Add(new TextBlock { Text = "Tracks play consecutively in this order. Preview listens to one track; export uses the whole list.", TextWrapping = TextWrapping.Wrap });
+        soundtrackPanel.Children.Add(new TextBlock { Text = "Save Pattern exports the current order as a portable .m3u playlist; Import Pattern restores it, including intentional duplicates. It references audio files rather than embedding them.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.7 });
         _audioImportStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
         _soundtrackListPanel = new StackPanel { Spacing = 8 };
         soundtrackPanel.Children.Add(_audioImportStatus);

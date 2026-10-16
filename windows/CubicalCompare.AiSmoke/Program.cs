@@ -57,4 +57,46 @@ finally
     if (File.Exists(path)) File.Delete(path);
     if (File.Exists(path + ".bak")) File.Delete(path + ".bak");
 }
-Console.WriteLine("V5 AI smoke tests passed.");
+var playlistDir = Path.Combine(Path.GetTempPath(), "cc-m3u-smoke-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(playlistDir);
+try
+{
+    var tracksDir = Path.Combine(playlistDir, "music");
+    Directory.CreateDirectory(tracksDir);
+    var one = Path.Combine(tracksDir, "first track.mp3");
+    var two = Path.Combine(tracksDir, "café second.wav");
+    var hash = Path.Combine(tracksDir, "#special.mp3");
+    File.WriteAllBytes(one, [1]);
+    File.WriteAllBytes(two, [2]);
+    File.WriteAllBytes(hash, [3]);
+    var playlistFile = Path.Combine(playlistDir, "my-pattern.m3u");
+    await M3uPlaylistService.SaveAsync(playlistFile, [one, two, one, hash]);
+    var savedContents = await File.ReadAllTextAsync(playlistFile);
+    Check(savedContents.StartsWith("#EXTM3U\\n".Replace("\\n", "\n")), "M3U header");
+    Check(savedContents.Contains("music/first track.mp3"), "M3U relative paths");
+    var restoredTracks = await M3uPlaylistService.LoadAsync(playlistFile);
+    Check(restoredTracks.SequenceEqual(new[] { one, two, one, hash }), "M3U UTF-8/repeat/leading-hash roundtrip");
+    Check(M3uPlaylistService.Parse(playlistFile, "#EXTM3U\n#EXTINF:4,Example\nmusic/first track.mp3\n").Count == 1,
+        "EXTINF comments ignored");
+    try
+    {
+        M3uPlaylistService.Parse(playlistFile, "#EXTM3U\nhttps://example.com/audio.mp3\n");
+        throw new Exception("Remote M3U URL should not be accepted");
+    }
+    catch (InvalidDataException) { }
+    try
+    {
+        M3uPlaylistService.Parse(playlistFile, "#EXTM3U\n");
+        throw new Exception("Empty M3U should not be accepted");
+    }
+    catch (InvalidDataException) { }
+    var malformed = string.Join("\n", Enumerable.Repeat("music/first track.mp3", M3uPlaylistService.MaxTracks + 1));
+    try
+    {
+        M3uPlaylistService.Parse(playlistFile, malformed);
+        throw new Exception("Oversized M3U should not be accepted");
+    }
+    catch (InvalidDataException) { }
+}
+finally { Directory.Delete(playlistDir, recursive: true); }
+Console.WriteLine("V5 AI + M3U playlist roundtrip smoke tests passed.");
