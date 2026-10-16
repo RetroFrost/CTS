@@ -26,7 +26,7 @@ namespace CubicalCompareV5;
 
 public partial class MainWindow : Window
 {
-    private const int FramesPerSecond = 30;
+    private const int FramesPerSecond = 60;
     private const int SecondsPerCard = 2;
     private readonly JsonSerializerOptions _json = new() { WriteIndented = true };
     private ObservableCollection<ComparisonCard> _cards = new();
@@ -111,6 +111,7 @@ public partial class MainWindow : Window
         UpdateTransformControls();
         InitializeAudioEditor();
         HighlightIsland(NavCardsButton);
+        InitializeRecovery();
         Loaded += (_, _) => ApplyWindowBackdrop();
         SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         Closed += (_, _) => SystemEvents.UserPreferenceChanged -= OnSystemPreferenceChanged;
@@ -542,10 +543,15 @@ public partial class MainWindow : Window
         SaveSettings();
     }
 
-    private bool CheckUnsaved() // Saving is explicit. Avoid data loss when opening or replacing.
+    private bool CheckUnsaved()
     {
-        return System.Windows.MessageBox.Show(this, "Replace the current project? Save it first if needed.",
-            "Cubical Compare V5", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+        PersistInk();
+        if (!HasUnsavedChanges()) return true;
+        var answer = System.Windows.MessageBox.Show(this,
+            "Save the changes to the current project before replacing it?",
+            "Unsaved project", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Cancel) return false;
+        return answer != MessageBoxResult.Yes || SaveProject();
     }
 
     private void New_Click(object sender, RoutedEventArgs e)
@@ -554,6 +560,7 @@ public partial class MainWindow : Window
         ReplaceCards(new[] { new ComparisonCard { Title = "First comparison", BadgeHeader = "Rank", Badge = "1" } });
         _projectPath = null;
         LoadAudioFromProject(new ComparisonProject());
+        ResetRecoveryCheckpoint();
         UpdateTitle();
     }
 
@@ -569,26 +576,31 @@ public partial class MainWindow : Window
         CardList.SelectedIndex = 0;
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private void Save_Click(object sender, RoutedEventArgs e) => SaveProject();
+
+    private bool SaveProject()
     {
         PersistInk();
         string? path = _projectPath;
         if (path is null)
         {
             var dialog = new SaveFileDialog { Filter = "Cubical Compare V5|*.ccv5", DefaultExt = ".ccv5", AddExtension = true };
-            if (dialog.ShowDialog(this) != true) return;
+            if (dialog.ShowDialog(this) != true) return false;
             path = dialog.FileName;
         }
         try
         {
             string temp = path + ".tmp";
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             File.WriteAllText(temp, JsonSerializer.Serialize(BuildProjectSnapshot(), _json));
             File.Move(temp, path, true);
             _projectPath = path;
+            ResetRecoveryCheckpoint();
             UpdateTitle();
             StatusLabel.Text = "Saved: " + Path.GetFileName(path);
+            return true;
         }
-        catch (Exception ex) { ShowError(ex); }
+        catch (Exception ex) { ShowError(ex); return false; }
     }
 
     private void Open_Click(object sender, RoutedEventArgs e)
@@ -602,6 +614,7 @@ public partial class MainWindow : Window
             ReplaceCards(project.Cards ?? new ObservableCollection<ComparisonCard>());
             LoadAudioFromProject(project);
             _projectPath = dialog.FileName;
+            ResetRecoveryCheckpoint();
             UpdateTitle();
             StatusLabel.Text = "Loaded: " + Path.GetFileName(dialog.FileName);
         }
@@ -683,6 +696,7 @@ public partial class MainWindow : Window
             ReplaceCards(cards);
             LoadAudioFromProject(new ComparisonProject());
             _projectPath = null;
+            ResetRecoveryCheckpoint();
             UpdateTitle();
             StatusLabel.Text = $"Imported {cards.Count} cards.";
         }

@@ -1,7 +1,7 @@
 name: Cubical Compare V5 Windows
 on:
   push:
-    branches: [v5/development]
+    branches: [v5/development, windows/main-preview]
     paths:
       - windows-v5/**
       - .github/workflows/v5-windows.yml
@@ -64,6 +64,16 @@ jobs:
             throw "Thumbnail regression failed (exit code $($proc.ExitCode))"
           }
           if ((Get-Content thumbnail-regression-result.txt -Raw).Trim() -ne "PASS") { throw "Missing thumbnail regression result" }
+      - name: Crash-recovery regression
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path windows-v5/publish/CubicalCompareV5.exe).Path
+          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test-recovery' -PassThru -Wait
+          if ($proc.ExitCode -ne 0) {
+            if (Test-Path recovery-regression-result.txt) { Get-Content recovery-regression-result.txt }
+            throw "Project recovery regression failed ($($proc.ExitCode))"
+          }
+          if ((Get-Content recovery-regression-result.txt -Raw).Trim() -ne "PASS") { throw "Missing recovery regression result" }
       - name: Floating navigation and audio pattern regression
         shell: pwsh
         run: |
@@ -108,4 +118,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "v5.0.0-windows-preview.${{ github.run_number }}"
-          gh release create $tag "CubicalCompare-V5-Windows-Setup.exe" "CubicalCompare-V5-Windows-Portable.zip" "SHA256SUMS.txt" --repo "${{ github.repository }}" --target "$env:GITHUB_SHA" --title "Cubical Compare V5 Windows Preview #${{ github.run_number }}" --notes "Windows V5: functional floating Fluent navigation island, cards/thumbnail switching, audio panel with ordered M3U save/import patterns and FFmpeg soundtrack export, dark/light/Mica, old-GPU mode and NSIS installer. No in-app changelog dialogs." --prerelease
+          gh release create $tag "CubicalCompare-V5-Windows-Setup.exe" "CubicalCompare-V5-Windows-Portable.zip" "SHA256SUMS.txt" --repo "${{ github.repository }}" --target "$env:GITHUB_SHA" --title "Cubical Compare V5 Windows Preview #${{ github.run_number }}" --notes "Windows V5 preview: floating Fluent island, thumbnail transforms, ordered M3U audio patterns, 60 FPS video export, transactional crash-recovery autosaves, light/dark/Mica, old-GPU mode, and interactive NSIS installer. No in-app changelog dialogs." --prerelease
