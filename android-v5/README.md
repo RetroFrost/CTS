@@ -26,7 +26,7 @@ Local build:
 gradle --project-dir android-v5 :app:testDebugUnitTest :app:assembleDebug --no-daemon
 ```
 
-The app uses Storage Access Framework document pickers rather than storage-wide permissions and does not require access to the network. No built-in changelog or What's New dialog appears on app update.
+The app uses Storage Access Framework document pickers rather than storage-wide permissions and only requests network access for explicit Flaticon artwork loads. No built-in changelog or What's New dialog appears on app update.
 
 
 ## Native architecture update (Rust + Material Design 3)
@@ -88,3 +88,24 @@ The audio-length warning uses the selected Renderer3's actual frame count and FP
 ### Installing and upgrading Android previews
 
 The preview is debug-signed, never silently installed. GitHub Actions now caches its generated preview debug keystore on the `android-main-preview` publishing workflow so later APKs normally reuse the same signing certificate. This test certificate is not a Google Play/release signing identity; cache expiry or previous releases built before the cache may still have mismatched signatures. **Before uninstalling an earlier Android preview, export a complete `.ctsv5` project** and keep the file somewhere outside the app; after installation, import that bundle to restore your renderer, artwork and audio. Android may reject installing over a preview signed with a different prior debug certificate; do not delete your old app data without first exporting it.
+
+## Android feature expansion — Windows comparison, 16 October 2026
+
+Source audit: Android baseline `1b0253922a4f9bc3655b0f8c3e5f8fdde576b543`; Windows V5 preview `e98067653afc4cbee493ced74687406a2f2e9fe9`.
+
+All portable editing features in that Windows V5 snapshot have Android counterparts: project/CSV import, local artwork, independent video/thumbnail transforms, drawing, theme/languages, ordered M3U audio, volume/repeat/fade, PNG thumbnails and MP4 export. This Android update adds:
+
+- CSV export in the Number, Title, Badge Header, Badge Value, Badge Unit, Image, Description, Badge Color schema. Image fields are media references; use a complete `.ctsv5` bundle to embed binaries.
+- Project undo/redo with coalesced edits (30 snapshots, bounded to 24 million characters). Very large embedded projects may retain fewer undo states to protect phone memory. History is session-local.
+- Card search, numeric value sorting, bulk image or thumbnail transforms, bulk badge colours and exact numeric transform inputs.
+- Tap a title, badge or description in the artwork canvas to edit its actual card data. Touch gestures no longer accidentally drag artwork when the user taps those text regions; dragging artwork also prevents parent scroll interception.
+- A single basic-video frame painter shared by preview, frame PNG and MP4. Every integer Rust frame is encoded; the prior eight-still transition approximation is removed. Preview has reverse/forward frame stepping and monotonic-time playback.
+- Total video duration, 1–3600 seconds per card, 1–60 FPS, even custom dimensions up to 3840×2160, 1–80 Mbps and actual Auto/hardware/software H.264 codec selection. Unsupported codec configurations produce an error before rendering, rather than pretending every phone can export 4K. Renderer3 retains its authored frame rate and duration.
+- Main artwork transforms and Android drawing overlays now reach wrapped ribbon Renderer3 SmartCard artwork, including outro overlays; authored clipping, card motion, base plates and shine remain separate.
+- Current video frame PNG export, independent from thumbnail PNG export.
+- Foreground export service, progress notification, cancel action, wake lock while encoding, and graceful Android 15 processing timeout handling.
+- Defensive Windows JSON normalization for null card/text/track fields, invalid transforms, export dimensions and encoder settings. Empty projects remain editable.
+
+The emulator smoke job exercises actual Canvas rendering, reverse seeking, transformed artwork, a real 32-frame H.264 MP4 and final presentation timestamps. Unit coverage includes quoted multiline CSV export/import, independent bulk transforms, undo/redo branching, Windows null-field compatibility and export-setting persistence. Existing Renderer3, bundle and Zipack2 runtime checks remain active.
+
+This is **not parity with every historical Windows 4.x plugin**: arbitrary Windows DLL/EXE extensions, WPF ISF ink decoding, DWM/Mica, Windows installers/updaters and general Windows-only rendering engines cannot execute as Android components. Renderer3 supports the documented scene-v3/wrapped ribbon-exact and SmartCard/SmartBadge subset. No external reference video was provided for a new frame-accuracy certification. Physical low-end-phone performance and 4K support still depend on the device. MP4 export runs in a visible foreground service with progress and cancellation, so leaving or recreating the editor does not cancel the render. Android background-processing time limits still apply.

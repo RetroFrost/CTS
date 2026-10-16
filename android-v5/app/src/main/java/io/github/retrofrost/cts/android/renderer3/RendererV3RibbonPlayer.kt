@@ -243,20 +243,8 @@ internal class RendererV3RibbonPlayer(
                 val dest = rectAt(artwork,"dest","destRects",selected.template)
                 val clip = rectAt(artwork,"clip","clipRects",selected.template) ?: dest
                 val alpha = numeric(artwork,"alphas",selected.template,1f)
-                val image = art.load(card.imageSubcard.source)
-                if (dest!=null && clip!=null && alpha>0f && image!=null) {
-                    canvas.save()
-                    canvas.clipRect(clip)
-                    paint.reset()
-                    paint.isAntiAlias=true
-                    paint.isFilterBitmap=true
-                    paint.alpha=(alpha.coerceIn(0f,1f)*255).toInt()
-                    val scale = min(image.width/max(1f,dest.width()),image.height/max(1f,dest.height()))
-                    val sw=dest.width()*scale;val sh=dest.height()*scale
-                    canvas.drawBitmap(image,Rect(((image.width-sw)/2).toInt(),
-                        ((image.height-sh)/2).toInt(),((image.width+sw)/2).toInt(),
-                        ((image.height+sh)/2).toInt()),dest,paint)
-                    canvas.restore()
+                if (dest!=null && clip!=null && alpha>0f) {
+                    drawArtwork(canvas,card,dest,clip,alpha)
                 }
             }
             for (field in seq.fields) drawField(canvas,field,selected.template,card)
@@ -459,26 +447,44 @@ internal class RendererV3RibbonPlayer(
                 val artwork = seq.artwork
                 val dest = artwork?.let { rectAt(it, "dest", "destRects", frame.template) }
                 val clip = artwork?.let { rectAt(it, "clip", "clipRects", frame.template) } ?: dest
-                val image = art.load(card.imageSubcard.source)
-                if (dest != null && clip != null && image != null) {
-                    canvas.save()
-                    canvas.clipRect(clip)
-                    paint.reset()
-                    paint.isAntiAlias = true
-                    paint.isFilterBitmap = true
-                    val cropScale = min(image.width / max(1f, dest.width()),
-                        image.height / max(1f, dest.height()))
-                    val sw = dest.width() * cropScale; val sh = dest.height() * cropScale
-                    canvas.drawBitmap(image, Rect(((image.width-sw)/2).toInt(),
-                        ((image.height-sh)/2).toInt(), ((image.width+sw)/2).toInt(),
-                        ((image.height+sh)/2).toInt()), dest, paint)
-                    canvas.restore()
-                }
+                if (dest!=null && clip!=null) drawArtwork(canvas,card,dest,clip,1f)
             }
             for (field in seq.fields) drawField(canvas,field,frame.template,card)
             plate(canvas,seq,seq.overlayAsset(frame.template))
             if (alpha < .999f) canvas.restore()
         } finally { canvas.restore() }
+    }
+
+    /** Keep the authored crop and clipping; edits are local to live artwork, never the plate/shine. */
+    private fun drawArtwork(canvas:Canvas,card:CtsCard,dest:RectF,clip:RectF,alpha:Float){
+        val image=art.load(card.imageSubcard.source)
+        val drawing=art.load(card.imageSubcard.drawing)
+        canvas.save()
+        try {
+            canvas.clipRect(clip)
+            paint.reset();paint.isAntiAlias=true;paint.isFilterBitmap=true
+            paint.alpha=(alpha.coerceIn(0f,1f)*255).toInt()
+            if(image!=null){
+                val t=card.imageSubcard.transform
+                canvas.save()
+                canvas.translate(dest.centerX()+(t.X*dest.width()/582.0).toFloat(),
+                    dest.centerY()+(t.Y*dest.height()/310.0).toFloat())
+                canvas.rotate(t.Rotation.toFloat())
+                canvas.scale((t.Scale*(if(t.FlipHorizontal)-1 else 1)).toFloat(),
+                    (t.Scale*(if(t.FlipVertical)-1 else 1)).toFloat())
+                val crop=min(image.width/max(1f,dest.width()),image.height/max(1f,dest.height()))
+                val sw=dest.width()*crop;val sh=dest.height()*crop
+                canvas.drawBitmap(image,Rect(((image.width-sw)/2).toInt(),((image.height-sh)/2).toInt(),
+                    ((image.width+sw)/2).toInt(),((image.height+sh)/2).toInt()),
+                    RectF(-dest.width()/2,-dest.height()/2,dest.width()/2,dest.height()/2),paint)
+                canvas.restore()
+            }
+            if(drawing!=null){
+                val source=Rect((189f/960*drawing.width).toInt(),(164f/540*drawing.height).toInt(),
+                    (771f/960*drawing.width).toInt(),(474f/540*drawing.height).toInt())
+                canvas.drawBitmap(drawing,source,dest,paint)
+            }
+        } finally {canvas.restore()}
     }
 
     override fun close() {
